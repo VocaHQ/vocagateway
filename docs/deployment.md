@@ -1,6 +1,6 @@
 # Gateway deployment
 
-vocaserver uses the same HTTP API whether the gateway runs directly on macOS,
+vocagateway uses the same HTTP API whether the gateway runs directly on macOS,
 directly on Linux, or inside its Linux container. The meaningful differences are
 the available speech engines, acceleration, isolation, and operational
 portability.

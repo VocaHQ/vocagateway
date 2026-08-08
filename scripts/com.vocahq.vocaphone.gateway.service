@@ -1,5 +1,5 @@
 [Unit]
-Description=vocaserver transcription gateway
+Description=vocagateway transcription gateway
 Documentation=file://__REPOSITORY__/README.md
 After=network-online.target
 Wants=network-online.target

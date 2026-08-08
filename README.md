@@ -1,4 +1,4 @@
-# vocaserver
+# vocagateway
 
 Headless local transcription gateway for the [Voca](https://github.com/VocaHQ)
 family. Set it up once; pair phone and desktop clients to the same hardware.
