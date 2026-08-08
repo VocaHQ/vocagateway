@@ -192,35 +192,12 @@ def create_app(
 
 def select_engine(settings: Settings) -> TranscriptionEngine:
     """Resolve an engine purely from environment settings (CLI usage)."""
-    if settings.engine not in {
-        "auto",
-        "vocamac",
-        "handy",
-        "whisper.cpp",
-        "whisperkit",
-        "faster-whisper",
-        "moonshine",
-    }:
+    from app.runtime_config import VALID_ENGINES
+
+    if settings.engine not in VALID_ENGINES:
         raise RuntimeError("VOCAPHONE_ENGINE is not a supported engine.")
     manager = ModelManager(settings.resolved_models_dir())
-    if settings.engine == "auto":
-        from app.models.vocamac import VocaMacEngine
-        from app.models.whisper_cpp import WhisperCppEngine
-
-        vocamac = VocaMacEngine(
-            settings.whisperkit_binary,
-            settings.vocamac_model,
-            app_path=settings.vocamac_app,
-        )
-        if vocamac.is_available():
-            return vocamac
-        if settings.handy_binary.is_file():
-            from app.models.handy import HandyEngine
-
-            return HandyEngine(
-                settings.handy_binary,
-                settings.handy_model,
-                fallback_model=settings.handy_fallback_model,
-            )
-        return WhisperCppEngine(settings.whisper_binary, settings.whisper_model)
+    # Same resolution path as the long-running server (including sherpa-onnx
+    # and mlx-audio). CLI tools like vocaphone-cleanup must accept every engine
+    # VALID_ENGINES lists, not a hand-maintained subset.
     return build_engine(settings, RuntimeConfig(engine=settings.engine), manager)

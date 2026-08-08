@@ -127,7 +127,10 @@ class TranscriptionService:
             self.repository.update(session_id, state="failed", error_code="transcription_failed")
             raise APIProblem(502, "transcription_failed", str(error), recoverable=True) from error
         except Exception:
+            # Leave the session retryable: stuck "transcribing" rejects finish
+            # and is not in the retry allow-list (failed/uploaded/completed).
             self.metrics.failed(_elapsed_ms(started))
+            self.repository.update(session_id, state="failed", error_code="internal_error")
             raise
         finally:
             normalized.unlink(missing_ok=True)

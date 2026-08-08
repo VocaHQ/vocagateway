@@ -196,7 +196,10 @@ def build_engine(
     runtime_config: RuntimeConfig,
     model_manager: ModelManager,
 ) -> TranscriptionEngine:
-    engine = runtime_config.engine or settings.engine
+    # A non-auto VOCAPHONE_ENGINE is an operator force-flag and must win over
+    # whatever the WebUI last persisted (including the default "auto" written
+    # into config.json). When the env is auto, honour the runtime choice.
+    engine = settings.engine if settings.engine != "auto" else runtime_config.engine or "auto"
     if engine == "vocamac":
         return _vocamac_engine(settings)
     if engine == "handy":

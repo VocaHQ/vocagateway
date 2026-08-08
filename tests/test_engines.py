@@ -126,3 +126,51 @@ def test_configure_rejects_an_engine_the_host_cannot_run(
 
     assert runtime.engine == "auto"
     assert engine_requirement("vocamac") == "Apple silicon"
+
+
+def test_build_engine_honours_forced_settings_engine_over_runtime_auto(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """VOCAPHONE_ENGINE must win over a persisted runtime config of 'auto'."""
+    from app.engines import build_engine
+    from app.models.whisper_cpp import WhisperCppEngine
+
+    settings = Settings(
+        token="test-token-with-at-least-thirty-two-characters",
+        data_dir=tmp_path,
+        engine="whisper.cpp",
+        whisper_binary=tmp_path / "whisper-cli",
+        whisper_model=tmp_path / "whisper.bin",
+        handy_binary=tmp_path / "no-handy",
+        vocamac_app=tmp_path / "no-vocamac",
+    )
+    runtime = RuntimeConfig(engine="auto")
+    manager = ModelManager(tmp_path / "models")
+
+    engine = build_engine(settings, runtime, manager)
+
+    assert isinstance(engine, WhisperCppEngine)
+
+
+def test_select_engine_accepts_sherpa_and_mlx(tmp_path: Path) -> None:
+    from app.main import select_engine
+
+    for name in ("sherpa-onnx", "mlx-audio", "moonshine", "faster-whisper"):
+        settings = Settings(
+            token="test-token-with-at-least-thirty-two-characters",
+            data_dir=tmp_path,
+            engine=name,
+            whisper_binary=tmp_path / "whisper-cli",
+            whisper_model=tmp_path / "whisper.bin",
+            handy_binary=tmp_path / "no-handy",
+            vocamac_app=tmp_path / "no-vocamac",
+        )
+        # Resolution may fail later if models are missing, but the engine id
+        # itself must not be rejected up front the way the old allow-list did.
+        try:
+            select_engine(settings)
+        except RuntimeError as error:
+            assert "not a supported engine" not in str(error)
+        except Exception:
+            # Missing model/binary paths are fine for this test.
+            pass

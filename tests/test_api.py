@@ -4,6 +4,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
+import pytest
 from conftest import TOKEN, FakeEngine, FakeNormalizer
 
 from app.config import Settings
@@ -275,3 +276,45 @@ async def test_health_reports_what_the_loaded_model_can_do(
     assert payload["detects_language_automatically"] is True
     assert "hi" in payload["languages"] and "bn" in payload["languages"]
     assert "en" not in payload["languages"]  # Dolphin is not trained on English
+
+
+class BoomEngine:
+    """Unexpected failure during transcription (not a typed engine error)."""
+
+    async def health(self) -> EngineHealth:
+        return EngineHealth(ready=True, name="boom-model")
+
+    async def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> str:
+        raise RuntimeError("engine exploded")
+
+
+async def test_unexpected_finish_error_leaves_session_retryable(
+    settings: Settings, authorization: dict[str, str], audio_bytes: bytes
+) -> None:
+    """Bare exceptions must not leave the session stuck in 'transcribing'.
+
+    Retry only accepts failed/uploaded/completed, and finish rejects
+    transcription_in_progress, so a stuck transcribing state blocks recovery.
+    """
+    app = create_app(settings, engine=BoomEngine(), normalizer=FakeNormalizer())
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://gateway") as client:
+        session_id = uuid4()
+        await client.post(
+            "/v1/sessions",
+            headers=authorization,
+            json={"client_session_id": str(session_id), "language": "en", "style": "raw"},
+        )
+        await client.put(
+            f"/v1/sessions/{session_id}/audio",
+            headers={**authorization, "Content-Type": "audio/wav"},
+            content=audio_bytes,
+        )
+        with pytest.raises(RuntimeError, match="engine exploded"):
+            # ASGI client surfaces the unhandled exception from the route.
+            await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
+
+        session = await client.get(f"/v1/sessions/{session_id}", headers=authorization)
+        body = session.json()
+        assert body["state"] == "failed"
+        assert body["error_code"] == "internal_error"
