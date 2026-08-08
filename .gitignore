@@ -216,3 +216,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Gateway runtime / local data (not secrets templates)
+.omo/
+data/
+*.db
+*.sqlite
+*.sqlite3
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Compose secrets — never commit a populated token file
+.env
+!.env.example
