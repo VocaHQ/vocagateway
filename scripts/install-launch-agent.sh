@@ -2,16 +2,17 @@
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-repository=$(CDPATH= cd -- "$script_dir/../.." && pwd)
+# Repo root whether this is a standalone clone or a submodule at .../server.
+repository=$(CDPATH= cd -- "$script_dir/.." && pwd)
 destination="$HOME/Library/LaunchAgents/com.vocahq.vocaphone.gateway.plist"
 log_dir="$HOME/Library/Logs/Vocaphone"
 template="$script_dir/com.vocahq.vocaphone.gateway.plist"
-program="$repository/server/.venv/bin/vocaphone-server"
+program="$repository/.venv/bin/vocaphone-server"
 domain="gui/$(id -u)"
 service="$domain/com.vocahq.vocaphone.gateway"
 
 if [ ! -x "$program" ]; then
-  printf 'Gateway executable not found at %s\nRun uv sync in server/ first.\n' "$program" >&2
+  printf 'Gateway executable not found at %s\nRun uv sync in the repository root first.\n' "$program" >&2
   exit 1
 fi
 

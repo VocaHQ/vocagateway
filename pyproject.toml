@@ -1,7 +1,7 @@
 [project]
 name = "vocaphone-gateway"
 version = "0.2.0"
-description = "Tailnet-only transcription gateway for the vocaphone iPhone keyboard"
+description = "Headless local transcription gateway for Voca clients (vocaphone, desktop apps)"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

@@ -1,18 +1,19 @@
 #!/bin/sh
 # Install a systemd --user unit that keeps the native Linux gateway running.
-# Requires: uv sync already done in server/ (creates .venv/bin/vocaphone-server).
+# Requires: uv sync already done in this checkout (creates .venv/bin/vocaphone-server).
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-repository=$(CDPATH= cd -- "$script_dir/../.." && pwd)
+# Repo root whether this is a standalone clone or a submodule at .../server.
+repository=$(CDPATH= cd -- "$script_dir/.." && pwd)
 unit_name="com.vocahq.vocaphone.gateway.service"
 template="$script_dir/$unit_name"
-program="$repository/server/.venv/bin/vocaphone-server"
+program="$repository/.venv/bin/vocaphone-server"
 unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 destination="$unit_dir/$unit_name"
 
 if [ ! -x "$program" ]; then
-  printf 'Gateway executable not found at %s\nRun: cd server && uv sync --all-groups --extra engines\n' \
+  printf 'Gateway executable not found at %s\nRun: uv sync --all-groups --extra engines\n' \
     "$program" >&2
   exit 1
 fi

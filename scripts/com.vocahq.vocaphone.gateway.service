@@ -1,13 +1,13 @@
 [Unit]
-Description=vocaphone transcription gateway
-Documentation=file://__REPOSITORY__/server/README.md
+Description=vocaserver transcription gateway
+Documentation=file://__REPOSITORY__/README.md
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=__REPOSITORY__/server
-ExecStart=__REPOSITORY__/server/.venv/bin/vocaphone-server
+WorkingDirectory=__REPOSITORY__
+ExecStart=__REPOSITORY__/.venv/bin/vocaphone-server
 Restart=on-failure
 RestartSec=3
 # Keep the usual user PATH so FFmpeg and optional tools resolve without a login shell.

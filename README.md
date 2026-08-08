@@ -1,15 +1,39 @@
-# vocaphone gateway
+# vocaserver
 
-The gateway accepts bounded recordings from the vocaphone iPhone and Android
-apps, normalizes them with FFmpeg, invokes a local speech engine, and returns an
-idempotent transcript. It includes an authenticated HTMX WebUI for setup, model
-management, engine selection, microphone testing, and operational status.
+Headless local transcription gateway for the [Voca](https://github.com/VocaHQ)
+family. Set it up once; pair phone and desktop clients to the same hardware.
+
+The gateway accepts bounded recordings from [vocaphone](https://github.com/VocaHQ/vocaphone)
+(iOS/Android) and, soon, the Linux/macOS/Windows desktop apps. It normalizes
+audio with FFmpeg, invokes a local speech engine, and returns an idempotent
+transcript. An authenticated HTMX WebUI covers setup, model management, engine
+selection, microphone testing, and operational status.
+
+CLI entry points, environment variables, and on-disk paths still use the
+`vocaphone` prefix (`vocaphone-server`, `VOCAPHONE_*`, `~/.config/vocaphone/`)
+so existing installs keep working. A later rename can introduce aliases without
+breaking those paths.
 
 > CLI entry points, env vars, and config paths previously used the Local Flow
 > working name (`localflow-server`, `LOCALFLOW_*`, `~/.config/localflow/`) and
 > were renamed to vocaphone in v0.3.0. Native startups migrate a missing
 > bootstrap token from the old path once; see the
-> [migration guide](../docs/deployment.md#migrating-from-the-local-flow-working-name-v030).
+> [migration guide](docs/deployment.md#migrating-from-the-local-flow-working-name-v030).
+
+## Consumers
+
+| Project | How it uses this gateway |
+| --- | --- |
+| [vocaphone](https://github.com/VocaHQ/vocaphone) | Git submodule at `server/` for the iOS/Android clients |
+| [vocalinux](https://github.com/VocaHQ/vocalinux) / [vocamac](https://github.com/VocaHQ/vocamac) / [vocawin](https://github.com/VocaHQ/vocawin) | Planned: ship and start the headless server from the desktop app |
+
+Clone with submodules when working from a consumer:
+
+```sh
+git clone --recurse-submodules https://github.com/VocaHQ/vocaphone.git
+# or later: git submodule update --init --recursive
+```
+
 
 ## Deployment summary
 
@@ -21,7 +45,7 @@ management, engine selection, microphone testing, and operational status.
 
 Native MLX Audio and WhisperKit are the accelerated choices on Apple silicon.
 Docker Desktop runs the portable Linux image in a VM, so it cannot use the
-macOS MLX/WhisperKit/Core ML paths. See [deployment.md](../docs/deployment.md) for the
+macOS MLX/WhisperKit/Core ML paths. See [deployment.md](docs/deployment.md) for the
 performance explanation, operational commands, and persistence details.
 
 ## Native macOS quick start
@@ -45,7 +69,6 @@ and selecting one through the API is rejected with `422 invalid_engine`.
 
 ```sh
 brew install ffmpeg whisperkit-cli whisper-cpp
-cd server
 uv sync --all-groups --extra engines --extra apple
 uv run vocaphone-server
 ```
@@ -78,7 +101,6 @@ Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and FFmpeg on the host.
 sudo apt install ffmpeg
 # Install uv if needed: curl -LsSf https://astral.sh/uv/install.sh | sh
 
-cd server
 uv sync --all-groups --extra engines
 uv run vocaphone-server
 ```
@@ -142,7 +164,6 @@ non-root Linux image containing FFmpeg, the gateway, and a pinned `whisper.cpp`
 CLI. The same Dockerfile builds on Linux `amd64` and `arm64`.
 
 ```sh
-cd server
 umask 077
 printf 'VOCAPHONE_TOKEN=%s\n' "$(openssl rand -hex 32)" > .env
 printf 'VOCAPHONE_PUBLISH_HOST=127.0.0.1\n' >> .env
@@ -376,7 +397,7 @@ uv run vocaphone-server
 | `VOCAPHONE_RETENTION_HOURS` | `24` | `24` | Failed-session retry retention |
 | `VOCAPHONE_DELETE_SUCCESSFUL_AUDIO` | `true` | `true` | Delete source/normalized audio after success |
 
-Compose-specific variables live in `server/.env`:
+Compose-specific variables live in `.env`:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -414,8 +435,8 @@ tailscale serve status
 ```
 
 Use the reported private HTTPS URL in the iPhone or Android app. Do not use
-Funnel. See [deployment.md](../docs/deployment.md) for LAN/VPS alternatives and
-[tailscale.md](../docs/tailscale.md) for the private Serve setup.
+Funnel. See [deployment.md](docs/deployment.md) for LAN/VPS alternatives and
+[tailscale.md](docs/tailscale.md) for the private Serve setup.
 
 ## Health and readiness
 
@@ -510,9 +531,9 @@ repository root:
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
   --tag ghcr.io/your-user/vocaphone-gateway:latest \
-  --push server
+  --push .
 ```
 
 For backup, update, and native-vs-container guidance, continue with
-[deployment.md](../docs/deployment.md). For failures, see
-[troubleshooting.md](../docs/troubleshooting.md).
+[deployment.md](docs/deployment.md). For failures, see
+[troubleshooting.md](docs/troubleshooting.md).

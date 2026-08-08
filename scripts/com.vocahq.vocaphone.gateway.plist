@@ -6,7 +6,7 @@
   <string>com.vocahq.vocaphone.gateway</string>
   <key>ProgramArguments</key>
   <array>
-    <string>__REPOSITORY__/server/.venv/bin/vocaphone-server</string>
+    <string>__REPOSITORY__/.venv/bin/vocaphone-server</string>
   </array>
   <key>RunAtLoad</key>
   <true/>

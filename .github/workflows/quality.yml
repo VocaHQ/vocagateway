@@ -1,0 +1,56 @@
+name: Quality
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'compose.yaml'
+      - '.github/workflows/quality.yml'
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'app/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'compose.yaml'
+      - '.github/workflows/quality.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  quality:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      # tests/test_audio.py shells out to FFmpeg against real audio.
+      - run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ffmpeg
+      - run: uv sync --locked --all-groups
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy app
+      - run: uv run pytest
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+        env:
+          VOCAPHONE_TOKEN: test-token-with-at-least-thirty-two-characters
