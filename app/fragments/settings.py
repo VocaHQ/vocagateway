@@ -50,12 +50,10 @@ def settings_fragment(
     return f"""
       <div class="card">
         <h2>Speech engine</h2>
-        <p class="muted">Choose which local engine transcribes incoming audio.
-          Selecting a model in the Models tab sets this automatically. The VocaMac
-          and Handy entries reuse those optional Mac apps and their downloaded
-          models; every other engine runs on its own. Host-specific engines are
-          listed only where they can run, and selecting one elsewhere is
-          rejected.</p>
+        <p class="muted">Which local engine transcribes incoming audio. Selecting a
+          model in the Models tab sets this for you. Only engines this host can run
+          are listed; the VocaMac and Handy entries reuse those Mac apps and their
+          own downloaded models.</p>
         <form hx-put="/ui/partials/config" hx-target="#engine-result" hx-swap="innerHTML">
           <div class="settings-grid">
             <label><span>Engine</span>
@@ -86,29 +84,24 @@ def settings_fragment(
         <p id="engine-result" class="muted">{hint}</p>
       </div>
       <div class="card">
-        <h2>Network</h2>
+        <h2>Network and storage</h2>
         <dl class="facts">
           <dt>Listener</dt><dd>{listener}</dd>
-          <dt>Open on this host</dt><dd>{local_url}</dd>
+          <dt>On this host</dt><dd>{local_url}</dd>
+          {facts}
         </dl>
         {exposure_notice}
       </div>
-      <div class="card">
-        <h2>Storage &amp; configuration</h2>
-        <dl class="facts">{facts}</dl>
-      </div>
-      <div class="card">
-        <h2>Diagnostics</h2>
-        <p class="muted">Download a redacted snapshot of this gateway's setup, dependencies,
-          hardware, and operational counters &mdash; useful when attaching to a bug report.
-          It never includes the bearer token, recordings, transcripts, or session
-          identifiers.</p>
-        <button id="download-diagnostics" type="button" class="ghost">Download diagnostics</button>
-      </div>
       {tokens_html}
-      <div class="card danger-zone">
-        <h2>Connection</h2>
-        <p class="muted">The WebUI stores the bearer token only in this browser.</p>
-        <button id="forget-token" class="ghost">Forget token on this browser</button>
+      <div class="card">
+        <h2>This browser</h2>
+        <p class="muted">Diagnostics are a redacted snapshot of setup, dependencies, hardware
+          and counters for a bug report &mdash; never the token, recordings or transcripts.
+          The token itself is stored only here, in this browser.</p>
+        <div class="row">
+          <button id="download-diagnostics" type="button" class="ghost">
+            Download diagnostics</button>
+          <button id="forget-token" class="ghost">Forget token</button>
+        </div>
       </div>
     """

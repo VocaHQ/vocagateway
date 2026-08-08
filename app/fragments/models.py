@@ -16,53 +16,39 @@ MODEL_FILTER_INPUTS = "#installed-only-toggle, #language-filter"
 def models_fragment(entries: list[AdminModelEntry]) -> str:
     installed = sum(entry.state == "installed" for entry in entries)
     return f"""
-      <div class="models-hero">
+      <div class="page-head">
         <div>
-          <span class="eyebrow">Private model library</span>
-          <h2>Choose the voice engine for this server</h2>
-          <p>Models stay on this machine. The VocaMac and Handy apps are optional
-            and Mac-only: standalone models work without either, on any host, and
-            can move with the Docker data volume.</p>
+          <h2>Models</h2>
+          <p>{installed} of {len(entries)} downloaded, and stored only on this machine.
+            Recommendations match this server's hardware.</p>
         </div>
-        <div class="model-stats" aria-label="Model library summary">
-          <span><strong>{installed}</strong> installed</span>
-          <span><strong>{len(entries)}</strong> available</span>
+        <div class="models-toolbar-actions">
+          <label class="sr-only" for="language-filter">Filter models by language</label>
+          <select id="language-filter" name="language" class="language-filter"
+                  hx-get="/ui/partials/models-list" hx-include="{MODEL_FILTER_INPUTS}"
+                  hx-target="#models-list" hx-swap="innerHTML" hx-trigger="change">
+            <option value="">All languages</option>
+            {_language_filter_options()}
+          </select>
+          <label class="filter-toggle" for="installed-only-toggle">
+            <input type="checkbox" id="installed-only-toggle" name="installed_only"
+                   value="true" class="sr-only" hx-get="/ui/partials/models-list"
+                   hx-include="{MODEL_FILTER_INPUTS}"
+                   hx-target="#models-list" hx-swap="innerHTML" hx-trigger="change" />
+            Installed only
+          </label>
+          <button type="button" class="ghost small"
+                  hx-get="/ui/partials/models-list" hx-include="{MODEL_FILTER_INPUTS}"
+                  hx-target="#models-list" hx-swap="innerHTML">Refresh</button>
         </div>
       </div>
-      <div class="card models-library">
-        <div class="card-header models-toolbar">
-          <div>
-            <h2>Available models</h2>
-            <p class="muted">Recommendations are matched to this server's hardware.</p>
-          </div>
-          <div class="models-toolbar-actions">
-            <label class="sr-only" for="language-filter">Filter models by language</label>
-            <select id="language-filter" name="language" class="language-filter"
-                    hx-get="/ui/partials/models-list" hx-include="{MODEL_FILTER_INPUTS}"
-                    hx-target="#models-list" hx-swap="innerHTML" hx-trigger="change">
-              <option value="">All languages</option>
-              {_language_filter_options()}
-            </select>
-            <label class="filter-toggle" for="installed-only-toggle">
-              <input type="checkbox" id="installed-only-toggle" name="installed_only"
-                     value="true" class="sr-only" hx-get="/ui/partials/models-list"
-                     hx-include="{MODEL_FILTER_INPUTS}"
-                     hx-target="#models-list" hx-swap="innerHTML" hx-trigger="change" />
-              Installed only
-            </label>
-            <button type="button" class="ghost small no-margin"
-                    hx-get="/ui/partials/models-list" hx-include="{MODEL_FILTER_INPUTS}"
-                    hx-target="#models-list" hx-swap="innerHTML">Refresh</button>
-          </div>
-        </div>
-        <div id="models-list" aria-live="polite">
-          {models_list_fragment(entries)}
-        </div>
+      <div id="models-list" aria-live="polite">
+        {models_list_fragment(entries)}
       </div>
       <div class="card">
         <h2>Bring your own Whisper model</h2>
-        <p class="muted">Paste a direct HTTPS link to a compatible <code>.bin</code> or
-          <code>.gguf</code> file. It will run through the standalone engine.</p>
+        <p class="muted">A direct HTTPS link to a <code>.bin</code> or <code>.gguf</code>
+          file, which runs through the standalone engine.</p>
         <form hx-post="/ui/partials/models/custom" hx-include="{MODEL_FILTER_INPUTS}"
               hx-target="#models-list" hx-swap="innerHTML">
           <div class="row">
@@ -97,9 +83,10 @@ def models_list_fragment(
     for engine, items in groups.items():
         title = "Custom models" if engine == "custom" else escape(ENGINE_LABELS.get(engine, engine))
         cards = "".join(_model_card(item) for item in items)
+        count = f"{len(items)} model" + ("" if len(items) == 1 else "s")
         parts.append(
             f'<section class="model-group"><div class="model-group-heading">'
-            f"<h3>{title}</h3><span>{len(items)} models</span></div>"
+            f"<h3>{title}</h3><span>{count}</span></div>"
             f'<div class="model-grid">{cards}</div></section>'
         )
     if parts:
@@ -177,20 +164,29 @@ def _language_disclosure(entry: AdminModelEntry) -> str:
 
 def _model_card(entry: AdminModelEntry) -> str:
     encoded_id = quote(entry.id, safe="")
+    # Only state carries a tag. Everything else that used to be a pill is now part
+    # of the metadata line, because five pills per model told nobody anything.
     badges = ""
-    if entry.recommended:
-        badges += '<span class="badge recommended">recommended</span>'
     if entry.active:
         badges += '<span class="badge active">active</span>'
-    if entry.supports_streaming:
-        badges += '<span class="badge streaming">live</span>'
-    if not entry.commercial_use:
-        badges += '<span class="badge personal">personal use</span>'
+    elif entry.recommended:
+        badges += '<span class="badge recommended">recommended</span>'
     if entry.detects_language_automatically:
         badges += (
             '<span class="badge auto-language" title="This model decides the language itself.'
             ' The language chosen in the app does not constrain it.">auto language</span>'
         )
+    meta = [
+        escape(entry.family),
+        _format_bytes(entry.size_bytes),
+        escape(entry.languages),
+        escape(entry.quality),
+    ]
+    if entry.supports_streaming:
+        meta.append("streams live")
+    if not entry.commercial_use:
+        meta.append("personal use only")
+    meta.append(f"{escape(entry.source)} · {escape(entry.license_name)}")
 
     if entry.state == "downloading":
         percent = round((entry.progress or 0) * 100)
@@ -217,12 +213,12 @@ def _model_card(entry: AdminModelEntry) -> str:
             )
         )
         action = (
-            f"{select_button}"
+            f'<div class="row-actions">{select_button}'
             f'<button class="ghost small danger"'
             f' hx-delete="/ui/partials/models/{encoded_id}"'
             f' hx-include="{MODEL_FILTER_INPUTS}"'
             f' hx-confirm="Delete {escape(entry.label)} from this server?"'
-            f' hx-target="#models-list" hx-swap="innerHTML">Delete</button>'
+            f' hx-target="#models-list" hx-swap="innerHTML">Delete</button></div>'
         )
     else:
         note = (
@@ -230,9 +226,12 @@ def _model_card(entry: AdminModelEntry) -> str:
             if entry.error
             else ""
         )
+        # Ghost, not primary: with 58 catalogue entries, 58 filled buttons is a wall
+        # of colour. Green is reserved for the decision that changes the gateway,
+        # which is selecting a model.
         action = (
             f"{note}"
-            f'<button class="primary small"'
+            f'<button class="ghost small"'
             f' hx-post="/ui/partials/models/{encoded_id}/download"'
             f' hx-include="{MODEL_FILTER_INPUTS}"'
             f' hx-target="#models-list" hx-swap="innerHTML">Download</button>'
@@ -241,21 +240,15 @@ def _model_card(entry: AdminModelEntry) -> str:
     return f"""
       <article class="model-card" data-model-id="{escape(entry.id, quote=True)}"
                data-state="{entry.state}">
-        <div class="model-card-top">
-          <span class="model-family">{escape(entry.family)}</span>
-          <div class="model-badges">{badges}</div>
+        <div class="model-main">
+          <div class="model-title">
+            <h4>{escape(entry.label)}</h4>
+            <span class="model-tags">{badges}</span>
+          </div>
+          <p class="model-description">{escape(entry.description)}</p>
+          <p class="model-meta">{" &middot; ".join(meta)}</p>
+          {_language_disclosure(entry)}
         </div>
-        <h4>{escape(entry.label)}</h4>
-        <p class="model-description">{escape(entry.description)}</p>
-        <div class="model-meta">
-          <span>{_format_bytes(entry.size_bytes)}</span>
-          <span>{escape(entry.languages)}</span>
-          <span>{escape(entry.quality)}</span>
-        </div>
-        {_language_disclosure(entry)}
-        <div class="model-card-footer">
-          <span class="model-source">{escape(entry.source)} · {escape(entry.license_name)}</span>
-          <div class="actions">{action}</div>
-        </div>
+        <div class="actions">{action}</div>
       </article>
     """

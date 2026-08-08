@@ -42,24 +42,25 @@ def _engine_option_label(engine: str) -> str:
     return f"{label} ({requirement} only)" if requirement else label
 
 
-def engine_pill_fragment(engine: EngineStatus) -> str:
-    css = "ready" if engine.ready else "not-ready"
+def _engine_status(engine: EngineStatus, *, oob: bool = False) -> str:
+    """The engine indicator in the header: a status dot and the engine's name."""
+    classes = "engine-status ready" if engine.ready else "engine-status"
+    dot = "ok" if engine.ready else "warn"
     label = escape(engine.name or engine.id)
+    swap_oob = ' hx-swap-oob="true"' if oob else ""
     return (
-        f'<div id="engine-pill" class="pill {css}" '
-        f'hx-get="/ui/partials/engine-pill" hx-trigger="every 5s" hx-swap="outerHTML">'
-        f"{label}</div>"
+        f'<div id="engine-pill" class="{classes}"{swap_oob}'
+        f' hx-get="/ui/partials/engine-pill" hx-trigger="every 5s" hx-swap="outerHTML">'
+        f'<span class="dot {dot}" aria-hidden="true"></span><span>{label}</span></div>'
     )
+
+
+def engine_pill_fragment(engine: EngineStatus) -> str:
+    return _engine_status(engine)
 
 
 def engine_pill_oob(engine: EngineStatus) -> str:
-    css = "ready" if engine.ready else "not-ready"
-    label = escape(engine.name or engine.id)
-    return (
-        f'<div id="engine-pill" class="pill {css}" hx-swap-oob="true"'
-        f' hx-get="/ui/partials/engine-pill" hx-trigger="every 5s" hx-swap="outerHTML">'
-        f"{label}</div>"
-    )
+    return _engine_status(engine, oob=True)
 
 
 def engine_update_fragment(engine: EngineStatus, message: str) -> str:

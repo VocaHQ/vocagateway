@@ -58,7 +58,7 @@ def pairing_fragment(
     if token_status == "stale":
         stale_label = escape(requested_token_label or "That device token")
         unavailable_notice = f"""
-          <div class="callout compact stacked">
+          <div class="callout compact">
             <span><strong>{stale_label} is still paired and working normally.</strong> A server
               restart just means this session can no longer redisplay its secret — by design,
               it's never stored anywhere it could be recovered from. Showing the bootstrap
@@ -110,15 +110,14 @@ def pairing_fragment(
     return f"""
       <div class="card" id="pairing-card">
         <h2>Pair phone app</h2>
-        <p class="muted">Scan this QR in vocaphone on iPhone or Android to fill the gateway
-          address and bearer token. Keep the WebUI private — the code includes the
-          live token.</p>
+        <p class="muted">Scan this in vocaphone on iPhone or Android to fill in the gateway
+          address and token. The code carries the live token, so keep the WebUI private.</p>
         <div class="pairing-layout">
           <div class="pairing-qr" role="img"
                aria-label="Pairing QR code for {escape(selected_url)}">{inline_svg}</div>
           <div class="pairing-meta">
             {unavailable_notice}
-            <div class="pairing-url-form">
+            <div class="pairing-fields">
               <label><span>Address encoded in the QR</span>
                 <select name="url"
                         hx-get="/ui/partials/pairing"
@@ -139,41 +138,41 @@ def pairing_fragment(
                   {token_option_html}
                 </select>
               </label>
-              <form hx-get="/ui/partials/pairing" hx-target="#pairing-card" hx-swap="outerHTML">
-                <input type="hidden" name="token_id" value="{escape(selected_token_id)}" />
-                <label><span>Or enter your own address (e.g. Tailscale IP)</span>
-                  <div class="row">
-                    <input name="url" type="text"
-                           placeholder="100.101.102.103 or phone.tailnet-name.ts.net" />
-                    <button type="submit" class="ghost small">Use this address</button>
-                  </div>
-                </label>
-              </form>
-              <form hx-post="/ui/partials/pairing/tokens" hx-target="#pairing-card"
-                    hx-swap="outerHTML">
-                <input type="hidden" name="url" value="{escape(selected_url)}" />
-                <label><span>Or pair a new device with its own token</span>
-                  <div class="row">
-                    <input name="label" type="text" required maxlength="100"
-                           placeholder="e.g. Kanishk&#39;s iPhone" />
-                    <button type="submit" class="primary small">Create &amp; show QR</button>
-                  </div>
-                </label>
-              </form>
-              {saved_section}
             </div>
             <dl class="facts">
-              <div><dt>Gateway URL</dt><dd><code>{escape(selected_url)}</code></dd></div>
-              <div><dt>Token</dt>
-                <dd><code>{escape(token_redacted)}</code>
-                  ({escape(selected_token_label)})</dd></div>
+              <dt>Gateway URL</dt><dd>{escape(selected_url)}</dd>
+              <dt>Token</dt>
+              <dd>{escape(token_redacted)} &middot; {escape(selected_token_label)}</dd>
             </dl>
-            <p class="muted small">Prefer the Wi‑Fi LAN address when the phone is on
-              the same network. Use a Tailscale MagicDNS name when both devices are
-              on the tailnet. Override discovery with
-              <code>VOCAPHONE_PUBLIC_URL</code>. Device tokens created here also appear
-              under Settings, where they can be revoked.</p>
           </div>
         </div>
+        <div class="pairing-fields pairing-extra">
+          <form hx-get="/ui/partials/pairing" hx-target="#pairing-card" hx-swap="outerHTML">
+            <input type="hidden" name="token_id" value="{escape(selected_token_id)}" />
+            <label><span>Or enter your own address (e.g. Tailscale IP)</span>
+              <div class="row">
+                <input name="url" type="text"
+                       placeholder="100.101.102.103 or phone.tailnet-name.ts.net" />
+                <button type="submit" class="ghost small">Use this</button>
+              </div>
+            </label>
+          </form>
+          <form hx-post="/ui/partials/pairing/tokens" hx-target="#pairing-card"
+                hx-swap="outerHTML">
+            <input type="hidden" name="url" value="{escape(selected_url)}" />
+            <label><span>Or pair a new device with its own token</span>
+              <div class="row">
+                <input name="label" type="text" required maxlength="100"
+                       placeholder="e.g. Kanishk&#39;s iPhone" />
+                <button type="submit" class="primary small">Create &amp; show QR</button>
+              </div>
+            </label>
+          </form>
+          {saved_section}
+        </div>
+        <p class="pairing-note">Prefer the Wi‑Fi LAN address when the phone is on the
+          same network, or a Tailscale MagicDNS name when both devices are on the
+          tailnet. <code>VOCAPHONE_PUBLIC_URL</code> overrides discovery. Device tokens
+          created here also appear under Settings, where they can be revoked.</p>
       </div>
     """
