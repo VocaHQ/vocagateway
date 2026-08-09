@@ -171,7 +171,16 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
                        placeholder="https://huggingface.co/&hellip;/resolve/main/model.gguf" />
                 <button type="submit" class="primary">Download</button>
               </div>
+              <div class="row">
+                <input name="sha256" type="text" spellcheck="false"
+                       pattern="\\s*(?:[Ss][Hh][Aa]256:)?[0-9a-fA-F]{{64}}\\s*"
+                       title="64 hexadecimal characters, optionally prefixed with sha256:"
+                       placeholder="Optional SHA-256 from the model card (verified on download)" />
+              </div>
             </form>
+            <p class="muted small">Catalog models are verified automatically. For
+               your own URL, paste the digest the model card publishes and the
+               download is discarded unless it matches.</p>
             <p class="muted small model-custom-links">
               <a href="https://huggingface.co/models?pipeline_tag=automatic-speech-recognition&amp;library=gguf&amp;sort=trending"
                  target="_blank" rel="noopener noreferrer">Browse GGUF speech models</a>
@@ -447,16 +456,26 @@ def _dictation_language_hint(entries: list[AdminModelEntry], language: str | lis
     )
 
 
+# How many languages to name on the closed card. Enough to recognise whether a
+# model is worth opening, short enough not to push the buttons off screen.
+LANGUAGE_PREVIEW_COUNT = 4
+
+
+def _language_chips(names: list[str]) -> str:
+    return "".join(f'<span class="model-language-chip">{escape(name)}</span>' for name in names)
+
+
 def _language_disclosure(entry: AdminModelEntry) -> str:
     """Name the languages behind a summary like "25 European languages".
 
-    Chips in a scrollable wrap — not a tall comma list that blows up the card.
+    The first few are shown on the closed card so the common question — "does
+    this speak my language?" — is answerable without clicking every model in
+    the list. The rest stay behind the toggle, as chips in a scrollable wrap
+    rather than a tall comma list that blows up the card.
     """
-    if len(entry.language_names) < 2:
+    names = entry.language_names
+    if len(names) < 2:
         return ""
-    chips = "".join(
-        f'<span class="model-language-chip">{escape(name)}</span>' for name in entry.language_names
-    )
     note = (
         '<p class="model-language-note muted small">'
         "This model picks the language itself; these are languages it handles well, "
@@ -464,11 +483,25 @@ def _language_disclosure(entry: AdminModelEntry) -> str:
         if entry.detects_language_automatically
         else ""
     )
+    if len(names) <= LANGUAGE_PREVIEW_COUNT + 1:
+        # Show them all rather than offer "+1 more": a toggle that hides one
+        # chip costs a click and saves nothing.
+        return f"""
+        <div class="model-languages">
+          {note}
+          <div class="model-language-list">{_language_chips(names)}</div>
+        </div>
+    """
+    preview, remaining = names[:LANGUAGE_PREVIEW_COUNT], names[LANGUAGE_PREVIEW_COUNT:]
     return f"""
         <details class="model-languages">
-          <summary>{len(entry.language_names)} languages</summary>
+          <summary>
+            <span class="model-language-preview">{_language_chips(preview)}</span>
+            <span class="model-language-more">+{len(remaining)} more</span>
+            <span class="model-language-less">Show fewer</span>
+          </summary>
           {note}
-          <div class="model-language-list">{chips}</div>
+          <div class="model-language-list">{_language_chips(names)}</div>
         </details>
     """
 

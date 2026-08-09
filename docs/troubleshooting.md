@@ -199,7 +199,8 @@ in a URL or screenshot.
 - `422 language_unsupported`: the model loaded on your gateway cannot transcribe
   the language selected in the app. Either set the language to Automatic, pick a
   language the model covers, or download a model that covers it — the Models tab
-  lists each model's languages. This failure is deliberately not retryable,
+  lists each model's languages, and [models.md](models.md#language-index) maps
+  every language to the models covering it. This failure is deliberately not retryable,
   because retrying sends the same language to the same model. For Hindi and other
   South Asian languages, pin the language and use a multilingual Whisper model.
 
@@ -250,3 +251,36 @@ state: open the WebUI **Settings** tab and click **Download diagnostics**, or ru
 `uv run vocaphone-diagnostics` on the gateway host. It contains version, engine
 and dependency status, hardware detection, and operational counters, and never
 includes the bearer token, recordings, transcripts, or session identifiers.
+
+## A model download fails SHA-256 verification
+
+The gateway pins the expected digest of every catalog model it can
+(`app/model_pins.json`) and discards a download that does not match, so the
+failure means the bytes served differ from the bytes this release was built
+against. The partial file is already deleted; nothing unverified is kept.
+
+Two very different causes look identical here, so check which one it is before
+retrying:
+
+1. **Upstream re-uploaded the model.** Common and usually benign. Confirm the
+   repo has a newer commit than the one pinned for that model, then refresh the
+   pins and review the diff:
+
+   ```sh
+   uv run scripts/harvest-model-pins.py --only sherpa-onnx:
+   git diff app/model_pins.json
+   ```
+
+2. **The bytes were altered in transit or at the source.** A corrupted proxy or
+   mirror, or a compromised upstream. Retry once — a corrupted transfer usually
+   will not reproduce, while an altered source will fail identically every
+   time. Do not "fix" a reproducible mismatch by refreshing the pin unless the
+   upstream commit genuinely changed.
+
+Never work around this by deleting the pin. The check is the only thing
+standing between a swapped model file and an ONNX/GGUF/Core ML runtime that
+will execute it.
+
+For a custom `.bin`/`.gguf` URL, the digest is whatever you pasted into the
+SHA-256 box. Confirm it against the model card; leaving the box empty skips
+verification for that download.

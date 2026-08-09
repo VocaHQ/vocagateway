@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import re
 import shutil
 import tarfile
 import threading
 import urllib.request
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, cast
 from urllib.parse import urlparse
 
@@ -24,10 +26,37 @@ from app.catalog import (
 CHUNK_SIZE = 1024 * 1024
 USER_AGENT = "vocagateway-gateway/0.2"
 HF_BASE_URL = "https://huggingface.co"
+DEFAULT_HF_REVISION = "main"
+# `?expand=true` is what makes the tree API report each file's SHA-256, but it
+# also shrinks the page size from 1000 to 50 and starts sending rel="next".
+# Every listing must therefore be paged to completion — a repo like
+# argmaxinc/whisperkit-coreml holds ~850 files, so reading only the first page
+# would silently download a fraction of a model and call it complete.
+_NEXT_LINK = re.compile(r'<([^>]+)>;\s*rel="next"')
+_SHA256_PATTERN = re.compile(r"\A[0-9a-f]{64}\Z")
 
 
 class DownloadCancelled(Exception):
     pass
+
+
+class ModelIntegrityError(Exception):
+    """A downloaded file did not match its expected SHA-256.
+
+    Raised only after the offending file has been removed, so a failed
+    verification can never leave unverified bytes on disk for an engine to
+    later load.
+    """
+
+
+def normalize_sha256(value: str) -> str:
+    """Validate and canonicalise a user- or catalog-supplied SHA-256."""
+    candidate = value.strip().lower()
+    if candidate.startswith("sha256:"):
+        candidate = candidate[len("sha256:") :]
+    if not _SHA256_PATTERN.match(candidate):
+        raise ValueError("Expected a 64-character hexadecimal SHA-256 digest.")
+    return candidate
 
 
 class DownloadInProgressError(Exception):
@@ -166,15 +195,23 @@ class ModelManager:
             raise UnknownModelError(model_id)
         return self._start(model_id, lambda handle: self._run_catalog_download(model, handle))
 
-    def start_custom_download(self, url: str) -> DownloadState:
+    def start_custom_download(self, url: str, sha256: str | None = None) -> DownloadState:
+        """Download a user-supplied model URL, optionally pinned to a digest.
+
+        This is the one download path whose source the catalog does not vouch
+        for, so the digest is offered rather than required: a user pasting a
+        URL from a model card can paste that card's SHA-256 alongside it and
+        get the same guarantee the catalog entries have.
+        """
         filename = _validate_custom_url(url)
+        expected = normalize_sha256(sha256) if sha256 and sha256.strip() else None
         model_id = f"custom:{filename}"
         if self.installed_path(model_id) is not None:
             raise DownloadInProgressError(f"{filename} is already installed.")
         destination = self.models_dir / ENGINE_WHISPER_CPP / filename
         return self._start(
             model_id,
-            lambda handle: self._run_single_file(url, destination, handle),
+            lambda handle: self._run_single_file(url, destination, handle, expected),
         )
 
     def cancel_download(self, model_id: str) -> bool:
@@ -237,7 +274,9 @@ class ModelManager:
             return
         if model.download_url is None:
             raise UnknownModelError(model.id)
-        await self._run_single_file(model.download_url, self.model_path(model), handle)
+        await self._run_single_file(
+            model.download_url, self.model_path(model), handle, model.sha256
+        )
 
     async def _run_archive_download(self, model: CatalogModel, handle: _DownloadHandle) -> None:
         if not model.archive_url or not model.archive_root or not model.required_files:
@@ -250,6 +289,9 @@ class ModelManager:
         shutil.rmtree(extraction_dir, ignore_errors=True)
         archive_path.unlink(missing_ok=True)
         try:
+            # Verified before extraction, not after: `_safe_extract_archive`
+            # is the code that parses attacker-influenced bytes, so refusing a
+            # bad archive up front keeps it away from the tar parser entirely.
             await asyncio.to_thread(
                 _download_file,
                 model.archive_url,
@@ -257,6 +299,7 @@ class ModelManager:
                 handle.state,
                 handle.cancel,
                 Path(model.archive_url).name,
+                model.sha256,
             )
             if handle.cancel.is_set():
                 raise DownloadCancelled
@@ -269,6 +312,10 @@ class ModelManager:
             missing = [name for name in model.required_files if not (extracted / name).is_file()]
             if missing:
                 raise RuntimeError(f"Downloaded model is missing: {', '.join(missing)}.")
+            # Redundant when `model.sha256` pinned the archive, since that one
+            # check already covers everything inside it. It matters for an
+            # archive with no pinned digest but pinned member digests.
+            await asyncio.to_thread(_verify_extracted_files, model, extracted)
             shutil.move(str(extracted), partial_dir)
             metadata = {
                 "model_id": model.id,
@@ -310,14 +357,27 @@ class ModelManager:
         shutil.rmtree(partial_dir, ignore_errors=True)
         partial_dir.mkdir(parents=True, exist_ok=True)
         try:
-            available = dict(await asyncio.to_thread(_list_repo_folder, model.huggingface_repo, ""))
-            handle.state.total_bytes = sum(available.get(name, 0) for name in model.required_files)
+            listing = await asyncio.to_thread(
+                _list_repo_folder, model.huggingface_repo, "", _revision(model)
+            )
+            available = {entry.relative_path: entry for entry in listing}
+            handle.state.total_bytes = sum(
+                entry.size_bytes
+                for name in model.required_files
+                if (entry := available.get(name)) is not None
+            )
             for name in model.required_files:
                 if handle.cancel.is_set():
                     raise DownloadCancelled
-                url = f"{HF_BASE_URL}/{model.huggingface_repo}/resolve/main/{name}"
+                listed = available.get(name)
                 await asyncio.to_thread(
-                    _download_file, url, partial_dir / name, handle.state, handle.cancel, name
+                    _download_file,
+                    _resolve_url(model, name),
+                    partial_dir / name,
+                    handle.state,
+                    handle.cancel,
+                    name,
+                    _expected_digest(model, name, listed.sha256 if listed else None),
                 )
             missing = [name for name in model.required_files if not (partial_dir / name).is_file()]
             if missing:
@@ -376,11 +436,25 @@ class ModelManager:
             if handle.state.status != "completed":
                 shutil.rmtree(partial_dir, ignore_errors=True)
 
-    async def _run_single_file(self, url: str, destination: Path, handle: _DownloadHandle) -> None:
+    async def _run_single_file(
+        self,
+        url: str,
+        destination: Path,
+        handle: _DownloadHandle,
+        expected_sha256: str | None = None,
+    ) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         partial = destination.with_name(destination.name + ".partial")
         try:
-            await asyncio.to_thread(_download_file, url, partial, handle.state, handle.cancel, "")
+            await asyncio.to_thread(
+                _download_file,
+                url,
+                partial,
+                handle.state,
+                handle.cancel,
+                "",
+                expected_sha256,
+            )
             if handle.cancel.is_set():
                 raise DownloadCancelled
             partial.replace(destination)
@@ -393,30 +467,30 @@ class ModelManager:
         if not model.huggingface_repo or model.huggingface_folder is None:
             raise UnknownModelError(model.id)
         files = await asyncio.to_thread(
-            _list_repo_folder, model.huggingface_repo, model.huggingface_folder
+            _list_repo_folder, model.huggingface_repo, model.huggingface_folder, _revision(model)
         )
         if not files:
             raise UnknownModelError(f"No model files found in {model.huggingface_repo}.")
-        handle.state.total_bytes = sum(size for _, size in files)
+        handle.state.total_bytes = sum(entry.size_bytes for entry in files)
         final_dir = self.model_path(model)
         partial_dir = final_dir.with_name(final_dir.name + ".partial")
         shutil.rmtree(partial_dir, ignore_errors=True)
         partial_dir.mkdir(parents=True, exist_ok=True)
         try:
-            for relative, _ in files:
+            for entry in files:
                 if handle.cancel.is_set():
                     raise DownloadCancelled
-                url = (
-                    f"{HF_BASE_URL}/{model.huggingface_repo}"
-                    f"/resolve/main/{_repo_path(model.huggingface_folder, relative)}"
-                )
+                relative = entry.relative_path
+                if not is_safe_relative_path(relative):
+                    raise RuntimeError(f"Repository listing contains an unsafe path: {relative}")
                 await asyncio.to_thread(
                     _download_file,
-                    url,
+                    _resolve_url(model, _repo_path(model.huggingface_folder, relative)),
                     partial_dir / relative,
                     handle.state,
                     handle.cancel,
                     relative,
+                    _expected_digest(model, relative, entry.sha256),
                 )
             if handle.cancel.is_set():
                 raise DownloadCancelled
@@ -458,26 +532,147 @@ def _validate_custom_url(url: str) -> str:
     return filename
 
 
-def _list_repo_folder(repo: str, folder: str) -> list[tuple[str, int]]:
+@dataclass(frozen=True, slots=True)
+class RepoFile:
+    """One file in a Hugging Face repo listing."""
+
+    relative_path: str
+    size_bytes: int
+    # SHA-256 as reported by the tree API. Present for LFS-backed files, which
+    # is every file large enough to be a model weight; absent for small plain
+    # git blobs, which the API identifies only by git's SHA-1 object id.
+    sha256: str | None = None
+
+
+def is_safe_relative_path(relative: str) -> bool:
+    """True when *relative* stays inside the directory it is joined onto.
+
+    Repo listings name the files written to disk, so an entry like
+    ``/etc/authorized_keys`` or ``../../x`` would place a download outside the
+    model directory — `Path("/a") / "/etc/x"` is `/etc/x`, not `/a/etc/x`.
+    Archives are already screened this way in `_safe_extract_archive`; this is
+    the same rule for the file-listing paths.
+    """
+    if not relative or relative.startswith(("/", "\\")):
+        return False
+    pure = PurePosixPath(relative)
+    # An empty `parts` means the entry named no file at all ("" or "."), which
+    # would resolve to the model directory itself rather than a file in it.
+    if pure.is_absolute() or not pure.parts:
+        return False
+    return ".." not in pure.parts
+
+
+def _same_origin(candidate: str, origin: str) -> bool:
+    left, right = urlparse(candidate), urlparse(origin)
+    return bool(left.scheme) and (left.scheme, left.netloc) == (right.scheme, right.netloc)
+
+
+def _list_repo_folder(
+    repo: str, folder: str, revision: str = DEFAULT_HF_REVISION
+) -> list[RepoFile]:
     tree_path = f"/{folder}" if folder else ""
-    url = f"{HF_BASE_URL}/api/models/{repo}/tree/main{tree_path}?recursive=true&expand=false"
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=30) as response:
-        payload: list[dict[str, Any]] = json.load(response)
-    files: list[tuple[str, int]] = []
+    url = f"{HF_BASE_URL}/api/models/{repo}/tree/{revision}{tree_path}?recursive=true&expand=true"
+    origin = url
+    files: list[RepoFile] = []
     prefix = f"{folder}/" if folder else ""
-    for entry in payload:
-        if entry.get("type") != "file":
-            continue
-        path = str(entry.get("path", ""))
-        if not path.startswith(prefix):
-            continue
-        files.append((path[len(prefix) :], int(entry.get("size") or 0)))
+    seen: set[str] = set()
+    while url:
+        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(request, timeout=60) as response:
+            payload: list[dict[str, Any]] = json.load(response)
+            link = response.headers.get("Link") or ""
+        for entry in payload:
+            if entry.get("type") != "file":
+                continue
+            path = str(entry.get("path", ""))
+            if not path.startswith(prefix):
+                continue
+            relative = path[len(prefix) :]
+            if relative in seen:
+                continue
+            # Loud, not skipped: real Hugging Face repos never contain a path
+            # like this, so one appearing means something is wrong with the
+            # listing. Dropping it quietly would install a partial model and
+            # report success.
+            if not is_safe_relative_path(relative):
+                raise RuntimeError(f"Repository listing contains an unsafe path: {relative}")
+            seen.add(relative)
+            lfs = entry.get("lfs") or {}
+            oid = lfs.get("oid") if isinstance(lfs, dict) else None
+            size = lfs.get("size") if isinstance(lfs, dict) else None
+            files.append(
+                RepoFile(
+                    relative_path=relative,
+                    size_bytes=int(size or entry.get("size") or 0),
+                    sha256=str(oid)
+                    if isinstance(oid, str) and _SHA256_PATTERN.match(oid)
+                    else None,
+                )
+            )
+        match = _NEXT_LINK.search(link)
+        # The next page is named by the server being paged. Following it
+        # anywhere it points would let a compromised host walk this client onto
+        # another origin or scheme — the same host compromise the digests in
+        # this module exist to catch, so it cannot be trusted here either.
+        following = match.group(1) if match else ""
+        url = following if following and _same_origin(following, origin) else ""
     return files
 
 
 def _repo_path(folder: str, relative: str) -> str:
     return f"{folder}/{relative}" if folder else relative
+
+
+def _revision(model: CatalogModel) -> str:
+    return model.revision or DEFAULT_HF_REVISION
+
+
+def _resolve_url(model: CatalogModel, path: str) -> str:
+    return f"{HF_BASE_URL}/{model.huggingface_repo}/resolve/{_revision(model)}/{path}"
+
+
+def _expected_digest(model: CatalogModel, relative: str, listed: str | None) -> str | None:
+    """Digest to enforce for one file, preferring the catalog over the API.
+
+    A digest pinned in the catalog is reviewed and lives in git, so it still
+    holds if the upstream repo is compromised. A digest read from the tree API
+    at download time only proves the bytes survived the transfer intact — an
+    attacker who can rewrite the file can rewrite its metadata too. Both are
+    worth enforcing, but they are not the same guarantee, so the pinned value
+    always wins where one exists.
+    """
+    for name, digest in model.file_digests:
+        if name == relative:
+            return digest
+    return listed
+
+
+def _sha256_path(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(CHUNK_SIZE), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _verify_extracted_files(model: CatalogModel, root: Path) -> None:
+    """Enforce `file_digests` against files that came out of an archive.
+
+    Files inside an archive are never streamed individually, so they cannot be
+    hashed during download the way `_download_file` does; they are read back
+    once here instead.
+    """
+    for relative, expected in model.file_digests:
+        target = root / relative
+        if not target.is_file():
+            continue
+        actual = _sha256_path(target)
+        if actual != expected:
+            raise ModelIntegrityError(
+                f"{relative} failed SHA-256 verification: expected {expected}, "
+                f"got {actual}. The extracted model was discarded."
+            )
 
 
 def _safe_extract_archive(archive_path: Path, destination: Path) -> None:
@@ -499,8 +694,18 @@ def _download_file(
     state: DownloadState,
     cancel: threading.Event,
     display_name: str,
-) -> None:
+    expected_sha256: str | None = None,
+) -> str:
+    """Stream *url* to *destination* and return the SHA-256 of what arrived.
+
+    The digest is computed from the same chunks that are written, so a
+    multi-gigabyte model is never read back a second time to verify it. When
+    *expected_sha256* is supplied and does not match, the file is deleted
+    before raising, so a rejected download cannot be left behind for an engine
+    to load later.
+    """
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    digest = hashlib.sha256()
     with urllib.request.urlopen(request, timeout=60) as response:
         length = response.headers.get("Content-Length")
         if state.total_bytes is None and length and length.isdigit():
@@ -515,7 +720,16 @@ def _download_file(
                 if not chunk:
                     break
                 output.write(chunk)
+                digest.update(chunk)
                 state.downloaded_bytes += len(chunk)
+    actual = digest.hexdigest()
+    if expected_sha256 is not None and actual != expected_sha256:
+        destination.unlink(missing_ok=True)
+        raise ModelIntegrityError(
+            f"{display_name or destination.name} failed SHA-256 verification: "
+            f"expected {expected_sha256}, got {actual}. The file was discarded."
+        )
+    return actual
 
 
 def _directory_size(path: Path) -> int:
