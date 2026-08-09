@@ -171,6 +171,7 @@ def resolve_pairing_url(ctx: GatewayContext, url: str | None) -> str:
         raise APIProblem(
             503,
             "pairing_unavailable",
-            "No phone-reachable gateway address was detected. Set VOCAGATEWAY_PUBLIC_URL and retry.",
+            "No phone-reachable gateway address was detected. "
+            "Set VOCAGATEWAY_PUBLIC_URL and retry.",
         )
     return candidates[0]
