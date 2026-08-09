@@ -133,33 +133,36 @@ def _system_panel(system: SystemStatus, version: str, machine_label: str) -> str
 
 
 def _dependencies_panel(dependencies: list[DependencyStatus]) -> str:
-    """Installed CLIs and Python engines — same data as diagnostics export."""
-    rows = "".join(
-        "<tr>"
-        f"<td>{escape(dependency.name)}</td>"
-        f'<td><span class="state"><span class="dot {"ok" if dependency.available else "bad"}"'
-        ' aria-hidden="true"></span>'
-        f"{'installed' if dependency.available else 'missing'}</span></td>"
-        f"<td><code>{escape(dependency.path or dependency.install_hint or '—')}</code></td>"
-        "</tr>"
-        for dependency in dependencies
-    )
+    """Installed CLIs and Python engines — same data as diagnostics, new Overview look."""
+    ordered = sorted(dependencies, key=lambda d: (not d.available, d.name.lower()))
     installed = sum(1 for dependency in dependencies if dependency.available)
     total = len(dependencies)
+    tiles = "".join(_dependency_tile(dependency) for dependency in ordered)
     return f"""
-      <div class="card dependencies-card">
-        <div class="section-heading">
-          <h2>Libraries &amp; tools</h2>
-          <span class="muted small">{installed} of {total} available</span>
+      <div class="card libraries-card">
+        <div class="lib-hero">
+          <p class="lib-kicker">Libraries &amp; tools</p>
+          <h2 class="lib-headline">{installed} of {total} available</h2>
+          <p class="lib-meta">Speech engines, FFmpeg, and companion apps this host can see.</p>
         </div>
-        <p class="muted">Speech engines, FFmpeg, and companion apps this host can see.</p>
-        <div class="table-scroll">
-          <table class="table">
-            <thead><tr><th>Tool</th><th>Status</th><th>Path / install</th></tr></thead>
-            <tbody>{rows}</tbody>
-          </table>
-        </div>
+        <div class="lib-grid" role="list">{tiles}</div>
       </div>
+    """
+
+
+def _dependency_tile(dependency: DependencyStatus) -> str:
+    status = "available" if dependency.available else "missing"
+    label = "Installed" if dependency.available else "Missing"
+    detail = dependency.path or dependency.install_hint or "—"
+    return f"""
+      <article class="lib-tile is-{status}" role="listitem">
+        <div class="lib-tile-top">
+          <span class="dot {"ok" if dependency.available else "bad"}" aria-hidden="true"></span>
+          <span class="lib-tile-name">{escape(dependency.name)}</span>
+          <span class="lib-tile-status">{label}</span>
+        </div>
+        <p class="lib-tile-detail" title="{escape(detail, quote=True)}">{escape(detail)}</p>
+      </article>
     """
 
 
@@ -459,7 +462,7 @@ def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessS
     active = metrics.active_transcriptions
     limit = max(1, metrics.concurrency_limit)
     queued = metrics.queue_depth
-    # Workload (active/queue) lives in the capacity strip below — not a duplicate KPI.
+    # Capacity strip visualizes the same active/queue numbers as Workload.
     cards = "".join(
         [
             _metric_card("Uptime", _format_uptime(metrics.uptime_seconds), "This process"),
@@ -478,6 +481,11 @@ def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessS
             _metric_card("Last inference", inference_value, inference_detail),
             _metric_card("Real-time factor", rtf_value, rtf_detail),
             _metric_card("Model cache", warmup_label, warmup_detail, readiness.warmup_state),
+            _metric_card(
+                "Workload",
+                f"{queued} queued",
+                f"{active} of {limit} active",
+            ),
         ]
     )
     history = metrics.history

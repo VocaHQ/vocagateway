@@ -630,13 +630,19 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     assert "Last inference" in overview.text
     assert "Real-time factor" in overview.text
     assert "Model cache" in overview.text
+    assert "Workload" in overview.text
     assert "Outcomes" in overview.text
     assert "Last job stages" in overview.text
     assert "Engine checked" in overview.text
-    # Libraries / engines table restored from main (FFmpeg, sherpa-onnx, …).
+    # Libraries / engines restored from main, styled like system/ops cards.
     assert "Libraries &amp; tools" in overview.text or "Libraries & tools" in overview.text
+    assert 'class="libraries-card"' in overview.text or "libraries-card" in overview.text
+    assert 'class="lib-tile' in overview.text
     assert "FFmpeg" in overview.text
     assert "sherpa-onnx" in overview.text
+    assert "Installed" in overview.text or "Missing" in overview.text
+    # Old dense table layout should not return.
+    assert "Path / install" not in overview.text
     # Setup checklist stays in Get started / You're set — not the old always-on list.
     assert "Setup checklist" not in overview.text
     # Bind addresses live on the header model pill hover card, not Overview.
