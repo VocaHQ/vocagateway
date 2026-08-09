@@ -439,9 +439,7 @@ def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessS
         else "Since this process started"
     )
     latency_detail = (
-        f"Last {last_latency}"
-        if metrics.last_latency_ms is not None
-        else "Run a test to measure"
+        f"Last {last_latency}" if metrics.last_latency_ms is not None else "Run a test to measure"
     )
     rtf_value = f"{metrics.real_time_factor:.2f}×" if metrics.real_time_factor is not None else "—"
     rtf_bits: list[str] = []

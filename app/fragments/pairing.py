@@ -3,6 +3,7 @@ from __future__ import annotations
 from html import escape
 from urllib.parse import quote
 
+
 def pairing_fragment(
     *,
     selected_url: str | None,
