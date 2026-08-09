@@ -86,6 +86,8 @@
       other.setAttribute("aria-selected", String(active));
       other.tabIndex = active ? 0 : -1;
     });
+    const panel = document.getElementById("panel");
+    if (panel && tab.id) panel.setAttribute("aria-labelledby", tab.id);
     if (updateLocation) history.replaceState(null, "", `#${tab.dataset.tab}`);
   }
 
