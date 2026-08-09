@@ -683,7 +683,7 @@ main > .card:first-child, #panel > .card:first-child { border-top: none; padding
 /* KPI strip: restored main counters; charts cover trends / stages. */
 .operations-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 1px;
   background: var(--line-soft);
   border: 1px solid var(--line);
