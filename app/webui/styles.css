@@ -3,54 +3,85 @@
  * Aligns with VocaHQ marketing design language ("quiet paper desk"):
  * https://github.com/VocaHQ/vocahq/blob/main/web/DESIGN.md
  *
- * Rules:
- * 1. Warm paper ground, near-black ink, teal for actions/status only.
- * 2. Hierarchy from type and hairlines, not nested cards or glows.
- * 3. Surfaces are earned (inputs, metric grids, QR plate); prose sits on paper.
+ * Light is the brand default; dark is a graphite pair of the same teal accent.
+ * html[data-theme="light"|"dark"] is set by a FOUC-safe boot script (system
+ * preference unless the operator overrides with the header toggle).
  */
 
 :root {
-  color-scheme: light;
-
-  /* VocaHQ DESIGN.md neutrals + accent */
-  --bg: #f7f6f3;
-  --surface: #ffffff;
-  --raised: #efeeea;
-  --sunken: #efeeea;
-
-  --line: #e2e0da;
-  --line-soft: #eceae4;
-  --line-strong: #cdcbc3;
-
-  --text: #1a1c1b;
-  --muted: #5c6360;
-  --faint: #8a918d;
-
-  --accent: #1f8f75;
-  --accent-hover: #176b58;
-  --accent-ink: #ffffff;
-  --accent-line: #1f8f75;
-  --accent-wash: #e6f4ef;
-
-  --warn: #9a6b16;
-  --warn-wash: rgba(154, 107, 22, 0.1);
-  --error: #b42318;
-  --error-wash: rgba(180, 35, 24, 0.08);
-
+  /* Shared tokens (theme-independent) */
   --r: 8px;
   --r-lg: 16px;
   --r-pill: 999px;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --font-display: "Epilogue", system-ui, sans-serif;
   --font-body: "Atkinson Hyperlegible", system-ui, sans-serif;
-  --shadow-soft: 0 10px 30px rgba(26, 28, 27, 0.08);
-  --shadow-modal: 0 18px 48px rgba(26, 28, 27, 0.12);
 
   /* One gutter for the header, the nav and the content, so their left edges line
      up at every width. It tracks `main`'s own max-width and padding. */
   /* 100%, not 100vw: 100vw includes the scrollbar, which would push the header a
      few pixels left of the content it is supposed to line up with. */
   --gutter: max(24px, calc((100% - 1048px) / 2 + 24px));
+}
+
+/* Light: VocaHQ DESIGN.md paper desk */
+html, html[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f7f6f3;
+  --surface: #ffffff;
+  --raised: #efeeea;
+  --sunken: #efeeea;
+  --line: #e2e0da;
+  --line-soft: #eceae4;
+  --line-strong: #cdcbc3;
+  --text: #1a1c1b;
+  --muted: #5c6360;
+  --faint: #8a918d;
+  --accent: #1f8f75;
+  --accent-hover: #176b58;
+  --accent-ink: #ffffff;
+  --accent-line: #1f8f75;
+  --accent-wash: #e6f4ef;
+  --warn: #9a6b16;
+  --warn-wash: rgba(154, 107, 22, 0.1);
+  --error: #b42318;
+  --error-wash: rgba(180, 35, 24, 0.08);
+  --shadow-soft: 0 10px 30px rgba(26, 28, 27, 0.08);
+  --shadow-modal: 0 18px 48px rgba(26, 28, 27, 0.12);
+  --overlay-scrim: rgba(26, 28, 27, 0.36);
+  --tabs-bg: rgba(247, 246, 243, 0.92);
+  --theme-color: #f7f6f3;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1.75 6 6.25l5-4.5' fill='none' stroke='%235c6360' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* Dark: graphite desk, same teal family (readable on near-black) */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #141614;
+  --surface: #1b1c1b;
+  --raised: #232522;
+  --sunken: #101210;
+  --line: #2e312e;
+  --line-soft: #262924;
+  --line-strong: #3d423e;
+  --text: #e3e4e1;
+  --muted: #a2aba5;
+  --faint: #79827c;
+  --accent: #77d0b2;
+  --accent-hover: #8fdcc1;
+  --accent-ink: #00382a;
+  --accent-line: #2f6e5c;
+  --accent-wash: rgba(119, 208, 178, 0.12);
+  --warn: #e3b778;
+  --warn-wash: rgba(227, 183, 120, 0.12);
+  --error: #ffb4ab;
+  --error-wash: rgba(255, 180, 171, 0.12);
+  --shadow-soft: 0 12px 32px rgba(0, 0, 0, 0.35);
+  --shadow-modal: 0 20px 50px rgba(0, 0, 0, 0.5);
+  --overlay-scrim: rgba(10, 12, 10, 0.72);
+  --tabs-bg: rgba(20, 22, 20, 0.92);
+  --theme-color: #141614;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1.75 6 6.25l5-4.5' fill='none' stroke='%23a2aba5' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 * { box-sizing: border-box; }
@@ -166,6 +197,60 @@ header {
   padding: 18px var(--gutter) 14px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.theme-toggle {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.theme-toggle:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--accent-wash);
+}
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.theme-toggle svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+/* Show the icon for the action (moon in light → go dark; sun in dark → go light). */
+html[data-theme="light"] .theme-icon-sun,
+html[data-theme="dark"] .theme-icon-moon { display: none; }
+html[data-theme="light"] .theme-icon-moon,
+html[data-theme="dark"] .theme-icon-sun { display: block; }
+/* System preference: small badge on the control. */
+.theme-toggle[data-preference="system"] {
+  box-shadow: inset 0 0 0 1px var(--accent-wash);
+}
+.theme-toggle[data-preference="system"]::after {
+  content: "";
+  position: absolute;
+  /* decorative only; preference is in aria-label */
+  display: none;
+}
+
 .brand { display: flex; align-items: center; gap: 12px; }
 .logo { display: block; width: 28px; height: 28px; border-radius: 50%; }
 .brand h1 {
@@ -234,7 +319,7 @@ header {
   z-index: 20;
   padding: 0 var(--gutter);
   border-bottom: 1px solid var(--line);
-  background: rgba(247, 246, 243, 0.92);
+  background: var(--tabs-bg);
   backdrop-filter: saturate(140%) blur(10px);
 }
 .tab {
@@ -748,7 +833,7 @@ select {
   appearance: none;
   padding-right: 32px;
   background-color: var(--surface);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1.75 6 6.25l5-4.5' fill='none' stroke='%235c6360' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: var(--select-chevron);
   background-repeat: no-repeat;
   background-position: right 12px center;
   cursor: pointer;
@@ -816,7 +901,7 @@ select {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(26, 28, 27, 0.36);
+  background: var(--overlay-scrim);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;

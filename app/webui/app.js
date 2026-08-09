@@ -3,12 +3,83 @@
   "use strict";
 
   const TOKEN_KEY = "vocaphone.token";
+  const THEME_KEY = "vocaphone.theme";
   const overlay = document.getElementById("token-overlay");
   const tokenInput = document.getElementById("token-input");
   const tokenError = document.getElementById("token-error");
   const toast = document.getElementById("toast");
+  const themeToggle = document.getElementById("theme-toggle");
 
   const getToken = () => localStorage.getItem(TOKEN_KEY) || "";
+
+  // --------------------------------------------------------------- theme
+
+  function systemPrefersDark() {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+
+  function readThemePreference() {
+    const pref = localStorage.getItem(THEME_KEY);
+    if (pref === "light" || pref === "dark" || pref === "system") return pref;
+    return "system";
+  }
+
+  function resolveTheme(preference) {
+    if (preference === "light" || preference === "dark") return preference;
+    return systemPrefersDark() ? "dark" : "light";
+  }
+
+  function themeLabel(preference, resolved) {
+    if (preference === "system") {
+      return `Theme: system (${resolved}). Click for light.`;
+    }
+    if (preference === "light") return "Theme: light. Click for dark.";
+    return "Theme: dark. Click to follow system.";
+  }
+
+  function applyTheme(preference) {
+    const resolved = resolveTheme(preference);
+    document.documentElement.setAttribute("data-theme", resolved);
+    document.documentElement.setAttribute("data-theme-preference", preference);
+    const meta = document.getElementById("meta-theme-color");
+    if (meta) {
+      meta.setAttribute("content", resolved === "dark" ? "#141614" : "#f7f6f3");
+    }
+    if (themeToggle) {
+      themeToggle.dataset.preference = preference;
+      const label = themeLabel(preference, resolved);
+      themeToggle.setAttribute("aria-label", label);
+      themeToggle.setAttribute("title", label);
+    }
+  }
+
+  function cycleThemePreference(current) {
+    // system → light → dark → system. Default is system so first-time
+    // operators match the OS; clicks then pin an explicit choice.
+    if (current === "system") return "light";
+    if (current === "light") return "dark";
+    return "system";
+  }
+
+  function initTheme() {
+    applyTheme(readThemePreference());
+    if (themeToggle) {
+      themeToggle.addEventListener("click", () => {
+        const next = cycleThemePreference(readThemePreference());
+        localStorage.setItem(THEME_KEY, next);
+        applyTheme(next);
+      });
+    }
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const onSystemChange = () => {
+      if (readThemePreference() === "system") applyTheme("system");
+    };
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", onSystemChange);
+    } else if (typeof media.addListener === "function") {
+      media.addListener(onSystemChange);
+    }
+  }
 
   function showToast(message, isError = true) {
     toast.textContent = message;
@@ -390,6 +461,8 @@
   });
 
   // ------------------------------------------------------------------ start
+
+  initTheme();
 
   if (!getToken()) {
     showOverlay();

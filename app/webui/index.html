@@ -6,8 +6,8 @@
   <title>VocaPhone gateway · private speech transcription</title>
   <meta name="description" content="Local VocaPhone gateway: pair your phone, pick speech models, and run private on-device transcription without sending audio to the cloud." />
   <meta name="robots" content="noindex, nofollow" />
-  <meta name="theme-color" content="#f7f6f3" />
-  <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#f7f6f3" id="meta-theme-color" />
+  <meta name="color-scheme" content="light dark" />
   <meta property="og:title" content="VocaPhone gateway" />
   <meta property="og:description" content="Private transcription gateway for the VocaPhone phone apps. Pair, manage models, and test speech locally." />
   <meta property="og:type" content="website" />
@@ -19,6 +19,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Epilogue:wght@500;600;700&display=swap" />
   <link rel="stylesheet" href="/assets/styles.css" />
+  <!-- External boot script (CSP script-src 'self') so theme applies before paint. -->
+  <script src="/assets/theme-boot.js"></script>
 </head>
 <body>
   <a class="skip-link" href="#panel">Skip to content</a>
@@ -43,13 +45,27 @@
         <span class="muted">Private transcription gateway</span>
       </div>
     </div>
-    <button type="button" id="engine-pill" class="engine-status"
-            data-open-tab="models"
-            title="Open Models to change the speech engine"
-            aria-label="Current speech model. Open Models."
-            hx-get="/ui/partials/engine-pill" hx-trigger="load, every 5s" hx-swap="outerHTML">
-      <span class="dot" aria-hidden="true"></span><span>connecting&hellip;</span>
-    </button>
+    <div class="header-actions">
+      <button type="button" id="theme-toggle" class="theme-toggle" data-preference="system"
+              aria-label="Theme: system. Click to switch to light." title="Theme: system">
+        <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+        </svg>
+        <svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 14.5A8.5 8.5 0 1 1 9.5 3a7 7 0 0 0 11.5 11.5z" />
+        </svg>
+      </button>
+      <button type="button" id="engine-pill" class="engine-status"
+              data-open-tab="models"
+              title="Open Models to change the speech engine"
+              aria-label="Current speech model. Open Models."
+              hx-get="/ui/partials/engine-pill" hx-trigger="load, every 5s" hx-swap="outerHTML">
+        <span class="dot" aria-hidden="true"></span><span>connecting&hellip;</span>
+      </button>
+    </div>
   </header>
 
   <nav class="tabs" role="tablist" aria-label="Gateway sections">
