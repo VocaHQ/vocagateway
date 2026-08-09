@@ -412,7 +412,7 @@ def _onboarding_steps(
 
 
 def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessStatus) -> str:
-    """One Live operations block: KPIs once, then charts that add time / stage detail."""
+    """Live operations: every main-era fact, KPIs for counters, charts for trends/stages."""
     average_latency = _format_latency(metrics.average_latency_ms)
     last_latency = _format_latency(metrics.last_latency_ms)
     warmup_labels = {
@@ -429,44 +429,54 @@ def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessS
     warmup_label, warmup_detail = warmup_labels[readiness.warmup_state]
     ok = metrics.successful_transcriptions
     bad = metrics.failed_transcriptions
-    jobs_detail = f"{bad} failed"
-    if metrics.rejected_transcriptions:
-        jobs_detail += f" · {metrics.rejected_transcriptions} rejected"
-    elif ok == 0 and bad == 0:
-        jobs_detail = "No jobs yet"
+    rejected = metrics.rejected_transcriptions
+    failed_detail = (
+        f"{rejected} overload rejection" + ("s" if rejected != 1 else "")
+        if rejected
+        else "Since this process started"
+    )
     latency_detail = (
-        f"Avg {average_latency} · last {last_latency}"
-        if metrics.average_latency_ms is not None or metrics.last_latency_ms is not None
+        f"Last {last_latency}"
+        if metrics.last_latency_ms is not None
         else "Run a test to measure"
     )
-    latency_value = (
-        last_latency
-        if metrics.last_latency_ms is not None
-        else average_latency
-        if metrics.average_latency_ms is not None
-        else "—"
-    )
     rtf_value = f"{metrics.real_time_factor:.2f}×" if metrics.real_time_factor is not None else "—"
-    rtf_detail = (
-        f"{_format_latency(metrics.audio_duration_ms)} audio"
-        + (f" · {metrics.peak_memory_mb:g} MB peak" if metrics.peak_memory_mb is not None else "")
-        if metrics.real_time_factor is not None
-        else "After first job"
+    rtf_bits: list[str] = []
+    if metrics.audio_duration_ms is not None:
+        rtf_bits.append(f"{_format_latency(metrics.audio_duration_ms)} audio")
+    if metrics.peak_memory_mb is not None:
+        rtf_bits.append(f"{metrics.peak_memory_mb:g} MB peak")
+    rtf_detail = " · ".join(rtf_bits) if rtf_bits else "After first job"
+    inference_value = _format_latency(metrics.inference_ms)
+    inference_detail = (
+        f"Normalize {_format_latency(metrics.normalization_ms)} · "
+        f"load {_format_latency(metrics.model_load_ms)}"
+        if metrics.inference_ms is not None
+        or metrics.normalization_ms is not None
+        or metrics.model_load_ms is not None
+        else "Stages after first job"
     )
     active = metrics.active_transcriptions
     limit = max(1, metrics.concurrency_limit)
     queued = metrics.queue_depth
-    # Four unique KPIs — no workload/outcomes/pipeline cards (those live in charts).
+    # Workload (active/queue) lives in the capacity strip below — not a duplicate KPI.
     cards = "".join(
         [
             _metric_card("Uptime", _format_uptime(metrics.uptime_seconds), "This process"),
+            _metric_card("Succeeded", str(ok), "Completed transcriptions", "success"),
             _metric_card(
-                "Jobs",
-                str(ok),
-                jobs_detail,
+                "Failed",
+                str(bad),
+                failed_detail,
                 "failure" if bad else "",
             ),
-            _metric_card("Latency", latency_value, latency_detail),
+            _metric_card(
+                "Avg latency",
+                average_latency if metrics.average_latency_ms is not None else "—",
+                latency_detail,
+            ),
+            _metric_card("Last inference", inference_value, inference_detail),
+            _metric_card("Real-time factor", rtf_value, rtf_detail),
             _metric_card("Model cache", warmup_label, warmup_detail, readiness.warmup_state),
         ]
     )
@@ -482,7 +492,8 @@ def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessS
                hx-swap="outerHTML" aria-label="Gateway operations">
         <div class="section-heading">
           <h2>Live operations <span class="muted">&middot; since start</span></h2>
-          <span class="probe-age">Updates every 5s · {escape(sample_note)}</span>
+          <span class="probe-age">Engine checked {readiness.probe_age_seconds:.1f}s ago ·
+            {escape(sample_note)}</span>
         </div>
         <div class="operations-grid operations-grid-kpis">
           {cards}
@@ -491,7 +502,7 @@ def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessS
         <div class="ops-charts ops-charts-inline" aria-label="Recent activity">
           <div class="ops-charts-grid ops-charts-grid-3">
             {_latency_chart(metrics)}
-            {_throughput_chart(metrics)}
+            {_outcomes_chart(metrics)}
             {_pipeline_chart(metrics, rtf_value, rtf_detail)}
           </div>
         </div>
@@ -549,15 +560,88 @@ def _latency_chart(metrics: OperationalMetricsStatus) -> str:
     return _sparkline_card("Latency", sub, series, empty=empty, unit_suffix="ms")
 
 
-def _throughput_chart(metrics: OperationalMetricsStatus) -> str:
-    _, series = _history_series(metrics)
-    done = metrics.successful_transcriptions + metrics.failed_transcriptions
-    sub = f"{done} completed since start" if done else "Jobs per sample"
-    return _sparkline_card(
-        "Throughput",
-        sub,
-        series,
-        empty="Idle — no completed jobs in this window.",
+def _outcomes_chart(metrics: OperationalMetricsStatus) -> str:
+    """Succeeded vs failed over the recent sample window (stacked bars)."""
+    ok = metrics.successful_transcriptions
+    bad = metrics.failed_transcriptions
+    sub = f"{ok} succeeded · {bad} failed"
+    bars = _outcome_deltas(metrics)
+    chart = _stacked_bars_svg(bars)
+    recent_ok = sum(a for a, _ in bars)
+    recent_bad = sum(b for _, b in bars)
+    if recent_ok or recent_bad:
+        footer = f"Window {recent_ok} ok · {recent_bad} failed"
+    else:
+        footer = "Idle — no completed jobs in this window."
+    return f"""
+      <article class="ops-chart">
+        <header class="ops-chart-head">
+          <span class="ops-chart-title">Outcomes</span>
+          <span class="ops-chart-sub">{escape(sub)}</span>
+        </header>
+        <div class="ops-chart-body">{chart}</div>
+        <p class="ops-chart-footer">{escape(footer)}</p>
+      </article>
+    """
+
+
+def _outcome_deltas(metrics: OperationalMetricsStatus) -> list[tuple[int, int]]:
+    bars: list[tuple[int, int]] = []
+    prev_ok = 0
+    prev_bad = 0
+    for point in metrics.history:
+        ok = max(0, point.successful_transcriptions - prev_ok)
+        bad = max(0, point.failed_transcriptions - prev_bad)
+        bars.append((ok, bad))
+        prev_ok = point.successful_transcriptions
+        prev_bad = point.failed_transcriptions
+    return bars
+
+
+def _stacked_bars_svg(
+    bars: list[tuple[int, int]],
+    *,
+    width: int = 220,
+    height: int = 48,
+) -> str:
+    if not bars or not any(ok or bad for ok, bad in bars):
+        return (
+            f'<svg class="sparkline sparkline-empty" viewBox="0 0 {width} {height}" '
+            f'width="100%" height="{height}" preserveAspectRatio="none" aria-hidden="true">'
+            f'<line class="sparkline-baseline" x1="0" y1="{height // 2}" '
+            f'x2="{width}" y2="{height // 2}"/></svg>'
+        )
+    n = len(bars)
+    gap = 1.5
+    bar_w = max(1.0, (width - gap * (n - 1)) / n)
+    peak = max(1, max(ok + bad for ok, bad in bars))
+    pad_top = 2.0
+    usable = height - pad_top
+    parts: list[str] = []
+    for i, (ok, bad) in enumerate(bars):
+        x = i * (bar_w + gap)
+        total = ok + bad
+        if total <= 0:
+            continue
+        total_h = usable * (total / peak)
+        bad_h = usable * (bad / peak) if bad else 0.0
+        ok_h = total_h - bad_h
+        y = height - total_h
+        if ok_h > 0:
+            parts.append(
+                f'<rect class="ops-bar-ok" x="{x:.1f}" y="{y:.1f}" '
+                f'width="{bar_w:.1f}" height="{ok_h:.1f}" rx="1"/>'
+            )
+        if bad_h > 0:
+            parts.append(
+                f'<rect class="ops-bar-bad" x="{x:.1f}" y="{height - bad_h:.1f}" '
+                f'width="{bar_w:.1f}" height="{bad_h:.1f}" rx="1"/>'
+            )
+    return (
+        f'<svg class="sparkline ops-bars" viewBox="0 0 {width} {height}" width="100%" '
+        f'height="{height}" preserveAspectRatio="none" role="img" '
+        f'aria-label="Outcomes over {n} samples">'
+        f"{''.join(parts)}</svg>"
     )
 
 
@@ -671,7 +755,7 @@ def _pipeline_chart(metrics: OperationalMetricsStatus, rtf_value: str, rtf_detai
     return f"""
       <article class="ops-chart">
         <header class="ops-chart-head">
-          <span class="ops-chart-title">Last job</span>
+          <span class="ops-chart-title">Last job stages</span>
           <span class="ops-chart-sub">{escape(sub)}</span>
         </header>
         <div class="ops-chart-body ops-chart-body-bar">{bar}</div>

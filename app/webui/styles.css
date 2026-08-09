@@ -680,7 +680,7 @@ main > .card:first-child, #panel > .card:first-child { border-top: none; padding
 
 .operations { border-top: 1px solid var(--line-soft); padding-top: 22px; margin: 0 0 26px; }
 
-/* KPI strip: one fact per cell, no second “Trends” copy of the same numbers. */
+/* KPI strip: restored main counters; charts cover trends / stages. */
 .operations-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -692,6 +692,11 @@ main > .card:first-child, #panel > .card:first-child { border-top: none; padding
 }
 .operations-grid-kpis { margin-bottom: 0; }
 .metric-card { min-width: 0; padding: 13px 15px 15px; background: var(--surface); }
+.metric-card.success .metric-value { color: var(--accent-hover); }
+html[data-theme="dark"] .metric-card.success .metric-value { color: var(--accent); }
+.ops-bar-ok { fill: var(--accent); }
+.ops-bar-bad { fill: var(--error); }
+.ops-bars rect { shape-rendering: crispEdges; }
 .metric-label, .metric-detail { display: block; }
 .metric-label { color: var(--muted); font-size: 12px; }
 .metric-value {

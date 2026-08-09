@@ -624,6 +624,15 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     assert overview.status_code == 200
     assert "Live operations" in overview.text
     assert 'hx-get="/ui/partials/operations"' in overview.text
+    assert "Succeeded" in overview.text
+    assert "Failed" in overview.text
+    assert "Avg latency" in overview.text
+    assert "Last inference" in overview.text
+    assert "Real-time factor" in overview.text
+    assert "Model cache" in overview.text
+    assert "Outcomes" in overview.text
+    assert "Last job stages" in overview.text
+    assert "Engine checked" in overview.text
     # Libraries / engines table restored from main (FFmpeg, sherpa-onnx, …).
     assert "Libraries &amp; tools" in overview.text or "Libraries & tools" in overview.text
     assert "FFmpeg" in overview.text
