@@ -131,16 +131,20 @@ The Compose project lives in this repository root:
 
 ```sh
 umask 077
-printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" > .env
-printf 'VOCAGATEWAY_PUBLISH_HOST=127.0.0.1\n' >> .env
-printf 'VOCAGATEWAY_PUBLISH_PORT=8765\n' >> .env
+cp .env.example .env
+printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
 docker compose up --detach --build
 ```
 
-[`.env.example`](../.env.example) is the annotated template for
-the same file, covering the optional image tag, network mode and Swagger UI
-settings. Copy it and append a generated token rather than committing either
-file.
+[`.env.example`](../.env.example) is the annotated template for the same file.
+It ships the loopback publication defaults uncommented and everything else
+commented out with an explanation: the pairing-QR address, the container
+listener, the engine choice, session retention, the optional image tag, network
+mode, and the Swagger UI. Start from it rather than writing `.env` by hand, so
+the options are in front of you. Never commit either file.
+
+The appended token overrides the empty `VOCAGATEWAY_TOKEN=` placeholder in the
+template; Compose uses the last assignment when a key repeats in `.env`.
 
 `VOCAGATEWAY_PUBLISH_HOST=127.0.0.1` is the safe default for Tailscale Serve. Set
 it to `0.0.0.0` only when direct LAN access is intentional and protected by the
@@ -228,7 +232,7 @@ Build one tag for both supported Linux architectures from the repository root:
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
   --tag ghcr.io/your-user/vocaphone-gateway:latest \
-  --push server
+  --push .
 ```
 
 Set `VOCAGATEWAY_IMAGE` in `.env` to use that tag. Compose still includes a
@@ -260,9 +264,22 @@ VPN and never forward it from a router.
 With the default bridge network, the container only ever sees its own private
 bridge address (for example `172.19.0.2`), never the host's real Wi-Fi/Ethernet
 interface — so the pairing card's auto-discovered candidate list won't include
-a `192.168.x.x` address even after the change above. On Linux Docker Engine
-(not Docker Desktop on macOS/Windows), share the host's network namespace
-instead so discovery sees the real LAN IP directly:
+a `192.168.x.x` address even after the change above.
+
+The portable fix is to stop relying on discovery and name the address the phone
+should use:
+
+```dotenv
+VOCAGATEWAY_PUBLIC_URL=http://192.168.1.20:8765
+```
+
+The gateway puts that URL first in the pairing card and encodes it in the QR.
+It works on every Docker flavour, including Docker Desktop on macOS and
+Windows, and is the only option there. `VOCAGATEWAY_PAIRING_URL` is an accepted
+alias, checked second.
+
+On Linux Docker Engine (not Docker Desktop) you can instead share the host's
+network namespace so discovery sees the real LAN IP by itself:
 
 ```dotenv
 VOCAGATEWAY_NETWORK_MODE=host

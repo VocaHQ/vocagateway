@@ -1,5 +1,26 @@
 name: vocagateway
 
+# Every gateway service takes the same settings; only the build and the device
+# wiring differ per profile. Keeping them in one anchor means a variable added
+# here reaches all four services instead of three of them.
+x-gateway-environment: &gateway-environment
+  VOCAGATEWAY_TOKEN_FILE: /run/secrets/vocagateway_token
+  VOCAGATEWAY_DEBUG: ${VOCAGATEWAY_DEBUG:-false}
+  # Blank means "not set": the gateway ignores an empty override and falls back
+  # to auto-discovery. On the default bridge network discovery only ever sees
+  # the container's private bridge IP, so this is how a phone-reachable address
+  # gets into the pairing QR without switching to host networking.
+  VOCAGATEWAY_PUBLIC_URL: ${VOCAGATEWAY_PUBLIC_URL:-}
+  VOCAGATEWAY_PAIRING_URL: ${VOCAGATEWAY_PAIRING_URL:-}
+  # Listener inside the container. Only worth changing under
+  # VOCAGATEWAY_NETWORK_MODE=host, where the container binds the host directly
+  # and the ports mapping below is discarded.
+  VOCAGATEWAY_BIND_HOST: ${VOCAGATEWAY_BIND_HOST:-0.0.0.0}
+  VOCAGATEWAY_PORT: ${VOCAGATEWAY_PORT:-8765}
+  VOCAGATEWAY_ENGINE: ${VOCAGATEWAY_ENGINE:-auto}
+  VOCAGATEWAY_RETENTION_HOURS: ${VOCAGATEWAY_RETENTION_HOURS:-24}
+  VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO: ${VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO:-true}
+
 services:
   gateway:
     image: ${VOCAGATEWAY_IMAGE:-vocaphone-gateway:local}
@@ -10,10 +31,8 @@ services:
     init: true
     network_mode: ${VOCAGATEWAY_NETWORK_MODE:-bridge}
     ports:
-      - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:8765"
-    environment:
-      VOCAGATEWAY_TOKEN_FILE: /run/secrets/vocagateway_token
-      VOCAGATEWAY_DEBUG: ${VOCAGATEWAY_DEBUG:-false}
+      - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:${VOCAGATEWAY_PORT:-8765}"
+    environment: *gateway-environment
     secrets:
       - vocagateway_token
     volumes:
@@ -31,10 +50,8 @@ services:
     init: true
     network_mode: ${VOCAGATEWAY_NETWORK_MODE:-bridge}
     ports:
-      - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:8765"
-    environment:
-      VOCAGATEWAY_TOKEN_FILE: /run/secrets/vocagateway_token
-      VOCAGATEWAY_DEBUG: ${VOCAGATEWAY_DEBUG:-false}
+      - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:${VOCAGATEWAY_PORT:-8765}"
+    environment: *gateway-environment
     secrets: [vocagateway_token]
     volumes: [vocagateway-data:/data]
 
@@ -48,10 +65,9 @@ services:
     init: true
     network_mode: ${VOCAGATEWAY_NETWORK_MODE:-bridge}
     ports:
-      - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:8765"
+      - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:${VOCAGATEWAY_PORT:-8765}"
     environment:
-      VOCAGATEWAY_TOKEN_FILE: /run/secrets/vocagateway_token
-      VOCAGATEWAY_DEBUG: ${VOCAGATEWAY_DEBUG:-false}
+      <<: *gateway-environment
       NVIDIA_VISIBLE_DEVICES: all
     gpus: all
     secrets: [vocagateway_token]
@@ -67,10 +83,8 @@ services:
     init: true
     network_mode: ${VOCAGATEWAY_NETWORK_MODE:-bridge}
     ports:
-      - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:8765"
-    environment:
-      VOCAGATEWAY_TOKEN_FILE: /run/secrets/vocagateway_token
-      VOCAGATEWAY_DEBUG: ${VOCAGATEWAY_DEBUG:-false}
+      - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:${VOCAGATEWAY_PORT:-8765}"
+    environment: *gateway-environment
     devices:
       - /dev/dri:/dev/dri
     secrets: [vocagateway_token]

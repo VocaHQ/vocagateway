@@ -152,7 +152,7 @@ deployment, also confirm Tailscale is connected and Serve is active. The
 recording should remain on the iPhone for Retry.
 
 For a container deployment, also check `docker compose ps` from `server/` and
-confirm the `vocaphone_vocaphone-data` volume is still mounted.
+confirm the `vocagateway_vocagateway-data` volume is still mounted.
 
 ## A LAN hostname such as homelabone does not connect
 
@@ -174,10 +174,13 @@ Keep the host firewall enabled. Do not use this LAN configuration to expose port
 If the pairing QR itself shows no LAN address to pick from (or only shows a
 `172.x`/bridge address), that's the same root cause: the container's default
 bridge network only exposes its own private interface to address
-auto-discovery, never the host's real LAN NIC. On Linux Docker Engine (not
-Docker Desktop), set `VOCAGATEWAY_NETWORK_MODE=host` in `.env` instead so
-the container shares the host's network namespace and discovery finds the
-`192.168.x.x` address directly. See [deployment.md](deployment.md#trusted-local-network).
+auto-discovery, never the host's real LAN NIC. Set
+`VOCAGATEWAY_PUBLIC_URL=http://192.168.1.20:8765` in `.env` to name the address
+the phone should use — this works on every Docker flavour, including Docker
+Desktop. On Linux Docker Engine only, `VOCAGATEWAY_NETWORK_MODE=host` is the
+alternative: the container shares the host's network namespace and discovery
+finds the `192.168.x.x` address directly. Recreate the service after either
+change. See [deployment.md](deployment.md#trusted-local-network).
 
 ## 401 unauthorized
 
