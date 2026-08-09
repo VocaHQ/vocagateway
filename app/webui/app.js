@@ -261,6 +261,14 @@
     }
   });
 
+  document.body.addEventListener("htmx:beforeSwap", (event) => {
+    const target = event.detail && event.detail.target;
+    // Download / Select / Cancel / poll refresh replace #models-list; keep open families.
+    if (target && target.id === "models-list") {
+      window.__openModelFamilies = openFamilyNames();
+    }
+  });
+
   document.body.addEventListener("htmx:afterSwap", (event) => {
     scheduleModelPoll();
     // Models tab shell (or list refresh) may reintroduce filter controls.
@@ -270,6 +278,11 @@
       (event.detail.target.id === "panel" || event.detail.target.id === "models-list")
     ) {
       initModelFilters();
+    }
+    if (event.detail && event.detail.target && event.detail.target.id === "models-list") {
+      const open = window.__openModelFamilies || [];
+      window.__openModelFamilies = null;
+      restoreOpenFamilies(open);
     }
   });
 
@@ -367,6 +380,24 @@
 
   function isFamilyOpen(tile) {
     return tile.classList.contains("is-open");
+  }
+
+  function openFamilyNames() {
+    return familyTiles()
+      .filter((tile) => isFamilyOpen(tile) && tile.dataset.family)
+      .map((tile) => tile.dataset.family);
+  }
+
+  function restoreOpenFamilies(names) {
+    if (!names || !names.length) return;
+    const want = new Set(names);
+    // Open high indices first so earlier row parks don't fight later ones.
+    [...familyTiles()]
+      .reverse()
+      .forEach((tile) => {
+        if (want.has(tile.dataset.family)) setFamilyOpen(tile, true);
+      });
+    syncFamiliesExpandToggle();
   }
 
   function familyGridColumnCount(grid) {
@@ -564,7 +595,7 @@
     return `${size} B`;
   }
 
-  function scheduleModelPoll(delay = 1500) {
+  function scheduleModelPoll(delay = 400) {
     clearTimeout(modelPollTimer);
     modelPollTimer = null;
     const downloading = document.querySelector('#models-list [data-state="downloading"]');
@@ -595,12 +626,14 @@
           needsRefresh = true;
           return;
         }
-        const percent = Math.round((entry.progress || 0) * 100);
+        const ratio = Math.max(0, Math.min(1, entry.progress || 0));
+        const percent = Math.round(ratio * 100);
         const progress = card.querySelector(".progress");
         const bar = card.querySelector(".bar");
         const copy = card.querySelector(".progress-copy");
         if (progress) progress.setAttribute("aria-valuenow", String(percent));
-        if (bar) bar.style.width = `${percent}%`;
+        // Sub-percent width so the CSS transition can ease between samples.
+        if (bar) bar.style.width = `${(ratio * 100).toFixed(2)}%`;
         if (copy) {
           copy.textContent = `${percent}% · ${formatBytes(entry.downloaded_bytes || 0)} / ` +
             formatBytes(entry.total_bytes || 0);
@@ -616,7 +649,7 @@
       }
       scheduleModelPoll();
     } catch (_) {
-      scheduleModelPoll(4000);
+      scheduleModelPoll(2500);
     }
   }
 

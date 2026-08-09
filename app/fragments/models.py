@@ -554,13 +554,16 @@ def _model_card(
         downloaded = _format_bytes(entry.downloaded_bytes or 0)
         total = _format_bytes(entry.total_bytes or 0)
         action = (
+            f'<div class="model-download-status">'
             f'<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"'
             f' aria-valuenow="{percent}"><div class="bar" style="width:{percent}%"></div></div>'
+            f'<div class="model-download-meta">'
             f'<span class="muted small progress-copy">'
             f"{percent}% · {downloaded} / {total}</span>"
             f'<button class="ghost small" hx-post="/ui/partials/models/{encoded_id}/cancel"'
             f' hx-include="{MODEL_FILTER_INPUTS}"'
             f' hx-target="#models-list" hx-swap="innerHTML">Cancel</button>'
+            f"</div></div>"
         )
     elif entry.state == "installed":
         select_button = (

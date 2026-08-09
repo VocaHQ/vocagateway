@@ -542,7 +542,7 @@ main > .card:first-child, #panel > .card:first-child { border-top: none; padding
 .callout.warning strong { color: var(--warn); }
 .callout.success { border-left-color: var(--accent); }
 .callout.success strong { color: var(--accent); }
-.callout.compact { margin: 16px 0 0; }
+.callout.compact { margin: 16px 0 20px; }
 .callout-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
 .callout-actions form { display: contents; }
 .callout .row { margin-top: 8px; }
@@ -1130,6 +1130,39 @@ html[data-theme="dark"] .lib-tile.is-available .lib-tile-status { color: var(--a
 /* --------------------------------------------------------------- pairing card */
 
 .pairing-lead { margin-bottom: 16px; max-width: 52rem; }
+.pairing-lead:has(+ .pairing-token-notice) { margin-bottom: 12px; }
+
+/* Stale / unknown token notice sits between the lead and the QR task. */
+.pairing-token-notice {
+  display: grid;
+  gap: 16px;
+  margin: 0 0 28px;
+  padding: 12px 8px 8px 16px;
+  max-width: 52rem;
+  border-left-color: color-mix(in srgb, var(--accent) 65%, var(--line));
+}
+.pairing-token-notice.warning {
+  border-left-color: var(--warn);
+}
+.pairing-token-notice-body {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.pairing-token-notice-body strong { color: var(--text); }
+.pairing-token-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.pairing-token-actions form { margin: 0; }
+.pairing-token-rotate-hint {
+  margin: 0;
+  max-width: 36rem;
+  line-height: 1.45;
+}
+
 .pairing-layout {
   display: flex;
   flex-wrap: wrap;
@@ -1662,6 +1695,36 @@ html[data-theme="dark"] .family-models-label {
 .model-actions .progress-copy { flex: 1 1 auto; }
 .model-action-error { flex: 1 1 100%; margin: 0; }
 
+/* Download progress spans the card so bar + Cancel don't fight the toolbar. */
+.model-card[data-state="downloading"] .model-toolbar {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.model-card[data-state="downloading"] .model-actions {
+  flex: 1 1 100%;
+  width: 100%;
+  margin-left: 0;
+  justify-content: stretch;
+}
+.model-download-status {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.model-download-status .progress { width: 100%; margin: 0; }
+.model-download-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.model-download-meta .progress-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* Circular info control + side popover (right of icon; flips left near edge). */
 .model-info {
   position: relative;
@@ -2015,6 +2078,8 @@ html[data-theme="dark"] button.filter-trigger.has-active {
   cursor: pointer;
   user-select: none;
 }
+/* Author `display: flex` would otherwise beat the UA `[hidden]` rule. */
+.filter-check[hidden] { display: none !important; }
 .filter-check:hover { background: var(--raised); }
 .filter-check:has(input:checked) {
   background: var(--accent-wash);
@@ -2305,7 +2370,12 @@ button.danger.ghost:hover {
   overflow: hidden;
   margin: 3px 0;
 }
-.progress .bar { height: 100%; background: var(--accent); transition: width 0.4s ease; }
+.progress .bar {
+  height: 100%;
+  background: var(--accent);
+  /* Match ~poll interval so each sample eases into the next instead of jumping. */
+  transition: width 0.4s linear;
+}
 
 /* ---------------------------------------------------------------- test result */
 

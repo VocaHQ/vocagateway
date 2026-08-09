@@ -66,29 +66,31 @@ def pairing_fragment(
     if token_status == "stale":
         stale_label = escape(requested_token_label or "That device token")
         unavailable_notice = f"""
-          <div class="callout compact">
-            <span><strong>{stale_label} is still paired and working normally.</strong>
+          <div class="callout pairing-token-notice" role="status">
+            <p class="pairing-token-notice-body">
+              <strong>{stale_label} is still paired and working normally.</strong>
               After a server restart this session cannot show its secret again
               (we never store it for recovery). Showing the bootstrap token instead.
-              Only rotate if you need a new QR, for example to re-pair a lost phone.</span>
-            <div class="callout-actions">
+              Only rotate if you need a new QR, for example to re-pair a lost phone.
+            </p>
+            <div class="pairing-token-actions">
               <form
                 hx-post="/ui/partials/pairing/tokens/{quote(requested_token_id, safe="")}/rotate"
                 hx-target="#pairing-card" hx-swap="outerHTML">
                 <input type="hidden" name="url" value="{escape(selected_url)}" />
                 <button type="submit" class="primary small">Rotate &amp; show a new QR</button>
               </form>
-              <span class="muted small">Rotate only if you need it: the current secret
-                stops working immediately and the device must pair again.</span>
+              <p class="muted small pairing-token-rotate-hint">Rotate only if you need it:
+                the current secret stops working immediately and the device must pair again.</p>
             </div>
           </div>
         """
     elif token_status == "unknown":
         unavailable_notice = """
-          <div class="callout warning compact">
-            <span>That device token no longer exists (it may have been revoked).
-              Showing the bootstrap token instead. Create a new device token below
-              for a fresh QR.</span>
+          <div class="callout warning pairing-token-notice" role="status">
+            <p class="pairing-token-notice-body">That device token no longer exists
+              (it may have been revoked). Showing the bootstrap token instead.
+              Create a new device token below for a fresh QR.</p>
           </div>
         """
     else:
