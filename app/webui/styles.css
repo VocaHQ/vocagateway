@@ -509,6 +509,8 @@ main > .card:first-child, #panel > .card:first-child { border-top: none; padding
 .card > h2 + p.muted { margin-bottom: 14px; }
 .card > p.muted { max-width: none; }
 .card > .table-scroll, .card > form, .card > .checklist, .card > .facts { margin-top: 14px; }
+.dependencies-card > .muted { margin: 6px 0 0; }
+.dependencies-card > .table-scroll { margin-top: 12px; }
 
 .grid.two { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
 

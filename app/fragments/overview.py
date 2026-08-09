@@ -4,7 +4,13 @@ import re
 from html import escape
 
 from app.fragments.shared import _format_bytes, _format_latency, _format_uptime
-from app.schemas import AdminStatusResponse, OperationalMetricsStatus, ReadinessStatus, SystemStatus
+from app.schemas import (
+    AdminStatusResponse,
+    DependencyStatus,
+    OperationalMetricsStatus,
+    ReadinessStatus,
+    SystemStatus,
+)
 
 
 def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> str:
@@ -43,6 +49,7 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
       </section>
       {operations_fragment(status.metrics, status.readiness)}
       {_system_panel(status.system, status.version, machine_label)}
+      {_dependencies_panel(status.dependencies)}
       {onboarding}
     """
 
@@ -121,6 +128,37 @@ def _system_panel(system: SystemStatus, version: str, machine_label: str) -> str
           <summary>Hardware details</summary>
           <dl class="facts sys-details-facts">{facts}</dl>
         </details>
+      </div>
+    """
+
+
+def _dependencies_panel(dependencies: list[DependencyStatus]) -> str:
+    """Installed CLIs and Python engines — same data as diagnostics export."""
+    rows = "".join(
+        "<tr>"
+        f"<td>{escape(dependency.name)}</td>"
+        f'<td><span class="state"><span class="dot {"ok" if dependency.available else "bad"}"'
+        ' aria-hidden="true"></span>'
+        f"{'installed' if dependency.available else 'missing'}</span></td>"
+        f"<td><code>{escape(dependency.path or dependency.install_hint or '—')}</code></td>"
+        "</tr>"
+        for dependency in dependencies
+    )
+    installed = sum(1 for dependency in dependencies if dependency.available)
+    total = len(dependencies)
+    return f"""
+      <div class="card dependencies-card">
+        <div class="section-heading">
+          <h2>Libraries &amp; tools</h2>
+          <span class="muted small">{installed} of {total} available</span>
+        </div>
+        <p class="muted">Speech engines, FFmpeg, and companion apps this host can see.</p>
+        <div class="table-scroll">
+          <table class="table">
+            <thead><tr><th>Tool</th><th>Status</th><th>Path / install</th></tr></thead>
+            <tbody>{rows}</tbody>
+          </table>
+        </div>
       </div>
     """
 

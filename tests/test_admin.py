@@ -624,9 +624,12 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     assert overview.status_code == 200
     assert "Live operations" in overview.text
     assert 'hx-get="/ui/partials/operations"' in overview.text
-    # Operator-detail tables stay off the front page.
+    # Libraries / engines table restored from main (FFmpeg, sherpa-onnx, …).
+    assert "Libraries &amp; tools" in overview.text or "Libraries & tools" in overview.text
+    assert "FFmpeg" in overview.text
+    assert "sherpa-onnx" in overview.text
+    # Setup checklist stays in Get started / You're set — not the old always-on list.
     assert "Setup checklist" not in overview.text
-    assert "Dependencies" not in overview.text
     # Bind addresses live on the header model pill hover card, not Overview.
     assert "0.0.0.0:8765" not in overview.text
     assert "http://127.0.0.1:8765/" not in overview.text
