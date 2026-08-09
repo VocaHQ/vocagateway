@@ -149,9 +149,13 @@ async def ui_update_config(
 @router.get("/ui/partials/test", response_class=HTMLResponse)
 async def ui_test(ctx: GatewayContext = Depends(get_context)) -> HTMLResponse:
     """Pair phone (once) and try the pipeline from this browser."""
+    import platform
+
     return HTMLResponse(
         pair_and_test_fragment(
             pairing_html(ctx),
             ctx.settings.maximum_duration_seconds,
+            bind_host=ctx.settings.bind_host,
+            is_mac=platform.system() == "Darwin",
         )
     )

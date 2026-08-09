@@ -286,26 +286,21 @@
   function currentModelFilters() {
     const form = document.getElementById("models-filter-form");
     if (!form) {
-      return {
-        family: [],
-        language: [],
-        engine: [],
-        max_size: "",
-        installed_only: "",
-        recommended_only: "",
-      };
+      return { family: [], language: [], engine: [] };
     }
-    const installed = form.querySelector('input[name="installed_only"]');
-    const recommended = form.querySelector('input[name="recommended_only"]');
-    const maxSize = form.querySelector('select[name="max_size"]');
-    return {
+    // Omit cleared bool/select params — empty strings 422 FastAPI's bool query types.
+    const filters = {
       family: checkedFilterValues("family"),
       language: checkedFilterValues("language"),
       engine: checkedFilterValues("engine"),
-      max_size: maxSize ? maxSize.value : "",
-      installed_only: installed && installed.checked ? "true" : "",
-      recommended_only: recommended && recommended.checked ? "true" : "",
     };
+    const maxSize = form.querySelector('select[name="max_size"]');
+    if (maxSize && maxSize.value) filters.max_size = maxSize.value;
+    const installed = form.querySelector('input[name="installed_only"]');
+    if (installed && installed.checked) filters.installed_only = "true";
+    const recommended = form.querySelector('input[name="recommended_only"]');
+    if (recommended && recommended.checked) filters.recommended_only = "true";
+    return filters;
   }
 
   const FILTER_RAIL_KEY = "vocaphone.models-filter-collapsed";

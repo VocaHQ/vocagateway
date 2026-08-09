@@ -3,10 +3,6 @@ from __future__ import annotations
 from html import escape
 from urllib.parse import quote
 
-from app.config import WILDCARD_BIND_HOSTS
-from app.fragments.exposure import exposure_network_panel
-
-
 def pairing_fragment(
     *,
     selected_url: str | None,
@@ -37,13 +33,14 @@ def pairing_fragment(
     after a restart) — rotating is optional and only needed to get a fresh,
     viewable QR, for example to re-pair a lost phone. `unknown` means it no
     longer exists at all (typically already revoked).
+
+    Network exposure callout is *not* rendered here: HTMX replaces
+    `#pairing-card` on every token/url change, so a sibling panel outside that
+    id would accumulate duplicates. Pair & test mounts it once at page end.
     """
-    network_warning = (
-        exposure_network_panel(is_mac=is_mac) if bind_host in WILDCARD_BIND_HOSTS else ""
-    )
+    del bind_host, is_mac  # reserved for callers; exposure lives on the page shell
     if not selected_url:
-        return f"""
-      {network_warning}
+        return """
       <div class="card" id="pairing-card">
         <h2>Pair phone</h2>
         <p class="muted">No address the phone can reach was found. Set
@@ -119,7 +116,6 @@ def pairing_fragment(
         inline_svg = inline_svg.split("?>", 1)[-1].lstrip()
     # Separate attributes — a real newline inside data-copy breaks the HTML attribute.
     return f"""
-      {network_warning}
       <div class="card" id="pairing-card">
         <div class="section-heading">
           <h2>Pair phone</h2>

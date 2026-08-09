@@ -364,6 +364,12 @@ def _family_tile(family: str, items: list[AdminModelEntry]) -> str:
     )
     active_attr = ' data-active="1"' if active else ""
     models_id = _family_dom_id(family)
+    chevron = (
+        '<svg class="family-expand-icon" viewBox="0 0 24 24" width="18" height="18" '
+        'fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" '
+        'stroke-linejoin="round" aria-hidden="true">'
+        '<path d="m6 9 6 6 6-6"/></svg>'
+    )
     # Tile + models are *siblings* in the family-grid so the open models panel
     # can take grid-column: 1 / -1 on the next row while the tile stays put.
     # (Nested <details> + display:contents is unreliable across browsers.)
@@ -371,20 +377,29 @@ def _family_tile(family: str, items: list[AdminModelEntry]) -> str:
       <div class="family-tile"{active_attr} data-family="{escape(family, quote=True)}">
         <button type="button" class="family-summary"
                 aria-expanded="false" aria-controls="{escape(models_id, quote=True)}">
-          <span class="family-summary-main">
-            <span class="family-name">{escape(family)}</span>
-            <span class="family-tags">{tags}</span>
+          <span class="family-summary-body">
+            <span class="family-summary-main">
+              <span class="family-name" title="{escape(family, quote=True)}">{escape(family)}</span>
+              <span class="family-tags">{tags}</span>
+            </span>
+            <span class="family-meta">
+              <span>{count}</span>
+              <span aria-hidden="true">·</span>
+              <span>{installed_label}</span>
+              <span class="family-engines" title="Engines in this family">{engine_note}</span>
+            </span>
           </span>
-          <span class="family-meta">
-            <span>{count}</span>
-            <span aria-hidden="true">·</span>
-            <span>{installed_label}</span>
-            <span class="family-engines" title="Engines in this family">{engine_note}</span>
-          </span>
+          {chevron}
         </button>
       </div>
-      <div class="family-models" id="{escape(models_id, quote=True)}"
-           role="list" hidden>{cards}</div>
+      <div class="family-models" id="{escape(models_id, quote=True)}" role="list"
+           data-family="{escape(family, quote=True)}" hidden>
+        <div class="family-models-head">
+          <span class="family-models-label">{escape(family)}</span>
+          <span class="family-models-count muted small">{count}</span>
+        </div>
+        <div class="family-models-grid">{cards}</div>
+      </div>
     """
 
 

@@ -509,6 +509,22 @@ async def test_models_ui_filter_panel_is_multi_select(
     assert "Fits this machine" in page.text
 
 
+async def test_models_list_accepts_cleared_filters(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    """Clear filters sends empty bools; must not 422."""
+    cleared = await admin_client.get("/ui/partials/models-list", headers=auth)
+    assert cleared.status_code == 200
+    assert 'class="family-tile"' in cleared.text or 'class="model-card"' in cleared.text
+
+    empty_bools = await admin_client.get(
+        "/ui/partials/models-list",
+        params={"installed_only": "", "recommended_only": ""},
+        headers=auth,
+    )
+    assert empty_bools.status_code == 200
+    assert 'class="family-tile"' in empty_bools.text or 'class="model-card"' in empty_bools.text
+
 async def test_unknown_model_download_404(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
@@ -642,6 +658,16 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     assert pair.status_code == 200
     assert "exposure-panel" in pair.text
     assert "Listening on every network interface" in pair.text
+    # Once, at page end — never stacked by pairing-card HTMX swaps.
+    assert pair.text.count("Listening on every network interface") == 1
+    assert pair.text.count('id="pairing-exposure-panel"') == 1
+    assert pair.text.index('id="test-card"') < pair.text.index('id="pairing-exposure-panel"')
+
+    # Token/url pairing partials must not re-emit the exposure panel.
+    pairing_only = await admin_client.get("/ui/partials/pairing", headers=auth)
+    assert pairing_only.status_code == 200
+    assert "exposure-panel" not in pairing_only.text
+    assert "Listening on every network interface" not in pairing_only.text
 
     tokens = await admin_client.get("/ui/partials/tokens", headers=auth)
     assert tokens.status_code == 200

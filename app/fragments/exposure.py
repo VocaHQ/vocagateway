@@ -37,10 +37,14 @@ def exposure_banner_fragment(bind_host: str, *, is_mac: bool = False) -> str:
 
 
 def exposure_network_panel(*, is_mac: bool = False) -> str:
-    """Persistent network callout for Pair & test — not dismissible."""
+    """Persistent network callout for Pair & test — not dismissible.
+
+    Mounted once at the end of the Pair & test page shell (not inside
+    `#pairing-card`), so HTMX swaps of the pairing card never duplicate it.
+    """
     firewall = "Keep macOS Firewall on" if is_mac else "Keep the host firewall enabled"
     return f"""
-      <div class="exposure-panel" role="note">
+      <div id="pairing-exposure-panel" class="exposure-panel" role="note">
         <div class="exposure-panel-head">
           <span class="exposure-banner-mark" aria-hidden="true">!</span>
           <strong>Listening on every network interface</strong>

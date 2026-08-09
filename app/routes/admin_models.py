@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Query, Response
 from fastapi.responses import HTMLResponse
+from pydantic import BeforeValidator
 
 from app.admin_queries import filtered_model_entries, model_entries
 from app.context import GatewayContext, get_context, require_token
@@ -22,6 +23,24 @@ from app.schemas import (
 
 router = APIRouter(dependencies=[Depends(require_token)])
 
+
+def _loose_bool(value: object) -> bool:
+    """Treat missing/empty query/form values as false (Clear filters sends "")."""
+    if value is None or value is False or value == "":
+        return False
+    if value is True:
+        return True
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in ("", "0", "false", "no", "off"):
+            return False
+        if lowered in ("1", "true", "yes", "on"):
+            return True
+    return bool(value)
+
+
 # Repeated keys: family=Whisper&family=Parakeet (and the same for language/engine).
 LanguageQ = Annotated[list[str] | None, Query()]
 FamilyQ = Annotated[list[str] | None, Query()]
@@ -29,6 +48,8 @@ EngineQ = Annotated[list[str] | None, Query()]
 LanguageF = Annotated[list[str] | None, Form()]
 FamilyF = Annotated[list[str] | None, Form()]
 EngineF = Annotated[list[str] | None, Form()]
+BoolQ = Annotated[bool, BeforeValidator(_loose_bool), Query()]
+BoolF = Annotated[bool, BeforeValidator(_loose_bool), Form()]
 
 
 def _models_list_html(
@@ -68,12 +89,12 @@ def _models_list_html(
 
 @router.get("/v1/admin/models", response_model=list[AdminModelEntry])
 async def get_admin_models(
-    installed_only: bool = False,
+    installed_only: BoolQ = False,
     language: LanguageQ = None,
     family: FamilyQ = None,
     engine: EngineQ = None,
     max_size: str = "",
-    recommended_only: bool = False,
+    recommended_only: BoolQ = False,
     ctx: GatewayContext = Depends(get_context),
 ) -> list[AdminModelEntry]:
     return filtered_model_entries(
@@ -170,12 +191,12 @@ async def ui_models(ctx: GatewayContext = Depends(get_context)) -> HTMLResponse:
 
 @router.get("/ui/partials/models-list", response_class=HTMLResponse)
 async def ui_models_list(
-    installed_only: bool = False,
+    installed_only: BoolQ = False,
     language: LanguageQ = None,
     family: FamilyQ = None,
     engine: EngineQ = None,
     max_size: str = "",
-    recommended_only: bool = False,
+    recommended_only: BoolQ = False,
     ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     return _models_list_html(
@@ -192,12 +213,12 @@ async def ui_models_list(
 @router.post("/ui/partials/models/{model_id}/download", response_class=HTMLResponse)
 async def ui_start_download(
     model_id: str,
-    installed_only: bool = Form(False),
+    installed_only: BoolF = False,
     language: LanguageF = None,
     family: FamilyF = None,
     engine: EngineF = None,
     max_size: str = Form(""),
-    recommended_only: bool = Form(False),
+    recommended_only: BoolF = False,
     ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     try:
@@ -222,12 +243,12 @@ async def ui_start_download(
 @router.post("/ui/partials/models/custom", response_class=HTMLResponse)
 async def ui_custom_download(
     url: str = Form(...),
-    installed_only: bool = Form(False),
+    installed_only: BoolF = False,
     language: LanguageF = None,
     family: FamilyF = None,
     engine: EngineF = None,
     max_size: str = Form(""),
-    recommended_only: bool = Form(False),
+    recommended_only: BoolF = False,
     ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     try:
@@ -250,12 +271,12 @@ async def ui_custom_download(
 @router.post("/ui/partials/models/{model_id}/cancel", response_class=HTMLResponse)
 async def ui_cancel_download(
     model_id: str,
-    installed_only: bool = Form(False),
+    installed_only: BoolF = False,
     language: LanguageF = None,
     family: FamilyF = None,
     engine: EngineF = None,
     max_size: str = Form(""),
-    recommended_only: bool = Form(False),
+    recommended_only: BoolF = False,
     ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     ctx.manager.cancel_download(model_id)
@@ -273,12 +294,12 @@ async def ui_cancel_download(
 @router.delete("/ui/partials/models/{model_id}", response_class=HTMLResponse)
 async def ui_delete_model(
     model_id: str,
-    installed_only: bool = Form(False),
+    installed_only: BoolF = False,
     language: LanguageF = None,
     family: FamilyF = None,
     engine: EngineF = None,
     max_size: str = Form(""),
-    recommended_only: bool = Form(False),
+    recommended_only: BoolF = False,
     ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     try:
@@ -303,12 +324,12 @@ async def ui_delete_model(
 @router.post("/ui/partials/models/{model_id}/select", response_class=HTMLResponse)
 async def ui_select_model(
     model_id: str,
-    installed_only: bool = Form(False),
+    installed_only: BoolF = False,
     language: LanguageF = None,
     family: FamilyF = None,
     engine: EngineF = None,
     max_size: str = Form(""),
-    recommended_only: bool = Form(False),
+    recommended_only: BoolF = False,
     ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     engine_manager = ctx.engine_manager
