@@ -36,7 +36,8 @@ _EXPAND_ICON = (
     '<path d="m7 15 5 5 5-5M7 9l5-5 5 5"/></svg>'
 )
 _COLLAPSE_ICON = (
-    '<svg class="toolbar-icon icon-collapse" viewBox="0 0 24 24" width="18" height="18" fill="none" '
+    '<svg class="toolbar-icon icon-collapse" viewBox="0 0 24 24" '
+    'width="18" height="18" fill="none" '
     'stroke="currentColor" stroke-width="1.75" stroke-linecap="round" '
     'stroke-linejoin="round" aria-hidden="true">'
     '<path d="m7 20 5-5 5 5M7 4l5 5 5-5"/></svg>'
@@ -59,7 +60,8 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
       <div class="page-head">
         <div>
           <h2>Models</h2>
-          <p>{installed} of {len(entries)} downloaded across {families} families, all stored on this machine. Families start collapsed; open one to pick a model.</p>
+          <p>{installed} of {len(entries)} downloaded across {families} families,
+             all stored on this machine. Families start collapsed; open one to pick a model.</p>
         </div>
         <div class="models-toolbar-actions">
           <button type="button" class="ghost filter-trigger" id="filter-rail-toggle"
@@ -159,7 +161,9 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
           </div>
           <div class="card">
             <h2>Bring your own Whisper model</h2>
-            <p class="muted">Paste a direct HTTPS link to a <code>.bin</code> or <code>.gguf</code> file. It runs through the standalone engine. Use a <code>/resolve/</code> URL on Hugging Face, not the repo home page.</p>
+            <p class="muted">Paste a direct HTTPS link to a <code>.bin</code> or
+               <code>.gguf</code> file. It runs through the standalone engine.
+               Use a <code>/resolve/</code> URL on Hugging Face, not the repo home page.</p>
             <form hx-post="/ui/partials/models/custom" hx-include="{MODEL_FILTER_INPUTS}"
                   hx-target="#models-list" hx-swap="innerHTML">
               <div class="row">
@@ -169,9 +173,11 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
               </div>
             </form>
             <p class="muted small model-custom-links">
-              <a href="https://huggingface.co/models?pipeline_tag=automatic-speech-recognition&amp;library=gguf&amp;sort=trending" target="_blank" rel="noopener noreferrer">Browse GGUF speech models</a>
+              <a href="https://huggingface.co/models?pipeline_tag=automatic-speech-recognition&amp;library=gguf&amp;sort=trending"
+                 target="_blank" rel="noopener noreferrer">Browse GGUF speech models</a>
               <span aria-hidden="true">·</span>
-              <a href="{_request_model_issue_url()}" target="_blank" rel="noopener noreferrer">Request a catalog model</a>
+              <a href="{_request_model_issue_url()}" target="_blank"
+                 rel="noopener noreferrer">Request a catalog model</a>
             </p>
           </div>
         </div>
@@ -193,8 +199,7 @@ def _request_model_issue_url() -> str:
 Thanks.
 """
     return (
-        "https://github.com/VocaHQ/vocagateway/issues/new"
-        f"?title={quote(title)}&body={quote(body)}"
+        f"https://github.com/VocaHQ/vocagateway/issues/new?title={quote(title)}&body={quote(body)}"
     )
 
 
@@ -225,9 +230,7 @@ def _family_filter_options(entries: list[AdminModelEntry]) -> str:
 def _engine_filter_options(entries: list[AdminModelEntry]) -> str:
     """Engines present in the live catalogue view."""
     engines = sorted({entry.engine for entry in entries if entry.engine})
-    return "".join(
-        _filter_check("engine", eng, ENGINE_LABELS.get(eng, eng)) for eng in engines
-    )
+    return "".join(_filter_check("engine", eng, ENGINE_LABELS.get(eng, eng)) for eng in engines)
 
 
 def _size_filter_options() -> str:
@@ -262,7 +265,9 @@ def models_list_fragment(
         name = entry.family or ENGINE_LABELS.get(entry.engine, entry.engine)
         groups.setdefault(name, []).append(entry)
 
-    def family_sort_key(item: tuple[str, list[AdminModelEntry]]) -> tuple:
+    def family_sort_key(
+        item: tuple[str, list[AdminModelEntry]],
+    ) -> tuple[bool, bool, int, str]:
         name, items = item
         has_active = any(entry.active for entry in items)
         has_recommended = any(entry.recommended for entry in items)
@@ -309,18 +314,11 @@ def _empty_filter_state(
     if families:
         bits.append("families " + ", ".join(escape(f) for f in families))
     if languages:
-        bits.append(
-            ", ".join(escape(LANGUAGE_NAMES.get(code, code)) for code in languages)
-        )
+        bits.append(", ".join(escape(LANGUAGE_NAMES.get(code, code)) for code in languages))
     if engines:
-        bits.append(
-            "engines "
-            + ", ".join(escape(ENGINE_LABELS.get(eng, eng)) for eng in engines)
-        )
+        bits.append("engines " + ", ".join(escape(ENGINE_LABELS.get(eng, eng)) for eng in engines))
     if max_size:
-        label = next(
-            (lab for key, lab in _SIZE_FILTER_OPTIONS if key == max_size), max_size
-        )
+        label = next((lab for key, lab in _SIZE_FILTER_OPTIONS if key == max_size), max_size)
         bits.append(escape(label.lower()))
     if recommended_only:
         bits.append("fits this machine")
@@ -385,7 +383,8 @@ def _family_tile(family: str, items: list[AdminModelEntry]) -> str:
           </span>
         </button>
       </div>
-      <div class="family-models" id="{escape(models_id, quote=True)}" role="list" hidden>{cards}</div>
+      <div class="family-models" id="{escape(models_id, quote=True)}"
+           role="list" hidden>{cards}</div>
     """
 
 
@@ -401,9 +400,8 @@ def _active_label() -> str:
         "</span>"
     )
 
-def _dictation_language_hint(
-    entries: list[AdminModelEntry], language: str | list[str]
-) -> str:
+
+def _dictation_language_hint(entries: list[AdminModelEntry], language: str | list[str]) -> str:
     """Warn when a filtered list mixes pinnable and auto-detecting models.
 
     Testing showed every auto-detecting model returns the wrong writing system on
@@ -426,7 +424,9 @@ def _dictation_language_hint(
     return (
         '<div class="callout warning models-language-hint">'
         f"<strong>Picking a model for {name}</strong>"
-        "<span>Models tagged <em>auto language</em> pick the language themselves. They do well on full sentences but often guess the wrong script on short phrases (most of dictation). Prefer one of the other "
+        "<span>Models tagged <em>auto language</em> pick the language themselves. "
+        "They do well on full sentences but often guess the wrong script on short "
+        "phrases (most of dictation). Prefer one of the other "
         f"{len(pinnable)} models here, which are forced to use {name}.</span>"
         "</div>"
     )
@@ -440,8 +440,7 @@ def _language_disclosure(entry: AdminModelEntry) -> str:
     if len(entry.language_names) < 2:
         return ""
     chips = "".join(
-        f'<span class="model-language-chip">{escape(name)}</span>'
-        for name in entry.language_names
+        f'<span class="model-language-chip">{escape(name)}</span>' for name in entry.language_names
     )
     note = (
         '<p class="model-language-note muted small">'
@@ -560,7 +559,7 @@ def _model_card(
             )
         )
         action = (
-            f'{select_button}'
+            f"{select_button}"
             f'<button class="ghost small danger"'
             f' hx-delete="/ui/partials/models/{encoded_id}"'
             f' hx-include="{MODEL_FILTER_INPUTS}"'
@@ -603,7 +602,9 @@ def _model_card(
             <span class="model-tags">{badges}</span>
           </div>
           <p class="model-meta">{" &middot; ".join(meta)}</p>
-          <p class="model-blurb" title="{escape(entry.description, quote=True)}">{escape(entry.description)}</p>
+          <p class="model-blurb" title="{escape(entry.description, quote=True)}">
+            {escape(entry.description)}
+          </p>
         </div>
         <div class="model-toolbar">
           <div class="model-toolbar-start">

@@ -39,16 +39,16 @@ def pairing_fragment(
     longer exists at all (typically already revoked).
     """
     network_warning = (
-        exposure_network_panel(is_mac=is_mac)
-        if bind_host in WILDCARD_BIND_HOSTS
-        else ""
+        exposure_network_panel(is_mac=is_mac) if bind_host in WILDCARD_BIND_HOSTS else ""
     )
     if not selected_url:
         return f"""
       {network_warning}
       <div class="card" id="pairing-card">
         <h2>Pair phone</h2>
-        <p class="muted">No address the phone can reach was found. Set <code>VOCAPHONE_PUBLIC_URL</code> to the URL the phone should use (for example <code>http://192.168.1.20:8765</code>), then reload.</p>
+        <p class="muted">No address the phone can reach was found. Set
+           <code>VOCAPHONE_PUBLIC_URL</code> to the URL the phone should use
+           (for example <code>http://192.168.1.20:8765</code>), then reload.</p>
       </div>
         """
     options = "".join(
@@ -69,7 +69,10 @@ def pairing_fragment(
         stale_label = escape(requested_token_label or "That device token")
         unavailable_notice = f"""
           <div class="callout compact">
-            <span><strong>{stale_label} is still paired and working normally.</strong> After a server restart this session cannot show its secret again (we never store it for recovery). Showing the bootstrap token instead. Only rotate if you need a new QR, for example to re-pair a lost phone.</span>
+            <span><strong>{stale_label} is still paired and working normally.</strong>
+              After a server restart this session cannot show its secret again
+              (we never store it for recovery). Showing the bootstrap token instead.
+              Only rotate if you need a new QR, for example to re-pair a lost phone.</span>
             <div class="callout-actions">
               <form
                 hx-post="/ui/partials/pairing/tokens/{quote(requested_token_id, safe="")}/rotate"
@@ -77,14 +80,17 @@ def pairing_fragment(
                 <input type="hidden" name="url" value="{escape(selected_url)}" />
                 <button type="submit" class="primary small">Rotate &amp; show a new QR</button>
               </form>
-              <span class="muted small">Rotate only if you need it: the current secret stops working immediately and the device must pair again.</span>
+              <span class="muted small">Rotate only if you need it: the current secret
+                stops working immediately and the device must pair again.</span>
             </div>
           </div>
         """
     elif token_status == "unknown":
         unavailable_notice = """
           <div class="callout warning compact">
-            <span>That device token no longer exists (it may have been revoked). Showing the bootstrap token instead. Create a new device token below for a fresh QR.</span>
+            <span>That device token no longer exists (it may have been revoked).
+              Showing the bootstrap token instead. Create a new device token below
+              for a fresh QR.</span>
           </div>
         """
     else:
@@ -118,7 +124,8 @@ def pairing_fragment(
         <div class="section-heading">
           <h2>Pair phone</h2>
         </div>
-        <p class="muted pairing-lead">Scan in VocaPhone on iPhone or Android. The QR includes the live token, so keep this page private while it is on screen.</p>
+        <p class="muted pairing-lead">Scan in VocaPhone on iPhone or Android.
+           The QR includes the live token, so keep this page private while it is on screen.</p>
         {unavailable_notice}
         <div class="pairing-layout">
           <div class="pairing-qr-wrap">
@@ -126,7 +133,8 @@ def pairing_fragment(
                     data-url="{escape(selected_url or "", quote=True)}"
                     data-token="{escape(token_plaintext or "", quote=True)}"
                     title="Click to copy gateway address and token"
-                    aria-label="Pairing QR for {escape(selected_url)}. Click to copy gateway address and token.">
+                    aria-label="Pairing QR for {escape(selected_url)}. Click to copy
+                    gateway address and token.">
               {inline_svg}
               <span class="pairing-qr-hint" aria-hidden="true">Click to copy</span>
             </button>
@@ -172,7 +180,8 @@ def pairing_fragment(
               <input type="hidden" name="token_id" value="{escape(selected_token_id)}" />
               <label>
                 <span>Custom address</span>
-                <span class="field-hint">Tailscale IP, MagicDNS, or other host the phone can reach</span>
+                <span class="field-hint">Tailscale IP, MagicDNS, or other host the phone
+                  can reach</span>
                 <div class="row">
                   <input name="url" type="text"
                          placeholder="100.x.x.x or phone.tailnet.ts.net"
@@ -186,7 +195,8 @@ def pairing_fragment(
               <input type="hidden" name="url" value="{escape(selected_url)}" />
               <label>
                 <span>New device token</span>
-                <span class="field-hint">Or pair a new device with its own token; revoke later in Settings</span>
+                <span class="field-hint">Or pair a new device with its own token;
+                  revoke later in Settings</span>
                 <div class="row">
                   <input name="label" type="text" required maxlength="100"
                          placeholder="e.g. Kanishk&#39;s iPhone" autocomplete="off" />
@@ -199,7 +209,8 @@ def pairing_fragment(
         </div>
 
         <p class="pairing-note">
-          Prefer LAN Wi-Fi when the phone is on the same network; use Tailscale when both are on the tailnet.
+          Prefer LAN Wi-Fi when the phone is on the same network; use Tailscale when
+          both are on the tailnet.
           <code>VOCAPHONE_PUBLIC_URL</code> overrides discovery.
         </p>
       </div>

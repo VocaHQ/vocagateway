@@ -36,6 +36,7 @@ async def ui_overview(ctx: GatewayContext = Depends(get_context)) -> HTMLRespons
     status = await status_payload(ctx)
     return HTMLResponse(overview_fragment(status))
 
+
 @router.get("/ui/partials/operations", response_class=HTMLResponse)
 async def ui_operations(ctx: GatewayContext = Depends(get_context)) -> HTMLResponse:
     # sample=True appends a ring-buffer point for sparklines (~every 5s poll).

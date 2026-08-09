@@ -427,11 +427,7 @@ def test_multi_select_filters_combine_with_and_or() -> None:
     ]
 
     # OR across languages.
-    hi_or_yue = [
-        e
-        for e in entries
-        if model_covers(e, "hi") or model_covers(e, "yue")
-    ]
+    hi_or_yue = [e for e in entries if model_covers(e, "hi") or model_covers(e, "yue")]
     assert hi_or_yue and len(hi_or_yue) < len(entries)
 
     # Size cap is a hard upper bound.

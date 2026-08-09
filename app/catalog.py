@@ -140,7 +140,8 @@ def _faster_whisper(
         huggingface_folder="",
         family="Whisper / CTranslate2",
         description=(
-            "Persistent CTranslate2 model with CPU INT8 inference; works well on desktop and server CPUs."
+            "Persistent CTranslate2 model with CPU INT8 inference; "
+            "works well on desktop and server CPUs."
         ),
         source="faster-whisper",
         marker_file="model.bin",
@@ -1087,8 +1088,8 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         family="Breeze ASR",
         description=(
             "MediaTek Breeze-ASR (Whisper Large v2 fine-tune) quantized to Q5 for whisper.cpp. "
-            "Tuned for Taiwanese Mandarin and Mandarin–English code-switching; weights redistributed "
-            "via Handy's CDN."
+            "Tuned for Taiwanese Mandarin and Mandarin–English code-switching; "
+            "weights redistributed via Handy's CDN."
         ),
         source="Breeze ASR",
         language_codes=("zh", "en"),

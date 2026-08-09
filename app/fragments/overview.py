@@ -63,18 +63,14 @@ def _system_panel(system: SystemStatus, version: str, machine_label: str) -> str
     if primary_gpu:
         # Use original accelerator string for vendor detect (short label may drop AMD/NVIDIA).
         gpu_vendor = _hw_vendor(gpus[0] if gpus else primary_gpu)
-        spec_parts.append(
-            _spec_chip(_hero_gpu_bit(primary_gpu), vendor=gpu_vendor, kind="gpu")
-        )
+        spec_parts.append(_spec_chip(_hero_gpu_bit(primary_gpu), vendor=gpu_vendor, kind="gpu"))
     if system.ram_gb:
         spec_parts.append(_spec_chip(f"{system.ram_gb:g} GB RAM", vendor=None, kind="ram"))
     cores = system.effective_cpus if system.effective_cpus else system.logical_cpus
     core_label = ""
     if cores:
         core_label = (
-            f"{cores:g}"
-            if isinstance(cores, float) and cores != int(cores)
-            else f"{int(cores)}"
+            f"{cores:g}" if isinstance(cores, float) and cores != int(cores) else f"{int(cores)}"
         )
     cpu_name = _hero_cpu_bit(chip)
     cpu_vendor = _hw_vendor(system.chip)
@@ -94,15 +90,12 @@ def _system_panel(system: SystemStatus, version: str, machine_label: str) -> str
         gpu_detail = _labeled_hw(_short_gpu_label(gpus[0]), gpus[0])
         if secondary_gpus:
             gpu_detail += "".join(
-                f'<span class="sys-detail-extra">'
-                f"{_labeled_hw(short, orig)}</span>"
+                f'<span class="sys-detail-extra">{_labeled_hw(short, orig)}</span>'
                 for short, orig in zip(secondary_gpus, gpus[1:], strict=False)
             )
     else:
         gpu_detail = "None detected"
-    cpu_detail = (
-        f"{system.effective_cpus:g} effective · {system.logical_cpus} logical"
-    )
+    cpu_detail = f"{system.effective_cpus:g} effective · {system.logical_cpus} logical"
     details_rows = [
         ("Processor", _labeled_hw(chip, system.chip)),
         ("CPUs", escape(cpu_detail)),
@@ -113,9 +106,7 @@ def _system_panel(system: SystemStatus, version: str, machine_label: str) -> str
         ("Runtime", escape(runtime)),
         ("Gateway", escape(version)),
     ]
-    facts = "".join(
-        f"<dt>{escape(label)}</dt><dd>{value}</dd>" for label, value in details_rows
-    )
+    facts = "".join(f"<dt>{escape(label)}</dt><dd>{value}</dd>" for label, value in details_rows)
     return f"""
       <div class="card system-card">
         <div class="sys-hero">
@@ -340,7 +331,8 @@ def _onboarding_steps(
       <div class="onboarding-ready card">
         <div class="onboarding-ready-copy">
           <h2>You&rsquo;re set</h2>
-          <p class="muted">Pair a phone if you have not yet, or test from this browser. Switch models anytime from the header.</p>
+          <p class="muted">Pair a phone if you have not yet, or test from this browser.
+             Switch models anytime from the header.</p>
         </div>
         <div class="onboarding-actions">
           <button type="button" class="primary" data-open-tab="pair">Pair &amp; test</button>
@@ -351,13 +343,9 @@ def _onboarding_steps(
 
     steps: list[str] = []
     if not status.setup.ffmpeg_available:
-        steps.append(
-            f"<li><strong>Install FFmpeg</strong>: {escape(ffmpeg_hint)}.</li>"
-        )
+        steps.append(f"<li><strong>Install FFmpeg</strong>: {escape(ffmpeg_hint)}.</li>")
     if not status.setup.engine_binary_available:
-        steps.append(
-            f"<li><strong>Install a speech engine</strong>: {escape(engine_hint)}.</li>"
-        )
+        steps.append(f"<li><strong>Install a speech engine</strong>: {escape(engine_hint)}.</li>")
     if not status.setup.model_installed or not status.setup.engine_ready:
         steps.append(
             f"<li><strong>Download a model</strong> for this {escape(machine_label)}. "
@@ -420,18 +408,10 @@ def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessS
         if metrics.average_latency_ms is not None
         else "—"
     )
-    rtf_value = (
-        f"{metrics.real_time_factor:.2f}×"
-        if metrics.real_time_factor is not None
-        else "—"
-    )
+    rtf_value = f"{metrics.real_time_factor:.2f}×" if metrics.real_time_factor is not None else "—"
     rtf_detail = (
         f"{_format_latency(metrics.audio_duration_ms)} audio"
-        + (
-            f" · {metrics.peak_memory_mb:g} MB peak"
-            if metrics.peak_memory_mb is not None
-            else ""
-        )
+        + (f" · {metrics.peak_memory_mb:g} MB peak" if metrics.peak_memory_mb is not None else "")
         if metrics.real_time_factor is not None
         else "After first job"
     )
@@ -562,9 +542,7 @@ def _sparkline_card(
         else:
             latest_label = f"{latest:.2f}"
         peak = max(numeric)
-        peak_label = (
-            _format_latency(int(round(peak))) if unit_suffix == "ms" else f"{peak:g}"
-        )
+        peak_label = _format_latency(int(round(peak))) if unit_suffix == "ms" else f"{peak:g}"
         footer = f"Now {escape(latest_label)} · peak {escape(peak_label)}"
     else:
         footer = escape(empty)
@@ -627,9 +605,7 @@ def _sparkline_svg(
     )
 
 
-def _pipeline_chart(
-    metrics: OperationalMetricsStatus, rtf_value: str, rtf_detail: str
-) -> str:
+def _pipeline_chart(metrics: OperationalMetricsStatus, rtf_value: str, rtf_detail: str) -> str:
     stages = [
         ("Normalize", metrics.normalization_ms or 0, "ops-bar-normalize"),
         ("Load", metrics.model_load_ms or 0, "ops-bar-load"),
@@ -652,9 +628,7 @@ def _pipeline_chart(
             f'aria-label="Last pipeline {_format_latency(total)}">'
             f"{segs}</div>"
         )
-        footer = " · ".join(
-            f"{label} {_format_latency(ms)}" for label, ms, _ in stages if ms > 0
-        )
+        footer = " · ".join(f"{label} {_format_latency(ms)}" for label, ms, _ in stages if ms > 0)
         sub = f"RTF {rtf_value}" + (f" · {rtf_detail}" if rtf_detail else "")
     return f"""
       <article class="ops-chart">

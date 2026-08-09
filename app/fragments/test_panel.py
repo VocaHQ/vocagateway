@@ -7,7 +7,8 @@ def pair_and_test_fragment(pairing_html: str, maximum_duration_seconds: int) -> 
       <div class="page-head">
         <div>
           <h2>Pair &amp; test</h2>
-          <p>Connect the phone app with a QR, then record a short clip here to verify the same path the phone uses.</p>
+          <p>Connect the phone app with a QR, then record a short clip here to
+             verify the same path the phone uses.</p>
         </div>
       </div>
       {pairing_html}
@@ -21,7 +22,8 @@ def test_fragment(maximum_duration_seconds: int) -> str:
         <div class="section-heading">
           <h2>Test dictation</h2>
         </div>
-        <p class="muted">Uses this browser&rsquo;s microphone, then FFmpeg and the active engine (same path as the phone app).</p>
+        <p class="muted">Uses this browser&rsquo;s microphone, then FFmpeg and the
+           active engine (same path as the phone app).</p>
         <div class="test-controls" id="recorder-controls"
              data-maximum-seconds="{maximum_duration_seconds}">
           <label class="test-field">

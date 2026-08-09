@@ -275,9 +275,7 @@ def filtered_model_entries(
         entries = [entry for entry in entries if entry.state == "installed"]
     if languages:
         entries = [
-            entry
-            for entry in entries
-            if any(model_covers(entry, code) for code in languages)
+            entry for entry in entries if any(model_covers(entry, code) for code in languages)
         ]
     if families:
         allowed = set(families)

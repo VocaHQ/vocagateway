@@ -23,12 +23,12 @@ from app.schemas import (
 router = APIRouter(dependencies=[Depends(require_token)])
 
 # Repeated keys: family=Whisper&family=Parakeet (and the same for language/engine).
-LanguageQ = Annotated[list[str], Query()]
-FamilyQ = Annotated[list[str], Query()]
-EngineQ = Annotated[list[str], Query()]
-LanguageF = Annotated[list[str], Form()]
-FamilyF = Annotated[list[str], Form()]
-EngineF = Annotated[list[str], Form()]
+LanguageQ = Annotated[list[str] | None, Query()]
+FamilyQ = Annotated[list[str] | None, Query()]
+EngineQ = Annotated[list[str] | None, Query()]
+LanguageF = Annotated[list[str] | None, Form()]
+FamilyF = Annotated[list[str] | None, Form()]
+EngineF = Annotated[list[str] | None, Form()]
 
 
 def _models_list_html(
@@ -69,9 +69,9 @@ def _models_list_html(
 @router.get("/v1/admin/models", response_model=list[AdminModelEntry])
 async def get_admin_models(
     installed_only: bool = False,
-    language: LanguageQ = [],
-    family: FamilyQ = [],
-    engine: EngineQ = [],
+    language: LanguageQ = None,
+    family: FamilyQ = None,
+    engine: EngineQ = None,
     max_size: str = "",
     recommended_only: bool = False,
     ctx: GatewayContext = Depends(get_context),
@@ -171,9 +171,9 @@ async def ui_models(ctx: GatewayContext = Depends(get_context)) -> HTMLResponse:
 @router.get("/ui/partials/models-list", response_class=HTMLResponse)
 async def ui_models_list(
     installed_only: bool = False,
-    language: LanguageQ = [],
-    family: FamilyQ = [],
-    engine: EngineQ = [],
+    language: LanguageQ = None,
+    family: FamilyQ = None,
+    engine: EngineQ = None,
     max_size: str = "",
     recommended_only: bool = False,
     ctx: GatewayContext = Depends(get_context),
@@ -193,9 +193,9 @@ async def ui_models_list(
 async def ui_start_download(
     model_id: str,
     installed_only: bool = Form(False),
-    language: LanguageF = [],
-    family: FamilyF = [],
-    engine: EngineF = [],
+    language: LanguageF = None,
+    family: FamilyF = None,
+    engine: EngineF = None,
     max_size: str = Form(""),
     recommended_only: bool = Form(False),
     ctx: GatewayContext = Depends(get_context),
@@ -223,9 +223,9 @@ async def ui_start_download(
 async def ui_custom_download(
     url: str = Form(...),
     installed_only: bool = Form(False),
-    language: LanguageF = [],
-    family: FamilyF = [],
-    engine: EngineF = [],
+    language: LanguageF = None,
+    family: FamilyF = None,
+    engine: EngineF = None,
     max_size: str = Form(""),
     recommended_only: bool = Form(False),
     ctx: GatewayContext = Depends(get_context),
@@ -251,9 +251,9 @@ async def ui_custom_download(
 async def ui_cancel_download(
     model_id: str,
     installed_only: bool = Form(False),
-    language: LanguageF = [],
-    family: FamilyF = [],
-    engine: EngineF = [],
+    language: LanguageF = None,
+    family: FamilyF = None,
+    engine: EngineF = None,
     max_size: str = Form(""),
     recommended_only: bool = Form(False),
     ctx: GatewayContext = Depends(get_context),
@@ -274,9 +274,9 @@ async def ui_cancel_download(
 async def ui_delete_model(
     model_id: str,
     installed_only: bool = Form(False),
-    language: LanguageF = [],
-    family: FamilyF = [],
-    engine: EngineF = [],
+    language: LanguageF = None,
+    family: FamilyF = None,
+    engine: EngineF = None,
     max_size: str = Form(""),
     recommended_only: bool = Form(False),
     ctx: GatewayContext = Depends(get_context),
@@ -304,9 +304,9 @@ async def ui_delete_model(
 async def ui_select_model(
     model_id: str,
     installed_only: bool = Form(False),
-    language: LanguageF = [],
-    family: FamilyF = [],
-    engine: EngineF = [],
+    language: LanguageF = None,
+    family: FamilyF = None,
+    engine: EngineF = None,
     max_size: str = Form(""),
     recommended_only: bool = Form(False),
     ctx: GatewayContext = Depends(get_context),

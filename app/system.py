@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import os
 import platform
 import shutil
@@ -358,10 +359,8 @@ def _drm_amd_labels() -> list[str]:
         if vendor not in {"0x1002", "1002"}:
             continue
         name = ""
-        try:
+        with contextlib.suppress(OSError):
             name = label_path.read_text(encoding="utf-8").strip()
-        except OSError:
-            pass
         if not name:
             try:
                 for line in uevent_path.read_text(encoding="utf-8").splitlines():

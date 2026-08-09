@@ -50,7 +50,8 @@ def settings_fragment(
         <div class="section-heading">
           <h2>Speech engine</h2>
         </div>
-        <p class="muted">Local engine that transcribes audio. Choosing a model under Models usually sets this for you. Only engines this machine can run are listed.</p>
+        <p class="muted">Local engine that transcribes audio. Choosing a model under
+           Models usually sets this for you. Only engines this machine can run are listed.</p>
         <form hx-put="/ui/partials/config" hx-target="#engine-result" hx-swap="innerHTML">
           <div class="settings-grid">
             <label class="settings-field">
@@ -71,7 +72,9 @@ def settings_fragment(
                      value="{config.cpu_threads}" aria-describedby="threads-hint" />
             </label>
           </div>
-          <p id="threads-hint" class="muted small settings-hint">0 means automatic thread count. INT8 is usually fastest on Linux CPUs. VocaMac and Handy reuse those Mac apps and their own models.</p>
+          <p id="threads-hint" class="muted small settings-hint">0 means automatic
+             thread count. INT8 is usually fastest on Linux CPUs. VocaMac and Handy
+             reuse those Mac apps and their own models.</p>
           <div class="row settings-actions">
             <button type="submit" class="primary">Apply</button>
           </div>
@@ -83,7 +86,8 @@ def settings_fragment(
         <div class="section-heading">
           <h2>Network and storage</h2>
         </div>
-        <p class="muted">Where this process listens and where it keeps config and models on disk.</p>
+        <p class="muted">Where this process listens and where it keeps config and
+           models on disk.</p>
         <dl class="facts settings-facts">
           <dt>Listener</dt><dd><code>{listener}</code></dd>
           <dt>On this host</dt><dd><code>{local_url}</code></dd>
@@ -97,9 +101,13 @@ def settings_fragment(
         <div class="section-heading">
           <h2>This browser</h2>
         </div>
-        <p class="muted">Diagnostics are a redacted snapshot for bug reports (setup, dependencies, hardware, counters). No token, recordings, or transcripts. The gateway token lives only in this browser&rsquo;s storage.</p>
+        <p class="muted">Diagnostics are a redacted snapshot for bug reports
+           (setup, dependencies, hardware, counters). No token, recordings, or
+           transcripts. The gateway token lives only in this browser&rsquo;s storage.</p>
         <div class="row settings-actions">
-          <button id="download-diagnostics" type="button" class="ghost">Download diagnostics</button>
+          <button id="download-diagnostics" type="button" class="ghost">
+            Download diagnostics
+          </button>
           <button id="forget-token" type="button" class="ghost danger">Forget token</button>
         </div>
       </div>

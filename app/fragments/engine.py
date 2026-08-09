@@ -21,7 +21,8 @@ ENGINE_LABELS = {
 ENGINE_HINTS = {
     "auto": "Picks the fastest compatible local engine already installed on this machine.",
     "vocamac": (
-        "Optional Apple silicon Mac app. Reuses VocaMac's downloaded Core ML models via whisperkit-cli. No separate download."
+        "Optional Apple silicon Mac app. Reuses VocaMac's downloaded Core ML models "
+        "via whisperkit-cli. No separate download."
     ),
     "handy": (
         "Optional macOS app. Reuses the Handy app and its downloaded models. No separate download."
@@ -62,7 +63,7 @@ def _engine_status(
         f'<button type="button" id="engine-pill" class="{classes}"{swap_oob}'
         f' data-open-tab="models"'
         f' aria-label="Speech model {label}, {ready_label}. '
-        f"Listener {listener}. WebUI {local_url}. Opens Models.\""
+        f'Listener {listener}. WebUI {local_url}. Opens Models."'
         f' hx-get="/ui/partials/engine-pill" hx-trigger="every 5s" hx-swap="outerHTML">'
         f'<span class="dot {dot}" aria-hidden="true"></span>'
         f"<span>{label}</span>"
@@ -85,9 +86,7 @@ def engine_pill_fragment(
     return _engine_status(engine, bind_host=bind_host, port=port)
 
 
-def engine_pill_oob(
-    engine: EngineStatus, *, bind_host: str = "0.0.0.0", port: int = 8765
-) -> str:
+def engine_pill_oob(engine: EngineStatus, *, bind_host: str = "0.0.0.0", port: int = 8765) -> str:
     return _engine_status(engine, bind_host=bind_host, port=port, oob=True)
 
 
