@@ -162,17 +162,26 @@ CLI. The same Dockerfile builds on Linux `amd64` and `arm64`.
 
 ```sh
 umask 077
-printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" > .env
-printf 'VOCAGATEWAY_PUBLISH_HOST=127.0.0.1\n' >> .env
-printf 'VOCAGATEWAY_PUBLISH_PORT=8765\n' >> .env
+cp .env.example .env
+printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
 docker compose up --detach --build
 docker compose ps
 curl --fail http://127.0.0.1:8765/health/live
 ```
 
+[`.env.example`](.env.example) is the annotated template: it already sets the
+loopback publication defaults and comments out every other supported setting,
+so starting from it is how you find out what is tunable. Appending the token
+overrides the empty `VOCAGATEWAY_TOKEN=` placeholder it ships with — Compose
+takes the last assignment of a repeated key.
+
 The token is provided as a Compose secret rather than a container environment
 variable. Models, configuration, and the SQLite database persist in the
 `vocagateway_vocagateway-data` named volume mounted at `/data`.
+
+Before pairing a phone, read the bridge-network note below: on the default
+network the QR cannot auto-discover a reachable address, and
+`VOCAGATEWAY_PUBLIC_URL` in `.env` is what fixes it.
 
 The container is live before a model is installed, so `/health/ready` initially
 returns `503`. Open the WebUI, enter the token from `.env`, download/select a
@@ -190,12 +199,16 @@ firewall. Never expose port 8765 to the public internet.
 The default bridge network also hides the host's real LAN address from the
 gateway's own address auto-discovery (used for the pairing QR): the container
 only ever sees its private bridge IP, not the host's Wi-Fi/Ethernet interface.
-On Linux Docker Engine (not Docker Desktop on macOS/Windows), set
-`VOCAGATEWAY_NETWORK_MODE=host` in `.env` instead so the container shares the
-host's network namespace and discovery finds the real `192.168.x.x` address.
-This ignores `VOCAGATEWAY_PUBLISH_HOST`/`PORT` — the container binds directly on
-the host per `VOCAGATEWAY_BIND_HOST`/`VOCAGATEWAY_PORT`, so lock down port 8765
-with the host firewall first.
+Two ways out, both set in `.env`:
+
+- `VOCAGATEWAY_PUBLIC_URL=http://192.168.1.20:8765` names the address the phone
+  should use and skips discovery entirely. This works everywhere, including
+  Docker Desktop on macOS and Windows.
+- `VOCAGATEWAY_NETWORK_MODE=host`, on Linux Docker Engine only, shares the
+  host's network namespace so discovery finds the real `192.168.x.x` address by
+  itself. This ignores `VOCAGATEWAY_PUBLISH_HOST`/`PORT` — the container binds
+  directly on the host per `VOCAGATEWAY_BIND_HOST`/`VOCAGATEWAY_PORT`, so lock
+  down port 8765 with the host firewall first.
 
 ## WebUI
 
@@ -387,14 +400,28 @@ uv run vocaphone-server
 | `VOCAGATEWAY_CONFIG_FILE` | `~/.config/vocagateway/config.json` | `/data/config/config.json` | WebUI engine/model choice |
 | `VOCAGATEWAY_ENGINE` | `auto` | `auto` | `auto`, `vocamac`, `handy`, `mlx-audio`, `whisperkit`, `sherpa-onnx`, `faster-whisper`, `moonshine`, or `whisper.cpp` |
 | `VOCAGATEWAY_WHISPER_BINARY` | `/opt/homebrew/bin/whisper-cli` | `/usr/local/bin/whisper-cli` | `whisper.cpp` executable |
-| `VOCAGATEWAY_WHISPER_MODEL` | base model path | base model path | Fallback `whisper.cpp` model |
+| `VOCAGATEWAY_WHISPER_MODEL` | `~/.local/share/whisper.cpp/models/ggml-base.en.bin` | same, and normally absent | Fallback `whisper.cpp` model used only when no model is selected in the WebUI |
 | `VOCAGATEWAY_WHISPERKIT_BINARY` | `whisperkit-cli` | unavailable | WhisperKit executable |
 | `VOCAGATEWAY_VOCAMAC_APP` | `/Applications/VocaMac.app` | unavailable | Optional VocaMac app bundle |
 | `VOCAGATEWAY_VOCAMAC_MODEL` | unset | unset | Pin a VocaMac model instead of following the app's choice |
+| `VOCAGATEWAY_HANDY_BINARY` | `/Applications/Handy.app/Contents/MacOS/handy` | unavailable | Optional Handy application binary |
+| `VOCAGATEWAY_HANDY_MODEL` | unset | unset | Pin a Handy model (`owner/repository/model.gguf`) |
+| `VOCAGATEWAY_HANDY_FALLBACK_MODEL` | `handy-computer/whisper-base-gguf/whisper-base-Q8_0.gguf` | unavailable | Model used when the pinned Handy model is missing |
 | `VOCAGATEWAY_RETENTION_HOURS` | `24` | `24` | Failed-session retry retention |
 | `VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO` | `true` | `true` | Delete source/normalized audio after success |
+| `VOCAGATEWAY_PUBLIC_URL` | unset | unset | Address the pairing QR encodes, overriding auto-discovery |
+| `VOCAGATEWAY_PAIRING_URL` | unset | unset | Alias for `VOCAGATEWAY_PUBLIC_URL`, checked second |
+| `VOCAGATEWAY_DEBUG` | `false` | `false` | Serve the Swagger UI at `/docs` and the schema at `/openapi.json` |
 
-Compose-specific variables live in `.env`:
+Under Compose, `VOCAGATEWAY_BIND_HOST`, `PORT`, `ENGINE`, `RETENTION_HOURS`,
+`DELETE_SUCCESSFUL_AUDIO`, `PUBLIC_URL`, `PAIRING_URL`, and `DEBUG` are read
+from `.env` and passed into the container. `VOCAGATEWAY_TOKEN` becomes a
+Compose secret at `/run/secrets/vocagateway_token` rather than an environment
+variable. The remaining paths and binaries are fixed by the image to their
+container locations, and the macOS-only engine variables have no effect there.
+
+Compose-only variables, which the gateway process itself never reads, also live
+in `.env`:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |

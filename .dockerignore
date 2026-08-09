@@ -9,3 +9,19 @@ data
 *.sqlite*
 *.wav
 *.log
+
+# A populated .env holds the bearer token. No Dockerfile copies it, but keeping
+# it out of the build context means it is never sent to the daemon or captured
+# in a build cache layer.
+.env
+.envrc
+
+# Never needed by a build stage; .git in particular is large and changes on
+# every commit, which would invalidate the context for no reason.
+.git
+.gitignore
+.github
+docs
+scripts
+LICENSE
+justfile
