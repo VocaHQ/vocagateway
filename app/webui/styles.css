@@ -1826,10 +1826,33 @@ html[data-theme="dark"] .family-models-label {
   font-size: 0.82rem;
   font-weight: 600;
   width: fit-content;
+  max-width: 100%;
   list-style: none;
+  /* The summary now holds chips plus the "+N more" affordance, so it wraps as
+     a row instead of rendering as a single text run. */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 6px;
 }
 .model-languages > summary::-webkit-details-marker { display: none; }
 .model-languages > summary:hover { color: var(--text); }
+.model-language-preview {
+  display: contents;
+}
+/* Reads as the control; the chips beside it are the content. */
+.model-language-more,
+.model-language-less {
+  color: var(--accent);
+  white-space: nowrap;
+}
+.model-languages > summary:hover .model-language-more,
+.model-languages > summary:hover .model-language-less { color: var(--accent-hover); }
+.model-language-less { display: none; }
+/* Once open the full list is right below, so the preview would be duplication. */
+.model-languages[open] > summary .model-language-preview { display: none; }
+.model-languages[open] > summary .model-language-more { display: none; }
+.model-languages[open] > summary .model-language-less { display: inline; }
 .model-language-note { margin: 6px 0 8px; }
 .model-language-list {
   display: flex;

@@ -260,6 +260,11 @@ covers 25 European languages, while the English-only v2 spends all of its
 capacity on English and transcribes it more accurately. Pick v2 if you dictate
 only in English.
 
+Full per-model language coverage — all 58 models, and a reverse index from each
+of the 108 languages to the models that cover it — is in
+[models.md](docs/models.md). The WebUI Models tab shows the same per card, with
+a language filter.
+
 ### Fast model guide
 
 | Model | Best host | Download | Languages | Choose it when |

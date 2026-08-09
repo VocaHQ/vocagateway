@@ -745,7 +745,8 @@ async def test_recorder_ui_shows_limit_and_copy_action(
 
 def test_model_cards_name_their_languages() -> None:
     """ "25 European languages" does not tell anyone whether their language is in
-    there. The card names them, collapsed so the summary stays scannable.
+    there. The card names the first few inline so the common question is
+    answerable while scanning, and keeps the rest behind a "+N more" toggle.
 
     Driven off the real catalog rather than the stub the admin fixtures use, since
     the point is that shipped entries carry usable language metadata.
@@ -776,16 +777,20 @@ def test_model_cards_name_their_languages() -> None:
         )
 
     parakeet = card("sherpa-onnx:parakeet-tdt-0.6b-v3-int8")
-    assert "<summary>25 languages</summary>" in parakeet
-    assert 'class="model-language-chip">Bulgarian</span>' in parakeet
-    assert 'class="model-language-chip">Croatian</span>' in parakeet
-    assert 'class="model-language-chip">Czech</span>' in parakeet
+    parakeet_summary = parakeet.split("</summary>")[0]
+    # Named on the closed card, not hidden behind a bare count.
+    assert 'class="model-language-chip">Bulgarian</span>' in parakeet_summary
+    assert 'class="model-language-chip">Croatian</span>' in parakeet_summary
+    assert 'class="model-language-chip">Czech</span>' in parakeet_summary
+    assert "+21 more" in parakeet_summary
+    # The remaining 21 are still on the card, just below the toggle.
+    assert 'class="model-language-chip">Ukrainian</span>' in parakeet
     # A model that can be pinned carries neither the badge nor the caveat.
     assert "badge auto-language" not in parakeet
     assert "picks the language itself" not in parakeet
 
     dolphin = card("sherpa-onnx:dolphin-small-ctc-int8")
-    assert "<summary>40 languages</summary>" in dolphin
+    assert "+36 more" in dolphin.split("</summary>")[0]
     assert "Hindi" in dolphin and "Bengali" in dolphin and "Tamil" in dolphin
     assert 'class="badge auto-language"' in dolphin
     assert "picks the language itself" in dolphin
@@ -794,7 +799,7 @@ def test_model_cards_name_their_languages() -> None:
     # Whisper carries its full set too, and every code resolves to a real name
     # rather than leaking a bare "af, am, be" at the reader.
     whisper = card("whisper.cpp:ggml-large-v3-turbo.bin")
-    assert "<summary>100 languages</summary>" in whisper
+    assert "+96 more" in whisper.split("</summary>")[0]
     assert "Afrikaans" in whisper and "Hindi" in whisper
     assert 'class="model-language-chip">Afrikaans</span>' in whisper
     assert "badge auto-language" not in whisper
