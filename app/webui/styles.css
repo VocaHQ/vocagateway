@@ -886,6 +886,15 @@ html[data-theme="dark"] .filter-toggle:has(input:checked) { color: var(--accent)
   flex: 0 0 auto;
   width: 168px;
 }
+.model-custom-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.55rem;
+  margin: 12px 0 0;
+}
+.model-custom-links a { font-weight: 600; }
+
 .model-card .actions .row-actions { display: flex; gap: 6px; }
 .empty-state { color: var(--muted); padding: 26px 0; }
 .models-language-hint { margin-bottom: 18px; }

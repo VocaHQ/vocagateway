@@ -85,7 +85,7 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
       </div>
       <div class="card">
         <h2>Bring your own Whisper model</h2>
-        <p class="muted">Paste a direct HTTPS link to a <code>.bin</code> or <code>.gguf</code> file. It runs through the standalone engine.</p>
+        <p class="muted">Paste a direct HTTPS link to a <code>.bin</code> or <code>.gguf</code> file. It runs through the standalone engine. Use a <code>/resolve/</code> URL on Hugging Face, not the repo home page.</p>
         <form hx-post="/ui/partials/models/custom" hx-include="{MODEL_FILTER_INPUTS}"
               hx-target="#models-list" hx-swap="innerHTML">
           <div class="row">
@@ -94,8 +94,34 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
             <button type="submit" class="primary">Download</button>
           </div>
         </form>
+        <p class="muted small model-custom-links">
+          <a href="https://huggingface.co/ggerganov/whisper.cpp" target="_blank" rel="noopener noreferrer">Find ggml models on Hugging Face</a>
+          <span aria-hidden="true">·</span>
+          <a href="https://huggingface.co/models?pipeline_tag=automatic-speech-recognition&amp;library=gguf&amp;sort=trending" target="_blank" rel="noopener noreferrer">Browse GGUF speech models</a>
+          <span aria-hidden="true">·</span>
+          <a href="{_request_model_issue_url()}" target="_blank" rel="noopener noreferrer">Request a catalog model</a>
+        </p>
       </div>
     """
+
+
+def _request_model_issue_url() -> str:
+    """Pre-filled GitHub issue to ask for a new catalog entry on vocagateway."""
+    title = "Request: add a speech model to the catalog"
+    body = """## Model request
+
+**Name / id:**
+**Engine** (sherpa-onnx, faster-whisper, whisper.cpp, moonshine, mlx-audio, other):
+**Download URL** (direct file or official release):
+**Languages:**
+**Why it should ship in the catalog:**
+
+Thanks.
+"""
+    return (
+        "https://github.com/VocaHQ/vocagateway/issues/new"
+        f"?title={quote(title)}&body={quote(body)}"
+    )
 
 
 def _language_filter_options() -> str:
