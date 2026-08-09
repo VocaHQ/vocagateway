@@ -128,7 +128,7 @@ async def start_custom_download(
     body: CustomDownloadRequest, ctx: GatewayContext = Depends(get_context)
 ) -> DownloadResponse:
     try:
-        state = ctx.manager.start_custom_download(body.url)
+        state = ctx.manager.start_custom_download(body.url, body.sha256)
     except ValueError as error:
         raise APIProblem(422, "invalid_model_url", str(error)) from error
     except DownloadInProgressError as error:
@@ -243,6 +243,7 @@ async def ui_start_download(
 @router.post("/ui/partials/models/custom", response_class=HTMLResponse)
 async def ui_custom_download(
     url: str = Form(...),
+    sha256: str = Form(""),
     installed_only: BoolF = False,
     language: LanguageF = None,
     family: FamilyF = None,
@@ -252,7 +253,7 @@ async def ui_custom_download(
     ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     try:
-        ctx.manager.start_custom_download(url)
+        ctx.manager.start_custom_download(url, sha256)
     except ValueError as error:
         raise APIProblem(422, "invalid_model_url", str(error)) from error
     except DownloadInProgressError as error:

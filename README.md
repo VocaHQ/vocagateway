@@ -220,7 +220,8 @@ The authenticated WebUI provides:
 - hardware-aware model recommendations and disk-size/RAM guidance
 - background downloads with scoped progress polling and cancellation
 - model selection/deletion and persistent engine settings
-- custom `.bin`/`.gguf` model downloads from HTTPS URLs
+- custom `.bin`/`.gguf` model downloads from HTTPS URLs, with an optional
+  SHA-256 box that rejects the file unless it matches
 - one-run or three-run microphone benchmarks with normalization, model-load,
   inference, real-time-factor, and peak-memory results
 - selected engine/model and readiness/warmup status
@@ -279,6 +280,67 @@ both Parakeet variants use CC BY 4.0; the quantized MLX Whisper model inherits
 Whisper's MIT license; Dolphin, Qwen3-ASR, and Granite Speech are Apache 2.0.
 Review the license shown on each model card before
 redistributing weights.
+
+## Model download integrity
+
+Every catalog download is pinned and verified. Each entry in
+[`app/model_pins.json`](app/model_pins.json) records the Hugging Face commit a
+model is fetched from and the SHA-256 of its files; the gateway hashes each
+file as it streams and discards anything that does not match, so a rejected
+model is never left on disk for an engine to load.
+
+Be clear about what this does and does not buy you:
+
+| Threat | Handled by |
+| --- | --- |
+| Network attacker swapping bytes in flight | TLS — every download is HTTPS with certificate verification, and non-HTTPS custom URLs are refused outright |
+| Upstream repo or account compromise serving altered weights | **Pinned digests**, because the attacker is the origin and its certificate is perfectly valid |
+| Silent re-upload changing a model under an existing catalog entry | **Pinned commits**, which stop downloads tracking `main` |
+| Truncated or corrupted transfer | Digest verification, which also fixes the partially-downloaded-model failure mode |
+
+The pinned digest always wins over the digest Hugging Face reports at download
+time. That ordering is the point: metadata fetched from a compromised host
+would agree with the compromised file, so only a digest reviewed in git is
+evidence of anything.
+
+Model weights are executed by ONNX, GGUF, and Core ML runtimes, so a swapped
+model is a code-execution concern rather than just a bad transcript.
+
+### Coverage
+
+40 of 58 catalog models are pinned, covering every Hugging Face source. The
+remainder cannot be pinned from published metadata:
+
+- **13 Moonshine models** are downloaded by the `moonshine_voice` library
+  rather than by the gateway, so their transfer is outside our control.
+- **3 Handy-mirrored models** on `blob.handy.computer` return a multipart S3
+  ETag, which is not a digest of the file content.
+- **2 sherpa-onnx release tarballs** on GitHub publish no checksum.
+
+The last five can be pinned by hashing them locally, which transfers about
+3.5 GB:
+
+```sh
+uv run scripts/harvest-model-pins.py --download-unpinnable
+```
+
+Unpinned models still download normally over HTTPS; they simply get no
+digest check. Nothing is silently downgraded — a pinned model that fails
+verification fails the download.
+
+### Refreshing pins
+
+When upstream legitimately re-uploads a model, its pinned download starts
+failing until the pin is updated. That is intentional: the change becomes a
+reviewable diff instead of a silent swap.
+
+```sh
+uv run scripts/harvest-model-pins.py                    # all free sources
+uv run scripts/harvest-model-pins.py --only whisperkit:  # one family
+```
+
+Review the resulting diff as carefully as code. A changed digest means the
+upstream bytes changed, and the commit message should say why.
 
 ## Engine selection
 

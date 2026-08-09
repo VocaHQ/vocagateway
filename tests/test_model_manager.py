@@ -12,8 +12,11 @@ from app import model_manager
 from app.catalog import DEFAULT_CATALOG, CatalogModel
 from app.model_manager import (
     DownloadInProgressError,
+    ModelIntegrityError,
     ModelManager,
+    RepoFile,
     UnknownModelError,
+    normalize_sha256,
 )
 
 TINY_FILE = CatalogModel(
@@ -340,7 +343,10 @@ async def test_whisperkit_folder_download(
     monkeypatch.setattr(
         model_manager,
         "_list_repo_folder",
-        lambda repo, name: [("config.json", 2), ("AudioEncoder.mlmodelc/model.mil", 3)],
+        lambda repo, name, revision="main": [
+            RepoFile("config.json", 2),
+            RepoFile("AudioEncoder.mlmodelc/model.mil", 3),
+        ],
     )
 
     state = manager.start_download("whisperkit:openai_whisper-tiny")
@@ -367,7 +373,10 @@ async def test_root_huggingface_folder_download(
     monkeypatch.setattr(
         model_manager,
         "_list_repo_folder",
-        lambda repo, name: [("config.json", 2), ("model.bin", 5)],
+        lambda repo, name, revision="main": [
+            RepoFile("config.json", 2),
+            RepoFile("model.bin", 5),
+        ],
     )
 
     state = manager.start_download("faster-whisper:tiny.en")
@@ -455,10 +464,10 @@ async def test_sherpa_huggingface_download_fetches_only_required_files(
     monkeypatch.setattr(
         model_manager,
         "_list_repo_folder",
-        lambda repo, name: [
-            ("model.int8.onnx", 10),
-            ("tokens.txt", 5),
-            ("README.md", 999),
+        lambda repo, name, revision="main": [
+            RepoFile("model.int8.onnx", 10),
+            RepoFile("tokens.txt", 5),
+            RepoFile("README.md", 999),
         ],
     )
 
@@ -529,3 +538,251 @@ async def _wait_finished(manager: ModelManager, model_id: str) -> None:
         if state.status != "downloading":
             return
         await asyncio.sleep(0.01)
+
+
+# --------------------------------------------------------------- integrity
+
+HELLO_SHA256 = "3b96f0f0e0e34e6d1b8bfe4f8ac71bfad9d0f8dd15b4ae0b8b1e4f4c4a0ac0b1"
+"""Deliberately wrong digest for `b"hello model"`, used to force a rejection."""
+
+
+def _sha256(data: bytes) -> str:
+    import hashlib
+
+    return hashlib.sha256(data).hexdigest()
+
+
+def test_normalize_sha256_accepts_prefixed_and_uppercase() -> None:
+    digest = _sha256(b"hello model")
+    assert normalize_sha256(f"  SHA256:{digest.upper()}  ") == digest
+
+
+@pytest.mark.parametrize("value", ["", "nope", "abc123", "g" * 64, "a" * 63, "a" * 65])
+def test_normalize_sha256_rejects_malformed(value: str) -> None:
+    with pytest.raises(ValueError):
+        normalize_sha256(value)
+
+
+async def test_single_file_download_accepts_matching_digest(
+    tmp_path: Path, tiny_file_model: CatalogModel
+) -> None:
+    model = dataclasses.replace(tiny_file_model, sha256=_sha256(b"hello model"))
+    manager = ModelManager(tmp_path / "models", catalog=(model,))
+
+    manager.start_download(model.id)
+    await asyncio.wait_for(_wait_finished(manager, model.id), timeout=5)
+
+    state = manager.download_state(model.id)
+    assert state is not None and state.status == "completed"
+    installed = manager.installed_path(model.id)
+    assert installed is not None and installed.read_bytes() == b"hello model"
+
+
+async def test_single_file_download_rejects_wrong_digest_and_keeps_nothing(
+    tmp_path: Path, tiny_file_model: CatalogModel
+) -> None:
+    model = dataclasses.replace(tiny_file_model, sha256=HELLO_SHA256)
+    manager = ModelManager(tmp_path / "models", catalog=(model,))
+
+    manager.start_download(model.id)
+    await asyncio.wait_for(_wait_finished(manager, model.id), timeout=5)
+
+    state = manager.download_state(model.id)
+    assert state is not None
+    assert state.status == "failed"
+    assert "SHA-256" in (state.error or "")
+    # The whole point: a model that failed verification must not be installed,
+    # and no partial file may survive for an engine to pick up later.
+    assert manager.installed_path(model.id) is None
+    assert not (manager.models_dir / "whisper.cpp" / "ggml-tiny.bin").exists()
+    assert not (manager.models_dir / "whisper.cpp" / "ggml-tiny.bin.partial").exists()
+
+
+async def test_folder_download_rejects_a_tampered_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A digest supplied by the repo listing is enforced during the transfer."""
+    mirror = tmp_path / "mirror"
+    folder = mirror / "example/repo/resolve/main/openai_whisper-tiny"
+    folder.mkdir(parents=True)
+    (folder / "config.json").write_text("{}")
+    (folder / "weights.bin").write_bytes(b"tampered-bytes")
+    monkeypatch.setattr(model_manager, "HF_BASE_URL", mirror.as_uri())
+    monkeypatch.setattr(
+        model_manager,
+        "_list_repo_folder",
+        lambda repo, name, revision="main": [
+            RepoFile("config.json", 2, _sha256(b"{}")),
+            RepoFile("weights.bin", 14, _sha256(b"the-bytes-we-expected")),
+        ],
+    )
+    manager = ModelManager(tmp_path / "models", catalog=(TINY_FOLDER,))
+
+    manager.start_download(TINY_FOLDER.id)
+    await asyncio.wait_for(_wait_finished(manager, TINY_FOLDER.id), timeout=5)
+
+    state = manager.download_state(TINY_FOLDER.id)
+    assert state is not None and state.status == "failed"
+    assert manager.installed_path(TINY_FOLDER.id) is None
+    assert not (manager.models_dir / "whisperkit" / "openai_whisper-tiny.partial").exists()
+
+
+async def test_catalog_digest_overrides_the_listing_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pinned digest must win over whatever the API reports.
+
+    Otherwise a compromised upstream could serve altered bytes together with
+    matching metadata and the verification would happily agree with itself.
+    """
+    mirror = tmp_path / "mirror"
+    folder = mirror / "example/repo/resolve/main/openai_whisper-tiny"
+    folder.mkdir(parents=True)
+    (folder / "config.json").write_bytes(b"upstream-swapped")
+    monkeypatch.setattr(model_manager, "HF_BASE_URL", mirror.as_uri())
+    monkeypatch.setattr(
+        model_manager,
+        "_list_repo_folder",
+        # The listing vouches for the swapped bytes; the catalog does not.
+        lambda repo, name, revision="main": [
+            RepoFile("config.json", 16, _sha256(b"upstream-swapped"))
+        ],
+    )
+    model = dataclasses.replace(
+        TINY_FOLDER, file_digests=(("config.json", _sha256(b"the-reviewed-bytes")),)
+    )
+    manager = ModelManager(tmp_path / "models", catalog=(model,))
+
+    manager.start_download(model.id)
+    await asyncio.wait_for(_wait_finished(manager, model.id), timeout=5)
+
+    state = manager.download_state(model.id)
+    assert state is not None and state.status == "failed"
+    assert manager.installed_path(model.id) is None
+
+
+async def test_custom_download_rejects_wrong_user_supplied_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source.gguf"
+    source.write_bytes(b"custom-model-bytes")
+    manager = ModelManager(tmp_path / "models", catalog=())
+    monkeypatch.setattr(model_manager, "_validate_custom_url", lambda url: "my-model.gguf")
+
+    manager.start_custom_download(source.as_uri(), HELLO_SHA256)
+    await asyncio.wait_for(_wait_finished(manager, "custom:my-model.gguf"), timeout=5)
+
+    state = manager.download_state("custom:my-model.gguf")
+    assert state is not None and state.status == "failed"
+    assert not (manager.models_dir / "whisper.cpp" / "my-model.gguf").exists()
+
+
+async def test_custom_download_accepts_matching_user_supplied_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source.gguf"
+    source.write_bytes(b"custom-model-bytes")
+    manager = ModelManager(tmp_path / "models", catalog=())
+    monkeypatch.setattr(model_manager, "_validate_custom_url", lambda url: "my-model.gguf")
+
+    manager.start_custom_download(source.as_uri(), _sha256(b"custom-model-bytes"))
+    await asyncio.wait_for(_wait_finished(manager, "custom:my-model.gguf"), timeout=5)
+
+    state = manager.download_state("custom:my-model.gguf")
+    assert state is not None and state.status == "completed"
+
+
+def test_custom_download_rejects_malformed_digest_before_starting(tmp_path: Path) -> None:
+    manager = ModelManager(tmp_path / "models", catalog=())
+    with pytest.raises(ValueError):
+        manager.start_custom_download("https://example.com/model.gguf", "not-a-digest")
+
+
+async def test_archive_download_rejects_wrong_archive_digest(tmp_path: Path) -> None:
+    archive = tmp_path / "model.tar.bz2"
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:bz2") as handle:
+        payload = b"onnx"
+        info = tarfile.TarInfo("model-root/model.onnx")
+        info.size = len(payload)
+        handle.addfile(info, io.BytesIO(payload))
+    archive.write_bytes(buffer.getvalue())
+    model = dataclasses.replace(
+        SHERPA_TEST,
+        archive_url=archive.as_uri(),
+        archive_root="model-root",
+        required_files=("model.onnx",),
+        sha256=HELLO_SHA256,
+    )
+    manager = ModelManager(tmp_path / "models", catalog=(model,))
+
+    manager.start_download(model.id)
+    await asyncio.wait_for(_wait_finished(manager, model.id), timeout=5)
+
+    state = manager.download_state(model.id)
+    assert state is not None and state.status == "failed"
+    assert "SHA-256" in (state.error or "")
+    assert manager.installed_path(model.id) is None
+
+
+def test_pinned_catalog_revisions_reach_the_download_url() -> None:
+    """Pins must change the bytes actually fetched, not just be metadata."""
+    from app.catalog import pin_download_url
+
+    pinned = [m for m in DEFAULT_CATALOG if m.revision]
+    assert pinned, "expected the shipped pin file to cover part of the catalog"
+    for model in pinned:
+        if model.download_url and "huggingface.co/" in model.download_url:
+            assert "/resolve/main/" not in model.download_url
+            assert f"/resolve/{model.revision}/" in model.download_url
+
+    assert (
+        pin_download_url("https://huggingface.co/o/r/resolve/main/f.bin", "abc123")
+        == "https://huggingface.co/o/r/resolve/abc123/f.bin"
+    )
+    # Non-Hugging-Face URLs are left alone; they have no revision concept.
+    assert pin_download_url("https://example.com/f.bin", "abc") == "https://example.com/f.bin"
+    assert pin_download_url(None, "abc") is None
+
+
+def test_shipped_pin_file_is_well_formed() -> None:
+    from app.catalog import load_pins
+
+    pins = load_pins()
+    # A missing or emptied pin file degrades verification to a no-op without
+    # any runtime error, so the floor is asserted here instead: losing pins in
+    # packaging or a bad regeneration has to fail CI, not ship quietly.
+    assert len(pins) >= 35, f"pin coverage collapsed to {len(pins)} models"
+    catalog_ids = {model.id for model in DEFAULT_CATALOG}
+    for model_id, record in pins.items():
+        assert model_id in catalog_ids, f"pin for unknown model {model_id}"
+        if "sha256" in record:
+            assert normalize_sha256(record["sha256"]) == record["sha256"]
+        for name, digest in record.get("file_digests", {}).items():
+            assert normalize_sha256(digest) == digest, f"{model_id}:{name}"
+
+
+def test_download_file_raises_and_removes_the_file_on_mismatch(tmp_path: Path) -> None:
+    """The low-level guarantee every other integrity test depends on."""
+    import threading
+
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"real-bytes")
+    destination = tmp_path / "out.bin"
+    state = model_manager.DownloadState(model_id="t")
+
+    with pytest.raises(ModelIntegrityError) as caught:
+        model_manager._download_file(
+            source.as_uri(), destination, state, threading.Event(), "out.bin", HELLO_SHA256
+        )
+
+    assert "failed SHA-256 verification" in str(caught.value)
+    assert not destination.exists()
+
+    # With no expectation supplied the digest is still returned, which is what
+    # lets the folder path verify against a listing it fetched separately.
+    digest = model_manager._download_file(
+        source.as_uri(), destination, state, threading.Event(), "out.bin"
+    )
+    assert digest == _sha256(b"real-bytes")
+    assert destination.read_bytes() == b"real-bytes"

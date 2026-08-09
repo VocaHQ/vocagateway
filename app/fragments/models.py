@@ -171,7 +171,16 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
                        placeholder="https://huggingface.co/&hellip;/resolve/main/model.gguf" />
                 <button type="submit" class="primary">Download</button>
               </div>
+              <div class="row">
+                <input name="sha256" type="text" spellcheck="false"
+                       pattern="\\s*(?:[Ss][Hh][Aa]256:)?[0-9a-fA-F]{{64}}\\s*"
+                       title="64 hexadecimal characters, optionally prefixed with sha256:"
+                       placeholder="Optional SHA-256 from the model card (verified on download)" />
+              </div>
             </form>
+            <p class="muted small">Catalog models are verified automatically. For
+               your own URL, paste the digest the model card publishes and the
+               download is discarded unless it matches.</p>
             <p class="muted small model-custom-links">
               <a href="https://huggingface.co/models?pipeline_tag=automatic-speech-recognition&amp;library=gguf&amp;sort=trending"
                  target="_blank" rel="noopener noreferrer">Browse GGUF speech models</a>

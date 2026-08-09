@@ -1,8 +1,17 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, replace
+from pathlib import Path
+from typing import Any
 
 from app.system import SystemInfo
+
+# Integrity pins live beside the catalog rather than inline in the model table
+# because they are machine-generated (scripts/harvest-model-pins.py) while the
+# table is hand-written. Keeping them apart means regenerating pins produces a
+# diff of nothing but digests, which is what makes them reviewable.
+PINS_PATH = Path(__file__).parent / "model_pins.json"
 
 ENGINE_WHISPER_CPP = "whisper.cpp"
 ENGINE_WHISPERKIT = "whisperkit"
@@ -45,6 +54,20 @@ class CatalogModel:
     archive_url: str | None = None
     archive_root: str | None = None
     required_files: tuple[str, ...] = ()
+    # Hugging Face commit to download from. Pinning a commit rather than
+    # tracking `main` means the bytes cannot change under an existing catalog
+    # entry: a re-upload upstream becomes a visible, reviewable catalog change
+    # instead of a silent swap. `None` falls back to `main`.
+    revision: str | None = None
+    # Expected SHA-256 of the single file behind `download_url`, or of the
+    # archive behind `archive_url`. Pinned here in git so verification survives
+    # a compromised upstream, which TLS alone cannot defend against — the
+    # attacker would be the origin and the certificate would be valid.
+    sha256: str | None = None
+    # (relative path, SHA-256) for models fetched as an explicit file list.
+    # Paths are relative to the extracted archive root or the repo folder, and
+    # need not cover every file; whatever is listed is enforced.
+    file_digests: tuple[tuple[str, str], ...] = ()
     model_type: str | None = None
     language_codes: tuple[str, ...] = ()
     apple_silicon_only: bool = False
@@ -52,6 +75,67 @@ class CatalogModel:
     # `language_codes` then means "these are transcribed well", not "you may choose
     # one of these" — the app's language setting cannot constrain the result.
     detects_language_automatically: bool = False
+
+
+def load_pins(path: Path = PINS_PATH) -> dict[str, dict[str, Any]]:
+    """Read the generated integrity pins, tolerating their absence.
+
+    A missing or unreadable pin file degrades to "nothing is pinned" rather
+    than breaking startup: verification is a safety net over an already-TLS
+    -protected download, so losing it must not take the gateway offline.
+    """
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    models = payload.get("models") if isinstance(payload, dict) else None
+    return models if isinstance(models, dict) else {}
+
+
+def pin_download_url(url: str | None, revision: str | None) -> str | None:
+    """Point a Hugging Face `/resolve/main/` URL at a specific commit.
+
+    Single-file entries carry a full URL rather than a repo plus path, so the
+    revision has to be substituted into the URL itself; without this the
+    digest would be pinned while the bytes it names still tracked `main`.
+    """
+    if not url or not revision:
+        return url
+    marker = "/resolve/main/"
+    if "huggingface.co/" not in url or marker not in url:
+        return url
+    return url.replace(marker, f"/resolve/{revision}/", 1)
+
+
+def apply_pins(
+    catalog: tuple[CatalogModel, ...], pins: dict[str, dict[str, Any]] | None = None
+) -> tuple[CatalogModel, ...]:
+    """Attach revisions and digests from the pin file to catalog entries."""
+    records = load_pins() if pins is None else pins
+    if not records:
+        return catalog
+    pinned: list[CatalogModel] = []
+    for model in catalog:
+        record = records.get(model.id)
+        if not isinstance(record, dict):
+            pinned.append(model)
+            continue
+        digests = record.get("file_digests")
+        revision = record.get("revision") or model.revision
+        pinned.append(
+            replace(
+                model,
+                revision=revision,
+                sha256=record.get("sha256") or model.sha256,
+                download_url=pin_download_url(model.download_url, revision),
+                file_digests=(
+                    tuple(sorted((str(k), str(v)) for k, v in digests.items()))
+                    if isinstance(digests, dict) and digests
+                    else model.file_digests
+                ),
+            )
+        )
+    return tuple(pinned)
 
 
 def _whisper_cpp(
@@ -551,7 +635,7 @@ _MOONSHINE_LANGUAGE_NAMES = {
 }
 
 
-DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
+_BASE_CATALOG: tuple[CatalogModel, ...] = (
     _sherpa_onnx(
         "sensevoice-small-int8",
         "SenseVoice Small INT8",
@@ -1099,6 +1183,8 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         "ggml-large-v3.bin", "whisper.cpp Large v3", 3 * GB, "Multilingual", "Most accurate", 24
     ),
 )
+
+DEFAULT_CATALOG: tuple[CatalogModel, ...] = apply_pins(_BASE_CATALOG)
 
 
 def catalog_by_id(catalog: tuple[CatalogModel, ...] = DEFAULT_CATALOG) -> dict[str, CatalogModel]:

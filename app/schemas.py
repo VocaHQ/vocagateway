@@ -195,6 +195,10 @@ class CustomDownloadRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     url: str = Field(min_length=12, max_length=2000)
+    # Optional: a model card's published SHA-256. When given, the download is
+    # discarded unless it matches, which is the only integrity guarantee
+    # available for a URL the catalog does not vouch for.
+    sha256: str | None = Field(default=None, max_length=71)
 
 
 class DeviceTokenEntry(BaseModel):
