@@ -387,11 +387,17 @@ def _onboarding_steps(
         steps.append(f"<li><strong>Install FFmpeg</strong>: {escape(ffmpeg_hint)}.</li>")
     if not status.setup.engine_binary_available:
         steps.append(f"<li><strong>Install a speech engine</strong>: {escape(engine_hint)}.</li>")
-    if not status.setup.model_installed or not status.setup.engine_ready:
+    if not status.setup.model_installed:
         steps.append(
             f"<li><strong>Download a model</strong> for this {escape(machine_label)}. "
             'Open <button type="button" class="text-link" data-open-tab="models">Models</button> '
             "and pick a recommended one.</li>"
+        )
+    elif not status.setup.engine_ready:
+        steps.append(
+            "<li><strong>Select a model</strong> you already have. "
+            'Open <button type="button" class="text-link" data-open-tab="models">Models</button> '
+            "and activate one.</li>"
         )
     steps.append(
         "<li><strong>Pair your phone</strong>: "
