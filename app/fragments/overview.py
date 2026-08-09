@@ -53,9 +53,9 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
           </div>
         </div>
       </section>
+      {operations_fragment(status.metrics, status.readiness)}
       {exposure_notice}
       {onboarding}
-      {operations_fragment(status.metrics, status.readiness)}
     """
 
 
