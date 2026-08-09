@@ -36,7 +36,7 @@ def serve() -> None:
     host = settings.bind_host
     token_path = settings.token_file_display
     token_source = "(from VOCAPHONE_TOKEN)" if _token_from_env() else token_path
-    print(f"vocaphone gateway listening on {format_host_port(host, settings.port)}")
+    print(f"VocaGateway listening on {format_host_port(host, settings.port)}")
     print(f"WebUI (this host): {local_webui_url(host, settings.port)}")
     if host in WILDCARD_BIND_HOSTS:
         print("Network access: use this host's LAN or Tailscale IP with the same port")

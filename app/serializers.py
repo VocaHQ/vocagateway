@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from app.metrics import MetricsSnapshot
-from app.schemas import AdminModelEntry, OperationalMetricsStatus, SessionResponse
+from app.schemas import (
+    AdminModelEntry,
+    MetricsHistoryPoint,
+    OperationalMetricsStatus,
+    SessionResponse,
+)
 from app.storage import StoredSession
 
 
@@ -37,6 +42,17 @@ def metrics_status(metrics: MetricsSnapshot) -> OperationalMetricsStatus:
         audio_duration_ms=pipeline.audio_duration_ms if pipeline else None,
         real_time_factor=pipeline.real_time_factor if pipeline else None,
         peak_memory_mb=pipeline.peak_memory_mb if pipeline else None,
+        history=[
+            MetricsHistoryPoint(
+                uptime_seconds=point.uptime_seconds,
+                queue_depth=point.queue_depth,
+                active_transcriptions=point.active_transcriptions,
+                last_latency_ms=point.last_latency_ms,
+                successful_transcriptions=point.successful_transcriptions,
+                failed_transcriptions=point.failed_transcriptions,
+            )
+            for point in metrics.history
+        ],
     )
 
 

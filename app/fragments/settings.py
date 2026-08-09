@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from html import escape
 
-from app.config import WILDCARD_BIND_HOSTS, format_host_port, local_webui_url
+from app.config import format_host_port, local_webui_url
 from app.fragments.engine import ENGINE_HINTS, _engine_option_label
 from app.fragments.shared import _facts, _select_options
 from app.schemas import ConfigResponse
@@ -38,70 +38,77 @@ def settings_fragment(
         ],
         config.compute_type,
     )
-    exposure_notice = ""
-    if bind_host in WILDCARD_BIND_HOSTS:
-        exposure_notice = """
-          <div class="callout warning compact">
-            <strong>All-interface listener</strong>
-            <span>Devices on reachable networks can contact the gateway. They still need
-              the bearer token for transcription and administration.</span>
-          </div>
-        """
     return f"""
-      <div class="card">
-        <h2>Speech engine</h2>
-        <p class="muted">Which local engine transcribes incoming audio. Selecting a
-          model in the Models tab sets this for you. Only engines this host can run
-          are listed; the VocaMac and Handy entries reuse those Mac apps and their
-          own downloaded models.</p>
+      <div class="page-head">
+        <div>
+          <h2>Settings</h2>
+          <p>Engine, network paths, device tokens, and browser tools for this gateway.</p>
+        </div>
+      </div>
+
+      <div class="card" id="engine-settings-card">
+        <div class="section-heading">
+          <h2>Speech engine</h2>
+        </div>
+        <p class="muted">Local engine that transcribes audio. Choosing a model under
+           Models usually sets this for you. Only engines this machine can run are listed.</p>
         <form hx-put="/ui/partials/config" hx-target="#engine-result" hx-swap="innerHTML">
           <div class="settings-grid">
-            <label><span>Engine</span>
-            <select name="engine">{options}</select>
+            <label class="settings-field">
+              <span>Engine</span>
+              <select name="engine">{options}</select>
             </label>
-            <label><span>Compute device</span>
-              <select name="compute_device">
-                {device_options}
-              </select>
+            <label class="settings-field">
+              <span>Compute device</span>
+              <select name="compute_device">{device_options}</select>
             </label>
-            <label><span>Precision</span>
-              <select name="compute_type">
-                {precision_options}
-              </select>
+            <label class="settings-field">
+              <span>Precision</span>
+              <select name="compute_type">{precision_options}</select>
             </label>
-            <label><span>CPU threads</span>
+            <label class="settings-field">
+              <span>CPU threads</span>
               <input name="cpu_threads" type="number" min="0" max="256"
                      value="{config.cpu_threads}" aria-describedby="threads-hint" />
             </label>
           </div>
-          <p id="threads-hint" class="muted small">
-            Use 0 for an automatic, conservative thread count.
-            INT8 is normally fastest on Linux CPUs.</p>
-          <div class="row">
+          <p id="threads-hint" class="muted small settings-hint">0 means automatic
+             thread count. INT8 is usually fastest on Linux CPUs. VocaMac and Handy
+             reuse those Mac apps and their own models.</p>
+          <div class="row settings-actions">
             <button type="submit" class="primary">Apply</button>
           </div>
         </form>
-        <p id="engine-result" class="muted">{hint}</p>
+        <p id="engine-result" class="muted settings-engine-result">{hint}</p>
       </div>
-      <div class="card">
-        <h2>Network and storage</h2>
-        <dl class="facts">
-          <dt>Listener</dt><dd>{listener}</dd>
-          <dt>On this host</dt><dd>{local_url}</dd>
+
+      <div class="card" id="network-settings-card">
+        <div class="section-heading">
+          <h2>Network and storage</h2>
+        </div>
+        <p class="muted">Where this process listens and where it keeps config and
+           models on disk.</p>
+        <dl class="facts settings-facts">
+          <dt>Listener</dt><dd><code>{listener}</code></dd>
+          <dt>On this host</dt><dd><code>{local_url}</code></dd>
           {facts}
         </dl>
-        {exposure_notice}
       </div>
+
       {tokens_html}
-      <div class="card">
-        <h2>This browser</h2>
-        <p class="muted">Diagnostics are a redacted snapshot of setup, dependencies, hardware
-          and counters for a bug report &mdash; never the token, recordings or transcripts.
-          The token itself is stored only here, in this browser.</p>
-        <div class="row">
+
+      <div class="card" id="browser-settings-card">
+        <div class="section-heading">
+          <h2>This browser</h2>
+        </div>
+        <p class="muted">Diagnostics are a redacted snapshot for bug reports
+           (setup, dependencies, hardware, counters). No token, recordings, or
+           transcripts. The gateway token lives only in this browser&rsquo;s storage.</p>
+        <div class="row settings-actions">
           <button id="download-diagnostics" type="button" class="ghost">
-            Download diagnostics</button>
-          <button id="forget-token" class="ghost">Forget token</button>
+            Download diagnostics
+          </button>
+          <button id="forget-token" type="button" class="ghost danger">Forget token</button>
         </div>
       </div>
     """

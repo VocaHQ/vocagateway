@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from html import escape
 
+from app.config import format_host_port, local_webui_url
 from app.schemas import EngineStatus
 from app.system import engine_requirement
 
@@ -18,20 +19,20 @@ ENGINE_LABELS = {
 }
 
 ENGINE_HINTS = {
-    "auto": "Uses the fastest compatible installed local engine for this machine.",
+    "auto": "Picks the fastest compatible local engine already installed on this machine.",
     "vocamac": (
-        "Optional Apple silicon Mac app. Reuses VocaMac's downloaded Core ML "
-        "models through whisperkit-cli. No download needed."
+        "Optional Apple silicon Mac app. Reuses VocaMac's downloaded Core ML models "
+        "via whisperkit-cli. No separate download."
     ),
     "handy": (
-        "Optional macOS app. Reuses the Handy app and its downloaded models. No download needed."
+        "Optional macOS app. Reuses the Handy app and its downloaded models. No separate download."
     ),
-    "whisper.cpp": "Runs local GGML models with the whisper-cli binary.",
-    "whisperkit": "Runs Core ML models with whisperkit-cli on Apple Silicon Macs.",
-    "faster-whisper": "Keeps a CTranslate2 model loaded; CPU INT8 is the Linux default.",
-    "moonshine": "Fast, language-specific local models; compatible English tiers stream live.",
+    "whisper.cpp": "Local GGML models via the whisper-cli binary.",
+    "whisperkit": "Core ML models via whisperkit-cli on Apple silicon Macs.",
+    "faster-whisper": "Keeps a CTranslate2 model loaded. CPU INT8 is the usual Linux default.",
+    "moonshine": "Fast language-specific models. Compatible English tiers can stream live.",
     "sherpa-onnx": "Compact INT8 CPU models for fast macOS and Linux transcription.",
-    "mlx-audio": "Runs Apple-silicon-native MLX models with persistent loading.",
+    "mlx-audio": "Apple-silicon MLX models with persistent loading.",
 }
 
 
@@ -42,31 +43,64 @@ def _engine_option_label(engine: str) -> str:
     return f"{label} ({requirement} only)" if requirement else label
 
 
-def _engine_status(engine: EngineStatus, *, oob: bool = False) -> str:
-    """The engine indicator in the header: a status dot and the engine's name."""
+def _engine_status(
+    engine: EngineStatus,
+    *,
+    bind_host: str = "0.0.0.0",
+    port: int = 8765,
+    oob: bool = False,
+) -> str:
+    """Header control: active model, network details on hover, opens Models on click."""
     classes = "engine-status ready" if engine.ready else "engine-status"
     dot = "ok" if engine.ready else "warn"
     label = escape(engine.name or engine.id)
+    listener = escape(format_host_port(bind_host, port))
+    local_url = escape(local_webui_url(bind_host, port))
+    ready_label = "Ready" if engine.ready else "Not ready"
     swap_oob = ' hx-swap-oob="true"' if oob else ""
+    # Network addresses live in the hover card so Overview stays uncluttered.
     return (
-        f'<div id="engine-pill" class="{classes}"{swap_oob}'
+        f'<button type="button" id="engine-pill" class="{classes}"{swap_oob}'
+        f' data-open-tab="models"'
+        f' aria-label="Speech model {label}, {ready_label}. '
+        f'Listener {listener}. WebUI {local_url}. Opens Models."'
         f' hx-get="/ui/partials/engine-pill" hx-trigger="every 5s" hx-swap="outerHTML">'
-        f'<span class="dot {dot}" aria-hidden="true"></span><span>{label}</span></div>'
+        f'<span class="dot {dot}" aria-hidden="true"></span>'
+        f"<span>{label}</span>"
+        f'<span class="engine-status-hint" aria-hidden="true">Models</span>'
+        f'<span class="engine-popover" role="tooltip">'
+        f'<span class="engine-popover-card">'
+        f'<span class="engine-popover-title">{ready_label}</span>'
+        f'<span class="engine-popover-row"><span>Listener</span>'
+        f"<code>{listener}</code></span>"
+        f'<span class="engine-popover-row"><span>This host</span>'
+        f"<code>{local_url}</code></span>"
+        f'<span class="engine-popover-hint">Click to open Models</span>'
+        f"</span></span></button>"
     )
 
 
-def engine_pill_fragment(engine: EngineStatus) -> str:
-    return _engine_status(engine)
+def engine_pill_fragment(
+    engine: EngineStatus, *, bind_host: str = "0.0.0.0", port: int = 8765
+) -> str:
+    return _engine_status(engine, bind_host=bind_host, port=port)
 
 
-def engine_pill_oob(engine: EngineStatus) -> str:
-    return _engine_status(engine, oob=True)
+def engine_pill_oob(engine: EngineStatus, *, bind_host: str = "0.0.0.0", port: int = 8765) -> str:
+    return _engine_status(engine, bind_host=bind_host, port=port, oob=True)
 
 
-def engine_update_fragment(engine: EngineStatus, message: str) -> str:
+def engine_update_fragment(
+    engine: EngineStatus,
+    message: str,
+    *,
+    bind_host: str = "0.0.0.0",
+    port: int = 8765,
+) -> str:
     css = "ok" if engine.ready else "missing"
     return (
         f'<span class="badge {css}">{escape(engine.name or engine.id)}'
         f"{' ready' if engine.ready else ' not ready'}</span> "
-        f"{escape(message)}{engine_pill_oob(engine)}"
+        f"{escape(message)}"
+        f"{engine_pill_oob(engine, bind_host=bind_host, port=port)}"
     )

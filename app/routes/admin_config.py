@@ -11,7 +11,8 @@ from app.context import TOKEN_FILE_HINT, GatewayContext, get_context, require_to
 from app.errors import APIProblem
 from app.fragments.engine import engine_update_fragment
 from app.fragments.settings import settings_fragment
-from app.fragments.test_panel import test_fragment
+from app.fragments.test_panel import pair_and_test_fragment
+from app.pairing_view import pairing_html
 from app.routes.admin_tokens import tokens_fragment_str
 from app.schemas import (
     ConfigResponse,
@@ -139,10 +140,22 @@ async def ui_update_config(
         engine_update_fragment(
             EngineStatus(id=engine, name=state.name, ready=state.ready),
             "Engine preference saved.",
+            bind_host=ctx.settings.bind_host,
+            port=ctx.settings.port,
         )
     )
 
 
 @router.get("/ui/partials/test", response_class=HTMLResponse)
 async def ui_test(ctx: GatewayContext = Depends(get_context)) -> HTMLResponse:
-    return HTMLResponse(test_fragment(ctx.settings.maximum_duration_seconds))
+    """Pair phone (once) and try the pipeline from this browser."""
+    import platform
+
+    return HTMLResponse(
+        pair_and_test_fragment(
+            pairing_html(ctx),
+            ctx.settings.maximum_duration_seconds,
+            bind_host=ctx.settings.bind_host,
+            is_mac=platform.system() == "Darwin",
+        )
+    )

@@ -113,6 +113,17 @@ class SetupChecklist(BaseModel):
     engine_ready: bool
 
 
+class MetricsHistoryPoint(BaseModel):
+    """One Live-operations sample for sparklines (in-process ring buffer)."""
+
+    uptime_seconds: int
+    queue_depth: int
+    active_transcriptions: int
+    last_latency_ms: int | None = None
+    successful_transcriptions: int = 0
+    failed_transcriptions: int = 0
+
+
 class OperationalMetricsStatus(BaseModel):
     uptime_seconds: int
     queue_depth: int
@@ -129,6 +140,7 @@ class OperationalMetricsStatus(BaseModel):
     audio_duration_ms: int | None = None
     real_time_factor: float | None = None
     peak_memory_mb: float | None = None
+    history: list[MetricsHistoryPoint] = []
 
 
 class ReadinessStatus(BaseModel):
@@ -161,6 +173,7 @@ class AdminModelEntry(BaseModel):
     family: str
     description: str
     source: str
+    source_url: str | None = None
     supports_streaming: bool = False
     license_name: str = "See model source"
     commercial_use: bool = True

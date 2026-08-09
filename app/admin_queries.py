@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib.util
 from typing import Literal
 
-from app.catalog import language_names, recommended_ids
+from app.catalog import catalog_source_url, language_names, recommended_ids
 from app.context import BOOTSTRAP_TOKEN_ID, TOKEN_FILE_HINT, VERSION, GatewayContext
 from app.engine_state import active_model_path, available_engines, engine_id
 from app.schemas import (
@@ -113,7 +113,7 @@ async def status_payload(ctx: GatewayContext) -> AdminStatusResponse:
     ]
     readiness_details = await ctx.readiness.details()
     state = readiness_details.health
-    metrics = ctx.service.metrics.snapshot()
+    metrics = ctx.service.metrics.snapshot(sample=True)
     return AdminStatusResponse(
         version=VERSION,
         engine=EngineStatus(id=engine_id(ctx), name=state.name, ready=state.ready),
@@ -198,6 +198,7 @@ def model_entries(ctx: GatewayContext) -> list[AdminModelEntry]:
                 family=model.family,
                 description=model.description,
                 source=model.source,
+                source_url=catalog_source_url(model),
                 supports_streaming=model.supports_streaming,
                 license_name=model.license_name,
                 commercial_use=model.commercial_use,
@@ -234,14 +235,58 @@ def model_entries(ctx: GatewayContext) -> list[AdminModelEntry]:
     return entries
 
 
+# Download-size caps for the filter panel (decimal MB, same scale as the UI).
+SIZE_FILTER_CAPS: dict[str, int] = {
+    "100mb": 100_000_000,
+    "300mb": 300_000_000,
+    "800mb": 800_000_000,
+    "1500mb": 1_500_000_000,
+}
+
+
+def _as_str_list(value: str | list[str] | None) -> list[str]:
+    """Normalize FastAPI Query/Form values (single string, list, or empty)."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value else []
+    return [item for item in value if item]
+
+
 def filtered_model_entries(
-    ctx: GatewayContext, installed_only: bool, language: str
+    ctx: GatewayContext,
+    installed_only: bool = False,
+    language: str | list[str] | None = None,
+    family: str | list[str] | None = None,
+    engine: str | list[str] | None = None,
+    max_size: str = "",
+    recommended_only: bool = False,
 ) -> list[AdminModelEntry]:
+    """Filter the catalog. Within a multi-select dimension match is OR; across
+    dimensions match is AND. Languages use model_covers (empty codes = match all).
+    """
+    languages = _as_str_list(language)
+    families = _as_str_list(family)
+    engines = _as_str_list(engine)
+    size_cap = SIZE_FILTER_CAPS.get(max_size.strip().lower()) if max_size else None
+
     entries = model_entries(ctx)
     if installed_only:
         entries = [entry for entry in entries if entry.state == "installed"]
-    if language:
-        entries = [entry for entry in entries if model_covers(entry, language)]
+    if languages:
+        entries = [
+            entry for entry in entries if any(model_covers(entry, code) for code in languages)
+        ]
+    if families:
+        allowed = set(families)
+        entries = [entry for entry in entries if entry.family in allowed]
+    if engines:
+        allowed_engines = set(engines)
+        entries = [entry for entry in entries if entry.engine in allowed_engines]
+    if size_cap is not None:
+        entries = [entry for entry in entries if entry.size_bytes <= size_cap]
+    if recommended_only:
+        entries = [entry for entry in entries if entry.recommended]
     return entries
 
 
