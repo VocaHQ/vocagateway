@@ -7,8 +7,7 @@ def pair_and_test_fragment(pairing_html: str, maximum_duration_seconds: int) -> 
       <div class="page-head">
         <div>
           <h2>Pair &amp; test</h2>
-          <p>Scan once to connect the phone app. Then record a short clip here to confirm
-            the same pipeline the phone will use.</p>
+          <p>Scan once to connect the phone app, then record a short clip here to check the same path the phone uses.</p>
         </div>
       </div>
       {pairing_html}
@@ -19,9 +18,8 @@ def pair_and_test_fragment(pairing_html: str, maximum_duration_seconds: int) -> 
 def test_fragment(maximum_duration_seconds: int) -> str:
     return f"""
       <div class="card" id="test-card">
-        <h2>Try a test dictation</h2>
-        <p class="muted">A clip from this browser's microphone, normalized with FFmpeg and
-          transcribed by the active engine &mdash; the same path the phone app uses.</p>
+        <h2>Test dictation</h2>
+        <p class="muted">Records from this browser's mic, runs it through FFmpeg and the active engine (same path as the phone app).</p>
         <div class="row" id="recorder-controls"
              data-maximum-seconds="{maximum_duration_seconds}">
           <select id="test-language">

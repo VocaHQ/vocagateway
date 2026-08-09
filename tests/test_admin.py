@@ -529,7 +529,7 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     # Bind addresses live on the header model pill hover card, not Overview.
     assert "0.0.0.0:8765" not in overview.text
     assert "http://127.0.0.1:8765/" not in overview.text
-    assert "Available on every network interface" in overview.text
+    assert "Listening on every network interface" in overview.text
 
     models = await admin_client.get("/ui/partials/models", headers=auth)
     assert models.status_code == 200
@@ -541,7 +541,7 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     settings = await admin_client.get("/ui/partials/settings", headers=auth)
     assert settings.status_code == 200
     assert "Speech engine" in settings.text
-    assert "All-interface listener" in settings.text
+    assert "All-interface listener" in settings.text  # settings network callout
     assert "Paired device tokens" in settings.text
     assert "Bootstrap token (VOCAPHONE_TOKEN / token file)" in settings.text
 

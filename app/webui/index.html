@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>VocaPhone gateway · private speech transcription</title>
-  <meta name="description" content="Local VocaPhone gateway: pair your phone, pick speech models, and run private on-device transcription without sending audio to the cloud." />
+  <meta name="description" content="Local VocaPhone gateway. Pair your phone, pick speech models, and transcribe without sending audio to the cloud." />
   <meta name="robots" content="noindex, nofollow" />
   <meta name="theme-color" content="#f7f6f3" id="meta-theme-color" />
   <meta name="color-scheme" content="light dark" />
   <meta property="og:title" content="VocaPhone gateway" />
-  <meta property="og:description" content="Private transcription gateway for the VocaPhone phone apps. Pair, manage models, and test speech locally." />
+  <meta property="og:description" content="Private transcription gateway for VocaPhone. Pair, manage models, and test speech on your own machine." />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary" />
   <link rel="canonical" href="/" />
@@ -29,7 +29,7 @@
   <div id="token-overlay" class="overlay hidden" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="token-title">
       <h2 id="token-title">Gateway token</h2>
-      <p class="muted">The token is kept in this browser only. On this host:</p>
+      <p class="muted">Stored only in this browser. On this host:</p>
       <code class="block">cat ~/.config/vocaphone/token</code>
       <label class="sr-only" for="token-input">Bearer token</label>
       <input id="token-input" type="password" placeholder="Bearer token" autocomplete="off" spellcheck="false" />
@@ -53,12 +53,12 @@
       <button type="button" id="engine-pill" class="engine-status"
               data-open-tab="models"
               title="Open Models to change the speech engine"
-              aria-label="Current speech model. Open Models."
+              aria-label="Speech model. Opens Models."
               hx-get="/ui/partials/engine-pill" hx-trigger="load, every 5s" hx-swap="outerHTML">
         <span class="dot" aria-hidden="true"></span><span>connecting&hellip;</span>
       </button>
       <button type="button" id="theme-toggle" class="theme-toggle" data-preference="system"
-              aria-label="Theme: system. Click to switch to light." title="Theme: system">
+              aria-label="Theme: system. Click for light." title="Theme: system">
         <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="4" />

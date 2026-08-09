@@ -19,20 +19,19 @@ ENGINE_LABELS = {
 }
 
 ENGINE_HINTS = {
-    "auto": "Uses the fastest compatible installed local engine for this machine.",
+    "auto": "Picks the fastest compatible local engine already installed on this machine.",
     "vocamac": (
-        "Optional Apple silicon Mac app. Reuses VocaMac's downloaded Core ML "
-        "models through whisperkit-cli. No download needed."
+        "Optional Apple silicon Mac app. Reuses VocaMac's downloaded Core ML models via whisperkit-cli. No separate download."
     ),
     "handy": (
-        "Optional macOS app. Reuses the Handy app and its downloaded models. No download needed."
+        "Optional macOS app. Reuses the Handy app and its downloaded models. No separate download."
     ),
-    "whisper.cpp": "Runs local GGML models with the whisper-cli binary.",
-    "whisperkit": "Runs Core ML models with whisperkit-cli on Apple Silicon Macs.",
-    "faster-whisper": "Keeps a CTranslate2 model loaded; CPU INT8 is the Linux default.",
-    "moonshine": "Fast, language-specific local models; compatible English tiers stream live.",
+    "whisper.cpp": "Local GGML models via the whisper-cli binary.",
+    "whisperkit": "Core ML models via whisperkit-cli on Apple silicon Macs.",
+    "faster-whisper": "Keeps a CTranslate2 model loaded. CPU INT8 is the usual Linux default.",
+    "moonshine": "Fast language-specific models. Compatible English tiers can stream live.",
     "sherpa-onnx": "Compact INT8 CPU models for fast macOS and Linux transcription.",
-    "mlx-audio": "Runs Apple-silicon-native MLX models with persistent loading.",
+    "mlx-audio": "Apple-silicon MLX models with persistent loading.",
 }
 
 
@@ -62,8 +61,8 @@ def _engine_status(
     return (
         f'<button type="button" id="engine-pill" class="{classes}"{swap_oob}'
         f' data-open-tab="models"'
-        f' aria-label="Current speech model: {label}, {ready_label}. '
-        f"Listener {listener}. WebUI {local_url}. Open Models.\""
+        f' aria-label="Speech model {label}, {ready_label}. '
+        f"Listener {listener}. WebUI {local_url}. Opens Models.\""
         f' hx-get="/ui/partials/engine-pill" hx-trigger="every 5s" hx-swap="outerHTML">'
         f'<span class="dot {dot}" aria-hidden="true"></span>'
         f"<span>{label}</span>"
@@ -75,7 +74,7 @@ def _engine_status(
         f"<code>{listener}</code></span>"
         f'<span class="engine-popover-row"><span>This host</span>'
         f"<code>{local_url}</code></span>"
-        f'<span class="engine-popover-hint">Click to change models</span>'
+        f'<span class="engine-popover-hint">Click to open Models</span>'
         f"</span></span></button>"
     )
 

@@ -43,17 +43,13 @@ def settings_fragment(
         exposure_notice = """
           <div class="callout warning compact">
             <strong>All-interface listener</strong>
-            <span>Devices on reachable networks can contact the gateway. They still need
-              the bearer token for transcription and administration.</span>
+            <span>Any device that can reach this host can open the gateway. Transcription and admin still need the bearer token.</span>
           </div>
         """
     return f"""
       <div class="card">
         <h2>Speech engine</h2>
-        <p class="muted">Which local engine transcribes incoming audio. Selecting a
-          model in the Models tab sets this for you. Only engines this host can run
-          are listed; the VocaMac and Handy entries reuse those Mac apps and their
-          own downloaded models.</p>
+        <p class="muted">Local engine that transcribes audio. Picking a model under Models sets this for you. Only engines this machine can run are listed. VocaMac and Handy reuse those Mac apps and their own models.</p>
         <form hx-put="/ui/partials/config" hx-target="#engine-result" hx-swap="innerHTML">
           <div class="settings-grid">
             <label><span>Engine</span>
@@ -74,9 +70,7 @@ def settings_fragment(
                      value="{config.cpu_threads}" aria-describedby="threads-hint" />
             </label>
           </div>
-          <p id="threads-hint" class="muted small">
-            Use 0 for an automatic, conservative thread count.
-            INT8 is normally fastest on Linux CPUs.</p>
+          <p id="threads-hint" class="muted small">Use 0 for automatic thread count. INT8 is usually fastest on Linux CPUs.</p>
           <div class="row">
             <button type="submit" class="primary">Apply</button>
           </div>
@@ -95,12 +89,9 @@ def settings_fragment(
       {tokens_html}
       <div class="card">
         <h2>This browser</h2>
-        <p class="muted">Diagnostics are a redacted snapshot of setup, dependencies, hardware
-          and counters for a bug report &mdash; never the token, recordings or transcripts.
-          The token itself is stored only here, in this browser.</p>
+        <p class="muted">Diagnostics are a redacted snapshot of setup, dependencies, hardware, and counters for bug reports. No token, recordings, or transcripts. The token lives only in this browser.</p>
         <div class="row">
-          <button id="download-diagnostics" type="button" class="ghost">
-            Download diagnostics</button>
+          <button id="download-diagnostics" type="button" class="ghost">Download diagnostics</button>
           <button id="forget-token" class="ghost">Forget token</button>
         </div>
       </div>

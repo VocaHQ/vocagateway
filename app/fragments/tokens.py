@@ -16,8 +16,7 @@ def tokens_fragment(
         reveal = f"""
           <div class="callout success">
             <strong>New secret for {escape(label)}</strong>
-            <span>Copy this token now &mdash; it will not be shown again. Paste it with the
-              gateway address into that device's manual "Gateway address and token" fields.</span>
+            <span>Copy this token now. It will not be shown again. Paste it with the gateway address into that device's manual "Gateway address and token" fields.</span>
             <div class="row">
               <code id="new-token-value">{escape(plaintext)}</code>
               <button type="button" class="ghost small" id="copy-new-token">Copy</button>
@@ -49,9 +48,7 @@ def tokens_fragment(
     return f"""
       <div class="card" id="tokens-card">
         <h2>Paired device tokens</h2>
-        <p class="muted">One token per phone, so losing a device means revoking its token
-          rather than rotating everyone else's. Devices paired with the bootstrap token keep
-          working until you re-pair them.</p>
+        <p class="muted">One token per phone, so a lost device means revoking that token instead of rotating everyone else. Phones on the bootstrap token keep working until you re-pair them.</p>
         {reveal}
         <div class="table-scroll">
           <table class="table">

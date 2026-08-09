@@ -34,7 +34,7 @@
       return `Theme: system (${resolved}). Click for light.`;
     }
     if (preference === "light") return "Theme: light. Click for dark.";
-    return "Theme: dark. Click to follow system.";
+    return "Theme: dark. Click for system.";
   }
 
   function setFavicon(resolved) {
@@ -117,7 +117,7 @@
   document.getElementById("token-save").addEventListener("click", () => {
     const token = tokenInput.value.trim();
     if (token.length < 32) {
-      showOverlay("The token is at least 32 characters long.");
+      showOverlay("Token must be at least 32 characters.");
       return;
     }
     localStorage.setItem(TOKEN_KEY, token);
@@ -133,7 +133,7 @@
   document.body.addEventListener("click", (event) => {
     if (event.target.id === "forget-token") {
       localStorage.removeItem(TOKEN_KEY);
-      showOverlay("Token removed from this browser.");
+      showOverlay("Token cleared from this browser.");
     }
   });
 
@@ -146,7 +146,7 @@
   document.body.addEventListener("htmx:responseError", (event) => {
     if (event.detail.xhr.status === 401) {
       localStorage.removeItem(TOKEN_KEY);
-      showOverlay("That token was rejected. Paste the current gateway token.");
+      showOverlay("Token rejected. Paste the current gateway token.");
       return;
     }
     let message = `Request failed (${event.detail.xhr.status}).`;
@@ -359,7 +359,7 @@
       });
       if (response.status === 401) {
         localStorage.removeItem(TOKEN_KEY);
-        showOverlay("Your gateway session expired. Paste the current token.");
+        showOverlay("Session expired. Paste the current token.");
         return;
       }
       if (!response.ok) throw new Error(`Model status failed (${response.status}).`);
@@ -439,7 +439,7 @@
 
     const mimeType = pickMimeType();
     if (!mimeType) {
-      errorBox.textContent = "This browser cannot record audio (MediaRecorder unavailable).";
+      errorBox.textContent = "This browser cannot record audio (no MediaRecorder).";
       errorBox.classList.remove("hidden");
       return;
     }
@@ -463,14 +463,14 @@
       button.classList.remove("recording");
       button.disabled = true;
       timer.classList.add("hidden");
-      status.textContent = "Transcribing…";
+      status.textContent = "Transcribing...";
       const blob = new Blob(chunks, { type: mimeType.split(";")[0] });
       try {
         const language = document.getElementById("test-language").value;
         const runs = Number(document.getElementById("test-runs").value) || 1;
         const payloads = [];
         for (let run = 0; run < runs; run += 1) {
-          status.textContent = runs > 1 ? `Benchmarking… run ${run + 1} of ${runs}` : "Transcribing…";
+          status.textContent = runs > 1 ? `Benchmarking... run ${run + 1} of ${runs}` : "Transcribing...";
           const response = await fetch(`/v1/admin/test-transcription?language=${language}`, {
             method: "POST",
             headers: {
@@ -492,7 +492,7 @@
         document.getElementById("test-transcript").textContent = payload.transcript;
         document.getElementById("test-meta").textContent =
           runs > 1
-            ? `${payload.engine} · warm average of runs 2–${runs}; model load is run 1`
+            ? `${payload.engine} · warm average of runs 2-${runs}; model load is run 1`
             : `${payload.engine} · 1-run result`;
         document.getElementById("benchmark-total").textContent = formatMs(average("duration_ms"));
         document.getElementById("benchmark-normalize").textContent = formatMs(average("normalization_ms"));
@@ -525,7 +525,7 @@
       updateRecordingTimer(timer);
       if (Date.now() - recordingStartedAt >= maximumSeconds * 1000) recorder.stop();
     }, 250);
-    status.textContent = `Recording… maximum ${maximumSeconds} seconds.`;
+    status.textContent = `Recording... max ${maximumSeconds}s.`;
   });
 
   document.body.addEventListener("click", async (event) => {
@@ -536,7 +536,7 @@
       });
       if (response.status === 401) {
         localStorage.removeItem(TOKEN_KEY);
-        showOverlay("Your gateway session expired. Paste the current token.");
+        showOverlay("Session expired. Paste the current token.");
         return;
       }
       const payload = await response.json();
@@ -563,7 +563,7 @@
       await navigator.clipboard.writeText(value);
       showToast("Token copied.", false);
     } catch (_) {
-      showToast("Could not copy the token. Select it manually.");
+      showToast("Could not copy. Select the token and copy manually.");
     }
   });
 
@@ -574,7 +574,7 @@
       await navigator.clipboard.writeText(transcript);
       showToast("Transcript copied.", false);
     } catch (_) {
-      showToast("Could not copy the transcript. Select it manually.");
+      showToast("Could not copy. Select the transcript and copy manually.");
     }
   });
 

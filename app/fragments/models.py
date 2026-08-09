@@ -27,8 +27,7 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
       <div class="page-head">
         <div>
           <h2>Models</h2>
-          <p>{installed} of {len(entries)} downloaded across {families} families, stored only on
-            this machine. Families start collapsed — open one to pick a model.</p>
+          <p>{installed} of {len(entries)} downloaded across {families} families, all stored on this machine. Families start collapsed; open one to pick a model.</p>
         </div>
         <div class="models-toolbar-actions">
           <details class="models-filter" id="models-filter">
@@ -86,8 +85,7 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
       </div>
       <div class="card">
         <h2>Bring your own Whisper model</h2>
-        <p class="muted">A direct HTTPS link to a <code>.bin</code> or <code>.gguf</code>
-          file, which runs through the standalone engine.</p>
+        <p class="muted">Paste a direct HTTPS link to a <code>.bin</code> or <code>.gguf</code> file. It runs through the standalone engine.</p>
         <form hx-post="/ui/partials/models/custom" hx-include="{MODEL_FILTER_INPUTS}"
               hx-target="#models-list" hx-swap="innerHTML">
           <div class="row">
@@ -163,9 +161,9 @@ def _empty_filter_state(*, installed_only: bool, language: str, family: str) -> 
         joined = ", ".join(bits)
         return (
             f'<p class="empty-state">No models match {joined}. '
-            "Clear or widen the filters to see more of the catalog.</p>"
+            "Clear or widen the filters to see more.</p>"
         )
-    return '<p class="empty-state">No models are available.</p>'
+    return '<p class="empty-state">No models available.</p>'
 
 
 def _family_tile(family: str, items: list[AdminModelEntry]) -> str:
@@ -219,11 +217,9 @@ def _dictation_language_hint(entries: list[AdminModelEntry], language: str) -> s
     name = escape(LANGUAGE_NAMES.get(language, language))
     return (
         '<div class="callout warning models-language-hint">'
-        f"<strong>Choosing a model for {name}</strong>"
-        "<span>The models badged <em>auto language</em> decide the language themselves. "
-        "They are strong on full sentences but return the wrong alphabet entirely on a "
-        "short phrase, which is most of dictation. Prefer one of the other "
-        f"{len(pinnable)} models here, which are told to transcribe {name}.</span>"
+        f"<strong>Picking a model for {name}</strong>"
+        "<span>Models tagged <em>auto language</em> pick the language themselves. They do well on full sentences but often guess the wrong script on short phrases (most of dictation). Prefer one of the other "
+        f"{len(pinnable)} models here, which are forced to use {name}.</span>"
         "</div>"
     )
 
@@ -242,8 +238,7 @@ def _language_disclosure(entry: AdminModelEntry) -> str:
         return ""
     names = ", ".join(escape(name) for name in entry.language_names)
     note = (
-        " This model chooses the language itself, so these are the languages it "
-        "transcribes well, not a list you can pick from."
+        " This model picks the language itself, so this list is what it handles well, not options you can force."
         if entry.detects_language_automatically
         else ""
     )

@@ -47,24 +47,21 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
         firewall_hint = "Keep macOS Firewall on" if is_mac else "Keep the host firewall enabled"
         exposure_notice = f"""
           <div class="callout warning">
-            <strong>Available on every network interface</strong>
-            <span>The private API still requires the bearer token. {firewall_hint},
-              use Tailscale for remote access, and do not expose this port to the internet.</span>
+            <strong>Listening on every network interface</strong>
+            <span>The API still needs the bearer token. {firewall_hint}, prefer Tailscale for remote access, and do not publish this port on the public internet.</span>
           </div>
         """
-    # Model name / ready state live in the header pill. Checklist and dependency
-    # tables stay off the front page; host specs come back for capacity context.
     hero_copy = (
-        "Pair a phone or try a test dictation when you are ready."
+        "Pair a phone or run a quick test when you want."
         if ready
-        else "Work through the steps below, then pair your phone."
+        else "Finish the steps below, then pair your phone."
     )
     return f"""
       <section class="status-hero">
         <div class="headline">
           <span class="dot {"ok" if ready else "warn"}" aria-hidden="true"></span>
           <div>
-            <h2>{"Ready for dictation" if ready else "Finish setup to dictate"}</h2>
+            <h2>{"Ready for dictation" if ready else "Setup still needed"}</h2>
             <p>{hero_copy}</p>
           </div>
         </div>
@@ -92,8 +89,7 @@ def _onboarding_steps(
       <div class="onboarding-ready card">
         <div class="onboarding-ready-copy">
           <h2>You&rsquo;re set</h2>
-          <p class="muted">Pair a phone once if you haven&rsquo;t, or test the pipeline from this
-            browser. Change models any time from the header control.</p>
+          <p class="muted">Pair a phone if you have not yet, or test from this browser. Switch models anytime from the header.</p>
         </div>
         <div class="onboarding-actions">
           <button type="button" class="primary" data-open-tab="pair">Pair &amp; test</button>
@@ -105,31 +101,30 @@ def _onboarding_steps(
     steps: list[str] = []
     if not status.setup.ffmpeg_available:
         steps.append(
-            f"<li><strong>Install FFmpeg</strong> — {escape(ffmpeg_hint)}.</li>"
+            f"<li><strong>Install FFmpeg</strong>: {escape(ffmpeg_hint)}.</li>"
         )
     if not status.setup.engine_binary_available:
         steps.append(
-            f"<li><strong>Install a speech engine</strong> — {escape(engine_hint)}.</li>"
+            f"<li><strong>Install a speech engine</strong>: {escape(engine_hint)}.</li>"
         )
     if not status.setup.model_installed or not status.setup.engine_ready:
         steps.append(
             f"<li><strong>Download a model</strong> for this {escape(machine_label)}. "
             'Open <button type="button" class="text-link" data-open-tab="models">Models</button> '
-            "and pick a recommended entry.</li>"
+            "and pick a recommended one.</li>"
         )
     steps.append(
-        "<li><strong>Pair your phone</strong> — "
+        "<li><strong>Pair your phone</strong>: "
         'scan the QR under <button type="button" class="text-link" data-open-tab="pair">'
-        "Pair &amp; test</button> (one time).</li>"
+        "Pair &amp; test</button> once.</li>"
     )
     steps.append(
-        "<li><strong>Try a short dictation</strong> on the same tab to confirm audio works.</li>"
+        "<li><strong>Record a short test</strong> on that same tab to confirm audio works.</li>"
     )
     return f"""
       <div class="card onboarding">
         <h2>Get started</h2>
-        <p class="muted">A short path to first successful dictation. Pairing stays out of the way
-          after the first scan.</p>
+        <p class="muted">Quick path to first dictation. You only scan the pairing QR once.</p>
         <ol class="steps onboarding-steps">{"".join(steps)}</ol>
         <div class="onboarding-actions">
           <button type="button" class="primary" data-open-tab="models">Choose a model</button>
@@ -143,20 +138,20 @@ def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessS
     average_latency = _format_latency(metrics.average_latency_ms)
     last_latency = _format_latency(metrics.last_latency_ms)
     warmup_labels = {
-        "pending": ("Pending", "The startup warm-up has not run yet."),
-        "warming": ("Warming", "The selected model is being primed."),
+        "pending": ("Pending", "Startup warm-up has not run yet."),
+        "warming": ("Warming", "Priming the selected model."),
         "complete": (
             "Warm",
-            f"{_format_bytes(readiness.warmed_bytes)} of model data prepared.",
+            f"{_format_bytes(readiness.warmed_bytes)} of model data ready.",
         ),
-        "unsupported": ("Ready", "This engine does not expose model prefetching."),
+        "unsupported": ("Ready", "This engine does not prefetch models."),
         "unavailable": ("Waiting", "Install or select a model to warm it."),
         "failed": ("Needs retry", "Warm-up failed; transcription can still retry."),
     }
     warmup_label, warmup_detail = warmup_labels[readiness.warmup_state]
     cards = "".join(
         [
-            _metric_card("Uptime", _format_uptime(metrics.uptime_seconds), "Current process"),
+            _metric_card("Uptime", _format_uptime(metrics.uptime_seconds), "This process"),
             _metric_card(
                 "Workload",
                 f"{metrics.queue_depth} queued",
@@ -165,7 +160,7 @@ def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessS
             _metric_card(
                 "Successful",
                 str(metrics.successful_transcriptions),
-                "Completed transcriptions",
+                "Completed jobs",
                 "success",
             ),
             _metric_card(
@@ -199,7 +194,7 @@ def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessS
                hx-get="/ui/partials/operations" hx-trigger="every 5s"
                hx-swap="outerHTML" aria-label="Gateway operations">
         <div class="section-heading">
-          <h2>Live operations <span class="muted">&middot; since this server started</span></h2>
+          <h2>Live operations <span class="muted">&middot; since start</span></h2>
           <span class="probe-age">Engine checked {readiness.probe_age_seconds:.1f}s ago</span>
         </div>
         <div class="operations-grid">
