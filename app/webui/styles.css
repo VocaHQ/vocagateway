@@ -252,7 +252,22 @@ html[data-theme="dark"] .theme-icon-sun { display: block; }
 }
 
 .brand { display: flex; align-items: center; gap: 12px; }
-.logo { display: block; width: 28px; height: 28px; border-radius: 50%; }
+.logo-stack {
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+}
+.logo {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+/* Brand kit: *-dark assets are dark-glyph marks for light surfaces. */
+html[data-theme="light"] .logo-for-dark { display: none; }
+html[data-theme="dark"] .logo-for-light { display: none; }
 .brand h1 {
   line-height: 1.2;
   font-size: 1.05rem;

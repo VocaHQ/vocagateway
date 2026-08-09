@@ -37,6 +37,14 @@
     return "Theme: dark. Click to follow system.";
   }
 
+  function setFavicon(resolved) {
+    const href = resolved === "dark" ? "/assets/favicon-dark.svg" : "/assets/favicon-light.svg";
+    const favicon = document.getElementById("favicon");
+    const apple = document.getElementById("apple-touch-icon");
+    if (favicon) favicon.setAttribute("href", href);
+    if (apple) apple.setAttribute("href", href);
+  }
+
   function applyTheme(preference) {
     const resolved = resolveTheme(preference);
     document.documentElement.setAttribute("data-theme", resolved);
@@ -45,6 +53,7 @@
     if (meta) {
       meta.setAttribute("content", resolved === "dark" ? "#141614" : "#f7f6f3");
     }
+    setFavicon(resolved);
     if (themeToggle) {
       themeToggle.dataset.preference = preference;
       const label = themeLabel(preference, resolved);
