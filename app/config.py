@@ -150,9 +150,7 @@ class Settings:
             bind_host=_env("VOCAGATEWAY_BIND_HOST", "0.0.0.0"),
             port=int(_env("VOCAGATEWAY_PORT", "8765")),
             retention_hours=int(_env("VOCAGATEWAY_RETENTION_HOURS", "24")),
-            delete_successful_audio=_env(
-                "VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO", "true"
-            ).lower()
+            delete_successful_audio=_env("VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO", "true").lower()
             in {"1", "true", "yes"},
             debug=_env("VOCAGATEWAY_DEBUG", "false").lower() in {"1", "true", "yes"},
         )
