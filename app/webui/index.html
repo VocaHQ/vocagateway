@@ -46,6 +46,13 @@
       </div>
     </div>
     <div class="header-actions">
+      <button type="button" id="engine-pill" class="engine-status"
+              data-open-tab="models"
+              title="Open Models to change the speech engine"
+              aria-label="Current speech model. Open Models."
+              hx-get="/ui/partials/engine-pill" hx-trigger="load, every 5s" hx-swap="outerHTML">
+        <span class="dot" aria-hidden="true"></span><span>connecting&hellip;</span>
+      </button>
       <button type="button" id="theme-toggle" class="theme-toggle" data-preference="system"
               aria-label="Theme: system. Click to switch to light." title="Theme: system">
         <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -57,13 +64,6 @@
              stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M21 14.5A8.5 8.5 0 1 1 9.5 3a7 7 0 0 0 11.5 11.5z" />
         </svg>
-      </button>
-      <button type="button" id="engine-pill" class="engine-status"
-              data-open-tab="models"
-              title="Open Models to change the speech engine"
-              aria-label="Current speech model. Open Models."
-              hx-get="/ui/partials/engine-pill" hx-trigger="load, every 5s" hx-swap="outerHTML">
-        <span class="dot" aria-hidden="true"></span><span>connecting&hellip;</span>
       </button>
     </div>
   </header>
