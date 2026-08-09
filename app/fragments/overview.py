@@ -36,7 +36,8 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
     local_url = local_webui_url(status.bind_host, status.port)
     checklist = "".join(
         "<li>"
-        f'<span class="check {"ok" if ok else "missing"}">{"✓" if ok else "✗"}</span>'
+        f'<span class="check {"ok" if ok else "missing"}" aria-hidden="true">'
+        f"{'✓' if ok else '✗'}</span>"
         f"<span>{escape(label)}</span>"
         + ("" if ok or not hint else f'<code class="hint">{escape(hint)}</code>')
         + "</li>"
@@ -61,22 +62,17 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
     rows = "".join(
         "<tr>"
         f"<td>{escape(dependency.name)}</td>"
-        f'<td><span class="badge {"ok" if dependency.available else "missing"}">'
+        f'<td><span class="state"><span class="dot {"ok" if dependency.available else "bad"}"'
+        ' aria-hidden="true"></span>'
         f"{'installed' if dependency.available else 'missing'}</span></td>"
         f"<td><code>{escape(dependency.path or dependency.install_hint or '—')}</code></td>"
         "</tr>"
         for dependency in status.dependencies
     )
-    if ready:
-        next_steps = """
-          <div class="ready-message">
-            <span class="ready-icon" aria-hidden="true">✓</span>
-            <div><strong>The gateway is ready for dictation.</strong>
-              <p class="muted">Use the Test tab for a quick microphone check, then connect
-                the phone app with this host's LAN or Tailscale URL and bearer token.</p></div>
-          </div>
-        """
-    else:
+    # A ready gateway needs no "next steps" section: the headline above already
+    # says so, and repeating it was the longest block on the page.
+    next_steps = ""
+    if not ready:
         pending_steps = []
         if not status.setup.ffmpeg_available:
             pending_steps.append(f"{escape(ffmpeg_hint)}.")
@@ -88,9 +84,13 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
             )
         if not status.setup.engine_ready:
             pending_steps.append("Select an installed model and confirm that the engine is ready.")
-        next_steps = (
-            '<ol class="steps">' + "".join(f"<li>{step}</li>" for step in pending_steps) + "</ol>"
-        )
+        steps = "".join(f"<li>{step}</li>" for step in pending_steps)
+        next_steps = f"""
+      <div class="card">
+        <h2>Next steps</h2>
+        <ol class="steps">{steps}</ol>
+      </div>
+        """
     exposure_notice = ""
     if status.bind_host in WILDCARD_BIND_HOSTS:
         firewall_hint = "Keep macOS Firewall on" if is_mac else "Keep the host firewall enabled"
@@ -102,16 +102,18 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
           </div>
         """
     return f"""
-      <section class="status-hero {"ready" if ready else "attention"}">
-        <div>
-          <span class="eyebrow">Gateway status</span>
-          <h2>{"Ready for dictation" if ready else "Setup needs attention"}</h2>
-          <p>{escape(status.engine.name)} ·
-            {"engine ready" if status.engine.ready else "engine unavailable"}</p>
+      <section class="status-hero">
+        <div class="headline">
+          <span class="dot {"ok" if ready else "warn"}" aria-hidden="true"></span>
+          <div>
+            <h2>{"Ready for dictation" if ready else "Setup needs attention"}</h2>
+            <p>{escape(status.engine.name)} ·
+              {"engine ready" if status.engine.ready else "engine unavailable"}</p>
+          </div>
         </div>
         <dl class="connection-facts">
           <div><dt>Listener</dt><dd>{escape(listener)}</dd></div>
-          <div><dt>Open on this host</dt><dd>{escape(local_url)}</dd></div>
+          <div><dt>On this host</dt><dd>{escape(local_url)}</dd></div>
         </dl>
       </section>
       {exposure_notice}
@@ -136,10 +138,7 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
           </table>
         </div>
       </div>
-      <div class="card">
-        <h2>Next steps</h2>
-        {next_steps}
-      </div>
+      {next_steps}
     """
 
 
@@ -202,11 +201,8 @@ def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessS
       <section id="operations" class="operations"
                hx-get="/ui/partials/operations" hx-trigger="every 5s"
                hx-swap="outerHTML" aria-label="Gateway operations">
-        <div class="section-heading compact">
-          <div>
-            <span class="eyebrow">Live operations</span>
-            <h2>Since this server started</h2>
-          </div>
+        <div class="section-heading">
+          <h2>Live operations <span class="muted">&middot; since this server started</span></h2>
           <span class="probe-age">Engine checked {readiness.probe_age_seconds:.1f}s ago</span>
         </div>
         <div class="operations-grid">

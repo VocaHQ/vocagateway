@@ -5,9 +5,8 @@ def test_fragment(maximum_duration_seconds: int) -> str:
     return f"""
       <div class="card">
         <h2>Try your pipeline</h2>
-        <p class="muted">Record a short clip with this browser's microphone. The audio is
-          normalized with FFmpeg and transcribed by the active engine &mdash; exactly like
-          an iPhone dictation.</p>
+        <p class="muted">A clip from this browser's microphone, normalized with FFmpeg and
+          transcribed by the active engine &mdash; the same path an iPhone dictation takes.</p>
         <div class="row" id="recorder-controls"
              data-maximum-seconds="{maximum_duration_seconds}">
           <select id="test-language">

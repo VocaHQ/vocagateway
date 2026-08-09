@@ -28,7 +28,7 @@ def tokens_fragment(
         "<tr>"
         f"<td>{escape(entry.label)}</td>"
         f"<td>{escape(_format_created(entry.created_at))}</td>"
-        "<td>"
+        '<td class="align-right">'
         + (
             '<button type="button" class="ghost small"'
             f' hx-post="/ui/partials/tokens/{quote(entry.id, safe="")}/rotate"'
@@ -49,14 +49,13 @@ def tokens_fragment(
     return f"""
       <div class="card" id="tokens-card">
         <h2>Paired device tokens</h2>
-        <p class="muted">Give each phone its own bearer token so losing one device only means
-          revoking that device's token instead of rotating everyone else's. Devices already
-          paired with the bootstrap token keep working until you re-pair them with one of
-          these.</p>
+        <p class="muted">One token per phone, so losing a device means revoking its token
+          rather than rotating everyone else's. Devices paired with the bootstrap token keep
+          working until you re-pair them.</p>
         {reveal}
         <div class="table-scroll">
           <table class="table">
-            <thead><tr><th>Label</th><th>Created</th><th></th></tr></thead>
+            <thead><tr><th>Label</th><th>Created</th><th class="align-right"></th></tr></thead>
             <tbody>{rows}</tbody>
           </table>
         </div>
