@@ -43,15 +43,21 @@ def _engine_option_label(engine: str) -> str:
 
 
 def _engine_status(engine: EngineStatus, *, oob: bool = False) -> str:
-    """The engine indicator in the header: a status dot and the engine's name."""
+    """Header control: status of the active model; opens Models when clicked."""
     classes = "engine-status ready" if engine.ready else "engine-status"
     dot = "ok" if engine.ready else "warn"
     label = escape(engine.name or engine.id)
     swap_oob = ' hx-swap-oob="true"' if oob else ""
+    # A button so keyboard users can open Models; hx-get still refreshes the pill.
     return (
-        f'<div id="engine-pill" class="{classes}"{swap_oob}'
+        f'<button type="button" id="engine-pill" class="{classes}"{swap_oob}'
+        f' data-open-tab="models"'
+        f' title="Open Models to change the speech engine"'
+        f' aria-label="Current speech model: {label}. Open Models."'
         f' hx-get="/ui/partials/engine-pill" hx-trigger="every 5s" hx-swap="outerHTML">'
-        f'<span class="dot {dot}" aria-hidden="true"></span><span>{label}</span></div>'
+        f'<span class="dot {dot}" aria-hidden="true"></span>'
+        f"<span>{label}</span>"
+        f'<span class="engine-status-hint" aria-hidden="true">Models</span></button>'
     )
 
 

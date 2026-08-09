@@ -1,12 +1,27 @@
 from __future__ import annotations
 
 
+def pair_and_test_fragment(pairing_html: str, maximum_duration_seconds: int) -> str:
+    """Onboarding path: pair the phone once, then verify dictation from this browser."""
+    return f"""
+      <div class="page-head">
+        <div>
+          <h2>Pair &amp; test</h2>
+          <p>Scan once to connect the phone app. Then record a short clip here to confirm
+            the same pipeline the phone will use.</p>
+        </div>
+      </div>
+      {pairing_html}
+      {test_fragment(maximum_duration_seconds)}
+    """
+
+
 def test_fragment(maximum_duration_seconds: int) -> str:
     return f"""
-      <div class="card">
-        <h2>Try your pipeline</h2>
+      <div class="card" id="test-card">
+        <h2>Try a test dictation</h2>
         <p class="muted">A clip from this browser's microphone, normalized with FFmpeg and
-          transcribed by the active engine &mdash; the same path an iPhone dictation takes.</p>
+          transcribed by the active engine &mdash; the same path the phone app uses.</p>
         <div class="row" id="recorder-controls"
              data-maximum-seconds="{maximum_duration_seconds}">
           <select id="test-language">

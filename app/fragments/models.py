@@ -15,12 +15,13 @@ MODEL_FILTER_INPUTS = "#installed-only-toggle, #language-filter"
 
 def models_fragment(entries: list[AdminModelEntry]) -> str:
     installed = sum(entry.state == "installed" for entry in entries)
+    families = len({entry.family for entry in entries})
     return f"""
       <div class="page-head">
         <div>
           <h2>Models</h2>
-          <p>{installed} of {len(entries)} downloaded, and stored only on this machine.
-            Recommendations match this server's hardware.</p>
+          <p>{installed} of {len(entries)} downloaded across {families} families, stored only on
+            this machine. Open a family tile to pick a model; recommendations match this hardware.</p>
         </div>
         <div class="models-toolbar-actions">
           <label class="sr-only" for="language-filter">Filter models by language</label>
@@ -76,21 +77,28 @@ def _language_filter_options() -> str:
 def models_list_fragment(
     entries: list[AdminModelEntry], installed_only: bool = False, language: str = ""
 ) -> str:
+    """Family tiles: collapsed grid for scanning, expanded dense rows per family."""
     groups: dict[str, list[AdminModelEntry]] = {}
     for entry in entries:
-        groups.setdefault(entry.engine, []).append(entry)
+        family = entry.family or ENGINE_LABELS.get(entry.engine, entry.engine)
+        groups.setdefault(family, []).append(entry)
+
+    def family_sort_key(item: tuple[str, list[AdminModelEntry]]) -> tuple:
+        name, items = item
+        has_active = any(entry.active for entry in items)
+        has_recommended = any(entry.recommended for entry in items)
+        installed_count = sum(entry.state == "installed" for entry in items)
+        # Active family first, then recommended, then most installed, then name.
+        return (not has_active, not has_recommended, -installed_count, name.lower())
+
     parts: list[str] = []
-    for engine, items in groups.items():
-        title = "Custom models" if engine == "custom" else escape(ENGINE_LABELS.get(engine, engine))
-        cards = "".join(_model_card(item) for item in items)
-        count = f"{len(items)} model" + ("" if len(items) == 1 else "s")
-        parts.append(
-            f'<section class="model-group"><div class="model-group-heading">'
-            f"<h3>{title}</h3><span>{count}</span></div>"
-            f'<div class="model-grid">{cards}</div></section>'
-        )
+    for family, items in sorted(groups.items(), key=family_sort_key):
+        parts.append(_family_tile(family, items))
     if parts:
-        return _dictation_language_hint(entries, language) + "".join(parts)
+        return (
+            _dictation_language_hint(entries, language)
+            + f'<div class="family-grid">{"".join(parts)}</div>'
+        )
     if installed_only and language:
         name = escape(LANGUAGE_NAMES.get(language, language))
         return (
@@ -107,6 +115,40 @@ def models_list_fragment(
         )
     return '<p class="empty-state">No models are available.</p>'
 
+
+def _family_tile(family: str, items: list[AdminModelEntry]) -> str:
+    installed = sum(entry.state == "installed" for entry in items)
+    active = next((entry for entry in items if entry.active), None)
+    recommended = next((entry for entry in items if entry.recommended), None)
+    # Open families that already matter so first-run density stays low elsewhere.
+    open_attr = " open" if active or installed or recommended else ""
+    count = f"{len(items)} model" + ("" if len(items) == 1 else "s")
+    installed_label = f"{installed} installed" if installed else "none installed"
+    engines = sorted({ENGINE_LABELS.get(entry.engine, entry.engine) for entry in items})
+    engine_note = escape(", ".join(engines))
+    badges = ""
+    if active:
+        badges += '<span class="badge active">active</span>'
+    elif recommended:
+        badges += '<span class="badge recommended">recommended</span>'
+    cards = "".join(_model_card(item) for item in items)
+    return f"""
+      <details class="family-tile"{open_attr}>
+        <summary class="family-summary">
+          <span class="family-summary-main">
+            <span class="family-name">{escape(family)}</span>
+            <span class="family-tags">{badges}</span>
+          </span>
+          <span class="family-meta">
+            <span>{count}</span>
+            <span aria-hidden="true">·</span>
+            <span>{installed_label}</span>
+            <span class="family-engines" title="Engines in this family">{engine_note}</span>
+          </span>
+        </summary>
+        <div class="model-grid family-models">{cards}</div>
+      </details>
+    """
 
 def _dictation_language_hint(entries: list[AdminModelEntry], language: str) -> str:
     """Warn when a filtered list mixes pinnable and auto-detecting models.
@@ -245,9 +287,12 @@ def _model_card(entry: AdminModelEntry) -> str:
             <h4>{escape(entry.label)}</h4>
             <span class="model-tags">{badges}</span>
           </div>
-          <p class="model-description">{escape(entry.description)}</p>
           <p class="model-meta">{" &middot; ".join(meta)}</p>
-          {_language_disclosure(entry)}
+          <details class="model-more">
+            <summary>Details</summary>
+            <p class="model-description">{escape(entry.description)}</p>
+            {_language_disclosure(entry)}
+          </details>
         </div>
         <div class="actions">{action}</div>
       </article>

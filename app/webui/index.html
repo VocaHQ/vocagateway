@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>vocaphone gateway · private speech transcription</title>
-  <meta name="description" content="Local vocaphone gateway: pair your phone, pick speech models, and run private on-device transcription without sending audio to the cloud." />
+  <title>VocaPhone gateway · private speech transcription</title>
+  <meta name="description" content="Local VocaPhone gateway: pair your phone, pick speech models, and run private on-device transcription without sending audio to the cloud." />
   <meta name="robots" content="noindex, nofollow" />
   <meta name="theme-color" content="#f7f6f3" />
   <meta name="color-scheme" content="light" />
-  <meta property="og:title" content="vocaphone gateway" />
-  <meta property="og:description" content="Private transcription gateway for the vocaphone phone apps. Pair, manage models, and test speech locally." />
+  <meta property="og:title" content="VocaPhone gateway" />
+  <meta property="og:description" content="Private transcription gateway for the VocaPhone phone apps. Pair, manage models, and test speech locally." />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary" />
   <link rel="canonical" href="/" />
@@ -39,14 +39,17 @@
     <div class="brand">
       <img class="logo" src="/assets/favicon.svg" width="28" height="28" alt="" />
       <div>
-        <h1>vocaphone</h1>
+        <h1>VocaPhone</h1>
         <span class="muted">Private transcription gateway</span>
       </div>
     </div>
-    <div id="engine-pill" class="engine-status"
-         hx-get="/ui/partials/engine-pill" hx-trigger="load, every 5s" hx-swap="outerHTML">
+    <button type="button" id="engine-pill" class="engine-status"
+            data-open-tab="models"
+            title="Open Models to change the speech engine"
+            aria-label="Current speech model. Open Models."
+            hx-get="/ui/partials/engine-pill" hx-trigger="load, every 5s" hx-swap="outerHTML">
       <span class="dot" aria-hidden="true"></span><span>connecting&hellip;</span>
-    </div>
+    </button>
   </header>
 
   <nav class="tabs" role="tablist" aria-label="Gateway sections">
@@ -56,9 +59,9 @@
     <button type="button" class="tab" data-tab="models" role="tab"
             aria-selected="false" aria-controls="panel" id="tab-models"
             hx-get="/ui/partials/models" hx-target="#panel" hx-swap="innerHTML">Models</button>
-    <button type="button" class="tab" data-tab="test" role="tab"
-            aria-selected="false" aria-controls="panel" id="tab-test"
-            hx-get="/ui/partials/test" hx-target="#panel" hx-swap="innerHTML">Test</button>
+    <button type="button" class="tab" data-tab="pair" role="tab"
+            aria-selected="false" aria-controls="panel" id="tab-pair"
+            hx-get="/ui/partials/test" hx-target="#panel" hx-swap="innerHTML">Pair &amp; test</button>
     <button type="button" class="tab" data-tab="settings" role="tab"
             aria-selected="false" aria-controls="panel" id="tab-settings"
             hx-get="/ui/partials/settings" hx-target="#panel" hx-swap="innerHTML">Settings</button>

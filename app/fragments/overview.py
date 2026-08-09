@@ -8,6 +8,9 @@ from app.schemas import AdminStatusResponse, OperationalMetricsStatus, Readiness
 
 
 def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> str:
+    # pairing_html is ignored: pairing lives under Pair & test so Overview stays
+    # a status dashboard after the one-time setup is done.
+    del pairing_html
     is_mac = status.system.os.startswith("Darwin")
     machine_label = "Mac" if is_mac else "server"
     ffmpeg_hint = "brew install ffmpeg" if is_mac else "Install FFmpeg with your package manager"
@@ -24,7 +27,7 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
             status.setup.engine_binary_available,
             engine_hint,
         ),
-        ("Speech model available", status.setup.model_installed, "Open the Models tab"),
+        ("Speech model available", status.setup.model_installed, "Open Models"),
         ("Engine ready to transcribe", status.setup.engine_ready, "Select a downloaded model"),
     ]
     ready = (
@@ -69,28 +72,9 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
         "</tr>"
         for dependency in status.dependencies
     )
-    # A ready gateway needs no "next steps" section: the headline above already
-    # says so, and repeating it was the longest block on the page.
-    next_steps = ""
-    if not ready:
-        pending_steps = []
-        if not status.setup.ffmpeg_available:
-            pending_steps.append(f"{escape(ffmpeg_hint)}.")
-        if not status.setup.engine_binary_available:
-            pending_steps.append(f"{escape(engine_hint)}.")
-        if not status.setup.model_installed:
-            pending_steps.append(
-                f"Open Models and download a model recommended for this {machine_label}."
-            )
-        if not status.setup.engine_ready:
-            pending_steps.append("Select an installed model and confirm that the engine is ready.")
-        steps = "".join(f"<li>{step}</li>" for step in pending_steps)
-        next_steps = f"""
-      <div class="card">
-        <h2>Next steps</h2>
-        <ol class="steps">{steps}</ol>
-      </div>
-        """
+
+    onboarding = _onboarding_steps(status, machine_label, ffmpeg_hint, engine_hint, ready)
+
     exposure_notice = ""
     if status.bind_host in WILDCARD_BIND_HOSTS:
         firewall_hint = "Keep macOS Firewall on" if is_mac else "Keep the host firewall enabled"
@@ -106,7 +90,7 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
         <div class="headline">
           <span class="dot {"ok" if ready else "warn"}" aria-hidden="true"></span>
           <div>
-            <h2>{"Ready for dictation" if ready else "Setup needs attention"}</h2>
+            <h2>{"Ready for dictation" if ready else "Finish setup to dictate"}</h2>
             <p>{escape(status.engine.name)} ·
               {"engine ready" if status.engine.ready else "engine unavailable"}</p>
           </div>
@@ -117,8 +101,8 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
         </dl>
       </section>
       {exposure_notice}
+      {onboarding}
       {operations_fragment(status.metrics, status.readiness)}
-      {pairing_html}
       <div class="grid two">
         <div class="card">
           <h2>Setup checklist</h2>
@@ -138,7 +122,66 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
           </table>
         </div>
       </div>
-      {next_steps}
+    """
+
+
+def _onboarding_steps(
+    status: AdminStatusResponse,
+    machine_label: str,
+    ffmpeg_hint: str,
+    engine_hint: str,
+    ready: bool,
+) -> str:
+    """Short path for first-time operators; collapses once the gateway is ready."""
+    if ready:
+        return """
+      <div class="onboarding-ready card">
+        <div class="onboarding-ready-copy">
+          <h2>You&rsquo;re set</h2>
+          <p class="muted">Pair a phone once if you haven&rsquo;t, or test the pipeline from this
+            browser. Change models any time from the header control.</p>
+        </div>
+        <div class="onboarding-actions">
+          <button type="button" class="primary" data-open-tab="pair">Pair &amp; test</button>
+          <button type="button" class="ghost" data-open-tab="models">Browse models</button>
+        </div>
+      </div>
+        """
+
+    steps: list[str] = []
+    if not status.setup.ffmpeg_available:
+        steps.append(
+            f"<li><strong>Install FFmpeg</strong> — {escape(ffmpeg_hint)}.</li>"
+        )
+    if not status.setup.engine_binary_available:
+        steps.append(
+            f"<li><strong>Install a speech engine</strong> — {escape(engine_hint)}.</li>"
+        )
+    if not status.setup.model_installed or not status.setup.engine_ready:
+        steps.append(
+            f"<li><strong>Download a model</strong> for this {escape(machine_label)}. "
+            'Open <button type="button" class="text-link" data-open-tab="models">Models</button> '
+            "and pick a recommended entry.</li>"
+        )
+    steps.append(
+        "<li><strong>Pair your phone</strong> — "
+        'scan the QR under <button type="button" class="text-link" data-open-tab="pair">'
+        "Pair &amp; test</button> (one time).</li>"
+    )
+    steps.append(
+        "<li><strong>Try a short dictation</strong> on the same tab to confirm audio works.</li>"
+    )
+    return f"""
+      <div class="card onboarding">
+        <h2>Get started</h2>
+        <p class="muted">A short path to first successful dictation. Pairing stays out of the way
+          after the first scan.</p>
+        <ol class="steps onboarding-steps">{"".join(steps)}</ol>
+        <div class="onboarding-actions">
+          <button type="button" class="primary" data-open-tab="models">Choose a model</button>
+          <button type="button" class="ghost" data-open-tab="pair">Pair &amp; test</button>
+        </div>
+      </div>
     """
 
 

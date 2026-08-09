@@ -110,7 +110,7 @@ def pairing_fragment(
     return f"""
       <div class="card" id="pairing-card">
         <h2>Pair phone app</h2>
-        <p class="muted">Scan this in vocaphone on iPhone or Android to fill in the gateway
+        <p class="muted">Scan this in VocaPhone on iPhone or Android to fill in the gateway
           address and token. The code carries the live token, so keep the WebUI private.</p>
         <div class="pairing-layout">
           <div class="pairing-qr" role="img"

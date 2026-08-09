@@ -80,6 +80,7 @@
   // -------------------------------------------------------------------- tabs
 
   function activateTab(tab, updateLocation = true) {
+    if (!tab) return;
     document.querySelectorAll(".tab").forEach((other) => {
       const active = other === tab;
       other.classList.toggle("active", active);
@@ -89,6 +90,18 @@
     const panel = document.getElementById("panel");
     if (panel && tab.id) panel.setAttribute("aria-labelledby", tab.id);
     if (updateLocation) history.replaceState(null, "", `#${tab.dataset.tab}`);
+  }
+
+  function openTabByName(name) {
+    // #test is kept as an alias for the renamed Pair & test tab.
+    const key = name === "test" ? "pair" : name;
+    const tab = document.querySelector(`.tab[data-tab="${key}"]`);
+    if (!tab) return;
+    activateTab(tab);
+    const href = tab.getAttribute("hx-get");
+    if (href) {
+      htmx.ajax("GET", href, { target: "#panel", swap: "innerHTML" });
+    }
   }
 
   document.querySelectorAll(".tab").forEach((tab) => {
@@ -104,6 +117,16 @@
       next.click();
     });
   });
+
+  document.body.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-open-tab]");
+    if (!trigger) return;
+    // Engine pill refreshes via hx-get; without this the tab would open and the
+    // pill request would also fire and fight for the swap target.
+    event.preventDefault();
+    event.stopPropagation();
+    openTabByName(trigger.getAttribute("data-open-tab"));
+  }, true);
 
   document.body.addEventListener("htmx:beforeRequest", (event) => {
     if (event.detail.target && event.detail.target.id === "panel") {
@@ -372,7 +395,11 @@
     showOverlay();
   }
 
-  const requestedTab = document.querySelector(`.tab[data-tab="${location.hash.slice(1)}"]`);
+  const hash = location.hash.slice(1);
+  const tabKey = hash === "test" ? "pair" : hash;
+  const requestedTab = tabKey
+    ? document.querySelector(`.tab[data-tab="${tabKey}"]`)
+    : null;
   const initialTab = requestedTab || document.querySelector(".tab.active");
   activateTab(initialTab, false);
   if (requestedTab) {

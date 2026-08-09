@@ -9,7 +9,6 @@ from app.diagnostics import build_diagnostics_bundle
 from app.engine_state import engine_id
 from app.fragments.engine import engine_pill_fragment
 from app.fragments.overview import operations_fragment, overview_fragment
-from app.pairing_view import pairing_html
 from app.schemas import AdminStatusResponse, DiagnosticsBundle, EngineStatus, ReadinessStatus
 from app.serializers import metrics_status
 
@@ -34,8 +33,7 @@ async def get_admin_diagnostics(
 @router.get("/ui/partials/overview", response_class=HTMLResponse)
 async def ui_overview(ctx: GatewayContext = Depends(get_context)) -> HTMLResponse:
     status = await status_payload(ctx)
-    return HTMLResponse(overview_fragment(status, pairing_html=pairing_html(ctx)))
-
+    return HTMLResponse(overview_fragment(status))
 
 @router.get("/ui/partials/operations", response_class=HTMLResponse)
 async def ui_operations(ctx: GatewayContext = Depends(get_context)) -> HTMLResponse:

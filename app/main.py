@@ -104,7 +104,7 @@ def create_app(
             await asyncio.to_thread(close_engine, engine_provider.current())
 
     app = FastAPI(
-        title="vocaphone gateway",
+        title="VocaPhone gateway",
         version=VERSION,
         docs_url=None,
         redoc_url=None,
@@ -124,7 +124,9 @@ def create_app(
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Permissions-Policy"] = "microphone=(self)"
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "default-src 'self'; script-src 'self'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data:; connect-src 'self'; media-src 'self' blob:; "
             "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
             "form-action 'self'"
