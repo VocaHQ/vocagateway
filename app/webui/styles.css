@@ -719,6 +719,12 @@ button.text-link:hover { color: var(--accent-hover); }
   gap: 8px;
   flex: 0 0 auto;
   position: relative;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.families-expand-toggle {
+  border-radius: var(--r-pill);
+  min-width: 7.25rem;
 }
 .models-filter { position: relative; }
 .models-filter > summary { list-style: none; }

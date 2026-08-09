@@ -68,6 +68,14 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
               </button>
             </div>
           </details>
+          <button type="button" class="ghost small families-expand-toggle"
+                  id="families-expand-toggle"
+                  data-expanded="false"
+                  aria-controls="models-list"
+                  aria-expanded="false"
+                  title="Expand or collapse every family tile">
+            Expand all
+          </button>
           <button type="button" class="ghost small"
                   hx-get="/ui/partials/models-list" hx-include="{MODEL_FILTER_INPUTS}"
                   hx-target="#models-list" hx-swap="innerHTML">Refresh</button>

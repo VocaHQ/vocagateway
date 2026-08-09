@@ -261,6 +261,31 @@
     badge.classList.toggle("hidden", count === 0);
   }
 
+  function familyTiles() {
+    return [...document.querySelectorAll("#models-list details.family-tile")];
+  }
+
+  function setFamiliesExpanded(expanded) {
+    familyTiles().forEach((tile) => {
+      tile.open = expanded;
+    });
+    const toggle = document.getElementById("families-expand-toggle");
+    if (!toggle) return;
+    toggle.dataset.expanded = expanded ? "true" : "false";
+    toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+    toggle.textContent = expanded ? "Collapse all" : "Expand all";
+  }
+
+  function syncFamiliesExpandToggle() {
+    const toggle = document.getElementById("families-expand-toggle");
+    const tiles = familyTiles();
+    if (!toggle || !tiles.length) return;
+    const allOpen = tiles.every((tile) => tile.open);
+    toggle.dataset.expanded = allOpen ? "true" : "false";
+    toggle.setAttribute("aria-expanded", allOpen ? "true" : "false");
+    toggle.textContent = allOpen ? "Collapse all" : "Expand all";
+  }
+
   function initModelFilters() {
     const clear = document.getElementById("filter-clear");
     if (clear && !clear.dataset.bound) {
@@ -287,7 +312,26 @@
         el.addEventListener("change", updateFilterChrome);
       }
     });
+    const expandToggle = document.getElementById("families-expand-toggle");
+    if (expandToggle && !expandToggle.dataset.bound) {
+      expandToggle.dataset.bound = "1";
+      expandToggle.addEventListener("click", () => {
+        const expand = expandToggle.dataset.expanded !== "true";
+        setFamiliesExpanded(expand);
+      });
+    }
+    // List refreshes return collapsed tiles; keep the toggle label in sync.
+    const list = document.getElementById("models-list");
+    if (list && !list.dataset.expandListen) {
+      list.dataset.expandListen = "1";
+      list.addEventListener("toggle", (event) => {
+        if (event.target && event.target.matches && event.target.matches("details.family-tile")) {
+          syncFamiliesExpandToggle();
+        }
+      }, true);
+    }
     updateFilterChrome();
+    syncFamiliesExpandToggle();
   }
 
   function formatBytes(size) {
