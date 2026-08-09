@@ -3,7 +3,7 @@ from __future__ import annotations
 from html import escape
 
 from app.config import WILDCARD_BIND_HOSTS
-from app.fragments.shared import _format_bytes, _format_latency, _format_uptime
+from app.fragments.shared import _facts, _format_bytes, _format_latency, _format_uptime
 from app.schemas import AdminStatusResponse, OperationalMetricsStatus, ReadinessStatus
 
 
@@ -25,6 +25,22 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
         and status.setup.engine_ready
     )
     onboarding = _onboarding_steps(status, machine_label, ffmpeg_hint, engine_hint, ready)
+    system_facts = _facts(
+        [
+            ("Chip", status.system.chip),
+            (
+                "CPU allocation",
+                f"{status.system.effective_cpus:g} effective / "
+                f"{status.system.logical_cpus} logical",
+            ),
+            ("Memory", f"{status.system.ram_gb:g} GB"),
+            ("Accelerators", ", ".join(status.system.accelerators)),
+            ("CPU features", ", ".join(status.system.cpu_features) or "standard"),
+            ("Runtime", "container" if status.system.containerized else "host"),
+            ("OS", f"{status.system.os} ({status.system.arch})"),
+            ("Version", status.version),
+        ]
+    )
 
     exposure_notice = ""
     if status.bind_host in WILDCARD_BIND_HOSTS:
@@ -36,8 +52,8 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
               use Tailscale for remote access, and do not expose this port to the internet.</span>
           </div>
         """
-    # Model name / ready state live in the header pill. Checklist, host specs, and
-    # dependency tables are operator detail — not the daily front page.
+    # Model name / ready state live in the header pill. Checklist and dependency
+    # tables stay off the front page; host specs come back for capacity context.
     hero_copy = (
         "Pair a phone or try a test dictation when you are ready."
         if ready
@@ -54,6 +70,10 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
         </div>
       </section>
       {operations_fragment(status.metrics, status.readiness)}
+      <div class="card">
+        <h2>This {machine_label}</h2>
+        <dl class="facts">{system_facts}</dl>
+      </div>
       {exposure_notice}
       {onboarding}
     """
