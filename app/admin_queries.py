@@ -235,13 +235,18 @@ def model_entries(ctx: GatewayContext) -> list[AdminModelEntry]:
 
 
 def filtered_model_entries(
-    ctx: GatewayContext, installed_only: bool, language: str
+    ctx: GatewayContext,
+    installed_only: bool,
+    language: str,
+    family: str = "",
 ) -> list[AdminModelEntry]:
     entries = model_entries(ctx)
     if installed_only:
         entries = [entry for entry in entries if entry.state == "installed"]
     if language:
         entries = [entry for entry in entries if model_covers(entry, language)]
+    if family:
+        entries = [entry for entry in entries if entry.family == family]
     return entries
 
 

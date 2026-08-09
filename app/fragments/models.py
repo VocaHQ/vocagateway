@@ -8,36 +8,66 @@ from app.fragments.engine import ENGINE_LABELS
 from app.fragments.shared import _format_bytes
 from app.schemas import AdminModelEntry
 
-# Every action that re-renders the model list sends both filters, so downloading
+# Every action that re-renders the model list sends all filters, so downloading
 # or selecting a model never silently resets the view.
-MODEL_FILTER_INPUTS = "#installed-only-toggle, #language-filter"
+MODEL_FILTER_INPUTS = "#family-filter, #language-filter, #installed-only-toggle"
+
+_FILTER_ICON = (
+    '<svg class="filter-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" '
+    'stroke="currentColor" stroke-width="1.75" stroke-linecap="round" '
+    'stroke-linejoin="round" aria-hidden="true">'
+    '<path d="M4 5h16l-6 7.5V19l-4 2v-8.5L4 5z"/></svg>'
+)
 
 
 def models_fragment(entries: list[AdminModelEntry]) -> str:
     installed = sum(entry.state == "installed" for entry in entries)
-    families = len({entry.family for entry in entries})
+    families = len({entry.family for entry in entries if entry.family})
     return f"""
       <div class="page-head">
         <div>
           <h2>Models</h2>
           <p>{installed} of {len(entries)} downloaded across {families} families, stored only on
-            this machine. Open a family tile to pick a model; recommendations match this hardware.</p>
+            this machine. Families start collapsed — open one to pick a model.</p>
         </div>
         <div class="models-toolbar-actions">
-          <label class="sr-only" for="language-filter">Filter models by language</label>
-          <select id="language-filter" name="language" class="language-filter"
-                  hx-get="/ui/partials/models-list" hx-include="{MODEL_FILTER_INPUTS}"
-                  hx-target="#models-list" hx-swap="innerHTML" hx-trigger="change">
-            <option value="">All languages</option>
-            {_language_filter_options()}
-          </select>
-          <label class="filter-toggle" for="installed-only-toggle">
-            <input type="checkbox" id="installed-only-toggle" name="installed_only"
-                   value="true" class="sr-only" hx-get="/ui/partials/models-list"
-                   hx-include="{MODEL_FILTER_INPUTS}"
-                   hx-target="#models-list" hx-swap="innerHTML" hx-trigger="change" />
-            Installed only
-          </label>
+          <details class="models-filter" id="models-filter">
+            <summary class="filter-trigger">
+              {_FILTER_ICON}
+              <span>Filter</span>
+              <span id="filter-active-count" class="filter-count hidden" aria-live="polite"></span>
+            </summary>
+            <div class="filter-panel" role="group" aria-label="Model filters">
+              <label class="filter-field">
+                <span>Family</span>
+                <select id="family-filter" name="family" class="family-filter"
+                        hx-get="/ui/partials/models-list" hx-include="{MODEL_FILTER_INPUTS}"
+                        hx-target="#models-list" hx-swap="innerHTML" hx-trigger="change">
+                  <option value="">All families</option>
+                  {_family_filter_options(entries)}
+                </select>
+              </label>
+              <label class="filter-field">
+                <span>Language</span>
+                <select id="language-filter" name="language" class="language-filter"
+                        hx-get="/ui/partials/models-list" hx-include="{MODEL_FILTER_INPUTS}"
+                        hx-target="#models-list" hx-swap="innerHTML" hx-trigger="change">
+                  <option value="">All languages</option>
+                  {_language_filter_options()}
+                </select>
+              </label>
+              <label class="filter-toggle" for="installed-only-toggle">
+                <input type="checkbox" id="installed-only-toggle" name="installed_only"
+                       value="true" class="sr-only"
+                       hx-get="/ui/partials/models-list" hx-include="{MODEL_FILTER_INPUTS}"
+                       hx-target="#models-list" hx-swap="innerHTML" hx-trigger="change" />
+                Installed only
+              </label>
+              <button type="button" class="ghost small filter-clear" id="filter-clear">
+                Clear filters
+              </button>
+            </div>
+          </details>
           <button type="button" class="ghost small"
                   hx-get="/ui/partials/models-list" hx-include="{MODEL_FILTER_INPUTS}"
                   hx-target="#models-list" hx-swap="innerHTML">Refresh</button>
@@ -74,14 +104,25 @@ def _language_filter_options() -> str:
     )
 
 
+def _family_filter_options(entries: list[AdminModelEntry]) -> str:
+    """Families present in the live catalogue view (includes custom when listed)."""
+    names = sorted({entry.family for entry in entries if entry.family}, key=str.lower)
+    return "".join(
+        f'<option value="{escape(name, quote=True)}">{escape(name)}</option>' for name in names
+    )
+
+
 def models_list_fragment(
-    entries: list[AdminModelEntry], installed_only: bool = False, language: str = ""
+    entries: list[AdminModelEntry],
+    installed_only: bool = False,
+    language: str = "",
+    family: str = "",
 ) -> str:
-    """Family tiles: collapsed grid for scanning, expanded dense rows per family."""
+    """Family tiles: always collapsed for density; open one to browse its models."""
     groups: dict[str, list[AdminModelEntry]] = {}
     for entry in entries:
-        family = entry.family or ENGINE_LABELS.get(entry.engine, entry.engine)
-        groups.setdefault(family, []).append(entry)
+        name = entry.family or ENGINE_LABELS.get(entry.engine, entry.engine)
+        groups.setdefault(name, []).append(entry)
 
     def family_sort_key(item: tuple[str, list[AdminModelEntry]]) -> tuple:
         name, items = item
@@ -92,26 +133,29 @@ def models_list_fragment(
         return (not has_active, not has_recommended, -installed_count, name.lower())
 
     parts: list[str] = []
-    for family, items in sorted(groups.items(), key=family_sort_key):
-        parts.append(_family_tile(family, items))
+    for name, items in sorted(groups.items(), key=family_sort_key):
+        parts.append(_family_tile(name, items))
     if parts:
         return (
             _dictation_language_hint(entries, language)
             + f'<div class="family-grid">{"".join(parts)}</div>'
         )
-    if installed_only and language:
-        name = escape(LANGUAGE_NAMES.get(language, language))
-        return (
-            f'<p class="empty-state">No downloaded model covers {name}. '
-            "Turn off &ldquo;Installed only&rdquo; to find one to download.</p>"
-        )
+    return _empty_filter_state(installed_only=installed_only, language=language, family=family)
+
+
+def _empty_filter_state(*, installed_only: bool, language: str, family: str) -> str:
+    bits: list[str] = []
+    if family:
+        bits.append(f"family {escape(family)}")
     if language:
-        name = escape(LANGUAGE_NAMES.get(language, language))
-        return f'<p class="empty-state">No model in the catalog covers {name}.</p>'
+        bits.append(escape(LANGUAGE_NAMES.get(language, language)))
     if installed_only:
+        bits.append("installed only")
+    if bits:
+        joined = ", ".join(bits)
         return (
-            '<p class="empty-state">No models downloaded yet. '
-            "Turn off &ldquo;Installed only&rdquo; to browse the catalog.</p>"
+            f'<p class="empty-state">No models match {joined}. '
+            "Clear or widen the filters to see more of the catalog.</p>"
         )
     return '<p class="empty-state">No models are available.</p>'
 
@@ -120,8 +164,6 @@ def _family_tile(family: str, items: list[AdminModelEntry]) -> str:
     installed = sum(entry.state == "installed" for entry in items)
     active = next((entry for entry in items if entry.active), None)
     recommended = next((entry for entry in items if entry.recommended), None)
-    # Open families that already matter so first-run density stays low elsewhere.
-    open_attr = " open" if active or installed or recommended else ""
     count = f"{len(items)} model" + ("" if len(items) == 1 else "s")
     installed_label = f"{installed} installed" if installed else "none installed"
     engines = sorted({ENGINE_LABELS.get(entry.engine, entry.engine) for entry in items})
@@ -132,8 +174,9 @@ def _family_tile(family: str, items: list[AdminModelEntry]) -> str:
     elif recommended:
         badges += '<span class="badge recommended">recommended</span>'
     cards = "".join(_model_card(item) for item in items)
+    # Always collapsed: open a tile deliberately for density across 50+ models.
     return f"""
-      <details class="family-tile"{open_attr}>
+      <details class="family-tile">
         <summary class="family-summary">
           <span class="family-summary-main">
             <span class="family-name">{escape(family)}</span>

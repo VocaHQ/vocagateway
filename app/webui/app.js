@@ -211,11 +211,75 @@
     }
   });
 
-  document.body.addEventListener("htmx:afterSwap", () => scheduleModelPoll());
+  document.body.addEventListener("htmx:afterSwap", (event) => {
+    scheduleModelPoll();
+    // Models tab shell (or list refresh) may reintroduce filter controls.
+    if (
+      event.detail &&
+      event.detail.target &&
+      (event.detail.target.id === "panel" || event.detail.target.id === "models-list")
+    ) {
+      initModelFilters();
+    }
+  });
 
   // ------------------------------------------------------------ model status
 
   let modelPollTimer = null;
+
+  function currentModelFilters() {
+    const family = document.getElementById("family-filter");
+    const language = document.getElementById("language-filter");
+    const installed = document.getElementById("installed-only-toggle");
+    return {
+      family: family ? family.value : "",
+      language: language ? language.value : "",
+      installed_only: installed && installed.checked ? "true" : "",
+    };
+  }
+
+  function updateFilterChrome() {
+    const root = document.getElementById("models-filter");
+    const badge = document.getElementById("filter-active-count");
+    if (!root || !badge) return;
+    const filters = currentModelFilters();
+    let count = 0;
+    if (filters.family) count += 1;
+    if (filters.language) count += 1;
+    if (filters.installed_only) count += 1;
+    root.classList.toggle("has-active", count > 0);
+    badge.textContent = count ? String(count) : "";
+    badge.classList.toggle("hidden", count === 0);
+  }
+
+  function initModelFilters() {
+    const clear = document.getElementById("filter-clear");
+    if (clear && !clear.dataset.bound) {
+      clear.dataset.bound = "1";
+      clear.addEventListener("click", () => {
+        const family = document.getElementById("family-filter");
+        const language = document.getElementById("language-filter");
+        const installed = document.getElementById("installed-only-toggle");
+        if (family) family.value = "";
+        if (language) language.value = "";
+        if (installed) installed.checked = false;
+        updateFilterChrome();
+        htmx.ajax("GET", "/ui/partials/models-list", {
+          target: "#models-list",
+          swap: "innerHTML",
+          values: currentModelFilters(),
+        });
+      });
+    }
+    ["family-filter", "language-filter", "installed-only-toggle"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el && !el.dataset.filterBound) {
+        el.dataset.filterBound = "1";
+        el.addEventListener("change", updateFilterChrome);
+      }
+    });
+    updateFilterChrome();
+  }
 
   function formatBytes(size) {
     if (size >= 1_000_000_000) return `${(size / 1_000_000_000).toFixed(1)} GB`;
@@ -270,6 +334,7 @@
         htmx.ajax("GET", "/ui/partials/models-list", {
           target: "#models-list",
           swap: "innerHTML",
+          values: currentModelFilters(),
         });
         return;
       }
