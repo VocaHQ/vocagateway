@@ -16,11 +16,7 @@ def pair_and_test_fragment(
     Network exposure panel is last and outside `#pairing-card` so token/QR HTMX
     swaps cannot stack duplicates.
     """
-    network = (
-        exposure_network_panel(is_mac=is_mac)
-        if bind_host in WILDCARD_BIND_HOSTS
-        else ""
-    )
+    network = exposure_network_panel(is_mac=is_mac) if bind_host in WILDCARD_BIND_HOSTS else ""
     return f"""
       <div class="page-head">
         <div>

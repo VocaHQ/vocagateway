@@ -525,6 +525,7 @@ async def test_models_list_accepts_cleared_filters(
     assert empty_bools.status_code == 200
     assert 'class="family-tile"' in empty_bools.text or 'class="model-card"' in empty_bools.text
 
+
 async def test_unknown_model_download_404(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
