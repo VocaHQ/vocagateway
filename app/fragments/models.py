@@ -9,14 +9,45 @@ from app.fragments.shared import _format_bytes
 from app.schemas import AdminModelEntry
 
 # Every action that re-renders the model list sends all filters, so downloading
-# or selecting a model never silently resets the view.
-MODEL_FILTER_INPUTS = "#family-filter, #language-filter, #installed-only-toggle"
+# or selecting a model never silently resets the view. The filter form holds
+# multi-select checkboxes (family / language / engine) plus size and toggles.
+MODEL_FILTER_INPUTS = "#models-filter-form"
+
+# Download-size caps shown in the filter panel (keys match admin_queries).
+_SIZE_FILTER_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("", "Any size"),
+    ("100mb", "Under 100 MB"),
+    ("300mb", "Under 300 MB"),
+    ("800mb", "Under 800 MB"),
+    ("1500mb", "Under 1.5 GB"),
+)
 
 _FILTER_ICON = (
     '<svg class="filter-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" '
     'stroke="currentColor" stroke-width="1.75" stroke-linecap="round" '
     'stroke-linejoin="round" aria-hidden="true">'
     '<path d="M4 5h16l-6 7.5V19l-4 2v-8.5L4 5z"/></svg>'
+)
+_EXPAND_ICON = (
+    '<svg class="toolbar-icon icon-expand" viewBox="0 0 24 24" width="18" height="18" fill="none" '
+    'stroke="currentColor" stroke-width="1.75" stroke-linecap="round" '
+    'stroke-linejoin="round" aria-hidden="true">'
+    '<path d="m7 15 5 5 5-5M7 9l5-5 5 5"/></svg>'
+)
+_COLLAPSE_ICON = (
+    '<svg class="toolbar-icon icon-collapse" viewBox="0 0 24 24" width="18" height="18" fill="none" '
+    'stroke="currentColor" stroke-width="1.75" stroke-linecap="round" '
+    'stroke-linejoin="round" aria-hidden="true">'
+    '<path d="m7 20 5-5 5 5M7 4l5 5 5-5"/></svg>'
+)
+_REFRESH_ICON = (
+    '<svg class="toolbar-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" '
+    'stroke="currentColor" stroke-width="1.75" stroke-linecap="round" '
+    'stroke-linejoin="round" aria-hidden="true">'
+    '<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>'
+    '<path d="M3 3v5h5"/>'
+    '<path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>'
+    '<path d="M16 16h5v5"/></svg>'
 )
 
 
@@ -30,77 +61,119 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
           <p>{installed} of {len(entries)} downloaded across {families} families, all stored on this machine. Families start collapsed; open one to pick a model.</p>
         </div>
         <div class="models-toolbar-actions">
-          <details class="models-filter" id="models-filter">
-            <summary class="filter-trigger">
-              {_FILTER_ICON}
-              <span>Filter</span>
-              <span id="filter-active-count" class="filter-count hidden" aria-live="polite"></span>
-            </summary>
-            <div class="filter-panel" role="group" aria-label="Model filters">
-              <label class="filter-field">
-                <span>Family</span>
-                <select id="family-filter" name="family" class="family-filter"
-                        hx-get="/ui/partials/models-list" hx-include="{MODEL_FILTER_INPUTS}"
-                        hx-target="#models-list" hx-swap="innerHTML" hx-trigger="change">
-                  <option value="">All families</option>
-                  {_family_filter_options(entries)}
-                </select>
-              </label>
-              <label class="filter-field">
-                <span>Language</span>
-                <select id="language-filter" name="language" class="language-filter"
-                        hx-get="/ui/partials/models-list" hx-include="{MODEL_FILTER_INPUTS}"
-                        hx-target="#models-list" hx-swap="innerHTML" hx-trigger="change">
-                  <option value="">All languages</option>
-                  {_language_filter_options()}
-                </select>
-              </label>
-              <label class="filter-toggle" for="installed-only-toggle">
-                <input type="checkbox" id="installed-only-toggle" name="installed_only"
-                       value="true" class="sr-only"
-                       hx-get="/ui/partials/models-list" hx-include="{MODEL_FILTER_INPUTS}"
-                       hx-target="#models-list" hx-swap="innerHTML" hx-trigger="change" />
-                Installed only
-              </label>
-              <button type="button" class="ghost small filter-clear" id="filter-clear">
-                Clear filters
-              </button>
-            </div>
-          </details>
-          <button type="button" class="ghost small families-expand-toggle"
+          <button type="button" class="ghost filter-trigger" id="filter-rail-toggle"
+                  aria-controls="models-filter" aria-expanded="true"
+                  title="Hide filters">
+            {_FILTER_ICON}
+            <span class="filter-trigger-label">Filters</span>
+            <span id="filter-active-count" class="filter-count hidden" aria-live="polite"></span>
+          </button>
+          <button type="button" class="ghost icon-btn families-expand-toggle"
                   id="families-expand-toggle"
                   data-expanded="false"
                   aria-controls="models-list"
                   aria-expanded="false"
-                  title="Expand or collapse every family tile">
-            Expand all
+                  aria-label="Expand all families"
+                  title="Expand all families">
+            {_EXPAND_ICON}{_COLLAPSE_ICON}
           </button>
-          <button type="button" class="ghost small"
+          <button type="button" class="ghost icon-btn models-refresh"
+                  aria-label="Refresh models"
+                  title="Refresh models"
                   hx-get="/ui/partials/models-list" hx-include="{MODEL_FILTER_INPUTS}"
-                  hx-target="#models-list" hx-swap="innerHTML">Refresh</button>
+                  hx-target="#models-list" hx-swap="innerHTML">{_REFRESH_ICON}</button>
         </div>
       </div>
-      <div id="models-list" aria-live="polite">
-        {models_list_fragment(entries)}
-      </div>
-      <div class="card">
-        <h2>Bring your own Whisper model</h2>
-        <p class="muted">Paste a direct HTTPS link to a <code>.bin</code> or <code>.gguf</code> file. It runs through the standalone engine. Use a <code>/resolve/</code> URL on Hugging Face, not the repo home page.</p>
-        <form hx-post="/ui/partials/models/custom" hx-include="{MODEL_FILTER_INPUTS}"
-              hx-target="#models-list" hx-swap="innerHTML">
-          <div class="row">
-            <input name="url" type="url" required
-                   placeholder="https://huggingface.co/&hellip;/resolve/main/model.gguf" />
-            <button type="submit" class="primary">Download</button>
+      <div class="models-layout" id="models-layout">
+        <aside class="models-filter" id="models-filter" aria-label="Model filters">
+          <div class="filter-side-head">
+            <h3 class="filter-side-title">Filters</h3>
+            <button type="button" class="ghost icon-btn filter-side-collapse"
+                    id="filter-side-collapse"
+                    aria-controls="models-filter"
+                    aria-expanded="true"
+                    aria-label="Collapse filters"
+                    title="Collapse filters">
+              <svg class="toolbar-icon" viewBox="0 0 24 24" width="18" height="18" fill="none"
+                   stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+                   stroke-linejoin="round" aria-hidden="true">
+                <path d="M15 6 9 12l6 6"/>
+              </svg>
+            </button>
           </div>
-        </form>
-        <p class="muted small model-custom-links">
-          <a href="https://huggingface.co/ggerganov/whisper.cpp" target="_blank" rel="noopener noreferrer">Find ggml models on Hugging Face</a>
-          <span aria-hidden="true">·</span>
-          <a href="https://huggingface.co/models?pipeline_tag=automatic-speech-recognition&amp;library=gguf&amp;sort=trending" target="_blank" rel="noopener noreferrer">Browse GGUF speech models</a>
-          <span aria-hidden="true">·</span>
-          <a href="{_request_model_issue_url()}" target="_blank" rel="noopener noreferrer">Request a catalog model</a>
-        </p>
+          <form id="models-filter-form" class="filter-panel" role="group"
+                aria-label="Model filter options"
+                hx-get="/ui/partials/models-list"
+                hx-trigger="change from:input[name], change from:select[name]"
+                hx-target="#models-list" hx-swap="innerHTML"
+                hx-include="this">
+            <fieldset class="filter-field">
+              <legend>Family</legend>
+              <div class="filter-check-list" id="family-filter-list">
+                {_family_filter_options(entries)}
+              </div>
+            </fieldset>
+            <fieldset class="filter-field">
+              <legend>Language</legend>
+              <input type="search" class="filter-search" data-filter-search="language-filter-list"
+                     placeholder="Search languages" autocomplete="off" spellcheck="false"
+                     aria-label="Search languages" />
+              <div class="filter-check-list filter-check-list-tall" id="language-filter-list">
+                {_language_filter_options()}
+              </div>
+            </fieldset>
+            <fieldset class="filter-field">
+              <legend>Engine</legend>
+              <div class="filter-check-list filter-check-list-engines" id="engine-filter-list">
+                {_engine_filter_options(entries)}
+              </div>
+            </fieldset>
+            <label class="filter-field">
+              <span>Max download size</span>
+              <select id="max-size-filter" name="max_size" class="max-size-filter">
+                {_size_filter_options()}
+              </select>
+            </label>
+            <div class="filter-toggles">
+              <label class="filter-toggle" for="installed-only-toggle">
+                <input type="checkbox" id="installed-only-toggle" name="installed_only"
+                       value="true" class="sr-only" />
+                Installed only
+              </label>
+              <label class="filter-toggle" for="recommended-only-toggle"
+                     title="Models picked for this machine (RAM and platform)">
+                <input type="checkbox" id="recommended-only-toggle" name="recommended_only"
+                       value="true" class="sr-only" />
+                Fits this machine
+              </label>
+            </div>
+            <button type="button" class="ghost small filter-clear" id="filter-clear">
+              Clear filters
+            </button>
+          </form>
+        </aside>
+        <div class="models-main">
+          <div id="models-list" aria-live="polite">
+            {models_list_fragment(entries)}
+          </div>
+          <div class="card">
+            <h2>Bring your own Whisper model</h2>
+            <p class="muted">Paste a direct HTTPS link to a <code>.bin</code> or <code>.gguf</code> file. It runs through the standalone engine. Use a <code>/resolve/</code> URL on Hugging Face, not the repo home page.</p>
+            <form hx-post="/ui/partials/models/custom" hx-include="{MODEL_FILTER_INPUTS}"
+                  hx-target="#models-list" hx-swap="innerHTML">
+              <div class="row">
+                <input name="url" type="url" required
+                       placeholder="https://huggingface.co/&hellip;/resolve/main/model.gguf" />
+                <button type="submit" class="primary">Download</button>
+              </div>
+            </form>
+            <p class="muted small model-custom-links">
+              <a href="https://huggingface.co/models?pipeline_tag=automatic-speech-recognition&amp;library=gguf&amp;sort=trending" target="_blank" rel="noopener noreferrer">Browse GGUF speech models</a>
+              <span aria-hidden="true">·</span>
+              <a href="{_request_model_issue_url()}" target="_blank" rel="noopener noreferrer">Request a catalog model</a>
+            </p>
+          </div>
+        </div>
       </div>
     """
 
@@ -124,33 +197,65 @@ Thanks.
     )
 
 
+def _filter_check(name: str, value: str, label: str) -> str:
+    return (
+        f'<label class="filter-check">'
+        f'<input type="checkbox" name="{escape(name, quote=True)}" '
+        f'value="{escape(value, quote=True)}" />'
+        f"<span>{escape(label)}</span></label>"
+    )
+
+
 def _language_filter_options() -> str:
     """Only languages some model actually covers, so the filter never has a
     dead option. Whisper's set dominates, but Dolphin contributes the South and
     Southeast Asian languages Whisper lacks."""
     covered = {code for model in DEFAULT_CATALOG for code in model.language_codes}
     named = sorted((LANGUAGE_NAMES.get(code, code), code) for code in covered)
-    return "".join(
-        f'<option value="{escape(code, quote=True)}">{escape(name)}</option>'
-        for name, code in named
-    )
+    return "".join(_filter_check("language", code, name) for name, code in named)
 
 
 def _family_filter_options(entries: list[AdminModelEntry]) -> str:
     """Families present in the live catalogue view (includes custom when listed)."""
     names = sorted({entry.family for entry in entries if entry.family}, key=str.lower)
+    return "".join(_filter_check("family", name, name) for name in names)
+
+
+def _engine_filter_options(entries: list[AdminModelEntry]) -> str:
+    """Engines present in the live catalogue view."""
+    engines = sorted({entry.engine for entry in entries if entry.engine})
     return "".join(
-        f'<option value="{escape(name, quote=True)}">{escape(name)}</option>' for name in names
+        _filter_check("engine", eng, ENGINE_LABELS.get(eng, eng)) for eng in engines
+    )
+
+
+def _size_filter_options() -> str:
+    return "".join(
+        f'<option value="{escape(value, quote=True)}">{escape(label)}</option>'
+        for value, label in _SIZE_FILTER_OPTIONS
     )
 
 
 def models_list_fragment(
     entries: list[AdminModelEntry],
     installed_only: bool = False,
-    language: str = "",
-    family: str = "",
+    language: str | list[str] = "",
+    family: str | list[str] = "",
+    languages: list[str] | None = None,
+    families: list[str] | None = None,
+    engines: list[str] | None = None,
+    max_size: str = "",
+    recommended_only: bool = False,
 ) -> str:
-    """Family tiles: always collapsed for density; open one to browse its models."""
+    """Family tiles: always collapsed for density; open one to browse its models.
+
+    `language` / `family` still accept a single string for older call sites; prefer
+    the plural list kwargs.
+    """
+    lang_list = list(languages) if languages is not None else _as_list(language)
+    fam_list = list(families) if families is not None else _as_list(family)
+    eng_list = list(engines or [])
+
     groups: dict[str, list[AdminModelEntry]] = {}
     for entry in entries:
         name = entry.family or ENGINE_LABELS.get(entry.engine, entry.engine)
@@ -169,18 +274,55 @@ def models_list_fragment(
         parts.append(_family_tile(name, items))
     if parts:
         return (
-            _dictation_language_hint(entries, language)
+            _dictation_language_hint(entries, lang_list)
             + f'<div class="family-grid">{"".join(parts)}</div>'
         )
-    return _empty_filter_state(installed_only=installed_only, language=language, family=family)
+    return _empty_filter_state(
+        installed_only=installed_only,
+        languages=lang_list,
+        families=fam_list,
+        engines=eng_list,
+        max_size=max_size,
+        recommended_only=recommended_only,
+    )
 
 
-def _empty_filter_state(*, installed_only: bool, language: str, family: str) -> str:
+def _as_list(value: str | list[str] | None) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value else []
+    return [item for item in value if item]
+
+
+def _empty_filter_state(
+    *,
+    installed_only: bool,
+    languages: list[str],
+    families: list[str],
+    engines: list[str] | None = None,
+    max_size: str = "",
+    recommended_only: bool = False,
+) -> str:
     bits: list[str] = []
-    if family:
-        bits.append(f"family {escape(family)}")
-    if language:
-        bits.append(escape(LANGUAGE_NAMES.get(language, language)))
+    if families:
+        bits.append("families " + ", ".join(escape(f) for f in families))
+    if languages:
+        bits.append(
+            ", ".join(escape(LANGUAGE_NAMES.get(code, code)) for code in languages)
+        )
+    if engines:
+        bits.append(
+            "engines "
+            + ", ".join(escape(ENGINE_LABELS.get(eng, eng)) for eng in engines)
+        )
+    if max_size:
+        label = next(
+            (lab for key, lab in _SIZE_FILTER_OPTIONS if key == max_size), max_size
+        )
+        bits.append(escape(label.lower()))
+    if recommended_only:
+        bits.append("fits this machine")
     if installed_only:
         bits.append("installed only")
     if bits:
@@ -200,19 +342,29 @@ def _family_tile(family: str, items: list[AdminModelEntry]) -> str:
     installed_label = f"{installed} installed" if installed else "none installed"
     engines = sorted({ENGINE_LABELS.get(entry.engine, entry.engine) for entry in items})
     engine_note = escape(", ".join(engines))
-    badges = ""
+    # Family-level status once. Active uses a check label (not the same pill as
+    # recommended); nested cards skip repeating "recommended".
+    tags = ""
     if active:
-        badges += '<span class="badge active">active</span>'
+        tags = _active_label()
     elif recommended:
-        badges += '<span class="badge recommended">recommended</span>'
-    cards = "".join(_model_card(item) for item in items)
+        tags = '<span class="badge recommended">recommended</span>'
+    cards = "".join(
+        _model_card(
+            item,
+            nested_in_family=True,
+            suppress_recommended=bool(recommended),
+        )
+        for item in items
+    )
+    active_attr = ' data-active="1"' if active else ""
     # Always collapsed: open a tile deliberately for density across 50+ models.
     return f"""
-      <details class="family-tile">
+      <details class="family-tile"{active_attr}>
         <summary class="family-summary">
           <span class="family-summary-main">
             <span class="family-name">{escape(family)}</span>
-            <span class="family-tags">{badges}</span>
+            <span class="family-tags">{tags}</span>
           </span>
           <span class="family-meta">
             <span>{count}</span>
@@ -221,11 +373,26 @@ def _family_tile(family: str, items: list[AdminModelEntry]) -> str:
             <span class="family-engines" title="Engines in this family">{engine_note}</span>
           </span>
         </summary>
-        <div class="model-grid family-models">{cards}</div>
+        <div class="family-models" role="list">{cards}</div>
       </details>
     """
 
-def _dictation_language_hint(entries: list[AdminModelEntry], language: str) -> str:
+
+def _active_label() -> str:
+    """Check + Active — solid treatment, not the outline recommended pill."""
+    return (
+        '<span class="model-active-label" title="Currently selected model">'
+        '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" '
+        'stroke="currentColor" stroke-width="2.25" stroke-linecap="round" '
+        'stroke-linejoin="round" aria-hidden="true">'
+        '<path d="M20 6 9 17l-5-5"/></svg>'
+        "Active"
+        "</span>"
+    )
+
+def _dictation_language_hint(
+    entries: list[AdminModelEntry], language: str | list[str]
+) -> str:
     """Warn when a filtered list mixes pinnable and auto-detecting models.
 
     Testing showed every auto-detecting model returns the wrong writing system on
@@ -233,14 +400,18 @@ def _dictation_language_hint(entries: list[AdminModelEntry], language: str) -> s
     Qwen3-ASR. Pinning the language fixes it outright, so someone filtering for
     their language needs to know which half of the list to trust for dictation,
     which is mostly short phrases.
+
+    Only fires for a single selected language (multi-select is too broad).
     """
-    if not language:
+    codes = _as_list(language)
+    if len(codes) != 1:
         return ""
+    code = codes[0]
     automatic = [entry for entry in entries if entry.detects_language_automatically]
     pinnable = [entry for entry in entries if not entry.detects_language_automatically]
     if not automatic or not pinnable:
         return ""
-    name = escape(LANGUAGE_NAMES.get(language, language))
+    name = escape(LANGUAGE_NAMES.get(code, code))
     return (
         '<div class="callout warning models-language-hint">'
         f"<strong>Picking a model for {name}</strong>"
@@ -253,54 +424,105 @@ def _dictation_language_hint(entries: list[AdminModelEntry], language: str) -> s
 def _language_disclosure(entry: AdminModelEntry) -> str:
     """Name the languages behind a summary like "25 European languages".
 
-    A `<details>` rather than an always-open list: the summary line is what people
-    scan, and forty language names on every card would bury everything else. It
-    needs no JavaScript, stays keyboard-accessible, and is searchable by the
-    browser's own find-in-page once opened.
+    Chips in a scrollable wrap — not a tall comma list that blows up the card.
     """
-    # A single-language model needs no disclosure: the "English only" summary
-    # beside it already says everything the list would.
     if len(entry.language_names) < 2:
         return ""
-    names = ", ".join(escape(name) for name in entry.language_names)
+    chips = "".join(
+        f'<span class="model-language-chip">{escape(name)}</span>'
+        for name in entry.language_names
+    )
     note = (
-        " This model picks the language itself, so this list is what it handles well, not options you can force."
+        '<p class="model-language-note muted small">'
+        "This model picks the language itself; these are languages it handles well, "
+        "not options you can force.</p>"
         if entry.detects_language_automatically
         else ""
     )
     return f"""
         <details class="model-languages">
           <summary>{len(entry.language_names)} languages</summary>
-          <p class="model-language-list">{names}.{escape(note)}</p>
+          {note}
+          <div class="model-language-list">{chips}</div>
         </details>
     """
 
 
-def _model_card(entry: AdminModelEntry) -> str:
+def _display_label(entry: AdminModelEntry, *, nested_in_family: bool) -> str:
+    """Drop a leading family name when the card already sits under that family.
+
+    Catalog labels often start with the family ("Parakeet TDT 0.6B v3 INT8");
+    under an open family shell that prefix is noise.
+
+    Only strip on a clean boundary (space / separator). Do not peel letters out of a
+    longer token — "Whisper" must not turn "whisper.cpp Tiny" into ".cpp Tiny" or
+    "WhisperKit Base" into "Kit Base".
+    """
+    label = entry.label
+    if not nested_in_family or not entry.family:
+        return label
+    fam = entry.family.strip()
+    if not fam or not label.lower().startswith(fam.lower()):
+        return label
+    rest = label[len(fam) :]
+    if not rest:
+        return label
+    # Boundary: whitespace or a short list of separators — not '.' or more letters.
+    if rest[0].isspace() or rest[0] in "/·-–—":
+        stripped = rest.lstrip(" /·-–—")
+        if stripped:
+            return stripped
+    return label
+
+
+def _model_card(
+    entry: AdminModelEntry,
+    *,
+    nested_in_family: bool = False,
+    suppress_recommended: bool = False,
+) -> str:
     encoded_id = quote(entry.id, safe="")
-    # Only state carries a tag. Everything else that used to be a pill is now part
-    # of the metadata line, because five pills per model told nobody anything.
+    # Active uses a check label (card wash too). Recommended keeps the outline
+    # pill. Family already shows recommended when nested, so skip repeating it.
     badges = ""
     if entry.active:
-        badges += '<span class="badge active">active</span>'
-    elif entry.recommended:
+        badges += _active_label()
+    elif entry.recommended and not suppress_recommended:
         badges += '<span class="badge recommended">recommended</span>'
     if entry.detects_language_automatically:
         badges += (
             '<span class="badge auto-language" title="This model decides the language itself.'
             ' The language chosen in the app does not constrain it.">auto language</span>'
         )
-    meta = [
-        escape(entry.family),
+    # Short scan line on the card; family lives as a toolbar pill (not here).
+    meta: list[str] = [
         _format_bytes(entry.size_bytes),
         escape(entry.languages),
         escape(entry.quality),
     ]
+    display_label = _display_label(entry, nested_in_family=nested_in_family)
+    family_pill = (
+        f'<span class="model-family-pill" title="Family">{escape(entry.family)}</span>'
+        if entry.family
+        else ""
+    )
+    # Source is a real link when we know a project/HF page. The default license
+    # string "See model source" is a placeholder, not a link — omit it then.
+    if entry.source_url:
+        source_html = (
+            f'<a class="model-source-link" href="{escape(entry.source_url, quote=True)}" '
+            f'target="_blank" rel="noopener noreferrer">{escape(entry.source)}</a>'
+        )
+    else:
+        source_html = escape(entry.source)
+    detail_bits: list[str] = [source_html]
+    if entry.license_name and entry.license_name != "See model source":
+        detail_bits.append(escape(entry.license_name))
     if entry.supports_streaming:
-        meta.append("streams live")
+        detail_bits.append("streams live")
     if not entry.commercial_use:
-        meta.append("personal use only")
-    meta.append(f"{escape(entry.source)} · {escape(entry.license_name)}")
+        detail_bits.append("personal use only")
+    detail_meta = " · ".join(detail_bits)
 
     if entry.state == "downloading":
         percent = round((entry.progress or 0) * 100)
@@ -327,22 +549,20 @@ def _model_card(entry: AdminModelEntry) -> str:
             )
         )
         action = (
-            f'<div class="row-actions">{select_button}'
+            f'{select_button}'
             f'<button class="ghost small danger"'
             f' hx-delete="/ui/partials/models/{encoded_id}"'
             f' hx-include="{MODEL_FILTER_INPUTS}"'
             f' hx-confirm="Delete {escape(entry.label)} from this server?"'
-            f' hx-target="#models-list" hx-swap="innerHTML">Delete</button></div>'
+            f' hx-target="#models-list" hx-swap="innerHTML">Delete</button>'
         )
     else:
         note = (
-            f'<p class="error small">Download failed: {escape(entry.error)}</p>'
+            f'<p class="error small model-action-error">Download failed: {escape(entry.error)}</p>'
             if entry.error
             else ""
         )
-        # Ghost, not primary: with 58 catalogue entries, 58 filled buttons is a wall
-        # of colour. Green is reserved for the decision that changes the gateway,
-        # which is selecting a model.
+        # Ghost, not primary: green is reserved for Select.
         action = (
             f"{note}"
             f'<button class="ghost small"'
@@ -351,21 +571,44 @@ def _model_card(entry: AdminModelEntry) -> str:
             f' hx-target="#models-list" hx-swap="innerHTML">Download</button>'
         )
 
+    # Info icon (left) + actions (right). Hover/focus shows a popover — no
+    # in-card accordion that stretches tile height.
+    info_id = f"model-info-{escape(entry.id, quote=True).replace('%', '').replace(':', '-')}"
+    info_icon = (
+        '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" '
+        'stroke="currentColor" stroke-width="1.75" stroke-linecap="round" '
+        'stroke-linejoin="round" aria-hidden="true">'
+        '<circle cx="12" cy="12" r="9"/>'
+        '<path d="M12 11v5M12 8h.01"/></svg>'
+    )
+    active_attr = ' data-active="1"' if entry.active else ""
     return f"""
-      <article class="model-card" data-model-id="{escape(entry.id, quote=True)}"
-               data-state="{entry.state}">
+      <article class="model-card" role="listitem"
+               data-model-id="{escape(entry.id, quote=True)}"
+               data-state="{entry.state}"{active_attr}>
         <div class="model-main">
           <div class="model-title">
-            <h4>{escape(entry.label)}</h4>
+            <h4 title="{escape(entry.label, quote=True)}">{escape(display_label)}</h4>
             <span class="model-tags">{badges}</span>
           </div>
           <p class="model-meta">{" &middot; ".join(meta)}</p>
-          <details class="model-more">
-            <summary>Details</summary>
-            <p class="model-description">{escape(entry.description)}</p>
-            {_language_disclosure(entry)}
-          </details>
+          <p class="model-blurb" title="{escape(entry.description, quote=True)}">{escape(entry.description)}</p>
         </div>
-        <div class="actions">{action}</div>
+        <div class="model-toolbar">
+          <div class="model-toolbar-start">
+            <div class="model-info">
+              <button type="button" class="model-info-btn" aria-label="More model details"
+                      aria-describedby="{info_id}" title="Source, license, languages">
+                {info_icon}
+              </button>
+              <div class="model-info-pop" id="{info_id}" role="tooltip">
+                <p class="model-detail-meta">{detail_meta}</p>
+                {_language_disclosure(entry)}
+              </div>
+            </div>
+            {family_pill}
+          </div>
+          <div class="model-actions">{action}</div>
+        </div>
       </article>
     """

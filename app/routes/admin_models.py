@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, Response
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Form, Query, Response
 from fastapi.responses import HTMLResponse
 
 from app.admin_queries import filtered_model_entries, model_entries
@@ -20,27 +22,69 @@ from app.schemas import (
 
 router = APIRouter(dependencies=[Depends(require_token)])
 
+# Repeated keys: family=Whisper&family=Parakeet (and the same for language/engine).
+LanguageQ = Annotated[list[str], Query()]
+FamilyQ = Annotated[list[str], Query()]
+EngineQ = Annotated[list[str], Query()]
+LanguageF = Annotated[list[str], Form()]
+FamilyF = Annotated[list[str], Form()]
+EngineF = Annotated[list[str], Form()]
+
 
 def _models_list_html(
     ctx: GatewayContext,
+    *,
     installed_only: bool = False,
-    language: str = "",
-    family: str = "",
+    language: list[str] | None = None,
+    family: list[str] | None = None,
+    engine: list[str] | None = None,
+    max_size: str = "",
+    recommended_only: bool = False,
 ) -> HTMLResponse:
-    entries = filtered_model_entries(ctx, installed_only, language, family)
+    languages = list(language or [])
+    families = list(family or [])
+    engines = list(engine or [])
+    entries = filtered_model_entries(
+        ctx,
+        installed_only=installed_only,
+        language=languages,
+        family=families,
+        engine=engines,
+        max_size=max_size,
+        recommended_only=recommended_only,
+    )
     return HTMLResponse(
-        models_list_fragment(entries, installed_only, language, family)
+        models_list_fragment(
+            entries,
+            installed_only=installed_only,
+            languages=languages,
+            families=families,
+            engines=engines,
+            max_size=max_size,
+            recommended_only=recommended_only,
+        )
     )
 
 
 @router.get("/v1/admin/models", response_model=list[AdminModelEntry])
 async def get_admin_models(
     installed_only: bool = False,
-    language: str = "",
-    family: str = "",
+    language: LanguageQ = [],
+    family: FamilyQ = [],
+    engine: EngineQ = [],
+    max_size: str = "",
+    recommended_only: bool = False,
     ctx: GatewayContext = Depends(get_context),
 ) -> list[AdminModelEntry]:
-    return filtered_model_entries(ctx, installed_only, language, family)
+    return filtered_model_entries(
+        ctx,
+        installed_only=installed_only,
+        language=language,
+        family=family,
+        engine=engine,
+        max_size=max_size,
+        recommended_only=recommended_only,
+    )
 
 
 @router.post("/v1/admin/models/{model_id}/download", response_model=DownloadResponse)
@@ -127,19 +171,33 @@ async def ui_models(ctx: GatewayContext = Depends(get_context)) -> HTMLResponse:
 @router.get("/ui/partials/models-list", response_class=HTMLResponse)
 async def ui_models_list(
     installed_only: bool = False,
-    language: str = "",
-    family: str = "",
+    language: LanguageQ = [],
+    family: FamilyQ = [],
+    engine: EngineQ = [],
+    max_size: str = "",
+    recommended_only: bool = False,
     ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
-    return _models_list_html(ctx, installed_only, language, family)
+    return _models_list_html(
+        ctx,
+        installed_only=installed_only,
+        language=language,
+        family=family,
+        engine=engine,
+        max_size=max_size,
+        recommended_only=recommended_only,
+    )
 
 
 @router.post("/ui/partials/models/{model_id}/download", response_class=HTMLResponse)
 async def ui_start_download(
     model_id: str,
     installed_only: bool = Form(False),
-    language: str = Form(""),
-    family: str = Form(""),
+    language: LanguageF = [],
+    family: FamilyF = [],
+    engine: EngineF = [],
+    max_size: str = Form(""),
+    recommended_only: bool = Form(False),
     ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     try:
@@ -150,15 +208,26 @@ async def ui_start_download(
         raise APIProblem(
             409, "download_in_progress", "This model is already downloading."
         ) from error
-    return _models_list_html(ctx, installed_only, language, family)
+    return _models_list_html(
+        ctx,
+        installed_only=installed_only,
+        language=language,
+        family=family,
+        engine=engine,
+        max_size=max_size,
+        recommended_only=recommended_only,
+    )
 
 
 @router.post("/ui/partials/models/custom", response_class=HTMLResponse)
 async def ui_custom_download(
     url: str = Form(...),
     installed_only: bool = Form(False),
-    language: str = Form(""),
-    family: str = Form(""),
+    language: LanguageF = [],
+    family: FamilyF = [],
+    engine: EngineF = [],
+    max_size: str = Form(""),
+    recommended_only: bool = Form(False),
     ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     try:
@@ -167,27 +236,49 @@ async def ui_custom_download(
         raise APIProblem(422, "invalid_model_url", str(error)) from error
     except DownloadInProgressError as error:
         raise APIProblem(409, "download_in_progress", str(error)) from error
-    return _models_list_html(ctx, installed_only, language, family)
+    return _models_list_html(
+        ctx,
+        installed_only=installed_only,
+        language=language,
+        family=family,
+        engine=engine,
+        max_size=max_size,
+        recommended_only=recommended_only,
+    )
 
 
 @router.post("/ui/partials/models/{model_id}/cancel", response_class=HTMLResponse)
 async def ui_cancel_download(
     model_id: str,
     installed_only: bool = Form(False),
-    language: str = Form(""),
-    family: str = Form(""),
+    language: LanguageF = [],
+    family: FamilyF = [],
+    engine: EngineF = [],
+    max_size: str = Form(""),
+    recommended_only: bool = Form(False),
     ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     ctx.manager.cancel_download(model_id)
-    return _models_list_html(ctx, installed_only, language, family)
+    return _models_list_html(
+        ctx,
+        installed_only=installed_only,
+        language=language,
+        family=family,
+        engine=engine,
+        max_size=max_size,
+        recommended_only=recommended_only,
+    )
 
 
 @router.delete("/ui/partials/models/{model_id}", response_class=HTMLResponse)
 async def ui_delete_model(
     model_id: str,
     installed_only: bool = Form(False),
-    language: str = Form(""),
-    family: str = Form(""),
+    language: LanguageF = [],
+    family: FamilyF = [],
+    engine: EngineF = [],
+    max_size: str = Form(""),
+    recommended_only: bool = Form(False),
     ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     try:
@@ -198,15 +289,26 @@ async def ui_delete_model(
         raise APIProblem(
             409, "download_in_progress", "Cancel the download before deleting."
         ) from error
-    return _models_list_html(ctx, installed_only, language, family)
+    return _models_list_html(
+        ctx,
+        installed_only=installed_only,
+        language=language,
+        family=family,
+        engine=engine,
+        max_size=max_size,
+        recommended_only=recommended_only,
+    )
 
 
 @router.post("/ui/partials/models/{model_id}/select", response_class=HTMLResponse)
 async def ui_select_model(
     model_id: str,
     installed_only: bool = Form(False),
-    language: str = Form(""),
-    family: str = Form(""),
+    language: LanguageF = [],
+    family: FamilyF = [],
+    engine: EngineF = [],
+    max_size: str = Form(""),
+    recommended_only: bool = Form(False),
     ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     engine_manager = ctx.engine_manager
@@ -220,9 +322,25 @@ async def ui_select_model(
         ) from error
     await ctx.readiness.warmup()
     state = await ctx.readiness.probe()
-    entries = filtered_model_entries(ctx, installed_only, language, family)
+    entries = filtered_model_entries(
+        ctx,
+        installed_only=installed_only,
+        language=language,
+        family=family,
+        engine=engine,
+        max_size=max_size,
+        recommended_only=recommended_only,
+    )
     return HTMLResponse(
-        models_list_fragment(entries, installed_only, language, family)
+        models_list_fragment(
+            entries,
+            installed_only=installed_only,
+            languages=language,
+            families=family,
+            engines=engine,
+            max_size=max_size,
+            recommended_only=recommended_only,
+        )
         + engine_pill_oob(
             EngineStatus(
                 id=engine_manager.runtime_config.engine, name=state.name, ready=state.ready

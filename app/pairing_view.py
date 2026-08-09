@@ -127,10 +127,13 @@ def pairing_html(
     qr_svg = ""
     if selected:
         qr_svg = qr_svg_for_payload(encode_pairing_payload(selected, token))
+    import platform
+
     return pairing_fragment(
         selected_url=selected,
         candidates=candidates,
         token_redacted=redacted,
+        token_plaintext=token,
         qr_svg=qr_svg,
         saved_urls=pairing_config.pairing_urls,
         token_options=pairing_token_options(ctx),
@@ -138,6 +141,8 @@ def pairing_html(
         token_status=token_status,
         requested_token_id=token_id or "",
         requested_token_label=requested_label,
+        bind_host=ctx.settings.bind_host,
+        is_mac=platform.system() == "Darwin",
     )
 
 

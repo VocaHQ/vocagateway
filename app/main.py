@@ -104,7 +104,7 @@ def create_app(
             await asyncio.to_thread(close_engine, engine_provider.current())
 
     app = FastAPI(
-        title="VocaPhone gateway",
+        title="VocaGateway",
         version=VERSION,
         docs_url=None,
         redoc_url=None,

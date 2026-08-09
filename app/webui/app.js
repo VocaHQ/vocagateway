@@ -4,6 +4,8 @@
 
   const TOKEN_KEY = "vocaphone.token";
   const THEME_KEY = "vocaphone.theme";
+  const EXPOSURE_DISMISS_KEY = "vocaphone.exposure-dismiss-until";
+  const EXPOSURE_DISMISS_MS = 24 * 60 * 60 * 1000;
   const overlay = document.getElementById("token-overlay");
   const tokenInput = document.getElementById("token-input");
   const tokenError = document.getElementById("token-error");
@@ -11,6 +13,41 @@
   const themeToggle = document.getElementById("theme-toggle");
 
   const getToken = () => localStorage.getItem(TOKEN_KEY) || "";
+
+  // ------------------------------------------------ network exposure banner
+
+  function exposureDismissedUntil() {
+    const raw = Number(localStorage.getItem(EXPOSURE_DISMISS_KEY) || 0);
+    return Number.isFinite(raw) ? raw : 0;
+  }
+
+  function applyExposureBanner(root) {
+    let banner = document.getElementById("exposure-banner");
+    if (root && root.id === "exposure-banner") banner = root;
+    if (!banner || banner.dataset.empty === "1") return;
+    const until = exposureDismissedUntil();
+    const hidden = until > Date.now();
+    banner.hidden = hidden;
+    banner.setAttribute("aria-hidden", hidden ? "true" : "false");
+  }
+
+  function dismissExposureBanner() {
+    localStorage.setItem(EXPOSURE_DISMISS_KEY, String(Date.now() + EXPOSURE_DISMISS_MS));
+    applyExposureBanner();
+  }
+
+  document.body.addEventListener("click", (event) => {
+    const btn = event.target.closest && event.target.closest("[data-dismiss-exposure]");
+    if (!btn) return;
+    event.preventDefault();
+    dismissExposureBanner();
+  });
+
+  document.body.addEventListener("htmx:afterSwap", (event) => {
+    if (event.detail && event.detail.target && event.detail.target.id === "exposure-banner") {
+      applyExposureBanner(event.detail.target);
+    }
+  });
 
   // --------------------------------------------------------------- theme
 
@@ -124,6 +161,10 @@
     hideOverlay();
     htmx.ajax("GET", "/ui/partials/overview", { target: "#panel", swap: "innerHTML" });
     htmx.ajax("GET", "/ui/partials/engine-pill", { target: "#engine-pill", swap: "outerHTML" });
+    htmx.ajax("GET", "/ui/partials/exposure-banner", {
+      target: "#exposure-banner",
+      swap: "outerHTML",
+    });
   });
 
   tokenInput.addEventListener("keydown", (event) => {
@@ -236,27 +277,85 @@
 
   let modelPollTimer = null;
 
+  function checkedFilterValues(name) {
+    return [...document.querySelectorAll(`#models-filter-form input[name="${name}"]:checked`)]
+      .map((el) => el.value)
+      .filter(Boolean);
+  }
+
   function currentModelFilters() {
-    const family = document.getElementById("family-filter");
-    const language = document.getElementById("language-filter");
-    const installed = document.getElementById("installed-only-toggle");
+    const form = document.getElementById("models-filter-form");
+    if (!form) {
+      return {
+        family: [],
+        language: [],
+        engine: [],
+        max_size: "",
+        installed_only: "",
+        recommended_only: "",
+      };
+    }
+    const installed = form.querySelector('input[name="installed_only"]');
+    const recommended = form.querySelector('input[name="recommended_only"]');
+    const maxSize = form.querySelector('select[name="max_size"]');
     return {
-      family: family ? family.value : "",
-      language: language ? language.value : "",
+      family: checkedFilterValues("family"),
+      language: checkedFilterValues("language"),
+      engine: checkedFilterValues("engine"),
+      max_size: maxSize ? maxSize.value : "",
       installed_only: installed && installed.checked ? "true" : "",
+      recommended_only: recommended && recommended.checked ? "true" : "",
     };
+  }
+
+  const FILTER_RAIL_KEY = "vocaphone.models-filter-collapsed";
+
+  function isFilterRailCollapsed() {
+    try {
+      return localStorage.getItem(FILTER_RAIL_KEY) === "1";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function setFilterRailCollapsed(collapsed) {
+    const layout = document.getElementById("models-layout");
+    const aside = document.getElementById("models-filter");
+    const toggle = document.getElementById("filter-rail-toggle");
+    const sideCollapse = document.getElementById("filter-side-collapse");
+    if (layout) layout.classList.toggle("is-filter-collapsed", collapsed);
+    if (toggle) {
+      toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      toggle.setAttribute("title", collapsed ? "Show filters" : "Hide filters");
+      const label = toggle.querySelector(".filter-trigger-label");
+      if (label) label.textContent = collapsed ? "Filters" : "Filters";
+    }
+    if (sideCollapse) {
+      sideCollapse.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      sideCollapse.setAttribute("aria-label", collapsed ? "Expand filters" : "Collapse filters");
+      sideCollapse.setAttribute("title", collapsed ? "Expand filters" : "Collapse filters");
+    }
+    if (aside) aside.setAttribute("aria-hidden", collapsed ? "true" : "false");
+    try {
+      localStorage.setItem(FILTER_RAIL_KEY, collapsed ? "1" : "0");
+    } catch (_) { /* ignore */ }
   }
 
   function updateFilterChrome() {
     const root = document.getElementById("models-filter");
+    const toggle = document.getElementById("filter-rail-toggle");
     const badge = document.getElementById("filter-active-count");
-    if (!root || !badge) return;
+    if (!badge) return;
     const filters = currentModelFilters();
     let count = 0;
-    if (filters.family) count += 1;
-    if (filters.language) count += 1;
+    if (filters.family.length) count += 1;
+    if (filters.language.length) count += 1;
+    if (filters.engine.length) count += 1;
+    if (filters.max_size) count += 1;
     if (filters.installed_only) count += 1;
-    root.classList.toggle("has-active", count > 0);
+    if (filters.recommended_only) count += 1;
+    if (root) root.classList.toggle("has-active", count > 0);
+    if (toggle) toggle.classList.toggle("has-active", count > 0);
     badge.textContent = count ? String(count) : "";
     badge.classList.toggle("hidden", count === 0);
   }
@@ -265,38 +364,53 @@
     return [...document.querySelectorAll("#models-list details.family-tile")];
   }
 
+  function setExpandToggleState(toggle, expanded) {
+    if (!toggle) return;
+    toggle.dataset.expanded = expanded ? "true" : "false";
+    toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+    const label = expanded ? "Collapse all families" : "Expand all families";
+    toggle.setAttribute("aria-label", label);
+    toggle.setAttribute("title", label);
+  }
+
   function setFamiliesExpanded(expanded) {
     familyTiles().forEach((tile) => {
       tile.open = expanded;
     });
-    const toggle = document.getElementById("families-expand-toggle");
-    if (!toggle) return;
-    toggle.dataset.expanded = expanded ? "true" : "false";
-    toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
-    toggle.textContent = expanded ? "Collapse all" : "Expand all";
+    setExpandToggleState(document.getElementById("families-expand-toggle"), expanded);
   }
 
   function syncFamiliesExpandToggle() {
     const toggle = document.getElementById("families-expand-toggle");
     const tiles = familyTiles();
     if (!toggle || !tiles.length) return;
-    const allOpen = tiles.every((tile) => tile.open);
-    toggle.dataset.expanded = allOpen ? "true" : "false";
-    toggle.setAttribute("aria-expanded", allOpen ? "true" : "false");
-    toggle.textContent = allOpen ? "Collapse all" : "Expand all";
+    setExpandToggleState(toggle, tiles.every((tile) => tile.open));
   }
 
   function initModelFilters() {
+    const form = document.getElementById("models-filter-form");
     const clear = document.getElementById("filter-clear");
     if (clear && !clear.dataset.bound) {
       clear.dataset.bound = "1";
       clear.addEventListener("click", () => {
-        const family = document.getElementById("family-filter");
-        const language = document.getElementById("language-filter");
-        const installed = document.getElementById("installed-only-toggle");
-        if (family) family.value = "";
-        if (language) language.value = "";
-        if (installed) installed.checked = false;
+        if (form) {
+          form.querySelectorAll('input[type="checkbox"]').forEach((el) => {
+            el.checked = false;
+          });
+          form.querySelectorAll("select").forEach((el) => {
+            el.value = "";
+          });
+          form.querySelectorAll(".filter-search").forEach((el) => {
+            el.value = "";
+            const listId = el.getAttribute("data-filter-search");
+            const list = listId ? document.getElementById(listId) : null;
+            if (list) {
+              list.querySelectorAll(".filter-check").forEach((row) => {
+                row.hidden = false;
+              });
+            }
+          });
+        }
         updateFilterChrome();
         htmx.ajax("GET", "/ui/partials/models-list", {
           target: "#models-list",
@@ -305,13 +419,38 @@
         });
       });
     }
-    ["family-filter", "language-filter", "installed-only-toggle"].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el && !el.dataset.filterBound) {
-        el.dataset.filterBound = "1";
-        el.addEventListener("change", updateFilterChrome);
-      }
+    if (form && !form.dataset.filterBound) {
+      form.dataset.filterBound = "1";
+      form.addEventListener("change", updateFilterChrome);
+    }
+    // Client-side search over long checkbox lists (languages); no server round-trip.
+    document.querySelectorAll("[data-filter-search]").forEach((search) => {
+      if (search.dataset.bound) return;
+      search.dataset.bound = "1";
+      search.addEventListener("input", () => {
+        const q = search.value.trim().toLowerCase();
+        const list = document.getElementById(search.getAttribute("data-filter-search") || "");
+        if (!list) return;
+        list.querySelectorAll(".filter-check").forEach((row) => {
+          const text = (row.textContent || "").toLowerCase();
+          row.hidden = Boolean(q) && !text.includes(q);
+        });
+      });
     });
+    const railToggle = document.getElementById("filter-rail-toggle");
+    if (railToggle && !railToggle.dataset.bound) {
+      railToggle.dataset.bound = "1";
+      railToggle.addEventListener("click", () => {
+        const layout = document.getElementById("models-layout");
+        if (!layout) return;
+        setFilterRailCollapsed(!layout.classList.contains("is-filter-collapsed"));
+      });
+    }
+    const sideCollapse = document.getElementById("filter-side-collapse");
+    if (sideCollapse && !sideCollapse.dataset.bound) {
+      sideCollapse.dataset.bound = "1";
+      sideCollapse.addEventListener("click", () => setFilterRailCollapsed(true));
+    }
     const expandToggle = document.getElementById("families-expand-toggle");
     if (expandToggle && !expandToggle.dataset.bound) {
       expandToggle.dataset.bound = "1";
@@ -320,7 +459,7 @@
         setFamiliesExpanded(expand);
       });
     }
-    // List refreshes return collapsed tiles; keep the toggle label in sync.
+    // List refreshes return collapsed tiles; keep the expand icon/tooltip in sync.
     const list = document.getElementById("models-list");
     if (list && !list.dataset.expandListen) {
       list.dataset.expandListen = "1";
@@ -329,6 +468,10 @@
           syncFamiliesExpandToggle();
         }
       }, true);
+    }
+    // Restore rail open/collapsed; default open on wide layouts.
+    if (document.getElementById("models-layout")) {
+      setFilterRailCollapsed(isFilterRailCollapsed());
     }
     updateFilterChrome();
     syncFamiliesExpandToggle();
@@ -568,6 +711,52 @@
   });
 
   document.body.addEventListener("click", async (event) => {
+    const button = event.target.closest && event.target.closest("#copy-pairing-qr");
+    if (!button) return;
+    event.preventDefault();
+    const url = button.getAttribute("data-url") || "";
+    const token = button.getAttribute("data-token") || "";
+    const hint = button.querySelector(".pairing-qr-hint");
+    const setHint = (text, copied) => {
+      if (!hint) return;
+      hint.textContent = text;
+      button.classList.toggle("is-copied", Boolean(copied));
+      button.title = copied ? "Copied" : "Click to copy gateway address and token";
+    };
+    if (!url || !token) {
+      setHint("Nothing to copy", false);
+      clearTimeout(button._copyHintTimer);
+      button._copyHintTimer = setTimeout(() => setHint("Click to copy", false), 1600);
+      return;
+    }
+    // Same JSON shape the QR encodes (see app.pairing.PairingPayload).
+    const value = JSON.stringify({ v: 1, url: url, token: token });
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        // Fallback for non-secure contexts / older browsers.
+        const area = document.createElement("textarea");
+        area.value = value;
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.left = "-9999px";
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        area.remove();
+      }
+      setHint("Copied", true);
+      clearTimeout(button._copyHintTimer);
+      button._copyHintTimer = setTimeout(() => setHint("Click to copy", false), 1600);
+    } catch (_) {
+      setHint("Copy failed", false);
+      clearTimeout(button._copyHintTimer);
+      button._copyHintTimer = setTimeout(() => setHint("Click to copy", false), 1600);
+    }
+  });
+
+  document.body.addEventListener("click", async (event) => {
     if (event.target.id !== "copy-transcript") return;
     const transcript = document.getElementById("test-transcript").textContent;
     try {
@@ -581,6 +770,7 @@
   // ------------------------------------------------------------------ start
 
   initTheme();
+  applyExposureBanner();
 
   if (!getToken()) {
     showOverlay();

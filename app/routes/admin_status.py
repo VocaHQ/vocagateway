@@ -8,6 +8,7 @@ from app.context import GatewayContext, get_context, require_token
 from app.diagnostics import build_diagnostics_bundle
 from app.engine_state import engine_id
 from app.fragments.engine import engine_pill_fragment
+from app.fragments.exposure import exposure_banner_fragment
 from app.fragments.overview import operations_fragment, overview_fragment
 from app.schemas import AdminStatusResponse, DiagnosticsBundle, EngineStatus, ReadinessStatus
 from app.serializers import metrics_status
@@ -37,7 +38,8 @@ async def ui_overview(ctx: GatewayContext = Depends(get_context)) -> HTMLRespons
 
 @router.get("/ui/partials/operations", response_class=HTMLResponse)
 async def ui_operations(ctx: GatewayContext = Depends(get_context)) -> HTMLResponse:
-    metrics = ctx.service.metrics.snapshot()
+    # sample=True appends a ring-buffer point for sparklines (~every 5s poll).
+    metrics = ctx.service.metrics.snapshot(sample=True)
     readiness_details = await ctx.readiness.details()
     return HTMLResponse(
         operations_fragment(
@@ -59,5 +61,17 @@ async def ui_engine_pill(ctx: GatewayContext = Depends(get_context)) -> HTMLResp
             EngineStatus(id=engine_id(ctx), name=state.name, ready=state.ready),
             bind_host=ctx.settings.bind_host,
             port=ctx.settings.port,
+        )
+    )
+
+
+@router.get("/ui/partials/exposure-banner", response_class=HTMLResponse)
+async def ui_exposure_banner(ctx: GatewayContext = Depends(get_context)) -> HTMLResponse:
+    import platform
+
+    return HTMLResponse(
+        exposure_banner_fragment(
+            ctx.settings.bind_host,
+            is_mac=platform.system() == "Darwin",
         )
     )

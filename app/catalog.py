@@ -67,6 +67,7 @@ def _whisper_cpp(
     description: str = "OpenAI Whisper converted for the standalone whisper.cpp engine.",
     source: str = "whisper.cpp",
     language_codes: tuple[str, ...] = (),
+    license_name: str = "See model source",
 ) -> CatalogModel:
     return CatalogModel(
         id=f"{ENGINE_WHISPER_CPP}:{key}",
@@ -83,6 +84,7 @@ def _whisper_cpp(
         description=description,
         source=source,
         language_codes=language_codes or _whisper_language_codes(languages),
+        license_name=license_name,
     )
 
 
@@ -138,7 +140,7 @@ def _faster_whisper(
         huggingface_folder="",
         family="Whisper / CTranslate2",
         description=(
-            "Persistent CTranslate2 model with CPU INT8 inference; optimized for Linux servers."
+            "Persistent CTranslate2 model with CPU INT8 inference; works well on desktop and server CPUs."
         ),
         source="faster-whisper",
         marker_file="model.bin",
@@ -419,6 +421,72 @@ LANGUAGE_NAMES: dict[str, str] = {
 }
 
 
+def catalog_source_url(model: CatalogModel) -> str | None:
+    """Best public page for a catalog entry (Hugging Face repo or project site).
+
+    Prefers a browsable page over a raw .tar/.bin download blob.
+    """
+    if model.huggingface_repo:
+        return f"https://huggingface.co/{model.huggingface_repo}"
+    if model.download_url and "huggingface.co/" in model.download_url:
+        url = model.download_url
+        if "/resolve/" in url:
+            head, _, _ = url.partition("/resolve/")
+            return head
+        return url
+    # Release/tag pages are more specific than a project root (e.g. SenseVoice /
+    # Parakeet v3 ship only as sherpa-onnx GitHub release assets).
+    release = _github_release_page(model.archive_url)
+    if release:
+        return release
+    # Label-specific pages (Handy, Breeze, …) before generic engine fallbacks —
+    # otherwise Handy builds incorrectly link to whisper.cpp's GitHub.
+    labeled = _SOURCE_LABEL_URLS.get(model.source)
+    if labeled:
+        return labeled
+    project = _ENGINE_SOURCE_URLS.get(model.engine)
+    if project:
+        return project
+    if model.download_url:
+        return model.download_url
+    if model.archive_url:
+        return model.archive_url
+    return None
+
+
+def _github_release_page(archive_url: str | None) -> str | None:
+    """Turn a GitHub release asset URL into the browsable release/tag page."""
+    if not archive_url or "/releases/download/" not in archive_url:
+        return None
+    head, _, rest = archive_url.partition("/releases/download/")
+    if not head.startswith("https://github.com/") or not rest:
+        return None
+    tag = rest.split("/", maxsplit=1)[0]
+    return f"{head}/releases/tag/{tag}" if tag else None
+
+
+_ENGINE_SOURCE_URLS = {
+    ENGINE_WHISPER_CPP: "https://github.com/ggml-org/whisper.cpp",
+    ENGINE_WHISPERKIT: "https://github.com/argmaxinc/WhisperKit",
+    ENGINE_FASTER_WHISPER: "https://github.com/SYSTRAN/faster-whisper",
+    ENGINE_MOONSHINE: "https://github.com/moonshine-ai/moonshine",
+    ENGINE_SHERPA_ONNX: "https://github.com/k2-fsa/sherpa-onnx",
+    ENGINE_MLX_AUDIO: "https://github.com/Blaizzy/mlx-audio",
+}
+
+_SOURCE_LABEL_URLS = {
+    "whisper.cpp": "https://github.com/ggml-org/whisper.cpp",
+    "faster-whisper": "https://github.com/SYSTRAN/faster-whisper",
+    "WhisperKit": "https://github.com/argmaxinc/WhisperKit",
+    "Moonshine Voice": "https://github.com/moonshine-ai/moonshine",
+    "sherpa-onnx": "https://github.com/k2-fsa/sherpa-onnx",
+    "MLX Audio": "https://github.com/Blaizzy/mlx-audio",
+    # Hosted on Handy's CDN; the product page is the right "source", not whisper.cpp.
+    "Handy-compatible": "https://handy.computer",
+    "Breeze ASR": "https://huggingface.co/MediaTek-Research/Breeze-ASR-25",
+}
+
+
 def language_names(codes: tuple[str, ...]) -> list[str]:
     """Human-readable names for a model's languages, in the order declared."""
     return [LANGUAGE_NAMES.get(code, code) for code in codes]
@@ -577,9 +645,8 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         language_codes=("en",),
         family="Parakeet TDT",
         description=(
-            "The English-only Parakeet. v3 traded English accuracy for 25-language coverage, so "
-            "this earlier release still transcribes English more accurately than the v3 entry "
-            "above at the same speed."
+            "The English-only Parakeet. v3 trades some English accuracy for 25-language coverage, "
+            "so this earlier release still transcribes English more accurately at the same speed."
         ),
         license_name="CC BY 4.0",
     ),
@@ -657,9 +724,8 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         language_codes=("en",),
         family="Zipformer",
         description=(
-            "A small streaming-capable zipformer transducer. Unlike the other sherpa-onnx "
-            "models above, this one decodes incrementally over /v1/stream with real partial "
-            "results, independent of Moonshine."
+            "A small streaming-capable zipformer transducer. Unlike most batch sherpa-onnx "
+            "models, this one decodes incrementally with real partial results while you speak."
         ),
         license_name="Apache 2.0",
         supports_streaming=True,
@@ -803,8 +869,8 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         repository="mlx-community/parakeet-tdt-0.6b-v2",
         family="Parakeet TDT / MLX",
         description=(
-            "The English-only Parakeet on Apple silicon. More accurate on English than the v3 "
-            "entry above, which spends capacity on 24 other languages."
+            "The English-only Parakeet on Apple silicon. More accurate on English than the "
+            "multilingual v3 build, which spends capacity on 24 other languages."
         ),
         license_name="CC BY 4.0",
         language_codes=("en",),
@@ -980,8 +1046,13 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         "Accurate · compact",
         8,
         download_url="https://blob.handy.computer/whisper-medium-q4_1.bin",
-        description="Handy's compact Whisper Medium build, usable without the Handy app.",
+        description=(
+            "Handy's compact quantized Whisper Medium (Q4). Same whisper.cpp runtime; weights "
+            "are hosted on Handy's CDN and work without the Handy app."
+        ),
         source="Handy-compatible",
+        # MIT Whisper weights; Handy redistributes the quant.
+        # License string left generic so the UI links through to Handy rather than inventing one.
     ),
     _whisper_cpp(
         "ggml-large-v3-turbo.bin",
@@ -999,7 +1070,10 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         "Most accurate · compact",
         16,
         download_url="https://blob.handy.computer/ggml-large-v3-q5_0.bin",
-        description="Quantized Whisper Large v3 from Handy's standalone model catalog.",
+        description=(
+            "Quantized Whisper Large v3 (Q5) from Handy's model catalog. Larger and more accurate "
+            "than Medium Q4; still runs through the local whisper.cpp engine."
+        ),
         source="Handy-compatible",
     ),
     _whisper_cpp(
@@ -1011,9 +1085,14 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         16,
         download_url="https://blob.handy.computer/breeze-asr-q5_k.bin",
         family="Breeze ASR",
-        description="Whisper variant tuned for Taiwanese Mandarin and code-switching.",
-        source="Handy-compatible",
+        description=(
+            "MediaTek Breeze-ASR (Whisper Large v2 fine-tune) quantized to Q5 for whisper.cpp. "
+            "Tuned for Taiwanese Mandarin and Mandarin–English code-switching; weights redistributed "
+            "via Handy's CDN."
+        ),
+        source="Breeze ASR",
         language_codes=("zh", "en"),
+        license_name="Apache 2.0",
     ),
     _whisper_cpp(
         "ggml-large-v3.bin", "whisper.cpp Large v3", 3 * GB, "Multilingual", "Most accurate", 24

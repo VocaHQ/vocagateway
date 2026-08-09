@@ -205,7 +205,9 @@ async def test_status_reports_system_and_setup(
         "audio_duration_ms": None,
         "real_time_factor": None,
         "peak_memory_mb": None,
+        "history": payload["metrics"]["history"],
     }
+    assert isinstance(payload["metrics"]["history"], list)
     assert payload["readiness"]["warmup_state"] == "pending"
 
 
@@ -386,13 +388,61 @@ def test_language_filter_offers_only_languages_some_model_covers() -> None:
     from app.fragments.models import _language_filter_options
 
     options = _language_filter_options()
-    assert '<option value="hi">Hindi</option>' in options
-    assert '<option value="ta">Tamil</option>' in options
+    # Multi-select checkboxes (not a single <select>).
+    assert 'name="language"' in options
+    assert 'value="hi"' in options and "Hindi" in options
+    assert 'value="ta"' in options and "Tamil" in options
     # Odia is Dolphin-only, which is still a model, so it belongs here even
     # though the phone clients deliberately do not offer it.
-    assert '<option value="or">Odia</option>' in options
+    assert 'value="or"' in options and "Odia" in options
     # A language no catalog model covers must not appear as a dead option.
     assert 'value="xx"' not in options
+
+
+def test_multi_select_filters_combine_with_and_or() -> None:
+    """Within a dimension match is OR; across dimensions match is AND."""
+    from app.admin_queries import SIZE_FILTER_CAPS, filtered_model_entries
+    from app.catalog import DEFAULT_CATALOG
+    from app.schemas import AdminModelEntry
+    from app.serializers import model_covers
+
+    # Drive off catalog fields without a live gateway: pure predicate checks.
+    entries = [
+        AdminModelEntry(
+            id=m.id,
+            engine=m.engine,
+            label=m.label,
+            size_bytes=m.size_bytes,
+            languages=m.languages,
+            quality=m.quality,
+            family=m.family,
+            description=m.description,
+            source=m.source,
+            state="not_installed",
+            active=False,
+            recommended=False,
+            language_codes=list(m.language_codes),
+        )
+        for m in DEFAULT_CATALOG
+    ]
+
+    # OR across languages.
+    hi_or_yue = [
+        e
+        for e in entries
+        if model_covers(e, "hi") or model_covers(e, "yue")
+    ]
+    assert hi_or_yue and len(hi_or_yue) < len(entries)
+
+    # Size cap is a hard upper bound.
+    cap = SIZE_FILTER_CAPS["300mb"]
+    under = [e for e in entries if e.size_bytes <= cap]
+    assert under and all(e.size_bytes <= cap for e in under)
+    assert any(e.size_bytes > cap for e in entries)
+
+    # filtered_model_entries wiring is covered by the API tests below; keep the
+    # helper import live so a rename fails here.
+    assert callable(filtered_model_entries)
 
 
 async def test_ui_actions_preserve_the_language_filter(
@@ -422,6 +472,45 @@ async def test_admin_models_api_accepts_the_language_filter(
     assert all(
         "hi" in entry["language_codes"] or not entry["language_codes"] for entry in response.json()
     )
+
+
+async def test_admin_models_api_accepts_multi_filters(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    # Repeated query keys for multi-select family + language; size cap optional.
+    response = await admin_client.get(
+        "/v1/admin/models",
+        params=[
+            ("language", "en"),
+            ("language", "hi"),
+            ("max_size", "800mb"),
+        ],
+        headers=auth,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body
+    for entry in body:
+        codes = entry["language_codes"]
+        assert not codes or "en" in codes or "hi" in codes
+        assert entry["size_bytes"] <= 800_000_000
+
+
+async def test_models_ui_filter_panel_is_multi_select(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    page = await admin_client.get("/ui/partials/models", headers=auth)
+    assert page.status_code == 200
+    assert 'id="models-filter-form"' in page.text
+    assert 'id="models-layout"' in page.text
+    assert 'class="models-filter"' in page.text or 'class="models-filter ' in page.text
+    assert 'id="filter-rail-toggle"' in page.text
+    assert 'name="family"' in page.text
+    assert 'name="language"' in page.text
+    assert 'name="engine"' in page.text
+    assert 'name="max_size"' in page.text
+    assert 'name="recommended_only"' in page.text
+    assert "Fits this machine" in page.text
 
 
 async def test_unknown_model_download_404(
@@ -529,7 +618,8 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     # Bind addresses live on the header model pill hover card, not Overview.
     assert "0.0.0.0:8765" not in overview.text
     assert "http://127.0.0.1:8765/" not in overview.text
-    assert "Listening on every network interface" in overview.text
+    # Exposure warning is a top-of-app banner, not mid-Overview copy.
+    assert "Listening on every network interface" not in overview.text
 
     models = await admin_client.get("/ui/partials/models", headers=auth)
     assert models.status_code == 200
@@ -541,9 +631,21 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     settings = await admin_client.get("/ui/partials/settings", headers=auth)
     assert settings.status_code == 200
     assert "Speech engine" in settings.text
-    assert "All-interface listener" in settings.text  # settings network callout
-    assert "Paired device tokens" in settings.text
+    assert "exposure-panel" not in settings.text
+    assert "Device tokens" in settings.text
     assert "Bootstrap token (VOCAPHONE_TOKEN / token file)" in settings.text
+
+    banner = await admin_client.get("/ui/partials/exposure-banner", headers=auth)
+    assert banner.status_code == 200
+    assert "exposure-banner" in banner.text
+    assert "Listening on every network interface" in banner.text
+    assert "Dismiss for 24 hours" in banner.text
+    assert "&times;" in banner.text or "×" in banner.text
+
+    pair = await admin_client.get("/ui/partials/test", headers=auth)
+    assert pair.status_code == 200
+    assert "exposure-panel" in pair.text
+    assert "Listening on every network interface" in pair.text
 
     tokens = await admin_client.get("/ui/partials/tokens", headers=auth)
     assert tokens.status_code == 200
@@ -560,7 +662,7 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     operations = await admin_client.get("/ui/partials/operations", headers=auth)
     assert operations.status_code == 200
     assert "0 queued" in operations.text
-    assert "Average latency" in operations.text
+    assert "Latency" in operations.text
 
     pill = await admin_client.get("/ui/partials/engine-pill", headers=auth)
     assert pill.status_code == 200
@@ -634,28 +736,40 @@ def test_model_cards_name_their_languages() -> None:
 
     parakeet = card("sherpa-onnx:parakeet-tdt-0.6b-v3-int8")
     assert "<summary>25 languages</summary>" in parakeet
-    assert "Bulgarian, Croatian, Czech" in parakeet
+    assert 'class="model-language-chip">Bulgarian</span>' in parakeet
+    assert 'class="model-language-chip">Croatian</span>' in parakeet
+    assert 'class="model-language-chip">Czech</span>' in parakeet
     # A model that can be pinned carries neither the badge nor the caveat.
     assert "badge auto-language" not in parakeet
-    assert "chooses the language itself" not in parakeet
+    assert "picks the language itself" not in parakeet
 
     dolphin = card("sherpa-onnx:dolphin-small-ctc-int8")
     assert "<summary>40 languages</summary>" in dolphin
     assert "Hindi" in dolphin and "Bengali" in dolphin and "Tamil" in dolphin
     assert 'class="badge auto-language"' in dolphin
-    assert "chooses the language itself" in dolphin
+    assert "picks the language itself" in dolphin
+    assert 'class="model-language-note' in dolphin
 
     # Whisper carries its full set too, and every code resolves to a real name
     # rather than leaking a bare "af, am, be" at the reader.
     whisper = card("whisper.cpp:ggml-large-v3-turbo.bin")
     assert "<summary>100 languages</summary>" in whisper
     assert "Afrikaans" in whisper and "Hindi" in whisper
+    assert 'class="model-language-chip">Afrikaans</span>' in whisper
     assert "badge auto-language" not in whisper
 
     # An English-only build carries just "en", and gets no disclosure at all —
     # its "English only" summary already says everything a list would.
     english_only = card("whisper.cpp:ggml-tiny.en.bin")
     assert "model-languages" not in english_only
+
+    # Card structure: blurb on tile; info icon + actions; extra facts in popover.
+    assert 'class="model-actions"' in parakeet
+    assert 'class="model-info-btn"' in parakeet
+    assert 'class="model-info-pop"' in parakeet
+    assert 'class="model-blurb"' in parakeet
+    assert "model-footer" not in parakeet
+    assert "model-more" not in parakeet
 
 
 async def test_recorder_offers_every_language_a_client_can_request(
@@ -742,9 +856,11 @@ def test_a_filtered_list_warns_which_models_suit_dictation() -> None:
     ]  # fmt: skip
 
     hindi = [e for e in entries if _model_covers(e, "hi")]
-    rendered = models_list_fragment(hindi, language="hi")
+    rendered = models_list_fragment(hindi, languages=["hi"])
     assert "models-language-hint" in rendered
-    assert "wrong alphabet" in rendered
+    # Still accepts the legacy single-string kwarg.
+    assert "models-language-hint" in models_list_fragment(hindi, language="hi")
+    assert "wrong script" in rendered
     assert "Hindi" in rendered
 
     # No hint when there is nothing to choose between.

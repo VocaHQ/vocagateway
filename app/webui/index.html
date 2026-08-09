@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>VocaPhone gateway · private speech transcription</title>
-  <meta name="description" content="Local VocaPhone gateway. Pair your phone, pick speech models, and transcribe without sending audio to the cloud." />
+  <title>VocaGateway · private speech transcription</title>
+  <meta name="description" content="Local VocaGateway. Pair your phone, pick speech models, and transcribe without sending audio to the cloud." />
   <meta name="robots" content="noindex, nofollow" />
   <meta name="theme-color" content="#f7f6f3" id="meta-theme-color" />
   <meta name="color-scheme" content="light dark" />
-  <meta property="og:title" content="VocaPhone gateway" />
-  <meta property="og:description" content="Private transcription gateway for VocaPhone. Pair, manage models, and test speech on your own machine." />
+  <meta property="og:title" content="VocaGateway" />
+  <meta property="og:description" content="Private transcription gateway for the Voca family. Pair, manage models, and test speech on your own machine." />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary" />
   <link rel="canonical" href="/" />
-  <!-- Brand icons from VocaHQ/vocahq web/assets/brand: dark-glyph for light UI, light-glyph for dark. -->
+  <!-- Favicon: circular mark. Header uses the square app icon (same kit as vocahq.com). -->
   <link rel="icon" type="image/svg+xml" href="/assets/favicon-light.svg" id="favicon" />
   <link rel="apple-touch-icon" href="/assets/favicon-light.svg" id="apple-touch-icon" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -25,6 +25,10 @@
 </head>
 <body>
   <a class="skip-link" href="#panel">Skip to content</a>
+
+  <!-- Wildcard bind warning: filled after auth; dismiss hides 24h (localStorage). -->
+  <div id="exposure-banner" class="exposure-banner" hidden data-empty="1" aria-hidden="true"
+       hx-get="/ui/partials/exposure-banner" hx-trigger="load" hx-swap="outerHTML"></div>
 
   <div id="token-overlay" class="overlay hidden" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="token-title">
@@ -45,7 +49,7 @@
         <img class="logo logo-for-dark" src="/assets/voca-logo.svg" width="28" height="28" alt="" />
       </span>
       <div>
-        <h1>VocaPhone</h1>
+        <h1>VocaGateway</h1>
         <span class="muted">Private transcription gateway</span>
       </div>
     </div>
@@ -93,6 +97,16 @@
       <p class="muted loading">Loading&hellip;</p>
     </div>
   </main>
+
+  <footer class="site-footer">
+    <p class="footer-copy">&copy; 2026 <a href="https://github.com/VocaHQ" target="_blank" rel="noopener noreferrer">VocaHQ</a></p>
+    <nav class="footer-links" aria-label="Project repositories">
+      <a href="https://github.com/VocaHQ/vocagateway" target="_blank" rel="noopener noreferrer">VocaGateway</a>
+      <a href="https://github.com/VocaHQ/vocaphone" target="_blank" rel="noopener noreferrer">VocaPhone</a>
+      <a href="https://github.com/VocaHQ/vocalinux" target="_blank" rel="noopener noreferrer">VocaLinux</a>
+      <a href="https://github.com/VocaHQ/vocamac" target="_blank" rel="noopener noreferrer">VocaMac</a>
+    </nav>
+  </footer>
 
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
   <script src="/assets/htmx.min.js"></script>

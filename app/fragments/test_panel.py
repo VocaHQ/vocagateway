@@ -7,7 +7,7 @@ def pair_and_test_fragment(pairing_html: str, maximum_duration_seconds: int) -> 
       <div class="page-head">
         <div>
           <h2>Pair &amp; test</h2>
-          <p>Scan once to connect the phone app, then record a short clip here to check the same path the phone uses.</p>
+          <p>Connect the phone app with a QR, then record a short clip here to verify the same path the phone uses.</p>
         </div>
       </div>
       {pairing_html}
@@ -18,50 +18,60 @@ def pair_and_test_fragment(pairing_html: str, maximum_duration_seconds: int) -> 
 def test_fragment(maximum_duration_seconds: int) -> str:
     return f"""
       <div class="card" id="test-card">
-        <h2>Test dictation</h2>
-        <p class="muted">Records from this browser's mic, runs it through FFmpeg and the active engine (same path as the phone app).</p>
-        <div class="row" id="recorder-controls"
-             data-maximum-seconds="{maximum_duration_seconds}">
-          <select id="test-language">
-            <!-- Same languages, in the same order, as TranscriptionLanguage on iOS and
-                 Android, so anything a client can ask for can also be tested here. -->
-            <option value="auto">Detect language</option>
-            <option value="ar">Arabic</option>
-            <option value="as">Assamese</option>
-            <option value="bn">Bengali</option>
-            <option value="nl">Dutch</option>
-            <option value="en">English</option>
-            <option value="fr">French</option>
-            <option value="de">German</option>
-            <option value="gu">Gujarati</option>
-            <option value="hi">Hindi</option>
-            <option value="it">Italian</option>
-            <option value="ja">Japanese</option>
-            <option value="kn">Kannada</option>
-            <option value="ko">Korean</option>
-            <option value="ml">Malayalam</option>
-            <option value="zh">Mandarin Chinese</option>
-            <option value="mr">Marathi</option>
-            <option value="ne">Nepali</option>
-            <option value="pl">Polish</option>
-            <option value="pt">Portuguese</option>
-            <option value="pa">Punjabi</option>
-            <option value="ru">Russian</option>
-            <option value="es">Spanish</option>
-            <option value="ta">Tamil</option>
-            <option value="te">Telugu</option>
-            <option value="uk">Ukrainian</option>
-            <option value="ur">Urdu</option>
-            <option value="vi">Vietnamese</option>
-          </select>
-          <select id="test-runs" aria-label="Benchmark repetitions">
-            <option value="1">1 run</option>
-            <option value="3">3-run benchmark</option>
-          </select>
-          <button id="record-toggle" type="button" class="primary">Start recording</button>
-          <span id="record-timer" class="record-timer hidden">0:00</span>
+        <div class="section-heading">
+          <h2>Test dictation</h2>
         </div>
-        <p id="record-status" class="muted" aria-live="polite"></p>
+        <p class="muted">Uses this browser&rsquo;s microphone, then FFmpeg and the active engine (same path as the phone app).</p>
+        <div class="test-controls" id="recorder-controls"
+             data-maximum-seconds="{maximum_duration_seconds}">
+          <label class="test-field">
+            <span>Language</span>
+            <select id="test-language">
+              <!-- Same languages, in the same order, as TranscriptionLanguage on iOS and
+                   Android, so anything a client can ask for can also be tested here. -->
+              <option value="auto">Detect language</option>
+              <option value="ar">Arabic</option>
+              <option value="as">Assamese</option>
+              <option value="bn">Bengali</option>
+              <option value="nl">Dutch</option>
+              <option value="en">English</option>
+              <option value="fr">French</option>
+              <option value="de">German</option>
+              <option value="gu">Gujarati</option>
+              <option value="hi">Hindi</option>
+              <option value="it">Italian</option>
+              <option value="ja">Japanese</option>
+              <option value="kn">Kannada</option>
+              <option value="ko">Korean</option>
+              <option value="ml">Malayalam</option>
+              <option value="zh">Mandarin Chinese</option>
+              <option value="mr">Marathi</option>
+              <option value="ne">Nepali</option>
+              <option value="pl">Polish</option>
+              <option value="pt">Portuguese</option>
+              <option value="pa">Punjabi</option>
+              <option value="ru">Russian</option>
+              <option value="es">Spanish</option>
+              <option value="ta">Tamil</option>
+              <option value="te">Telugu</option>
+              <option value="uk">Ukrainian</option>
+              <option value="ur">Urdu</option>
+              <option value="vi">Vietnamese</option>
+            </select>
+          </label>
+          <label class="test-field">
+            <span>Runs</span>
+            <select id="test-runs" aria-label="Benchmark repetitions">
+              <option value="1">1 run</option>
+              <option value="3">3-run benchmark</option>
+            </select>
+          </label>
+          <div class="test-actions">
+            <button id="record-toggle" type="button" class="primary">Start recording</button>
+            <span id="record-timer" class="record-timer hidden">0:00</span>
+          </div>
+        </div>
+        <p id="record-status" class="muted test-status" aria-live="polite"></p>
         <div id="test-result" class="result hidden">
           <div class="result-header">
             <h3>Transcript</h3>
