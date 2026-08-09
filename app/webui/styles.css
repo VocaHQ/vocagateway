@@ -544,6 +544,70 @@ main > .card:first-child, #panel > .card:first-child { border-top: none; padding
 }
 .facts dd code { background: none; border: none; padding: 0; }
 
+/* Overview host panel: icon tiles instead of a dense definition list. */
+.system-card > h2 { margin-bottom: 14px; }
+.sys-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+.sys-tile {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: start;
+  min-width: 0;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.sys-icon {
+  grid-row: 1 / span 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.sys-label {
+  color: var(--faint);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.sys-value {
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.sys-tile-features .sys-value {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-weight: 500;
+}
+.sys-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--raised);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .checklist { list-style: none; margin: 0; padding: 0; }
 .checklist li {
   display: flex;

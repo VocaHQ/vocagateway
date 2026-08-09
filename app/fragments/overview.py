@@ -3,8 +3,8 @@ from __future__ import annotations
 from html import escape
 
 from app.config import WILDCARD_BIND_HOSTS
-from app.fragments.shared import _facts, _format_bytes, _format_latency, _format_uptime
-from app.schemas import AdminStatusResponse, OperationalMetricsStatus, ReadinessStatus
+from app.fragments.shared import _format_bytes, _format_latency, _format_uptime
+from app.schemas import AdminStatusResponse, OperationalMetricsStatus, ReadinessStatus, SystemStatus
 
 
 def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> str:
@@ -25,22 +25,6 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
         and status.setup.engine_ready
     )
     onboarding = _onboarding_steps(status, machine_label, ffmpeg_hint, engine_hint, ready)
-    system_facts = _facts(
-        [
-            ("Chip", status.system.chip),
-            (
-                "CPU allocation",
-                f"{status.system.effective_cpus:g} effective / "
-                f"{status.system.logical_cpus} logical",
-            ),
-            ("Memory", f"{status.system.ram_gb:g} GB"),
-            ("Accelerators", ", ".join(status.system.accelerators)),
-            ("CPU features", ", ".join(status.system.cpu_features) or "standard"),
-            ("Runtime", "container" if status.system.containerized else "host"),
-            ("OS", f"{status.system.os} ({status.system.arch})"),
-            ("Version", status.version),
-        ]
-    )
 
     exposure_notice = ""
     if status.bind_host in WILDCARD_BIND_HOSTS:
@@ -67,13 +51,104 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
         </div>
       </section>
       {operations_fragment(status.metrics, status.readiness)}
-      <div class="card">
-        <h2>This {machine_label}</h2>
-        <dl class="facts">{system_facts}</dl>
-      </div>
+      {_system_panel(status.system, status.version, machine_label)}
       {exposure_notice}
       {onboarding}
     """
+
+
+def _system_panel(system: SystemStatus, version: str, machine_label: str) -> str:
+    """Icon tiles for host facts. Inline SVGs keep the gateway offline-friendly."""
+    gpus = [item for item in system.accelerators if item != "CPU"]
+    gpu_value = ", ".join(gpus) if gpus else "None detected"
+    cpu_value = (
+        f"{system.effective_cpus:g} effective / {system.logical_cpus} logical"
+    )
+    features = system.cpu_features or ["standard"]
+    feature_badges = "".join(
+        f'<span class="sys-badge">{escape(feature)}</span>' for feature in features
+    )
+    runtime = "Container" if system.containerized else "Host"
+    tiles = [
+        _sys_tile("cpu", "Processor", system.chip),
+        _sys_tile("memory", "Memory", f"{system.ram_gb:g} GB"),
+        _sys_tile("cores", "CPUs", cpu_value),
+        _sys_tile("gpu", "GPU", gpu_value),
+        _sys_tile("features", "CPU features", feature_badges, raw_value=True),
+        _sys_tile("os", "OS", f"{system.os} ({system.arch})"),
+        _sys_tile("runtime", "Runtime", runtime),
+        _sys_tile("version", "Gateway", version),
+    ]
+    return f"""
+      <div class="card system-card">
+        <h2>This {machine_label}</h2>
+        <div class="sys-grid">{"".join(tiles)}</div>
+      </div>
+    """
+
+
+def _sys_tile(kind: str, label: str, value: str, *, raw_value: bool = False) -> str:
+    body = value if raw_value else escape(value)
+    return (
+        f'<article class="sys-tile sys-tile-{escape(kind)}">'
+        f'<span class="sys-icon" aria-hidden="true">{_SYS_ICONS[kind]}</span>'
+        f'<span class="sys-label">{escape(label)}</span>'
+        f'<span class="sys-value">{body}</span>'
+        f"</article>"
+    )
+
+
+# Compact Lucide-style strokes; same teal accent as the rest of the WebUI.
+_SYS_ICONS: dict[str, str] = {
+    "cpu": (
+        '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" '
+        'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">'
+        '<rect x="5" y="5" width="14" height="14" rx="2"/>'
+        '<path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/>'
+        '<rect x="9" y="9" width="6" height="6" rx="1"/></svg>'
+    ),
+    "memory": (
+        '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" '
+        'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">'
+        '<rect x="2" y="6" width="20" height="12" rx="2"/>'
+        '<path d="M6 10v4M10 10v4M14 10v4M18 10v4"/></svg>'
+    ),
+    "cores": (
+        '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" '
+        'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">'
+        '<circle cx="12" cy="12" r="3"/>'
+        '<path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3'
+        'M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>'
+    ),
+    "gpu": (
+        '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" '
+        'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">'
+        '<rect x="3" y="5" width="18" height="12" rx="2"/>'
+        '<path d="M7 17v2M12 17v2M17 17v2M7 9h4v4H7zM14 9h3M14 12h3"/></svg>'
+    ),
+    "features": (
+        '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" '
+        'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M12 2 15 8l6 1-4.5 4.2L18 20l-6-3.2L6 20l1.5-6.8L3 9l6-1z"/></svg>'
+    ),
+    "os": (
+        '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" '
+        'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">'
+        '<rect x="3" y="4" width="18" height="12" rx="2"/>'
+        '<path d="M8 20h8M12 16v4"/></svg>'
+    ),
+    "runtime": (
+        '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" '
+        'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>'
+        '<path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg>'
+    ),
+    "version": (
+        '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" '
+        'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>'
+    ),
+}
 
 
 def _onboarding_steps(

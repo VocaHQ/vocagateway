@@ -196,16 +196,203 @@ def _is_containerized() -> bool:
 
 
 def _accelerators(is_mac: bool, arch: str) -> tuple[str, ...]:
-    values = ["CPU"]
+    """Capability labels for the WebUI. Prefer named GPUs when tools are present."""
+    values: list[str] = ["CPU"]
     if is_mac and arch == "arm64":
-        values.append("Metal/Core ML")
-    if Path("/dev/nvidia0").exists() or shutil.which("nvidia-smi"):
+        values.append("Metal / Core ML")
+    nvidia = _nvidia_gpu_labels()
+    if nvidia:
+        values.extend(nvidia)
+    elif Path("/dev/nvidia0").exists() or shutil.which("nvidia-smi"):
         values.append("NVIDIA CUDA")
-    if Path("/dev/kfd").exists():
+    amd = _amd_gpu_labels()
+    if amd:
+        values.extend(amd)
+    elif Path("/dev/kfd").exists():
         values.append("AMD ROCm")
-    if Path("/dev/dri/renderD128").exists():
-        values.append("Vulkan/VAAPI device")
+    # Only mention a generic DRM device when no named GPU was found above.
+    if (
+        Path("/dev/dri/renderD128").exists()
+        and not nvidia
+        and not amd
+        and not (is_mac and arch == "arm64")
+    ):
+        values.append("Vulkan / VAAPI device")
     return tuple(values)
+
+
+def _nvidia_gpu_labels() -> list[str]:
+    """One label per NVIDIA GPU, e.g. 'NVIDIA GeForce RTX 5080 (16 GB)'."""
+    if not shutil.which("nvidia-smi"):
+        return []
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=name,memory.total",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if result.returncode != 0 or not result.stdout.strip():
+        return []
+    labels: list[str] = []
+    for line in result.stdout.splitlines():
+        parts = [part.strip() for part in line.split(",")]
+        if not parts or not parts[0]:
+            continue
+        name = parts[0]
+        if not name.upper().startswith("NVIDIA"):
+            name = f"NVIDIA {name}"
+        if len(parts) > 1:
+            try:
+                mem_mib = float(parts[1])
+                mem_gb = round(mem_mib / 1024, 1)
+                labels.append(f"{name} ({mem_gb:g} GB)")
+                continue
+            except ValueError:
+                pass
+        labels.append(name)
+    return labels
+
+
+def _amd_gpu_labels() -> list[str]:
+    """Best-effort AMD product names from rocm-smi, lspci, or DRM sysfs."""
+    labels = _rocm_gpu_labels()
+    if labels:
+        return labels
+    labels = _lspci_gpu_labels(vendor="AMD")
+    if labels:
+        return labels
+    # Sysfs often only has a PCI device id; skip opaque "AMD device 0x...." labels.
+    return [label for label in _drm_amd_labels() if "device 0x" not in label.lower()]
+
+
+def _lspci_gpu_labels(*, vendor: str) -> list[str]:
+    if not shutil.which("lspci"):
+        return []
+    try:
+        result = subprocess.run(
+            ["lspci", "-mm"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if result.returncode != 0:
+        return []
+    labels: list[str] = []
+    vendor_key = vendor.lower()
+    for line in result.stdout.splitlines():
+        # lspci -mm: Slot "Class" "Vendor" "Device" ...
+        if '"VGA compatible controller"' not in line and '"3D controller"' not in line:
+            continue
+        if vendor_key not in line.lower():
+            continue
+        # Pull the Device field (4th quoted token).
+        parts = line.split('"')
+        # ["00:00.0 ", "Class", " ", "Vendor", " ", "Device", ...]
+        device = parts[5].strip() if len(parts) > 5 else ""
+        if not device:
+            continue
+        label = device if device.upper().startswith(vendor.upper()) else f"{vendor} {device}"
+        if label not in labels:
+            labels.append(label)
+    return labels
+
+
+def _rocm_gpu_labels() -> list[str]:
+    if not shutil.which("rocm-smi"):
+        return []
+    try:
+        result = subprocess.run(
+            ["rocm-smi", "--showproductname"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if result.returncode != 0:
+        return []
+    labels: list[str] = []
+    for line in result.stdout.splitlines():
+        # Typical: "GPU[0] : Card series: Radeon RX 7900 XTX"
+        if ":" not in line or "GPU[" not in line.upper():
+            continue
+        name = line.split(":", 1)[1].strip()
+        for prefix in ("Card series:", "Card model:", "Device Name:"):
+            if name.startswith(prefix):
+                name = name[len(prefix) :].strip()
+        if name and name not in labels:
+            labels.append(name if name.upper().startswith("AMD") else f"AMD {name}")
+    return labels
+
+
+def _drm_amd_labels() -> list[str]:
+    """Fallback: product names under /sys/class/drm for AMD PCI devices."""
+    root = Path("/sys/class/drm")
+    if not root.is_dir():
+        return []
+    labels: list[str] = []
+    seen: set[str] = set()
+    for card in sorted(root.glob("card[0-9]*")):
+        if "-" in card.name:
+            continue
+        vendor_path = card / "device" / "vendor"
+        label_path = card / "device" / "label"
+        uevent_path = card / "device" / "uevent"
+        try:
+            vendor = vendor_path.read_text(encoding="utf-8").strip().lower()
+        except OSError:
+            continue
+        # 0x1002 is AMD
+        if vendor not in {"0x1002", "1002"}:
+            continue
+        name = ""
+        try:
+            name = label_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            pass
+        if not name:
+            try:
+                for line in uevent_path.read_text(encoding="utf-8").splitlines():
+                    if line.startswith("PCI_ID=") or line.startswith("DRIVER="):
+                        continue
+                    if line.startswith("MODALIAS="):
+                        continue
+            except OSError:
+                pass
+        # product_name is common on some stacks
+        for candidate in (
+            card / "device" / "product_name",
+            card / "device" / "marketing_name",
+        ):
+            if name:
+                break
+            try:
+                name = candidate.read_text(encoding="utf-8").strip()
+            except OSError:
+                continue
+        if not name:
+            try:
+                device_id = (card / "device" / "device").read_text(encoding="utf-8").strip()
+                name = f"device {device_id}"
+            except OSError:
+                name = card.name
+        label = name if name.upper().startswith("AMD") else f"AMD {name}"
+        if label not in seen:
+            seen.add(label)
+            labels.append(label)
+    return labels
 
 
 def _cpu_features(is_mac: bool) -> tuple[str, ...]:
