@@ -35,7 +35,7 @@ def serve() -> None:
     settings = Settings.from_env()
     host = settings.bind_host
     token_path = settings.token_file_display
-    token_source = "(from VOCAPHONE_TOKEN)" if _token_from_env() else token_path
+    token_source = "(from VOCAGATEWAY_TOKEN)" if _token_from_env() else token_path
     print(f"VocaGateway listening on {format_host_port(host, settings.port)}")
     print(f"WebUI (this host): {local_webui_url(host, settings.port)}")
     if host in WILDCARD_BIND_HOSTS:
@@ -53,20 +53,20 @@ def serve() -> None:
 
 
 def _token_from_env() -> bool:
-    return bool(os.environ.get("VOCAPHONE_TOKEN", "").strip())
+    return bool(os.environ.get("VOCAGATEWAY_TOKEN", "").strip())
 
 
 def _load_existing_bootstrap_token() -> str:
     """Return the bootstrap token without minting a new secret.
 
     Path resolution matches :meth:`Settings.from_env` (blank
-    ``VOCAPHONE_TOKEN_FILE`` falls back to the default; ``~`` and
+    ``VOCAGATEWAY_TOKEN_FILE`` falls back to the default; ``~`` and
     ``XDG_CONFIG_HOME`` are expanded the same way).
     """
-    token = os.environ.get("VOCAPHONE_TOKEN", "").strip()
+    token = os.environ.get("VOCAGATEWAY_TOKEN", "").strip()
     if token:
         return token
-    token_file = _env_path("VOCAPHONE_TOKEN_FILE", _default_token_file())
+    token_file = _env_path("VOCAGATEWAY_TOKEN_FILE", _default_token_file())
     if not token_file.is_file():
         print(
             "No token yet — the gateway writes one on first start: just run",
@@ -81,7 +81,7 @@ def _load_existing_bootstrap_token() -> str:
 
 
 def _saved_pairing_url() -> str | None:
-    config_path = _env_path("VOCAPHONE_CONFIG_FILE", _default_config_file())
+    config_path = _env_path("VOCAGATEWAY_CONFIG_FILE", _default_config_file())
     return RuntimeConfig.load(config_path).pairing_url
 
 
@@ -108,13 +108,13 @@ def token() -> None:
         print(secret)
         return
 
-    port = int(os.environ.get("VOCAPHONE_PORT", "8765"))
+    port = int(os.environ.get("VOCAGATEWAY_PORT", "8765"))
     gateway_url = default_pairing_url(port, saved_pairing_url=_saved_pairing_url())
     print(f"Token: {secret}")
     if gateway_url is None:
         print(
-            "No phone-reachable gateway address found. Set VOCAPHONE_PUBLIC_URL "
-            f"or VOCAPHONE_PAIRING_URL (for example http://192.168.1.20:{port}), "
+            "No phone-reachable gateway address found. Set VOCAGATEWAY_PUBLIC_URL "
+            f"or VOCAGATEWAY_PAIRING_URL (for example http://192.168.1.20:{port}), "
             "or pick an address in the WebUI pairing card.",
             file=sys.stderr,
         )
@@ -127,7 +127,7 @@ def token() -> None:
     print(qr_ascii_for_payload(payload), end="")
     print()
     print(
-        "Override the encoded address with VOCAPHONE_PUBLIC_URL, VOCAPHONE_PAIRING_URL, "
+        "Override the encoded address with VOCAGATEWAY_PUBLIC_URL, VOCAGATEWAY_PAIRING_URL, "
         "or the WebUI pairing card."
     )
 

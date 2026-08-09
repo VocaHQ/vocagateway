@@ -44,14 +44,14 @@ RUN uv sync --frozen --no-dev --extra engines \
     && chown --recursive vocaphone:vocaphone /data /app
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
-    VOCAPHONE_BIND_HOST=0.0.0.0 \
-    VOCAPHONE_PORT=8765 \
-    VOCAPHONE_DATA_DIR=/data \
-    VOCAPHONE_MODELS_DIR=/data/models \
-    VOCAPHONE_CONFIG_FILE=/data/config/config.json \
-    VOCAPHONE_TOKEN_FILE=/run/secrets/vocaphone_token \
-    VOCAPHONE_WHISPER_BINARY=/usr/local/bin/whisper-cli \
-    VOCAPHONE_ENGINE=auto
+    VOCAGATEWAY_BIND_HOST=0.0.0.0 \
+    VOCAGATEWAY_PORT=8765 \
+    VOCAGATEWAY_DATA_DIR=/data \
+    VOCAGATEWAY_MODELS_DIR=/data/models \
+    VOCAGATEWAY_CONFIG_FILE=/data/config/config.json \
+    VOCAGATEWAY_TOKEN_FILE=/run/secrets/vocagateway_token \
+    VOCAGATEWAY_WHISPER_BINARY=/usr/local/bin/whisper-cli \
+    VOCAGATEWAY_ENGINE=auto
 USER vocaphone
 EXPOSE 8765
 VOLUME ["/data"]

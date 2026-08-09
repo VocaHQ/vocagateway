@@ -53,4 +53,4 @@ jobs:
       - name: Validate Compose configuration
         run: docker compose config --quiet
         env:
-          VOCAPHONE_TOKEN: test-token-with-at-least-thirty-two-characters
+          VOCAGATEWAY_TOKEN: test-token-with-at-least-thirty-two-characters

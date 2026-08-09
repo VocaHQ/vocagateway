@@ -9,16 +9,10 @@ audio with FFmpeg, invokes a local speech engine, and returns an idempotent
 transcript. An authenticated HTMX WebUI covers setup, model management, engine
 selection, microphone testing, and operational status.
 
-CLI entry points, environment variables, and on-disk paths still use the
-`vocaphone` prefix (`vocaphone-server`, `VOCAPHONE_*`, `~/.config/vocaphone/`)
-so existing installs keep working. A later rename can introduce aliases without
-breaking those paths.
-
-> CLI entry points, env vars, and config paths previously used the Local Flow
-> working name (`localflow-server`, `LOCALFLOW_*`, `~/.config/localflow/`) and
-> were renamed to vocaphone in v0.3.0. Native startups migrate a missing
-> bootstrap token from the old path once; see the
-> [migration guide](docs/deployment.md#migrating-from-the-local-flow-working-name-v030).
+CLI entry points still use the historical `vocaphone-server` script names from
+the Python package (`vocaphone-gateway`). Environment variables and on-disk
+paths use the `vocagateway` prefix (`VOCAGATEWAY_*`, `~/.config/vocagateway/`,
+`~/.local/share/vocagateway/`).
 
 ## Consumers
 
@@ -73,7 +67,7 @@ uv sync --all-groups --extra engines --extra apple
 uv run vocaphone-server
 ```
 
-The first run creates `~/.config/vocaphone/token` with mode `600`. Open
+The first run creates `~/.config/vocagateway/token` with mode `600`. Open
 `http://127.0.0.1:8765/`, enter the token, download a recommended model, select
 it, and confirm the Overview shows **Ready for dictation**.
 
@@ -89,7 +83,7 @@ writes logs to `~/Library/Logs/Vocaphone/`.
 MLX Audio and WhisperKit are recommended on Apple silicon. The `apple` extra
 installs MLX only on an arm64 Mac; it is deliberately absent from Linux and
 Docker. The standalone `whisper.cpp` engine uses the `whisper-cli` binary
-installed above (override its location with `VOCAPHONE_WHISPER_BINARY`); on a
+installed above (override its location with `VOCAGATEWAY_WHISPER_BINARY`); on a
 native Linux host it is optional and can be built from source instead.
 
 ## Native Linux quick start
@@ -106,7 +100,7 @@ uv run vocaphone-server
 ```
 
 Do not pass `--extra apple` on Linux. The first run creates
-`~/.config/vocaphone/token` with mode `600`. The banner prints the WebUI URL and
+`~/.config/vocagateway/token` with mode `600`. The banner prints the WebUI URL and
 token path; show the secret (and a terminal pairing QR) with `just token` or
 `uv run vocaphone-token`. Open `http://127.0.0.1:8765/`, enter the token,
 download a recommended model (SenseVoice Small INT8 or Parakeet TDT INT8 on
@@ -132,7 +126,7 @@ Phone clients on the same LAN can use `http://<host-lan-ip>:8765` while the
 gateway binds `0.0.0.0` (the default). For Tailscale Serve only, bind loopback:
 
 ```sh
-VOCAPHONE_BIND_HOST=127.0.0.1 uv run vocaphone-server
+VOCAGATEWAY_BIND_HOST=127.0.0.1 uv run vocaphone-server
 ```
 
 ### Phone pairing QR
@@ -146,7 +140,7 @@ The code encodes a versioned JSON payload:
 ```
 
 Discovery prefers private Wi‑Fi addresses (for example `192.168.x.x`). Override
-with `VOCAPHONE_PUBLIC_URL` or `VOCAPHONE_PAIRING_URL` when automatic selection
+with `VOCAGATEWAY_PUBLIC_URL` or `VOCAGATEWAY_PAIRING_URL` when automatic selection
 is wrong. The same payload is available without the WebUI: on a TTY,
 `just token` (or `uv run vocaphone-token`) prints an ASCII QR for headless
 setup; use `just token --plain` when you only want the secret (pipes always get
@@ -168,9 +162,9 @@ CLI. The same Dockerfile builds on Linux `amd64` and `arm64`.
 
 ```sh
 umask 077
-printf 'VOCAPHONE_TOKEN=%s\n' "$(openssl rand -hex 32)" > .env
-printf 'VOCAPHONE_PUBLISH_HOST=127.0.0.1\n' >> .env
-printf 'VOCAPHONE_PUBLISH_PORT=8765\n' >> .env
+printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" > .env
+printf 'VOCAGATEWAY_PUBLISH_HOST=127.0.0.1\n' >> .env
+printf 'VOCAGATEWAY_PUBLISH_PORT=8765\n' >> .env
 docker compose up --detach --build
 docker compose ps
 curl --fail http://127.0.0.1:8765/health/live
@@ -178,7 +172,7 @@ curl --fail http://127.0.0.1:8765/health/live
 
 The token is provided as a Compose secret rather than a container environment
 variable. Models, configuration, and the SQLite database persist in the
-`vocaphone_vocaphone-data` named volume mounted at `/data`.
+`vocagateway_vocagateway-data` named volume mounted at `/data`.
 
 The container is live before a model is installed, so `/health/ready` initially
 returns `503`. Open the WebUI, enter the token from `.env`, download/select a
@@ -190,17 +184,17 @@ curl --fail http://127.0.0.1:8765/health/ready
 
 The default Compose publication is host loopback only. This is appropriate for
 Tailscale Serve. To intentionally allow direct LAN access, set
-`VOCAPHONE_PUBLISH_HOST=0.0.0.0` in `.env` and protect the port with the host
+`VOCAGATEWAY_PUBLISH_HOST=0.0.0.0` in `.env` and protect the port with the host
 firewall. Never expose port 8765 to the public internet.
 
 The default bridge network also hides the host's real LAN address from the
 gateway's own address auto-discovery (used for the pairing QR): the container
 only ever sees its private bridge IP, not the host's Wi-Fi/Ethernet interface.
 On Linux Docker Engine (not Docker Desktop on macOS/Windows), set
-`VOCAPHONE_NETWORK_MODE=host` in `.env` instead so the container shares the
+`VOCAGATEWAY_NETWORK_MODE=host` in `.env` instead so the container shares the
 host's network namespace and discovery finds the real `192.168.x.x` address.
-This ignores `VOCAPHONE_PUBLISH_HOST`/`PORT` — the container binds directly on
-the host per `VOCAPHONE_BIND_HOST`/`VOCAPHONE_PORT`, so lock down port 8765
+This ignores `VOCAGATEWAY_PUBLISH_HOST`/`PORT` — the container binds directly on
+the host per `VOCAGATEWAY_BIND_HOST`/`VOCAGATEWAY_PORT`, so lock down port 8765
 with the host firewall first.
 
 ## WebUI
@@ -222,7 +216,7 @@ The authenticated WebUI provides:
   or session identifiers
 - named, independently revocable per-device tokens (Settings tab), so losing
   one phone means revoking that device's token instead of rotating everyone
-  else's; the bootstrap `VOCAPHONE_TOKEN` always keeps working alongside them
+  else's; the bootstrap `VOCAGATEWAY_TOKEN` always keeps working alongside them
 
 Operational counters stay in process memory, contain no audio or transcript
 content, and reset when the gateway process restarts.
@@ -352,12 +346,12 @@ complete model. VocaMac does not need to be running.
 To force VocaMac from the environment:
 
 ```sh
-export VOCAPHONE_ENGINE=vocamac
-export VOCAPHONE_VOCAMAC_MODEL='small'   # optional; otherwise VocaMac's own choice
+export VOCAGATEWAY_ENGINE=vocamac
+export VOCAGATEWAY_VOCAMAC_MODEL='small'   # optional; otherwise VocaMac's own choice
 uv run vocaphone-server
 ```
 
-`VOCAPHONE_VOCAMAC_MODEL` accepts either a VocaMac model size (`small`,
+`VOCAGATEWAY_VOCAMAC_MODEL` accepts either a VocaMac model size (`small`,
 `large-v3-v20240930_turbo_632MB`) or a WhisperKit folder name
 (`openai_whisper-small`). A configured model is never substituted: if it is not
 downloaded, the engine reports unavailable rather than quietly using another.
@@ -365,18 +359,18 @@ downloaded, the engine reports unavailable rather than quietly using another.
 To force Handy from the environment:
 
 ```sh
-export VOCAPHONE_ENGINE=handy
-export VOCAPHONE_HANDY_MODEL='owner/repository/model.gguf'
-export VOCAPHONE_HANDY_FALLBACK_MODEL='owner/repository/fallback-model.gguf'
+export VOCAGATEWAY_ENGINE=handy
+export VOCAGATEWAY_HANDY_MODEL='owner/repository/model.gguf'
+export VOCAGATEWAY_HANDY_FALLBACK_MODEL='owner/repository/fallback-model.gguf'
 uv run vocaphone-server
 ```
 
 To force standalone `whisper.cpp`:
 
 ```sh
-export VOCAPHONE_ENGINE=whisper.cpp
-export VOCAPHONE_WHISPER_BINARY=/absolute/path/to/whisper-cli
-export VOCAPHONE_WHISPER_MODEL=/absolute/path/to/ggml-model.bin
+export VOCAGATEWAY_ENGINE=whisper.cpp
+export VOCAGATEWAY_WHISPER_BINARY=/absolute/path/to/whisper-cli
+export VOCAGATEWAY_WHISPER_MODEL=/absolute/path/to/ggml-model.bin
 uv run vocaphone-server
 ```
 
@@ -384,30 +378,30 @@ uv run vocaphone-server
 
 | Variable | Native default | Container default | Purpose |
 | --- | --- | --- | --- |
-| `VOCAPHONE_BIND_HOST` | `0.0.0.0` | `0.0.0.0` inside container | Gateway listener |
-| `VOCAPHONE_PORT` | `8765` | `8765` | Gateway listener port |
-| `VOCAPHONE_TOKEN` | unset | unset | Direct token override; at least 32 characters |
-| `VOCAPHONE_TOKEN_FILE` | `~/.config/vocaphone/token` | `/run/secrets/vocaphone_token` | Bearer-token file |
-| `VOCAPHONE_DATA_DIR` | `~/.local/share/vocaphone` | `/data` | Sessions and application data |
-| `VOCAPHONE_MODELS_DIR` | `<data>/models` | `/data/models` | Downloaded models |
-| `VOCAPHONE_CONFIG_FILE` | `~/.config/vocaphone/config.json` | `/data/config/config.json` | WebUI engine/model choice |
-| `VOCAPHONE_ENGINE` | `auto` | `auto` | `auto`, `vocamac`, `handy`, `mlx-audio`, `whisperkit`, `sherpa-onnx`, `faster-whisper`, `moonshine`, or `whisper.cpp` |
-| `VOCAPHONE_WHISPER_BINARY` | `/opt/homebrew/bin/whisper-cli` | `/usr/local/bin/whisper-cli` | `whisper.cpp` executable |
-| `VOCAPHONE_WHISPER_MODEL` | base model path | base model path | Fallback `whisper.cpp` model |
-| `VOCAPHONE_WHISPERKIT_BINARY` | `whisperkit-cli` | unavailable | WhisperKit executable |
-| `VOCAPHONE_VOCAMAC_APP` | `/Applications/VocaMac.app` | unavailable | Optional VocaMac app bundle |
-| `VOCAPHONE_VOCAMAC_MODEL` | unset | unset | Pin a VocaMac model instead of following the app's choice |
-| `VOCAPHONE_RETENTION_HOURS` | `24` | `24` | Failed-session retry retention |
-| `VOCAPHONE_DELETE_SUCCESSFUL_AUDIO` | `true` | `true` | Delete source/normalized audio after success |
+| `VOCAGATEWAY_BIND_HOST` | `0.0.0.0` | `0.0.0.0` inside container | Gateway listener |
+| `VOCAGATEWAY_PORT` | `8765` | `8765` | Gateway listener port |
+| `VOCAGATEWAY_TOKEN` | unset | unset | Direct token override; at least 32 characters |
+| `VOCAGATEWAY_TOKEN_FILE` | `~/.config/vocagateway/token` | `/run/secrets/vocagateway_token` | Bearer-token file |
+| `VOCAGATEWAY_DATA_DIR` | `~/.local/share/vocagateway` | `/data` | Sessions and application data |
+| `VOCAGATEWAY_MODELS_DIR` | `<data>/models` | `/data/models` | Downloaded models |
+| `VOCAGATEWAY_CONFIG_FILE` | `~/.config/vocagateway/config.json` | `/data/config/config.json` | WebUI engine/model choice |
+| `VOCAGATEWAY_ENGINE` | `auto` | `auto` | `auto`, `vocamac`, `handy`, `mlx-audio`, `whisperkit`, `sherpa-onnx`, `faster-whisper`, `moonshine`, or `whisper.cpp` |
+| `VOCAGATEWAY_WHISPER_BINARY` | `/opt/homebrew/bin/whisper-cli` | `/usr/local/bin/whisper-cli` | `whisper.cpp` executable |
+| `VOCAGATEWAY_WHISPER_MODEL` | base model path | base model path | Fallback `whisper.cpp` model |
+| `VOCAGATEWAY_WHISPERKIT_BINARY` | `whisperkit-cli` | unavailable | WhisperKit executable |
+| `VOCAGATEWAY_VOCAMAC_APP` | `/Applications/VocaMac.app` | unavailable | Optional VocaMac app bundle |
+| `VOCAGATEWAY_VOCAMAC_MODEL` | unset | unset | Pin a VocaMac model instead of following the app's choice |
+| `VOCAGATEWAY_RETENTION_HOURS` | `24` | `24` | Failed-session retry retention |
+| `VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO` | `true` | `true` | Delete source/normalized audio after success |
 
 Compose-specific variables live in `.env`:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `VOCAPHONE_PUBLISH_HOST` | `127.0.0.1` | Host interface published by Docker |
-| `VOCAPHONE_PUBLISH_PORT` | `8765` | Host port published by Docker |
-| `VOCAPHONE_NETWORK_MODE` | `bridge` | Set to `host` on Linux Docker Engine to share the host's network namespace (ignores `VOCAPHONE_PUBLISH_HOST`/`PORT`); not supported by Docker Desktop |
-| `VOCAPHONE_IMAGE` | `vocaphone-gateway:local` | Local or registry image tag |
+| `VOCAGATEWAY_PUBLISH_HOST` | `127.0.0.1` | Host interface published by Docker |
+| `VOCAGATEWAY_PUBLISH_PORT` | `8765` | Host port published by Docker |
+| `VOCAGATEWAY_NETWORK_MODE` | `bridge` | Set to `host` on Linux Docker Engine to share the host's network namespace (ignores `VOCAGATEWAY_PUBLISH_HOST`/`PORT`); not supported by Docker Desktop |
+| `VOCAGATEWAY_IMAGE` | `vocaphone-gateway:local` | Local or registry image tag |
 
 Use [`.env.example`](.env.example) as a template and never commit the populated
 `.env` file.
@@ -422,7 +416,7 @@ The iPhone and Android apps accept ordinary HTTP and HTTPS gateway URLs; a
 Tailscale hostname is not mandatory. Supported arrangements include:
 
 - a trusted LAN hostname such as `http://homelabone:8765/`; for Docker, set
-  `VOCAPHONE_PUBLISH_HOST=0.0.0.0` and protect the port with the host firewall
+  `VOCAGATEWAY_PUBLISH_HOST=0.0.0.0` and protect the port with the host firewall
 - a loopback listener exposed privately through Tailscale Serve
 - a VPS loopback listener behind an HTTPS reverse proxy and trusted certificate
 
@@ -523,7 +517,7 @@ uv run ruff check .
 uv run ruff format --check .
 uv run mypy app
 uv run pytest
-VOCAPHONE_TOKEN=test-token-with-at-least-thirty-two-characters docker compose config --quiet
+VOCAGATEWAY_TOKEN=test-token-with-at-least-thirty-two-characters docker compose config --quiet
 docker build --tag vocaphone-gateway:test .
 ```
 

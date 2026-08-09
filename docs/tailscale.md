@@ -1,7 +1,7 @@
 # Private Tailscale connectivity
 
 Tailscale is the recommended private transport for a personal deployment, but
-it is optional. vocaphone can also use a trusted LAN HTTP URL or an HTTPS VPS as
+it is optional. VocaGateway can also use a trusted LAN HTTP URL or an HTTPS VPS as
 described in [deployment](deployment.md).
 
 For private HTTPS, bind the gateway to `127.0.0.1:8765` and let Tailscale Serve
@@ -19,14 +19,14 @@ network. Never use Funnel for this project.
 For a native macOS or Linux process:
 
 ```sh
-VOCAPHONE_BIND_HOST=127.0.0.1 uv run vocaphone-server
+VOCAGATEWAY_BIND_HOST=127.0.0.1 uv run vocaphone-server
 ```
 
 For Docker, keep the Compose default in `.env`:
 
 ```dotenv
-VOCAPHONE_PUBLISH_HOST=127.0.0.1
-VOCAPHONE_PUBLISH_PORT=8765
+VOCAGATEWAY_PUBLISH_HOST=127.0.0.1
+VOCAGATEWAY_PUBLISH_PORT=8765
 ```
 
 Then verify the process before configuring Serve:
@@ -61,7 +61,7 @@ tailscale serve reset
 
 Apply a restrictive tailnet policy so only the user's phone and administrative
 devices can reach the gateway host. Tailscale identity is an additional network
-layer; the vocaphone bearer token is still required.
+layer; the VocaGateway bearer token is still required.
 
 Command syntax was checked against the current
 [Tailscale Serve CLI reference](https://tailscale.com/docs/reference/tailscale-cli/serve).

@@ -29,7 +29,7 @@ from app.system import engine_requirement, engine_runs_on
                 languages="English only",
                 quality="Fast",
                 minimum_ram_gb=1,
-                marker_file=".vocaphone-model.json",
+                marker_file=".vocagateway-model.json",
                 required_files=("model.int8.onnx", "tokens.txt"),
                 model_type="sense_voice",
             ),
@@ -131,7 +131,7 @@ def test_configure_rejects_an_engine_the_host_cannot_run(
 def test_build_engine_honours_forced_settings_engine_over_runtime_auto(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """VOCAPHONE_ENGINE must win over a persisted runtime config of 'auto'."""
+    """VOCAGATEWAY_ENGINE must win over a persisted runtime config of 'auto'."""
     from app.engines import build_engine
     from app.models.whisper_cpp import WhisperCppEngine
 

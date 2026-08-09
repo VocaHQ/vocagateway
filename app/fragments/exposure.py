@@ -17,7 +17,7 @@ def exposure_banner_fragment(bind_host: str, *, is_mac: bool = False) -> str:
     firewall = "Keep macOS Firewall on" if is_mac else "Keep the host firewall enabled"
     return f"""
       <div id="exposure-banner" class="exposure-banner" role="status"
-           data-dismiss-key="vocaphone.exposure-dismiss-until">
+           data-dismiss-key="vocagateway.exposure-dismiss-until">
         <div class="exposure-banner-inner">
           <span class="exposure-banner-mark" aria-hidden="true">!</span>
           <p class="exposure-banner-copy">
@@ -57,6 +57,6 @@ def exposure_network_panel(*, is_mac: bool = False) -> str:
           <li>Do not publish this port on the public internet</li>
         </ul>
         <p class="muted small">Bind to a single address with
-           <code>VOCAPHONE_BIND_HOST</code> if you want to stop listening on every interface.</p>
+           <code>VOCAGATEWAY_BIND_HOST</code> if you want to stop listening on every interface.</p>
       </div>
     """

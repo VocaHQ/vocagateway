@@ -54,7 +54,7 @@ package:
 # Validate the Compose deployment
 [group('testing')]
 compose:
-    VOCAPHONE_TOKEN=test-token-with-at-least-thirty-two-characters \
+    VOCAGATEWAY_TOKEN=test-token-with-at-least-thirty-two-characters \
       docker compose config --quiet
 
 # Start the gateway on http://127.0.0.1:8765/
@@ -65,7 +65,7 @@ run:
 # Start the gateway bound to loopback only, ignoring any LAN or tailnet address
 [group('run')]
 run-local:
-    VOCAPHONE_BIND_HOST=127.0.0.1 uv run vocaphone-server
+    VOCAGATEWAY_BIND_HOST=127.0.0.1 uv run vocaphone-server
 
 # Print the bearer token; on a TTY also show a phone-scannable pairing QR
 [group('run')]
