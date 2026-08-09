@@ -192,6 +192,9 @@ code.block {
 /* -------------------------------------------------------------- header / nav */
 
 header {
+  /* Above sticky .tabs (z-index 20) so .engine-popover is not clipped under the bar. */
+  position: relative;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: space-between;
