@@ -1,5 +1,5 @@
 /* FOUC-safe theme boot: runs before body paint. Preference is system unless
-   localStorage.vocaphone.theme is light/dark/system. */
+   localStorage.vocagateway.theme is light/dark/system. */
 (function () {
   "use strict";
   function setFavicon(resolved) {
@@ -10,7 +10,7 @@
     if (apple) apple.setAttribute("href", href);
   }
   try {
-    var key = "vocaphone.theme";
+    var key = "vocagateway.theme";
     var pref = localStorage.getItem(key);
     if (pref !== "light" && pref !== "dark" && pref !== "system") pref = "system";
     var systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;

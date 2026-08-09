@@ -1,23 +1,23 @@
-name: vocaphone
+name: vocagateway
 
 services:
   gateway:
-    image: ${VOCAPHONE_IMAGE:-vocaphone-gateway:local}
+    image: ${VOCAGATEWAY_IMAGE:-vocaphone-gateway:local}
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
     init: true
-    network_mode: ${VOCAPHONE_NETWORK_MODE:-bridge}
+    network_mode: ${VOCAGATEWAY_NETWORK_MODE:-bridge}
     ports:
-      - "${VOCAPHONE_PUBLISH_HOST:-127.0.0.1}:${VOCAPHONE_PUBLISH_PORT:-8765}:8765"
+      - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:8765"
     environment:
-      VOCAPHONE_TOKEN_FILE: /run/secrets/vocaphone_token
-      VOCAPHONE_DEBUG: ${VOCAPHONE_DEBUG:-false}
+      VOCAGATEWAY_TOKEN_FILE: /run/secrets/vocagateway_token
+      VOCAGATEWAY_DEBUG: ${VOCAGATEWAY_DEBUG:-false}
     secrets:
-      - vocaphone_token
+      - vocagateway_token
     volumes:
-      - vocaphone-data:/data
+      - vocagateway-data:/data
 
   gateway-native:
     profiles: ["native"]
@@ -29,14 +29,14 @@ services:
         GGML_NATIVE: "ON"
     restart: unless-stopped
     init: true
-    network_mode: ${VOCAPHONE_NETWORK_MODE:-bridge}
+    network_mode: ${VOCAGATEWAY_NETWORK_MODE:-bridge}
     ports:
-      - "${VOCAPHONE_PUBLISH_HOST:-127.0.0.1}:${VOCAPHONE_PUBLISH_PORT:-8765}:8765"
+      - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:8765"
     environment:
-      VOCAPHONE_TOKEN_FILE: /run/secrets/vocaphone_token
-      VOCAPHONE_DEBUG: ${VOCAPHONE_DEBUG:-false}
-    secrets: [vocaphone_token]
-    volumes: [vocaphone-data:/data]
+      VOCAGATEWAY_TOKEN_FILE: /run/secrets/vocagateway_token
+      VOCAGATEWAY_DEBUG: ${VOCAGATEWAY_DEBUG:-false}
+    secrets: [vocagateway_token]
+    volumes: [vocagateway-data:/data]
 
   gateway-cuda:
     profiles: ["cuda"]
@@ -46,16 +46,16 @@ services:
       dockerfile: Dockerfile.cuda
     restart: unless-stopped
     init: true
-    network_mode: ${VOCAPHONE_NETWORK_MODE:-bridge}
+    network_mode: ${VOCAGATEWAY_NETWORK_MODE:-bridge}
     ports:
-      - "${VOCAPHONE_PUBLISH_HOST:-127.0.0.1}:${VOCAPHONE_PUBLISH_PORT:-8765}:8765"
+      - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:8765"
     environment:
-      VOCAPHONE_TOKEN_FILE: /run/secrets/vocaphone_token
-      VOCAPHONE_DEBUG: ${VOCAPHONE_DEBUG:-false}
+      VOCAGATEWAY_TOKEN_FILE: /run/secrets/vocagateway_token
+      VOCAGATEWAY_DEBUG: ${VOCAGATEWAY_DEBUG:-false}
       NVIDIA_VISIBLE_DEVICES: all
     gpus: all
-    secrets: [vocaphone_token]
-    volumes: [vocaphone-data:/data]
+    secrets: [vocagateway_token]
+    volumes: [vocagateway-data:/data]
 
   gateway-vulkan:
     profiles: ["vulkan"]
@@ -65,20 +65,20 @@ services:
       dockerfile: Dockerfile.vulkan
     restart: unless-stopped
     init: true
-    network_mode: ${VOCAPHONE_NETWORK_MODE:-bridge}
+    network_mode: ${VOCAGATEWAY_NETWORK_MODE:-bridge}
     ports:
-      - "${VOCAPHONE_PUBLISH_HOST:-127.0.0.1}:${VOCAPHONE_PUBLISH_PORT:-8765}:8765"
+      - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:8765"
     environment:
-      VOCAPHONE_TOKEN_FILE: /run/secrets/vocaphone_token
-      VOCAPHONE_DEBUG: ${VOCAPHONE_DEBUG:-false}
+      VOCAGATEWAY_TOKEN_FILE: /run/secrets/vocagateway_token
+      VOCAGATEWAY_DEBUG: ${VOCAGATEWAY_DEBUG:-false}
     devices:
       - /dev/dri:/dev/dri
-    secrets: [vocaphone_token]
-    volumes: [vocaphone-data:/data]
+    secrets: [vocagateway_token]
+    volumes: [vocagateway-data:/data]
 
 secrets:
-  vocaphone_token:
-    environment: VOCAPHONE_TOKEN
+  vocagateway_token:
+    environment: VOCAGATEWAY_TOKEN
 
 volumes:
-  vocaphone-data:
+  vocagateway-data:

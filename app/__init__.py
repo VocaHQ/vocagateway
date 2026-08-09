@@ -1,1 +1,1 @@
-"""vocaphone private transcription gateway."""
+"""VocaGateway private transcription gateway."""

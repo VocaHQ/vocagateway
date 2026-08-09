@@ -135,11 +135,11 @@ def discover_gateway_base_urls(port: int) -> list[str]:
     """Return phone-reachable gateway bases, preferred first.
 
     Loopback is omitted: a phone cannot use 127.0.0.1 on the gateway host.
-    Override with VOCAPHONE_PUBLIC_URL or VOCAPHONE_PAIRING_URL when automatic
+    Override with VOCAGATEWAY_PUBLIC_URL or VOCAGATEWAY_PAIRING_URL when automatic
     discovery is wrong (multiple NICs, reverse proxy, etc.).
     """
     overrides: list[str] = []
-    for key in ("VOCAPHONE_PUBLIC_URL", "VOCAPHONE_PAIRING_URL"):
+    for key in ("VOCAGATEWAY_PUBLIC_URL", "VOCAGATEWAY_PAIRING_URL"):
         value = os.environ.get(key, "").strip()
         if value:
             try:

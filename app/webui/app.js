@@ -1,10 +1,10 @@
-/* vocaphone WebUI glue: token auth for HTMX, tab styling, mic recorder, toasts. */
+/* VocaGateway WebUI glue: token auth for HTMX, tab styling, mic recorder, toasts. */
 (() => {
   "use strict";
 
-  const TOKEN_KEY = "vocaphone.token";
-  const THEME_KEY = "vocaphone.theme";
-  const EXPOSURE_DISMISS_KEY = "vocaphone.exposure-dismiss-until";
+  const TOKEN_KEY = "vocagateway.token";
+  const THEME_KEY = "vocagateway.theme";
+  const EXPOSURE_DISMISS_KEY = "vocagateway.exposure-dismiss-until";
   const EXPOSURE_DISMISS_MS = 24 * 60 * 60 * 1000;
   const overlay = document.getElementById("token-overlay");
   const tokenInput = document.getElementById("token-input");
@@ -316,7 +316,7 @@
     return filters;
   }
 
-  const FILTER_RAIL_KEY = "vocaphone.models-filter-collapsed";
+  const FILTER_RAIL_KEY = "vocagateway.models-filter-collapsed";
 
   function isFilterRailCollapsed() {
     try {
@@ -801,7 +801,7 @@
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `vocaphone-diagnostics-${payload.generated_at.replace(/[:.]/g, "-")}.json`;
+      link.download = `vocagateway-diagnostics-${payload.generated_at.replace(/[:.]/g, "-")}.json`;
       document.body.appendChild(link);
       link.click();
       link.remove();

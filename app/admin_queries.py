@@ -294,7 +294,7 @@ def token_entries(ctx: GatewayContext) -> list[DeviceTokenEntry]:
     entries = [
         DeviceTokenEntry(
             id=BOOTSTRAP_TOKEN_ID,
-            label="Bootstrap token (VOCAPHONE_TOKEN / token file)",
+            label="Bootstrap token (VOCAGATEWAY_TOKEN / token file)",
             created_at=None,
             revocable=False,
         )

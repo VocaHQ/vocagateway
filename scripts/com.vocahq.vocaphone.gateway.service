@@ -13,7 +13,7 @@ RestartSec=3
 # Keep the usual user PATH so FFmpeg and optional tools resolve without a login shell.
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 # Uncomment to bind loopback only (pair with Tailscale Serve):
-# Environment=VOCAPHONE_BIND_HOST=127.0.0.1
+# Environment=VOCAGATEWAY_BIND_HOST=127.0.0.1
 
 [Install]
 WantedBy=default.target

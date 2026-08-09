@@ -45,7 +45,7 @@ def pairing_fragment(
       <div class="card" id="pairing-card">
         <h2>Pair phone</h2>
         <p class="muted">No address the phone can reach was found. Set
-           <code>VOCAPHONE_PUBLIC_URL</code> to the URL the phone should use
+           <code>VOCAGATEWAY_PUBLIC_URL</code> to the URL the phone should use
            (for example <code>http://192.168.1.20:8765</code>), then reload.</p>
       </div>
         """
@@ -210,7 +210,7 @@ def pairing_fragment(
         <p class="pairing-note">
           Prefer LAN Wi-Fi when the phone is on the same network; use Tailscale when
           both are on the tailnet.
-          <code>VOCAPHONE_PUBLIC_URL</code> overrides discovery.
+          <code>VOCAGATEWAY_PUBLIC_URL</code> overrides discovery.
         </p>
       </div>
     """

@@ -197,7 +197,7 @@ def select_engine(settings: Settings) -> TranscriptionEngine:
     from app.runtime_config import VALID_ENGINES
 
     if settings.engine not in VALID_ENGINES:
-        raise RuntimeError("VOCAPHONE_ENGINE is not a supported engine.")
+        raise RuntimeError("VOCAGATEWAY_ENGINE is not a supported engine.")
     manager = ModelManager(settings.resolved_models_dir())
     # Same resolution path as the long-running server (including sherpa-onnx
     # and mlx-audio). CLI tools like vocaphone-cleanup must accept every engine

@@ -14,7 +14,7 @@ from app.models.moonshine import MoonshineEngine
 def model_root(tmp_path: Path, model_arch: int) -> Path:
     root = tmp_path / f"model-{model_arch}"
     root.mkdir()
-    (root / ".vocaphone-model.json").write_text(
+    (root / ".vocagateway-model.json").write_text(
         '{"language":"zh","model_path":"weights","model_arch":' + str(model_arch) + "}",
         encoding="utf-8",
     )

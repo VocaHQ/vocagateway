@@ -16,7 +16,7 @@ from app.errors import (
 )
 from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
 
-MODEL_METADATA = ".vocaphone-model.json"
+MODEL_METADATA = ".vocagateway-model.json"
 STREAMING_ARCHITECTURES = {2, 3, 4, 5}
 LANGUAGE_ALIASES = {
     "ar": {"ar", "ar-SA"},

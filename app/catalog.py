@@ -181,7 +181,7 @@ def _moonshine(
             )
         ),
         source="Moonshine Voice",
-        marker_file=".vocaphone-model.json",
+        marker_file=".vocagateway-model.json",
         language_code=language,
         # Also as a tuple: the engine reads `language_code`, but the model cards and
         # the language filter read `language_codes`, and an empty tuple there means
@@ -243,7 +243,7 @@ def _sherpa_onnx(
         family=family,
         description=description,
         source="sherpa-onnx",
-        marker_file=".vocaphone-model.json",
+        marker_file=".vocagateway-model.json",
         model_type=model_type,
         language_codes=language_codes,
         license_name=license_name,

@@ -64,7 +64,7 @@ def _config() -> ConfigResponse:
 
 def test_redact_home_path_replaces_home_prefix() -> None:
     home = str(Path.home())
-    assert redact_home_path(f"{home}/.local/share/vocaphone") == "~/.local/share/vocaphone"
+    assert redact_home_path(f"{home}/.local/share/vocagateway") == "~/.local/share/vocagateway"
     assert redact_home_path(home) == "~"
 
 
@@ -76,16 +76,16 @@ def test_build_diagnostics_bundle_redacts_paths_and_lists_exclusions() -> None:
     home = str(Path.home())
     status = _status(
         PathStatus(
-            data_dir=f"{home}/.local/share/vocaphone",
-            models_dir=f"{home}/.local/share/vocaphone/models",
-            config_file=f"{home}/.config/vocaphone/config.json",
-            token_file="~/.config/vocaphone/token",
+            data_dir=f"{home}/.local/share/vocagateway",
+            models_dir=f"{home}/.local/share/vocagateway/models",
+            config_file=f"{home}/.config/vocagateway/config.json",
+            token_file="~/.config/vocagateway/token",
         )
     )
     bundle = build_diagnostics_bundle(status, _config())
-    assert bundle.paths.data_dir == "~/.local/share/vocaphone"
-    assert bundle.paths.models_dir == "~/.local/share/vocaphone/models"
-    assert bundle.paths.config_file == "~/.config/vocaphone/config.json"
+    assert bundle.paths.data_dir == "~/.local/share/vocagateway"
+    assert bundle.paths.models_dir == "~/.local/share/vocagateway/models"
+    assert bundle.paths.config_file == "~/.config/vocagateway/config.json"
     assert bundle.never_included == list(NEVER_INCLUDED)
     dumped = bundle.model_dump_json()
     assert home not in dumped
@@ -100,18 +100,18 @@ def test_build_diagnostics_bundle_redacts_config_model_paths() -> None:
     home = str(Path.home())
     status = _status(
         PathStatus(
-            data_dir=f"{home}/.local/share/vocaphone",
-            models_dir=f"{home}/.local/share/vocaphone/models",
-            config_file=f"{home}/.config/vocaphone/config.json",
-            token_file="~/.config/vocaphone/token",
+            data_dir=f"{home}/.local/share/vocagateway",
+            models_dir=f"{home}/.local/share/vocagateway/models",
+            config_file=f"{home}/.config/vocagateway/config.json",
+            token_file="~/.config/vocagateway/token",
         )
     )
     config = ConfigResponse(
         engine="whisper.cpp",
         available_engines=["auto", "whisper.cpp"],
-        whisper_model=f"{home}/.local/share/vocaphone/models/whisper.cpp/ggml-base.en.bin",
-        whisperkit_model=f"{home}/.local/share/vocaphone/models/whisperkit/openai_whisper-tiny",
-        faster_whisper_model=f"{home}/.local/share/vocaphone/models/faster-whisper/tiny.en",
+        whisper_model=f"{home}/.local/share/vocagateway/models/whisper.cpp/ggml-base.en.bin",
+        whisperkit_model=f"{home}/.local/share/vocagateway/models/whisperkit/openai_whisper-tiny",
+        faster_whisper_model=f"{home}/.local/share/vocagateway/models/faster-whisper/tiny.en",
         sherpa_model="sherpa-onnx:sensevoice-small-int8",
     )
 
@@ -119,15 +119,15 @@ def test_build_diagnostics_bundle_redacts_config_model_paths() -> None:
 
     assert (
         bundle.config.whisper_model
-        == "~/.local/share/vocaphone/models/whisper.cpp/ggml-base.en.bin"
+        == "~/.local/share/vocagateway/models/whisper.cpp/ggml-base.en.bin"
     )
     assert (
         bundle.config.whisperkit_model
-        == "~/.local/share/vocaphone/models/whisperkit/openai_whisper-tiny"
+        == "~/.local/share/vocagateway/models/whisperkit/openai_whisper-tiny"
     )
     assert (
         bundle.config.faster_whisper_model
-        == "~/.local/share/vocaphone/models/faster-whisper/tiny.en"
+        == "~/.local/share/vocagateway/models/faster-whisper/tiny.en"
     )
     assert bundle.config.sherpa_model == "sherpa-onnx:sensevoice-small-int8"
     assert home not in bundle.model_dump_json()

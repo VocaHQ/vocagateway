@@ -16,13 +16,13 @@ def _isolate_home(monkeypatch: MonkeyPatch, tmp_path: Path) -> Path:
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.delenv("XDG_DATA_HOME", raising=False)
     for name in list(__import__("os").environ):
-        if name.startswith("LOCALFLOW_") or name.startswith("VOCAPHONE_"):
+        if name.startswith("VOCAGATEWAY_"):
             monkeypatch.delenv(name, raising=False)
     return home
 
 
 def _write_token(home: Path, secret: str = "test-token-with-at-least-thirty-two-characters") -> str:
-    token_file = home / ".config" / "vocaphone" / "token"
+    token_file = home / ".config" / "vocagateway" / "token"
     token_file.parent.mkdir(parents=True)
     token_file.write_text(secret + "\n", encoding="utf-8")
     return secret
@@ -45,7 +45,7 @@ def test_token_reads_env_override(
 ) -> None:
     _isolate_home(monkeypatch, tmp_path)
     secret = "env-token-with-at-least-thirty-two-chars-ok"
-    monkeypatch.setenv("VOCAPHONE_TOKEN", secret)
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN", secret)
     monkeypatch.setattr("sys.argv", ["vocaphone-token", "--plain"])
 
     cli.token()
@@ -59,7 +59,7 @@ def test_token_blank_token_file_env_falls_back_to_default(
     home = _isolate_home(monkeypatch, tmp_path)
     secret = _write_token(home)
     # Same rule as Settings.from_env / the old just recipe: blank means unset.
-    monkeypatch.setenv("VOCAPHONE_TOKEN_FILE", "   ")
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN_FILE", "   ")
     monkeypatch.setattr("sys.argv", ["vocaphone-token", "--plain"])
 
     cli.token()
@@ -85,7 +85,7 @@ def test_token_tty_prints_pairing_qr(
 ) -> None:
     home = _isolate_home(monkeypatch, tmp_path)
     secret = _write_token(home)
-    monkeypatch.setenv("VOCAPHONE_PUBLIC_URL", "http://192.168.1.20:8765")
+    monkeypatch.setenv("VOCAGATEWAY_PUBLIC_URL", "http://192.168.1.20:8765")
     monkeypatch.setattr("sys.argv", ["vocaphone-token"])
     monkeypatch.setattr("sys.stdout.isatty", lambda: True)
 
@@ -103,14 +103,14 @@ def test_token_tty_prefers_saved_webui_pairing_url(
 ) -> None:
     home = _isolate_home(monkeypatch, tmp_path)
     secret = _write_token(home)
-    config_path = home / ".config" / "vocaphone" / "config.json"
+    config_path = home / ".config" / "vocagateway" / "config.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(
         json.dumps({"pairing_url": "https://dictation.example.com"}),
         encoding="utf-8",
     )
     # Env discovery would prefer LAN; saved WebUI choice must win (Overview card).
-    monkeypatch.setenv("VOCAPHONE_PUBLIC_URL", "http://192.168.1.20:8765")
+    monkeypatch.setenv("VOCAGATEWAY_PUBLIC_URL", "http://192.168.1.20:8765")
     monkeypatch.setattr("sys.argv", ["vocaphone-token"])
     monkeypatch.setattr("sys.stdout.isatty", lambda: True)
 
