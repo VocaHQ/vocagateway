@@ -28,15 +28,15 @@ Portable INT8 CPU models. Run everywhere, including containers.
 | Model | Download | Languages | Flags | Licence |
 | --- | ---: | --- | --- | --- |
 | SenseVoice Small INT8 | 240 MB | Mandarin Chinese, Cantonese, English, Japanese, Korean | auto language | FunASR Model License |
-| Parakeet TDT 0.6B v3 INT8 | 672 MB | [25 languages](#language-set-25) | — | CC BY 4.0 |
+| Parakeet TDT 0.6B v3 INT8 | 672 MB | [25 languages](#language-set-25-94430147) | — | CC BY 4.0 |
 | Parakeet TDT 0.6B v2 INT8 | 661 MB | English | — | CC BY 4.0 |
 | GigaAM v3 CTC Russian INT8 | 225 MB | Russian | — | MIT |
 | GigaAM v3 RNNT Russian | 230 MB | Russian | — | MIT |
 | Canary 180M Flash English INT8 | 210 MB | English | — | CC BY 4.0 |
 | Streaming Zipformer English 20M INT8 | 44 MB | English | streaming | Apache 2.0 |
-| Dolphin Small CTC INT8 | 250 MB | [40 languages](#language-set-40) | auto language | Apache 2.0 |
-| Dolphin Base CTC INT8 | 104 MB | [40 languages](#language-set-40) | auto language | Apache 2.0 |
-| Qwen3-ASR 0.6B INT8 | 987 MB | [11 languages](#language-set-11) | auto language | Apache 2.0 |
+| Dolphin Small CTC INT8 | 250 MB | [40 languages](#language-set-40-28c55c73) | auto language | Apache 2.0 |
+| Dolphin Base CTC INT8 | 104 MB | [40 languages](#language-set-40-28c55c73) | auto language | Apache 2.0 |
+| Qwen3-ASR 0.6B INT8 | 987 MB | [11 languages](#language-set-11-66e7cd1f) | auto language | Apache 2.0 |
 
 ### faster-whisper
 
@@ -45,11 +45,11 @@ CTranslate2 Whisper. Kept resident; the broad multilingual fallback.
 | Model | Download | Languages | Flags | Licence |
 | --- | ---: | --- | --- | --- |
 | faster-whisper Tiny EN | 75 MB | English | — | See model source |
-| faster-whisper Tiny | 75 MB | [100 languages](#language-set-100) | — | See model source |
+| faster-whisper Tiny | 75 MB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
 | faster-whisper Base EN | 145 MB | English | — | See model source |
-| faster-whisper Base | 145 MB | [100 languages](#language-set-100) | — | See model source |
+| faster-whisper Base | 145 MB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
 | faster-whisper Small EN | 484 MB | English | — | See model source |
-| faster-whisper Small | 484 MB | [100 languages](#language-set-100) | — | See model source |
+| faster-whisper Small | 484 MB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
 | Distil-Whisper Small EN | 332 MB | English | — | See model source |
 | Distil-Whisper Medium EN | 789 MB | English | — | See model source |
 
@@ -80,18 +80,18 @@ GGML models through the standalone `whisper-cli` binary.
 | Model | Download | Languages | Flags | Licence |
 | --- | ---: | --- | --- | --- |
 | whisper.cpp Tiny EN | 75 MB | English | — | See model source |
-| whisper.cpp Tiny | 75 MB | [100 languages](#language-set-100) | — | See model source |
+| whisper.cpp Tiny | 75 MB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
 | whisper.cpp Base EN | 142 MB | English | — | See model source |
-| whisper.cpp Base | 142 MB | [100 languages](#language-set-100) | — | See model source |
+| whisper.cpp Base | 142 MB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
 | whisper.cpp Small EN | 466 MB | English | — | See model source |
-| whisper.cpp Small | 466 MB | [100 languages](#language-set-100) | — | See model source |
+| whisper.cpp Small | 466 MB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
 | whisper.cpp Medium EN | 1.50 GB | English | — | See model source |
-| whisper.cpp Medium | 1.50 GB | [100 languages](#language-set-100) | — | See model source |
-| Whisper Medium Q4 | 492 MB | [100 languages](#language-set-100) | — | See model source |
-| whisper.cpp Large v3 Turbo | 1.62 GB | [100 languages](#language-set-100) | — | See model source |
-| Whisper Large v3 Q5 | 1.08 GB | [100 languages](#language-set-100) | — | See model source |
+| whisper.cpp Medium | 1.50 GB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
+| Whisper Medium Q4 | 492 MB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
+| whisper.cpp Large v3 Turbo | 1.62 GB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
+| Whisper Large v3 Q5 | 1.08 GB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
 | Breeze ASR Q5 | 1.08 GB | Mandarin Chinese, English | — | Apache 2.0 |
-| whisper.cpp Large v3 | 3.00 GB | [100 languages](#language-set-100) | — | See model source |
+| whisper.cpp Large v3 | 3.00 GB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
 
 ### whisperkit
 
@@ -99,14 +99,14 @@ Core ML, **macOS only**. Hidden on Linux and in containers.
 
 | Model | Download | Languages | Flags | Licence |
 | --- | ---: | --- | --- | --- |
-| WhisperKit Tiny | 66 MB | [100 languages](#language-set-100) | — | See model source |
+| WhisperKit Tiny | 66 MB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
 | WhisperKit Tiny EN | 66 MB | English | — | See model source |
-| WhisperKit Base | 145 MB | [100 languages](#language-set-100) | — | See model source |
+| WhisperKit Base | 145 MB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
 | WhisperKit Base EN | 145 MB | English | — | See model source |
-| WhisperKit Small (compressed) | 216 MB | [100 languages](#language-set-100) | — | See model source |
-| WhisperKit Small | 484 MB | [100 languages](#language-set-100) | — | See model source |
-| WhisperKit Large v3 Turbo (compressed) | 626 MB | [100 languages](#language-set-100) | — | See model source |
-| WhisperKit Large v3 Turbo | 1.61 GB | [100 languages](#language-set-100) | — | See model source |
+| WhisperKit Small (compressed) | 216 MB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
+| WhisperKit Small | 484 MB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
+| WhisperKit Large v3 Turbo (compressed) | 626 MB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
+| WhisperKit Large v3 Turbo | 1.61 GB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
 
 ### mlx-audio
 
@@ -114,18 +114,18 @@ MLX, **Apple silicon only**. Hidden on Linux and in containers.
 
 | Model | Download | Languages | Flags | Licence |
 | --- | ---: | --- | --- | --- |
-| MLX Whisper Large v3 Turbo 4-bit | 469 MB | [100 languages](#language-set-100) | Apple silicon | MIT |
-| MLX Parakeet TDT 0.6B v3 | 2.51 GB | [25 languages](#language-set-25) | Apple silicon | CC BY 4.0 |
+| MLX Whisper Large v3 Turbo 4-bit | 469 MB | [100 languages](#language-set-100-0b8e4ee5) | Apple silicon | MIT |
+| MLX Parakeet TDT 0.6B v3 | 2.51 GB | [25 languages](#language-set-25-94430147) | Apple silicon | CC BY 4.0 |
 | MLX Parakeet TDT 0.6B v2 | 2.47 GB | English | Apple silicon | CC BY 4.0 |
-| MLX Qwen3-ASR 0.6B 4-bit | 713 MB | [11 languages](#language-set-11) | Apple silicon | Apache 2.0 |
-| MLX Qwen3-ASR 1.7B 4-bit | 1.61 GB | [11 languages](#language-set-11) | Apple silicon | Apache 2.0 |
+| MLX Qwen3-ASR 0.6B 4-bit | 713 MB | [11 languages](#language-set-11-66e7cd1f) | Apple silicon | Apache 2.0 |
+| MLX Qwen3-ASR 1.7B 4-bit | 1.61 GB | [11 languages](#language-set-11-66e7cd1f) | Apple silicon | Apache 2.0 |
 | MLX Granite Speech 4.1 2B | 2.38 GB | English | Apple silicon | Apache 2.0 |
 
 ## Language sets
 
 The tables above link here rather than repeating long lists. Each set below is shared verbatim by every model listed with it.
 
-<a id="language-set-11"></a>
+<a id="language-set-11-66e7cd1f"></a>
 
 ### 11 languages
 
@@ -133,7 +133,7 @@ Used by: MLX Qwen3-ASR 0.6B 4-bit, MLX Qwen3-ASR 1.7B 4-bit, Qwen3-ASR 0.6B INT8
 
 English, Mandarin Chinese, Japanese, Korean, Spanish, French, German, Russian, Arabic, Italian, Portuguese.
 
-<a id="language-set-25"></a>
+<a id="language-set-25-94430147"></a>
 
 ### 25 languages
 
@@ -141,7 +141,7 @@ Used by: MLX Parakeet TDT 0.6B v3, Parakeet TDT 0.6B v3 INT8.
 
 Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Slovak, Slovenian, Spanish, Swedish, Russian, Ukrainian.
 
-<a id="language-set-40"></a>
+<a id="language-set-40-28c55c73"></a>
 
 ### 40 languages
 
@@ -149,7 +149,7 @@ Used by: Dolphin Base CTC INT8, Dolphin Small CTC INT8.
 
 Mandarin Chinese, Japanese, Thai, Russian, Korean, Indonesian, Vietnamese, Yue Chinese, Hindi, Urdu, Malay, Uzbek, Arabic, Persian, Bengali, Tamil, Telugu, Uyghur, Gujarati, Burmese, Tagalog, Kazakh, Odia, Nepali, Mongolian, Khmer, Javanese, Lao, Sinhala, Filipino, Pashto, Punjabi, Kabyle, Bashkir, Kashmiri, Tajik, Sundanese, Marathi, Kyrgyz, Azerbaijani.
 
-<a id="language-set-100"></a>
+<a id="language-set-100-0b8e4ee5"></a>
 
 ### 100 languages
 

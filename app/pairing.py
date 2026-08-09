@@ -224,7 +224,50 @@ def _local_ipv4_addresses() -> list[str]:
     except (OSError, subprocess.TimeoutExpired):
         pass
 
+    # `ip` doesn't exist on macOS, and neither getaddrinfo nor the UDP-connect
+    # probe above reliably surfaces a Tailscale/VPN interface (routing prefers
+    # the default NIC for the outbound probe). Walk `ifconfig` so a live
+    # Tailscale IP is actually in `discovered` and doesn't get pruned as
+    # stale by forget_stale_lan_addresses() on the next page load.
+    try:
+        result = subprocess.run(
+            ["ifconfig"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if result.returncode == 0:
+            found.update(_parse_ifconfig_ipv4_addresses(result.stdout))
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
     return list(found)
+
+
+def _parse_ifconfig_ipv4_addresses(output: str) -> list[str]:
+    """Extract phone-reachable IPv4 addresses from `ifconfig` output.
+
+    Address lines are indented under their interface header on both the
+    macOS/BSD and Linux (net-tools) formats, so indentation alone is enough
+    to tell an address line from an interface header without needing to
+    track interface names. Old net-tools spells it `inet addr:X.X.X.X`
+    instead of `inet X.X.X.X`; strip the `addr:` prefix if present.
+    """
+    addresses: list[str] = []
+    for line in output.splitlines():
+        if not line[:1].isspace():
+            continue
+        stripped = line.strip()
+        if not stripped.startswith("inet "):
+            continue
+        parts = stripped.split()
+        if len(parts) < 2:
+            continue
+        address = parts[1].removeprefix("addr:")
+        if _is_phone_reachable_ipv4(address):
+            addresses.append(address)
+    return addresses
 
 
 def _is_phone_reachable_ipv4(address: str) -> bool:

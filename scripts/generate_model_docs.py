@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -80,7 +81,15 @@ def language_cell(model: CatalogModel) -> str:
 
 
 def set_anchor(codes: tuple[str, ...]) -> str:
-    return f"language-set-{len(codes)}"
+    """A stable anchor id, unique per distinct language set.
+
+    Length alone collides whenever two different sets happen to have the
+    same number of languages, producing a duplicate HTML id and a link that
+    silently resolves to the wrong section. Fold in a content hash so
+    same-length sets never collide.
+    """
+    digest = hashlib.sha1("|".join(codes).encode("utf-8")).hexdigest()[:8]
+    return f"language-set-{len(codes)}-{digest}"
 
 
 def model_flags(model: CatalogModel) -> str:
