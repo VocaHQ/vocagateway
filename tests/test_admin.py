@@ -521,9 +521,11 @@ async def test_custom_download_rejects_bad_url(
 async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[str, str]) -> None:
     overview = await admin_client.get("/ui/partials/overview", headers=auth)
     assert overview.status_code == 200
-    assert "Setup checklist" in overview.text
     assert "Live operations" in overview.text
     assert 'hx-get="/ui/partials/operations"' in overview.text
+    # Operator-detail tables stay off the front page.
+    assert "Setup checklist" not in overview.text
+    assert "Dependencies" not in overview.text
     # Bind addresses live on the header model pill hover card, not Overview.
     assert "0.0.0.0:8765" not in overview.text
     assert "http://127.0.0.1:8765/" not in overview.text

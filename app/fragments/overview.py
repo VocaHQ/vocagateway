@@ -3,7 +3,7 @@ from __future__ import annotations
 from html import escape
 
 from app.config import WILDCARD_BIND_HOSTS
-from app.fragments.shared import _facts, _format_bytes, _format_latency, _format_uptime
+from app.fragments.shared import _format_bytes, _format_latency, _format_uptime
 from app.schemas import AdminStatusResponse, OperationalMetricsStatus, ReadinessStatus
 
 
@@ -19,58 +19,11 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
         if is_mac
         else "Install vocaphone-gateway[engines] (sherpa-onnx / faster-whisper) or use Docker"
     )
-    checks = [
-        ("Gateway token configured", status.setup.token_configured, ""),
-        ("FFmpeg installed", status.setup.ffmpeg_available, ffmpeg_hint),
-        (
-            "Speech engine CLI installed",
-            status.setup.engine_binary_available,
-            engine_hint,
-        ),
-        ("Speech model available", status.setup.model_installed, "Open Models"),
-        ("Engine ready to transcribe", status.setup.engine_ready, "Select a downloaded model"),
-    ]
     ready = (
         status.setup.token_configured
         and status.setup.ffmpeg_available
         and status.setup.engine_ready
     )
-    checklist = "".join(
-        "<li>"
-        f'<span class="check {"ok" if ok else "missing"}" aria-hidden="true">'
-        f"{'✓' if ok else '✗'}</span>"
-        f"<span>{escape(label)}</span>"
-        + ("" if ok or not hint else f'<code class="hint">{escape(hint)}</code>')
-        + "</li>"
-        for label, ok, hint in checks
-    )
-    facts = _facts(
-        [
-            ("Chip", status.system.chip),
-            (
-                "CPU allocation",
-                f"{status.system.effective_cpus:g} effective / "
-                f"{status.system.logical_cpus} logical",
-            ),
-            ("Memory", f"{status.system.ram_gb:g} GB"),
-            ("Accelerators", ", ".join(status.system.accelerators)),
-            ("CPU features", ", ".join(status.system.cpu_features) or "standard"),
-            ("Runtime", "container" if status.system.containerized else "host"),
-            ("OS", f"{status.system.os} ({status.system.arch})"),
-            ("Version", status.version),
-        ]
-    )
-    rows = "".join(
-        "<tr>"
-        f"<td>{escape(dependency.name)}</td>"
-        f'<td><span class="state"><span class="dot {"ok" if dependency.available else "bad"}"'
-        ' aria-hidden="true"></span>'
-        f"{'installed' if dependency.available else 'missing'}</span></td>"
-        f"<td><code>{escape(dependency.path or dependency.install_hint or '—')}</code></td>"
-        "</tr>"
-        for dependency in status.dependencies
-    )
-
     onboarding = _onboarding_steps(status, machine_label, ffmpeg_hint, engine_hint, ready)
 
     exposure_notice = ""
@@ -83,8 +36,8 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
               use Tailscale for remote access, and do not expose this port to the internet.</span>
           </div>
         """
-    # Model name / ready state already live in the header pill. Network bind
-    # addresses are on that pill's hover card, not duplicated here.
+    # Model name / ready state live in the header pill. Checklist, host specs, and
+    # dependency tables are operator detail — not the daily front page.
     hero_copy = (
         "Pair a phone or try a test dictation when you are ready."
         if ready
@@ -103,25 +56,6 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
       {exposure_notice}
       {onboarding}
       {operations_fragment(status.metrics, status.readiness)}
-      <div class="grid two">
-        <div class="card">
-          <h2>Setup checklist</h2>
-          <ul class="checklist">{checklist}</ul>
-        </div>
-        <div class="card">
-          <h2>This {machine_label}</h2>
-          <dl class="facts">{facts}</dl>
-        </div>
-      </div>
-      <div class="card">
-        <h2>Dependencies</h2>
-        <div class="table-scroll">
-          <table class="table">
-            <thead><tr><th>Tool</th><th>Status</th><th>Path / install</th></tr></thead>
-            <tbody>{rows}</tbody>
-          </table>
-        </div>
-      </div>
     """
 
 
