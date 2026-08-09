@@ -140,6 +140,8 @@ async def ui_update_config(
         engine_update_fragment(
             EngineStatus(id=engine, name=state.name, ready=state.ready),
             "Engine preference saved.",
+            bind_host=ctx.settings.bind_host,
+            port=ctx.settings.port,
         )
     )
 

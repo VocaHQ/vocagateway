@@ -261,6 +261,7 @@ html[data-theme="dark"] .theme-icon-sun { display: block; }
 .brand .muted { font-size: 0.88rem; }
 
 #engine-pill, .engine-status {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -286,7 +287,8 @@ html[data-theme="dark"] .theme-icon-sun { display: block; }
   min-width: 0;
 }
 .engine-status.ready { color: var(--text); }
-.engine-status:hover {
+.engine-status:hover,
+.engine-status:focus-visible {
   border-color: var(--accent);
   color: var(--text);
   background: var(--accent-wash);
@@ -306,10 +308,94 @@ html[data-theme="dark"] .theme-icon-sun { display: block; }
   font-weight: 700;
   letter-spacing: 0.01em;
 }
-.engine-status:hover .engine-status-hint {
+.engine-status:hover .engine-status-hint,
+.engine-status:focus-visible .engine-status-hint {
   background: var(--accent);
   color: var(--accent-ink);
 }
+
+/* Network bind details: hover/focus card on the model pill (not on Overview).
+   Padding-top bridges the visual gap so the pointer can move into the card. */
+.engine-popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 40;
+  display: grid;
+  gap: 8px;
+  min-width: min(300px, 80vw);
+  padding: 10px 0 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s ease;
+}
+.engine-popover-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+.engine-status:hover .engine-popover,
+.engine-status:focus-visible .engine-popover,
+.engine-status:focus-within .engine-popover {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+.engine-popover-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.engine-popover-row {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+.engine-popover-row > span {
+  color: var(--faint);
+  font-size: 0.8rem;
+}
+.engine-popover-row code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+  color: var(--text);
+  background: var(--raised);
+  border-color: var(--line);
+}
+.engine-popover-hint {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* Status hero is a one-line readiness signal; model/network detail is in the header. */
+.status-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+  margin: 0 0 26px;
+}
+.status-hero .headline { display: flex; gap: 11px; }
+.status-hero .dot { margin-top: 8px; }
+.status-hero h2 { font-size: 1.35rem; margin: 0; line-height: 1.25; }
+.status-hero p { color: var(--muted); margin: 2px 0 0; font-size: 0.95rem; max-width: 48ch; }
 
 .tabs {
   display: flex;
@@ -379,30 +465,6 @@ main > .card:first-child, #panel > .card:first-child { border-top: none; padding
   margin-bottom: 12px;
 }
 .probe-age { color: var(--faint); font-size: 12px; white-space: nowrap; }
-
-/* ------------------------------------------------------------ overview: hero */
-
-.status-hero {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 32px;
-  margin: 0 0 26px;
-}
-.status-hero .headline { display: flex; gap: 11px; }
-.status-hero .dot { margin-top: 8px; }
-.status-hero h2 { font-size: 1.35rem; margin: 0; line-height: 1.25; }
-.status-hero p { color: var(--muted); margin: 2px 0 0; font-size: 0.95rem; }
-
-.connection-facts { display: grid; gap: 4px; margin: 2px 0 0; }
-.connection-facts div { display: grid; grid-template-columns: auto auto; gap: 14px; }
-.connection-facts dt { color: var(--faint); font-size: 12.5px; justify-self: end; }
-.connection-facts dd {
-  margin: 0;
-  font-family: var(--mono);
-  font-size: 12.5px;
-  overflow-wrap: anywhere;
-}
 
 /* A note, not a box: one coloured rule carries the whole signal. */
 .callout {
@@ -961,8 +1023,7 @@ select {
   .tab { padding-inline: 10px; white-space: nowrap; }
   .grid.two { grid-template-columns: 1fr; gap: 0; }
   .status-hero { flex-direction: column; gap: 16px; }
-  .connection-facts div { grid-template-columns: 116px 1fr; }
-  .connection-facts dt { justify-self: start; }
+  .engine-popover { right: auto; left: 0; min-width: min(280px, 88vw); }
   .page-head { flex-direction: column; align-items: stretch; gap: 12px; }
   .models-toolbar-actions { flex-wrap: wrap; }
   .operations-grid, .benchmark-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

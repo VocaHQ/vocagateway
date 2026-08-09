@@ -55,5 +55,9 @@ async def ui_operations(ctx: GatewayContext = Depends(get_context)) -> HTMLRespo
 async def ui_engine_pill(ctx: GatewayContext = Depends(get_context)) -> HTMLResponse:
     state = await ctx.readiness.probe()
     return HTMLResponse(
-        engine_pill_fragment(EngineStatus(id=engine_id(ctx), name=state.name, ready=state.ready))
+        engine_pill_fragment(
+            EngineStatus(id=engine_id(ctx), name=state.name, ready=state.ready),
+            bind_host=ctx.settings.bind_host,
+            port=ctx.settings.port,
+        )
     )

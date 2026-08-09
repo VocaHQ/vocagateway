@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from html import escape
 
+from app.config import format_host_port, local_webui_url
 from app.schemas import EngineStatus
 from app.system import engine_requirement
 
@@ -42,37 +43,66 @@ def _engine_option_label(engine: str) -> str:
     return f"{label} ({requirement} only)" if requirement else label
 
 
-def _engine_status(engine: EngineStatus, *, oob: bool = False) -> str:
-    """Header control: status of the active model; opens Models when clicked."""
+def _engine_status(
+    engine: EngineStatus,
+    *,
+    bind_host: str = "0.0.0.0",
+    port: int = 8765,
+    oob: bool = False,
+) -> str:
+    """Header control: active model, network details on hover, opens Models on click."""
     classes = "engine-status ready" if engine.ready else "engine-status"
     dot = "ok" if engine.ready else "warn"
     label = escape(engine.name or engine.id)
+    listener = escape(format_host_port(bind_host, port))
+    local_url = escape(local_webui_url(bind_host, port))
+    ready_label = "Ready" if engine.ready else "Not ready"
     swap_oob = ' hx-swap-oob="true"' if oob else ""
-    # A button so keyboard users can open Models; hx-get still refreshes the pill.
+    # Network addresses live in the hover card so Overview stays uncluttered.
     return (
         f'<button type="button" id="engine-pill" class="{classes}"{swap_oob}'
         f' data-open-tab="models"'
-        f' title="Open Models to change the speech engine"'
-        f' aria-label="Current speech model: {label}. Open Models."'
+        f' aria-label="Current speech model: {label}, {ready_label}. '
+        f"Listener {listener}. WebUI {local_url}. Open Models.\""
         f' hx-get="/ui/partials/engine-pill" hx-trigger="every 5s" hx-swap="outerHTML">'
         f'<span class="dot {dot}" aria-hidden="true"></span>'
         f"<span>{label}</span>"
-        f'<span class="engine-status-hint" aria-hidden="true">Models</span></button>'
+        f'<span class="engine-status-hint" aria-hidden="true">Models</span>'
+        f'<span class="engine-popover" role="tooltip">'
+        f'<span class="engine-popover-card">'
+        f'<span class="engine-popover-title">{ready_label}</span>'
+        f'<span class="engine-popover-row"><span>Listener</span>'
+        f"<code>{listener}</code></span>"
+        f'<span class="engine-popover-row"><span>This host</span>'
+        f"<code>{local_url}</code></span>"
+        f'<span class="engine-popover-hint">Click to change models</span>'
+        f"</span></span></button>"
     )
 
 
-def engine_pill_fragment(engine: EngineStatus) -> str:
-    return _engine_status(engine)
+def engine_pill_fragment(
+    engine: EngineStatus, *, bind_host: str = "0.0.0.0", port: int = 8765
+) -> str:
+    return _engine_status(engine, bind_host=bind_host, port=port)
 
 
-def engine_pill_oob(engine: EngineStatus) -> str:
-    return _engine_status(engine, oob=True)
+def engine_pill_oob(
+    engine: EngineStatus, *, bind_host: str = "0.0.0.0", port: int = 8765
+) -> str:
+    return _engine_status(engine, bind_host=bind_host, port=port, oob=True)
 
 
-def engine_update_fragment(engine: EngineStatus, message: str) -> str:
+def engine_update_fragment(
+    engine: EngineStatus,
+    message: str,
+    *,
+    bind_host: str = "0.0.0.0",
+    port: int = 8765,
+) -> str:
     css = "ok" if engine.ready else "missing"
     return (
         f'<span class="badge {css}">{escape(engine.name or engine.id)}'
         f"{' ready' if engine.ready else ' not ready'}</span> "
-        f"{escape(message)}{engine_pill_oob(engine)}"
+        f"{escape(message)}"
+        f"{engine_pill_oob(engine, bind_host=bind_host, port=port)}"
     )

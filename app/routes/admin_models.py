@@ -216,6 +216,8 @@ async def ui_select_model(
         + engine_pill_oob(
             EngineStatus(
                 id=engine_manager.runtime_config.engine, name=state.name, ready=state.ready
-            )
+            ),
+            bind_host=ctx.settings.bind_host,
+            port=ctx.settings.port,
         )
     )

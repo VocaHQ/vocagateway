@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from html import escape
 
-from app.config import WILDCARD_BIND_HOSTS, format_host_port, local_webui_url
+from app.config import WILDCARD_BIND_HOSTS
 from app.fragments.shared import _facts, _format_bytes, _format_latency, _format_uptime
 from app.schemas import AdminStatusResponse, OperationalMetricsStatus, ReadinessStatus
 
@@ -35,8 +35,6 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
         and status.setup.ffmpeg_available
         and status.setup.engine_ready
     )
-    listener = format_host_port(status.bind_host, status.port)
-    local_url = local_webui_url(status.bind_host, status.port)
     checklist = "".join(
         "<li>"
         f'<span class="check {"ok" if ok else "missing"}" aria-hidden="true">'
@@ -85,20 +83,22 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
               use Tailscale for remote access, and do not expose this port to the internet.</span>
           </div>
         """
+    # Model name / ready state already live in the header pill. Network bind
+    # addresses are on that pill's hover card, not duplicated here.
+    hero_copy = (
+        "Pair a phone or try a test dictation when you are ready."
+        if ready
+        else "Work through the steps below, then pair your phone."
+    )
     return f"""
       <section class="status-hero">
         <div class="headline">
           <span class="dot {"ok" if ready else "warn"}" aria-hidden="true"></span>
           <div>
             <h2>{"Ready for dictation" if ready else "Finish setup to dictate"}</h2>
-            <p>{escape(status.engine.name)} ·
-              {"engine ready" if status.engine.ready else "engine unavailable"}</p>
+            <p>{hero_copy}</p>
           </div>
         </div>
-        <dl class="connection-facts">
-          <div><dt>Listener</dt><dd>{escape(listener)}</dd></div>
-          <div><dt>On this host</dt><dd>{escape(local_url)}</dd></div>
-        </dl>
       </section>
       {exposure_notice}
       {onboarding}
