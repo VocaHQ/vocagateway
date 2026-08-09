@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from html import escape
 from urllib.parse import quote
 
@@ -334,6 +335,12 @@ def _empty_filter_state(
     return '<p class="empty-state">No models available.</p>'
 
 
+def _family_dom_id(family: str) -> str:
+    """Stable id for aria-controls / grid sibling panel."""
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", family).strip("-").lower() or "family"
+    return f"family-models-{slug}"
+
+
 def _family_tile(family: str, items: list[AdminModelEntry]) -> str:
     installed = sum(entry.state == "installed" for entry in items)
     active = next((entry for entry in items if entry.active), None)
@@ -358,10 +365,14 @@ def _family_tile(family: str, items: list[AdminModelEntry]) -> str:
         for item in items
     )
     active_attr = ' data-active="1"' if active else ""
-    # Always collapsed: open a tile deliberately for density across 50+ models.
+    models_id = _family_dom_id(family)
+    # Tile + models are *siblings* in the family-grid so the open models panel
+    # can take grid-column: 1 / -1 on the next row while the tile stays put.
+    # (Nested <details> + display:contents is unreliable across browsers.)
     return f"""
-      <details class="family-tile"{active_attr}>
-        <summary class="family-summary">
+      <div class="family-tile"{active_attr} data-family="{escape(family, quote=True)}">
+        <button type="button" class="family-summary"
+                aria-expanded="false" aria-controls="{escape(models_id, quote=True)}">
           <span class="family-summary-main">
             <span class="family-name">{escape(family)}</span>
             <span class="family-tags">{tags}</span>
@@ -372,9 +383,9 @@ def _family_tile(family: str, items: list[AdminModelEntry]) -> str:
             <span>{installed_label}</span>
             <span class="family-engines" title="Engines in this family">{engine_note}</span>
           </span>
-        </summary>
-        <div class="family-models" role="list">{cards}</div>
-      </details>
+        </button>
+      </div>
+      <div class="family-models" id="{escape(models_id, quote=True)}" role="list" hidden>{cards}</div>
     """
 
 

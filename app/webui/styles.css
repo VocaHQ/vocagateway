@@ -1276,39 +1276,63 @@ button.text-link:hover { color: var(--accent-hover); }
 
 /* ----------------------------------------------------------------- model list */
 
-/* Collapsed: family tiles. Open: full-width shell with nested model tiles. */
+/* Family tile + models panel are grid *siblings*. Opening a family only
+   unhides the models sibling with grid-column: 1 / -1, so the tile stays in
+   its cell and models fill the full next row. */
 .family-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 12px;
   margin-bottom: 26px;
+  align-items: start;
 }
 .family-tile {
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   background: var(--surface);
   min-width: 0;
+  align-self: start;
 }
 .family-tile[data-active="1"] {
   background: var(--accent-wash);
   border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
 }
-.family-tile[open] {
-  grid-column: 1 / -1;
+.family-tile.is-open {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-soft);
+  z-index: 1;
 }
-.family-summary {
+.family-tile[data-active="1"].is-open {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+/* Card body is a full-bleed button so the whole tile is the hit target. */
+button.family-summary {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  width: 100%;
+  margin: 0;
   padding: 14px 16px;
+  border: none;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
-  list-style: none;
+  min-width: 0;
+  box-sizing: border-box;
 }
-.family-tile[open] .family-summary {
-  padding-bottom: 12px;
+button.family-summary:hover {
+  background: var(--raised);
 }
-.family-summary::-webkit-details-marker { display: none; }
-.family-summary::marker { content: ""; }
+.family-tile.is-open > button.family-summary:hover {
+  background: transparent;
+}
+button.family-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 .family-summary-main {
   display: flex;
   align-items: center;
@@ -1348,22 +1372,28 @@ button.text-link:hover { color: var(--accent-hover); }
   content: "· ";
   color: var(--faint);
 }
-.family-tile:not([open]) .family-summary:hover {
-  background: var(--raised);
-  border-radius: var(--r-lg);
-}
 
-/* Nested model tiles under an open family. */
+/* Sibling of .family-tile in .family-grid — full row when open. */
 .family-models {
-  display: grid;
+  display: none;
+  grid-column: 1 / -1;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
   gap: 12px;
   align-items: start;
   margin: 0;
   padding: 14px 16px 16px;
-  border-top: 1px solid var(--line-soft);
-  border-radius: 0 0 var(--r-lg) var(--r-lg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
   background: var(--sunken);
+  box-shadow: var(--shadow-soft);
+  min-width: 0;
+}
+.family-models.is-open,
+.family-models:not([hidden]) {
+  display: grid;
+}
+.family-models[hidden] {
+  display: none !important;
 }
 .family-models .model-card {
   display: flex;
@@ -2234,8 +2264,8 @@ button.danger.ghost:hover {
   .ops-charts-grid-3 { grid-template-columns: 1fr; }
   .section-heading { flex-direction: column; align-items: flex-start; gap: 3px; }
   .family-grid { grid-template-columns: 1fr; }
-  .family-models,
-  .family-models.model-grid {
+  .family-models.is-open,
+  .family-models:not([hidden]) {
     grid-template-columns: 1fr;
     padding: 12px;
     gap: 10px;

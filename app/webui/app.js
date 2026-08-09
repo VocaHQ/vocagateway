@@ -361,7 +361,65 @@
   }
 
   function familyTiles() {
-    return [...document.querySelectorAll("#models-list details.family-tile")];
+    return [...document.querySelectorAll("#models-list .family-grid > .family-tile")];
+  }
+
+  function familyModelsFor(tile) {
+    const btn = tile.querySelector(".family-summary");
+    const id = btn && btn.getAttribute("aria-controls");
+    return id ? document.getElementById(id) : null;
+  }
+
+  function isFamilyOpen(tile) {
+    return tile.classList.contains("is-open");
+  }
+
+  function familyGridColumnCount(grid) {
+    const raw = getComputedStyle(grid).gridTemplateColumns || "";
+    return raw.split(/\s+/).filter(Boolean).length || 1;
+  }
+
+  /** Park models right after its tile (default DOM order). */
+  function restoreModelsAfterTile(tile) {
+    const models = familyModelsFor(tile);
+    if (!models || !tile.parentElement) return;
+    if (tile.nextElementSibling !== models) tile.after(models);
+  }
+
+  /**
+   * Place the open models panel after the last family tile on the same visual
+   * row so the strip is full-width under the whole row (not under only the
+   * clicked cell, and without pushing same-row neighbors below the strip).
+   */
+  function placeModelsAfterRow(tile) {
+    const grid = tile.closest(".family-grid");
+    const models = familyModelsFor(tile);
+    if (!grid || !models) return;
+    const tiles = familyTiles().filter((t) => t.parentElement === grid);
+    const cols = familyGridColumnCount(grid);
+    const index = tiles.indexOf(tile);
+    if (index < 0) return;
+    const rowEnd = Math.min(tiles.length - 1, Math.floor(index / cols) * cols + cols - 1);
+    const anchor = tiles[rowEnd];
+    if (anchor && anchor.nextElementSibling !== models) anchor.after(models);
+  }
+
+  function setFamilyOpen(tile, open) {
+    const btn = tile.querySelector(".family-summary");
+    const models = familyModelsFor(tile);
+    tile.classList.toggle("is-open", open);
+    if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (models) {
+      if (open) {
+        placeModelsAfterRow(tile);
+        models.hidden = false;
+        models.classList.add("is-open");
+      } else {
+        models.hidden = true;
+        models.classList.remove("is-open");
+        restoreModelsAfterTile(tile);
+      }
+    }
   }
 
   function setExpandToggleState(toggle, expanded) {
@@ -374,9 +432,13 @@
   }
 
   function setFamiliesExpanded(expanded) {
-    familyTiles().forEach((tile) => {
-      tile.open = expanded;
-    });
+    const tiles = familyTiles();
+    if (expanded) {
+      // Open high indices first so earlier row parks don't fight later ones.
+      [...tiles].reverse().forEach((tile) => setFamilyOpen(tile, true));
+    } else {
+      tiles.forEach((tile) => setFamilyOpen(tile, false));
+    }
     setExpandToggleState(document.getElementById("families-expand-toggle"), expanded);
   }
 
@@ -384,7 +446,14 @@
     const toggle = document.getElementById("families-expand-toggle");
     const tiles = familyTiles();
     if (!toggle || !tiles.length) return;
-    setExpandToggleState(toggle, tiles.every((tile) => tile.open));
+    setExpandToggleState(toggle, tiles.every((tile) => isFamilyOpen(tile)));
+  }
+
+  function relayoutOpenFamilyPanels() {
+    familyTiles()
+      .filter((tile) => isFamilyOpen(tile))
+      .reverse()
+      .forEach((tile) => placeModelsAfterRow(tile));
   }
 
   function initModelFilters() {
@@ -444,12 +513,17 @@
         const layout = document.getElementById("models-layout");
         if (!layout) return;
         setFilterRailCollapsed(!layout.classList.contains("is-filter-collapsed"));
+        // Column count changes when the filter rail toggles.
+        requestAnimationFrame(relayoutOpenFamilyPanels);
       });
     }
     const sideCollapse = document.getElementById("filter-side-collapse");
     if (sideCollapse && !sideCollapse.dataset.bound) {
       sideCollapse.dataset.bound = "1";
-      sideCollapse.addEventListener("click", () => setFilterRailCollapsed(true));
+      sideCollapse.addEventListener("click", () => {
+        setFilterRailCollapsed(true);
+        requestAnimationFrame(relayoutOpenFamilyPanels);
+      });
     }
     const expandToggle = document.getElementById("families-expand-toggle");
     if (expandToggle && !expandToggle.dataset.bound) {
@@ -459,15 +533,26 @@
         setFamiliesExpanded(expand);
       });
     }
-    // List refreshes return collapsed tiles; keep the expand icon/tooltip in sync.
+    // Family tiles are buttons + sibling model panels (not <details>).
     const list = document.getElementById("models-list");
     if (list && !list.dataset.expandListen) {
       list.dataset.expandListen = "1";
-      list.addEventListener("toggle", (event) => {
-        if (event.target && event.target.matches && event.target.matches("details.family-tile")) {
-          syncFamiliesExpandToggle();
-        }
-      }, true);
+      list.addEventListener("click", (event) => {
+        const btn = event.target.closest && event.target.closest("button.family-summary");
+        if (!btn || !list.contains(btn)) return;
+        const tile = btn.closest(".family-tile");
+        if (!tile) return;
+        setFamilyOpen(tile, !isFamilyOpen(tile));
+        syncFamiliesExpandToggle();
+      });
+    }
+    if (!window.__familyGridResizeBound) {
+      window.__familyGridResizeBound = true;
+      let resizeTimer = null;
+      window.addEventListener("resize", () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(relayoutOpenFamilyPanels, 100);
+      });
     }
     // Restore rail open/collapsed; default open on wide layouts.
     if (document.getElementById("models-layout")) {
