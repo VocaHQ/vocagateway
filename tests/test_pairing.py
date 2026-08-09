@@ -6,6 +6,7 @@ import pytest
 
 from app.pairing import (
     PAIRING_VERSION,
+    _parse_ifconfig_ipv4_addresses,
     decode_pairing_payload,
     default_pairing_url,
     encode_pairing_payload,
@@ -155,3 +156,31 @@ def test_normalize_gateway_input_passes_through_full_url() -> None:
 def test_normalize_gateway_input_rejects_empty() -> None:
     with pytest.raises(ValueError, match="empty"):
         normalize_gateway_input("   ", 8765)
+
+
+def test_parse_ifconfig_ipv4_addresses_finds_macos_tailscale_interface() -> None:
+    # Trimmed macOS `ifconfig` output: a LAN NIC plus a Tailscale utun.
+    output = """
+lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
+\tinet 127.0.0.1 netmask 0xff000000
+en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+\tinet 192.168.0.211 netmask 0xffffff00 broadcast 192.168.0.255
+utun2: flags=8051<UP,POINTOPOINT,RUNNING,MULTICAST> mtu 1280
+\tinet 100.89.197.121 --> 100.89.197.121 netmask 0xffffff00
+"""
+    assert _parse_ifconfig_ipv4_addresses(output) == ["192.168.0.211", "100.89.197.121"]
+
+
+def test_parse_ifconfig_ipv4_addresses_finds_linux_net_tools_interface() -> None:
+    output = """
+eth0      Link encap:Ethernet  HWaddr 00:00:00:00:00:00
+          inet addr:10.0.0.5  Bcast:10.0.0.255  Mask:255.255.255.0
+tailscale0 Link encap:UNSPEC
+          inet addr:100.64.1.2  P-t-P:100.64.1.2  Mask:255.255.255.255
+"""
+    assert _parse_ifconfig_ipv4_addresses(output) == ["10.0.0.5", "100.64.1.2"]
+
+
+def test_parse_ifconfig_ipv4_addresses_ignores_loopback() -> None:
+    output = "lo0: flags=8049<UP,LOOPBACK>\n\tinet 127.0.0.1 netmask 0xff000000\n"
+    assert _parse_ifconfig_ipv4_addresses(output) == []

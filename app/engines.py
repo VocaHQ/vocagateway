@@ -108,6 +108,11 @@ class EngineManager:
             model_id == self.runtime_config.moonshine_model
             and self.runtime_config.engine == ENGINE_MOONSHINE
         ):
+            # moonshine_model is `str`, not `str | None` — unlike sherpa_model and
+            # mlx_audio_model below — because moonshine:en is kept as a permanent
+            # catalog entry for exactly this fallback (see app/catalog.py). Reset to
+            # it instead of None so a deleted model doesn't linger as a dangling id.
+            self.runtime_config.moonshine_model = "moonshine:en"
             self.runtime_config.engine = "auto"
             changed = True
         if self.runtime_config.whisper_model == str(path):

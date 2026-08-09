@@ -265,3 +265,31 @@ async def test_pairing_accepts_bare_tailscale_address(
     assert body["url"] == "http://100.101.102.103:8765"
     decoded = decode_pairing_payload(body["payload"])
     assert decoded.url == "http://100.101.102.103:8765"
+
+
+@pytest.mark.asyncio
+async def test_refresh_keeps_a_saved_tailscale_address_once_discovery_sees_it(
+    client: httpx.AsyncClient,
+    authorization: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reproduces the reported bug: adding a Tailscale QR link and then
+    refreshing the page made it disappear. forget_stale_lan_addresses()
+    treats any Tailscale-range IP as ambient and drops it the moment it's
+    not in `discovered` — which is exactly what happened when discovery
+    couldn't see the Tailscale interface (see the ifconfig fallback added
+    to app.pairing._local_ipv4_addresses). With discovery reporting the
+    address, as it now does on macOS, it must survive a refresh."""
+    tailscale_url = "http://100.89.197.121:8765"
+    monkeypatch.setattr("app.pairing_view.discover_gateway_base_urls", lambda port: [tailscale_url])
+
+    added = await client.get(
+        "/ui/partials/pairing", headers=authorization, params={"url": tailscale_url}
+    )
+    assert added.status_code == 200
+    assert "100.89.197.121" in added.text
+
+    # Simulate a plain page refresh: no `url` query param this time.
+    refreshed = await client.get("/ui/partials/pairing", headers=authorization)
+    assert refreshed.status_code == 200
+    assert "100.89.197.121" in refreshed.text

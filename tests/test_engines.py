@@ -152,6 +152,54 @@ def test_build_engine_honours_forced_settings_engine_over_runtime_auto(
     assert isinstance(engine, WhisperCppEngine)
 
 
+def test_forget_if_active_clears_moonshine_model_like_its_siblings(tmp_path: Path) -> None:
+    """Reproduces the reported bug: deleting the active Moonshine model reset
+    `runtime_config.engine` back to "auto" but left `moonshine_model` pointing at
+    the now-deleted id — unlike the sherpa-onnx and mlx-audio branches of the same
+    method, which null out both fields together."""
+    catalog_model = CatalogModel(
+        id="moonshine:test",
+        engine="moonshine",
+        key="test",
+        label="Moonshine test",
+        size_bytes=1,
+        languages="English only",
+        quality="Fast",
+        minimum_ram_gb=1,
+        marker_file=".vocagateway-model.json",
+        language_code="en",
+    )
+    manager = ModelManager(tmp_path / "models", catalog=(catalog_model,))
+    root = manager.model_path(catalog_model)
+    root.mkdir(parents=True)
+    (root / catalog_model.marker_file).write_bytes(b"model")
+    runtime = RuntimeConfig()
+    settings = Settings(
+        token="test-token-with-at-least-thirty-two-characters",
+        data_dir=tmp_path,
+        whisper_binary=tmp_path / "whisper-cli",
+        whisper_model=tmp_path / "whisper.bin",
+        handy_binary=tmp_path / "no-handy",
+        vocamac_app=tmp_path / "no-vocamac",
+    )
+    config_path = tmp_path / "config.json"
+    engines = EngineManager(settings, runtime, config_path, manager)
+
+    engines.select_model(catalog_model.id)
+    assert runtime.engine == "moonshine"
+    assert runtime.moonshine_model == catalog_model.id
+
+    engines.forget_if_active(catalog_model.id)
+
+    assert runtime.engine == "auto"
+    # moonshine_model is typed `str`, not `str | None` (unlike sherpa_model and
+    # mlx_audio_model): moonshine:en is a permanent catalog entry kept exactly as
+    # this fallback, so the deleted id must not linger as a dangling reference,
+    # in memory or on disk.
+    assert runtime.moonshine_model == "moonshine:en"
+    assert RuntimeConfig.load(config_path).moonshine_model == "moonshine:en"
+
+
 def test_select_engine_accepts_sherpa_and_mlx(tmp_path: Path) -> None:
     from app.main import select_engine
 
