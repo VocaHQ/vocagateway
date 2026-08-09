@@ -786,3 +786,74 @@ def test_download_file_raises_and_removes_the_file_on_mismatch(tmp_path: Path) -
     )
     assert digest == _sha256(b"real-bytes")
     assert destination.read_bytes() == b"real-bytes"
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "/etc/authorized_keys",  # absolute: `Path("/a") / "/etc/x"` is `/etc/x`
+        "../../escape.bin",
+        "nested/../../escape.bin",
+        "\\windows\\path",
+        "",
+        ".",  # names the model directory itself, not a file in it
+    ],
+)
+def test_unsafe_listing_paths_are_rejected(relative: str) -> None:
+    assert not model_manager.is_safe_relative_path(relative)
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "model.bin",
+        "tokenizer/vocab.json",
+        "a/b/c.onnx",
+        "a//b",  # POSIX collapses the empty segment; equivalent to a/b
+        "a/./b",
+    ],
+)
+def test_ordinary_listing_paths_are_accepted(relative: str) -> None:
+    assert model_manager.is_safe_relative_path(relative)
+
+
+async def test_folder_download_refuses_a_listing_that_escapes_the_model_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A repo listing must not be able to place files outside the model dir."""
+    mirror = tmp_path / "mirror"
+    folder = mirror / "example/repo/resolve/main/openai_whisper-tiny"
+    folder.mkdir(parents=True)
+    (folder / "config.json").write_text("{}")
+    monkeypatch.setattr(model_manager, "HF_BASE_URL", mirror.as_uri())
+    monkeypatch.setattr(
+        model_manager,
+        "_list_repo_folder",
+        lambda repo, name, revision="main": [
+            RepoFile("config.json", 2),
+            RepoFile("../../../../escaped.bin", 4),
+        ],
+    )
+    manager = ModelManager(tmp_path / "models", catalog=(TINY_FOLDER,))
+
+    manager.start_download(TINY_FOLDER.id)
+    await asyncio.wait_for(_wait_finished(manager, TINY_FOLDER.id), timeout=5)
+
+    state = manager.download_state(TINY_FOLDER.id)
+    assert state is not None and state.status == "failed"
+    assert "unsafe path" in (state.error or "")
+    assert not (tmp_path / "escaped.bin").exists()
+    assert not (tmp_path / "models" / "escaped.bin").exists()
+
+
+def test_pagination_only_follows_the_same_origin() -> None:
+    """A compromised host must not be able to walk the pager off-origin."""
+    origin = "https://huggingface.co/api/models/o/r/tree/main?recursive=true"
+    assert model_manager._same_origin("https://huggingface.co/api/models/o/r?page=2", origin)
+    for hostile in (
+        "https://evil.example.com/api/models/o/r?page=2",
+        "http://huggingface.co/api/models/o/r?page=2",  # downgraded scheme
+        "file:///etc/passwd",
+        "/api/models/o/r?page=2",  # scheme-relative, no origin of its own
+    ):
+        assert not model_manager._same_origin(hostile, origin), hostile

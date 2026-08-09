@@ -297,6 +297,8 @@ Be clear about what this does and does not buy you:
 | Upstream repo or account compromise serving altered weights | **Pinned digests**, because the attacker is the origin and its certificate is perfectly valid |
 | Silent re-upload changing a model under an existing catalog entry | **Pinned commits**, which stop downloads tracking `main` |
 | Truncated or corrupted transfer | Digest verification, which also fixes the partially-downloaded-model failure mode |
+| A repo listing naming a path outside the model directory | Listing paths are rejected the same way archive members already were |
+| A paged listing steering the client to another host or scheme | Pagination follows `rel="next"` only within the original origin |
 
 The pinned digest always wins over the digest Hugging Face reports at download
 time. That ordering is the point: metadata fetched from a compromised host

@@ -87,7 +87,7 @@ def repo_digests(repo: str, folder: str, revision: str) -> dict[str, str]:
     """
     key = (repo, revision)
     if key not in _TREE_CACHE:
-        _TREE_CACHE[key] = _repo_digests_uncached(repo, "", revision)
+        _TREE_CACHE[key] = _fetch_repo_tree(repo, revision)
     full = _TREE_CACHE[key]
     if not folder:
         return full
@@ -95,10 +95,9 @@ def repo_digests(repo: str, folder: str, revision: str) -> dict[str, str]:
     return {k[len(prefix) :]: v for k, v in full.items() if k.startswith(prefix)}
 
 
-def _repo_digests_uncached(repo: str, folder: str, revision: str) -> dict[str, str]:
-    prefix = f"{folder}/" if folder else ""
-    tree = f"/{folder}" if folder else ""
-    url = f"{HF_BASE_URL}/api/models/{repo}/tree/{revision}{tree}?recursive=true&expand=true"
+def _fetch_repo_tree(repo: str, revision: str) -> dict[str, str]:
+    """Whole-repo digest map; callers slice the folder they need out of it."""
+    url = f"{HF_BASE_URL}/api/models/{repo}/tree/{revision}?recursive=true&expand=true"
     digests: dict[str, str] = {}
     while url:
         with _request(url) as response:
@@ -108,11 +107,9 @@ def _repo_digests_uncached(repo: str, folder: str, revision: str) -> dict[str, s
             if entry.get("type") != "file":
                 continue
             path = str(entry.get("path", ""))
-            if not path.startswith(prefix):
-                continue
             oid = (entry.get("lfs") or {}).get("oid")
-            if isinstance(oid, str) and SHA256.match(oid):
-                digests[path[len(prefix) :]] = oid
+            if path and isinstance(oid, str) and SHA256.match(oid):
+                digests[path] = oid
         match = NEXT_LINK.search(link)
         url = match.group(1) if match else ""
     return digests

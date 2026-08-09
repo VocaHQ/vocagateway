@@ -198,7 +198,7 @@ class CustomDownloadRequest(BaseModel):
     # Optional: a model card's published SHA-256. When given, the download is
     # discarded unless it matches, which is the only integrity guarantee
     # available for a URL the catalog does not vouch for.
-    sha256: str | None = Field(default=None, max_length=71)
+    sha256: str | None = Field(default=None, max_length=100)
 
 
 class DeviceTokenEntry(BaseModel):

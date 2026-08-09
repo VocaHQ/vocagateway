@@ -9,7 +9,7 @@ import tarfile
 import threading
 import urllib.request
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, cast
 from urllib.parse import urlparse
 
@@ -312,8 +312,9 @@ class ModelManager:
             missing = [name for name in model.required_files if not (extracted / name).is_file()]
             if missing:
                 raise RuntimeError(f"Downloaded model is missing: {', '.join(missing)}.")
-            # Only reached when the archive itself carried no pinned digest;
-            # otherwise these files are already covered by that single check.
+            # Redundant when `model.sha256` pinned the archive, since that one
+            # check already covers everything inside it. It matters for an
+            # archive with no pinned digest but pinned member digests.
             await asyncio.to_thread(_verify_extracted_files, model, extracted)
             shutil.move(str(extracted), partial_dir)
             metadata = {
@@ -480,6 +481,8 @@ class ModelManager:
                 if handle.cancel.is_set():
                     raise DownloadCancelled
                 relative = entry.relative_path
+                if not is_safe_relative_path(relative):
+                    raise RuntimeError(f"Repository listing contains an unsafe path: {relative}")
                 await asyncio.to_thread(
                     _download_file,
                     _resolve_url(model, _repo_path(model.huggingface_folder, relative)),
@@ -541,11 +544,36 @@ class RepoFile:
     sha256: str | None = None
 
 
+def is_safe_relative_path(relative: str) -> bool:
+    """True when *relative* stays inside the directory it is joined onto.
+
+    Repo listings name the files written to disk, so an entry like
+    ``/etc/authorized_keys`` or ``../../x`` would place a download outside the
+    model directory — `Path("/a") / "/etc/x"` is `/etc/x`, not `/a/etc/x`.
+    Archives are already screened this way in `_safe_extract_archive`; this is
+    the same rule for the file-listing paths.
+    """
+    if not relative or relative.startswith(("/", "\\")):
+        return False
+    pure = PurePosixPath(relative)
+    # An empty `parts` means the entry named no file at all ("" or "."), which
+    # would resolve to the model directory itself rather than a file in it.
+    if pure.is_absolute() or not pure.parts:
+        return False
+    return ".." not in pure.parts
+
+
+def _same_origin(candidate: str, origin: str) -> bool:
+    left, right = urlparse(candidate), urlparse(origin)
+    return bool(left.scheme) and (left.scheme, left.netloc) == (right.scheme, right.netloc)
+
+
 def _list_repo_folder(
     repo: str, folder: str, revision: str = DEFAULT_HF_REVISION
 ) -> list[RepoFile]:
     tree_path = f"/{folder}" if folder else ""
     url = f"{HF_BASE_URL}/api/models/{repo}/tree/{revision}{tree_path}?recursive=true&expand=true"
+    origin = url
     files: list[RepoFile] = []
     prefix = f"{folder}/" if folder else ""
     seen: set[str] = set()
@@ -563,6 +591,12 @@ def _list_repo_folder(
             relative = path[len(prefix) :]
             if relative in seen:
                 continue
+            # Loud, not skipped: real Hugging Face repos never contain a path
+            # like this, so one appearing means something is wrong with the
+            # listing. Dropping it quietly would install a partial model and
+            # report success.
+            if not is_safe_relative_path(relative):
+                raise RuntimeError(f"Repository listing contains an unsafe path: {relative}")
             seen.add(relative)
             lfs = entry.get("lfs") or {}
             oid = lfs.get("oid") if isinstance(lfs, dict) else None
@@ -577,7 +611,12 @@ def _list_repo_folder(
                 )
             )
         match = _NEXT_LINK.search(link)
-        url = match.group(1) if match else ""
+        # The next page is named by the server being paged. Following it
+        # anywhere it points would let a compromised host walk this client onto
+        # another origin or scheme — the same host compromise the digests in
+        # this module exist to catch, so it cannot be trusted here either.
+        following = match.group(1) if match else ""
+        url = following if following and _same_origin(following, origin) else ""
     return files
 
 

@@ -130,7 +130,10 @@ async def start_custom_download(
     try:
         state = ctx.manager.start_custom_download(body.url, body.sha256)
     except ValueError as error:
-        raise APIProblem(422, "invalid_model_url", str(error)) from error
+        # The URL and the digest are separate inputs, so they get separate
+        # codes; a client cannot fix a bad digest by editing the URL.
+        code = "invalid_model_digest" if "SHA-256" in str(error) else "invalid_model_url"
+        raise APIProblem(422, code, str(error)) from error
     except DownloadInProgressError as error:
         raise APIProblem(409, "download_in_progress", str(error)) from error
     return DownloadResponse(model_id=state.model_id, status=state.status)
@@ -255,7 +258,8 @@ async def ui_custom_download(
     try:
         ctx.manager.start_custom_download(url, sha256)
     except ValueError as error:
-        raise APIProblem(422, "invalid_model_url", str(error)) from error
+        code = "invalid_model_digest" if "SHA-256" in str(error) else "invalid_model_url"
+        raise APIProblem(422, code, str(error)) from error
     except DownloadInProgressError as error:
         raise APIProblem(409, "download_in_progress", str(error)) from error
     return _models_list_html(
