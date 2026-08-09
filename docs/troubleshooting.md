@@ -199,7 +199,8 @@ in a URL or screenshot.
 - `422 language_unsupported`: the model loaded on your gateway cannot transcribe
   the language selected in the app. Either set the language to Automatic, pick a
   language the model covers, or download a model that covers it — the Models tab
-  lists each model's languages. This failure is deliberately not retryable,
+  lists each model's languages, and [models.md](models.md#language-index) maps
+  every language to the models covering it. This failure is deliberately not retryable,
   because retrying sends the same language to the same model. For Hindi and other
   South Asian languages, pin the language and use a multilingual Whisper model.
 
