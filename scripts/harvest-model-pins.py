@@ -34,7 +34,6 @@ import hashlib
 import json
 import re
 import sys
-import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -42,7 +41,12 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.catalog import _BASE_CATALOG, PINS_PATH, CatalogModel  # noqa: E402
-from app.model_manager import HF_BASE_URL, USER_AGENT  # noqa: E402
+from app.model_manager import (  # noqa: E402
+    _RETRYABLE_NETWORK_ERRORS,
+    HF_BASE_URL,
+    USER_AGENT,
+    _call_with_retries,
+)
 
 CHUNK = 1024 * 1024
 NEXT_LINK = re.compile(r'<([^>]+)>;\s*rel="next"')
@@ -69,10 +73,13 @@ def repo_revision(repo: str) -> str | None:
 
 
 def _repo_revision_uncached(repo: str) -> str | None:
-    try:
+    def attempt() -> Any:
         with _request(f"{HF_BASE_URL}/api/models/{repo}") as response:
-            payload = json.load(response)
-    except (urllib.error.URLError, json.JSONDecodeError, TimeoutError) as error:
+            return json.load(response)
+
+    try:
+        payload = _call_with_retries(attempt)
+    except (*_RETRYABLE_NETWORK_ERRORS, json.JSONDecodeError) as error:
         print(f"    ! revision lookup failed for {repo}: {error}", file=sys.stderr)
         return None
     sha = payload.get("sha")
@@ -100,9 +107,12 @@ def _fetch_repo_tree(repo: str, revision: str) -> dict[str, str]:
     url = f"{HF_BASE_URL}/api/models/{repo}/tree/{revision}?recursive=true&expand=true"
     digests: dict[str, str] = {}
     while url:
-        with _request(url) as response:
-            payload = json.load(response)
-            link = response.headers.get("Link") or ""
+
+        def fetch_page(page_url: str = url) -> tuple[list[dict[str, Any]], str]:
+            with _request(page_url) as response:
+                return json.load(response), response.headers.get("Link") or ""
+
+        payload, link = _call_with_retries(fetch_page)
         for entry in payload:
             if entry.get("type") != "file":
                 continue
@@ -117,10 +127,14 @@ def _fetch_repo_tree(repo: str, revision: str) -> dict[str, str]:
 
 def linked_etag(url: str) -> str | None:
     """SHA-256 a Hugging Face resolve URL advertises without transferring it."""
-    try:
+
+    def attempt() -> str:
         with _request(url, method="HEAD") as response:
-            etag = response.headers.get("x-linked-etag") or response.headers.get("etag") or ""
-    except (urllib.error.URLError, TimeoutError) as error:
+            return response.headers.get("x-linked-etag") or response.headers.get("etag") or ""
+
+    try:
+        etag = _call_with_retries(attempt)
+    except _RETRYABLE_NETWORK_ERRORS as error:
         print(f"    ! HEAD failed: {error}", file=sys.stderr)
         return None
     candidate = etag.strip().strip('"').lower()
@@ -129,19 +143,24 @@ def linked_etag(url: str) -> str | None:
 
 def download_digest(url: str) -> str | None:
     """Last resort: stream the whole file and hash it."""
-    digest = hashlib.sha256()
-    seen = 0
-    try:
+
+    def attempt() -> str:
+        digest = hashlib.sha256()
+        seen = 0
         with _request(url) as response:
             while chunk := response.read(CHUNK):
                 digest.update(chunk)
                 seen += len(chunk)
                 print(f"\r      {seen / 1e6:8.1f} MB", end="", file=sys.stderr)
-    except (urllib.error.URLError, TimeoutError) as error:
+        return digest.hexdigest()
+
+    try:
+        result = _call_with_retries(attempt)
+    except _RETRYABLE_NETWORK_ERRORS as error:
         print(f"\n    ! download failed: {error}", file=sys.stderr)
         return None
     print("\r" + " " * 24 + "\r", end="", file=sys.stderr)
-    return digest.hexdigest()
+    return result
 
 
 def harvest(model: CatalogModel, *, download_unpinnable: bool) -> dict[str, Any] | None:
@@ -209,7 +228,14 @@ def main() -> int:
     pinned = skipped = 0
     for model in models:
         print(f"  {model.id}")
-        record = harvest(model, download_unpinnable=args.download_unpinnable)
+        try:
+            record = harvest(model, download_unpinnable=args.download_unpinnable)
+        except _RETRYABLE_NETWORK_ERRORS as error:
+            # One repo's exhausted retries shouldn't discard however many
+            # models were already harvested this run.
+            print(f"    ! harvest failed: {error}", file=sys.stderr)
+            skipped += 1
+            continue
         if record is None:
             # Keep any previously harvested record rather than dropping it.
             if model.id not in records:

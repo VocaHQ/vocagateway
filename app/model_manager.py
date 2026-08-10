@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import http.client
 import json
 import re
 import shutil
 import tarfile
 import threading
+import time
+import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
@@ -34,6 +38,44 @@ DEFAULT_HF_REVISION = "main"
 # would silently download a fraction of a model and call it complete.
 _NEXT_LINK = re.compile(r'<([^>]+)>;\s*rel="next"')
 _SHA256_PATTERN = re.compile(r"\A[0-9a-f]{64}\Z")
+
+_MAX_NETWORK_ATTEMPTS = 3
+_RETRY_BACKOFF_SECONDS = 2.0
+# Transport-level failures only. A hash mismatch is deliberately excluded: it
+# is retried by the user, not automatically, since a mismatch can mean the
+# host is compromised and silently re-trying could mask that rather than
+# surface it.
+_RETRYABLE_NETWORK_ERRORS = (
+    TimeoutError,
+    ConnectionError,
+    urllib.error.URLError,
+    http.client.IncompleteRead,
+    http.client.HTTPException,
+)
+
+def _call_with_retries[T](
+    action: Callable[[], T],
+    *,
+    on_retry: Callable[[], None] | None = None,
+    attempts: int = _MAX_NETWORK_ATTEMPTS,
+) -> T:
+    """Call *action* up to *attempts* times, retrying transport failures.
+
+    A dropped connection or a read timeout can just as easily be a Wi-Fi
+    hiccup as a real problem with the source, so a couple of retries with
+    backoff are cheap insurance against reporting a corrupted transfer as a
+    permanent failure.
+    """
+    for attempt in range(1, attempts + 1):
+        try:
+            return action()
+        except _RETRYABLE_NETWORK_ERRORS:
+            if on_retry is not None:
+                on_retry()
+            if attempt == attempts:
+                raise
+            time.sleep(_RETRY_BACKOFF_SECONDS * attempt)
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 class DownloadCancelled(Exception):
@@ -257,7 +299,10 @@ class ModelManager:
             handle.state.status = "cancelled"
         except Exception as error:  # noqa: BLE001 - surfaced through the API
             handle.state.status = "failed"
-            handle.state.error = str(error)[:300]
+            # Long enough that a SHA-256 mismatch message (which embeds two
+            # 64-character hex digests plus a nested WhisperKit-style path)
+            # isn't clipped before the reader can see what to compare.
+            handle.state.error = str(error)[:600]
 
     async def _run_catalog_download(self, model: CatalogModel, handle: _DownloadHandle) -> None:
         if model.engine == ENGINE_MOONSHINE:
@@ -578,10 +623,13 @@ def _list_repo_folder(
     prefix = f"{folder}/" if folder else ""
     seen: set[str] = set()
     while url:
-        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        with urllib.request.urlopen(request, timeout=60) as response:
-            payload: list[dict[str, Any]] = json.load(response)
-            link = response.headers.get("Link") or ""
+
+        def fetch_page(page_url: str = url) -> tuple[list[dict[str, Any]], str]:
+            request = urllib.request.Request(page_url, headers={"User-Agent": USER_AGENT})
+            with urllib.request.urlopen(request, timeout=60) as response:
+                return json.load(response), response.headers.get("Link") or ""
+
+        payload, link = _call_with_retries(fetch_page)
         for entry in payload:
             if entry.get("type") != "file":
                 continue
@@ -703,33 +751,49 @@ def _download_file(
     *expected_sha256* is supplied and does not match, the file is deleted
     before raising, so a rejected download cannot be left behind for an engine
     to load later.
+
+    A dropped connection or read timeout mid-stream is retried a few times
+    (see `_call_with_retries`) rather than surfaced immediately, since it can
+    otherwise produce a truncated file that fails SHA-256 verification for a
+    reason that has nothing to do with the source's integrity.
     """
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    digest = hashlib.sha256()
-    with urllib.request.urlopen(request, timeout=60) as response:
-        length = response.headers.get("Content-Length")
-        if state.total_bytes is None and length and length.isdigit():
-            state.total_bytes = int(length)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        state.current_file = display_name or destination.name
-        with destination.open("wb") as output:
-            while True:
-                if cancel.is_set():
-                    raise DownloadCancelled
-                chunk = response.read(CHUNK_SIZE)
-                if not chunk:
-                    break
-                output.write(chunk)
-                digest.update(chunk)
-                state.downloaded_bytes += len(chunk)
-    actual = digest.hexdigest()
-    if expected_sha256 is not None and actual != expected_sha256:
-        destination.unlink(missing_ok=True)
-        raise ModelIntegrityError(
-            f"{display_name or destination.name} failed SHA-256 verification: "
-            f"expected {expected_sha256}, got {actual}. The file was discarded."
-        )
-    return actual
+    bytes_this_attempt = 0
+
+    def attempt() -> str:
+        nonlocal bytes_this_attempt
+        bytes_this_attempt = 0
+        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        digest = hashlib.sha256()
+        with urllib.request.urlopen(request, timeout=60) as response:
+            length = response.headers.get("Content-Length")
+            if state.total_bytes is None and length and length.isdigit():
+                state.total_bytes = int(length)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            state.current_file = display_name or destination.name
+            with destination.open("wb") as output:
+                while True:
+                    if cancel.is_set():
+                        raise DownloadCancelled
+                    chunk = response.read(CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    output.write(chunk)
+                    digest.update(chunk)
+                    bytes_this_attempt += len(chunk)
+                    state.downloaded_bytes += len(chunk)
+        actual = digest.hexdigest()
+        if expected_sha256 is not None and actual != expected_sha256:
+            destination.unlink(missing_ok=True)
+            raise ModelIntegrityError(
+                f"{display_name or destination.name} failed SHA-256 verification: "
+                f"expected {expected_sha256}, got {actual}. The file was discarded."
+            )
+        return actual
+
+    def rollback_progress() -> None:
+        state.downloaded_bytes -= bytes_this_attempt
+
+    return _call_with_retries(attempt, on_retry=rollback_progress)
 
 
 def _directory_size(path: Path) -> int:
