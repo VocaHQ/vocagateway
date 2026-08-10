@@ -5,6 +5,8 @@ import dataclasses
 import io
 import sys
 import tarfile
+import time
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -787,6 +789,69 @@ def test_download_file_raises_and_removes_the_file_on_mismatch(tmp_path: Path) -
     )
     assert digest == _sha256(b"real-bytes")
     assert destination.read_bytes() == b"real-bytes"
+
+
+def test_download_file_retries_transient_network_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A dropped connection is retried, not reported as a bad file."""
+    import threading
+
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+
+    payload = b"real-bytes"
+    attempts = {"count": 0}
+
+    class FakeResponse:
+        def __init__(self, data: bytes) -> None:
+            self._buffer = io.BytesIO(data)
+            self.headers: dict[str, str] = {}
+
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+        def read(self, size: int) -> bytes:
+            return self._buffer.read(size)
+
+    def fake_urlopen(request: object, timeout: int = 60) -> FakeResponse:
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            raise TimeoutError("simulated read timeout")
+        return FakeResponse(payload)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    destination = tmp_path / "out.bin"
+    state = model_manager.DownloadState(model_id="t")
+
+    digest = model_manager._download_file(
+        "https://example.invalid/model.bin", destination, state, threading.Event(), "out.bin"
+    )
+
+    assert attempts["count"] == 3
+    assert digest == _sha256(payload)
+    assert destination.read_bytes() == payload
+    assert state.downloaded_bytes == len(payload)
+
+
+def test_download_file_does_not_retry_hash_mismatch(tmp_path: Path) -> None:
+    """A mismatch fails immediately -- it is not assumed to be transient."""
+    import threading
+
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"real-bytes")
+    destination = tmp_path / "out.bin"
+    state = model_manager.DownloadState(model_id="t")
+
+    with pytest.raises(ModelIntegrityError):
+        model_manager._download_file(
+            source.as_uri(), destination, state, threading.Event(), "out.bin", HELLO_SHA256
+        )
+
+    assert state.downloaded_bytes == len(b"real-bytes")
 
 
 @pytest.mark.parametrize(
