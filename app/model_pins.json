@@ -149,43 +149,43 @@
     },
     "whisper.cpp:ggml-base.bin": {
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "sha256": "2f62d18b50c3f3feafbf990eec23a93d319660b1efbdd3fff55e52b7cde2e374"
+      "sha256": "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"
     },
     "whisper.cpp:ggml-base.en.bin": {
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "sha256": "ff7d10f8526045d48149699b43aeaa014e4b337239bc5a35251116fc179aabcf"
+      "sha256": "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002"
     },
     "whisper.cpp:ggml-large-v3-turbo.bin": {
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "sha256": "5a4b65b05933d70ce9d5aa6265eb128fa5eba38f6fee40836fdedc4d2fde42ad"
+      "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69"
     },
     "whisper.cpp:ggml-large-v3.bin": {
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "sha256": "766d11cebbdf5a67c179c5774e2642b609e35e1a30240e7b559d5647c655b0a4"
+      "sha256": "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2"
     },
     "whisper.cpp:ggml-medium.bin": {
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "sha256": "d3d5696e6a3e0ca2aa08eb31cad208ffa1e87b3cc341f59e628fbdcf8122de9b"
+      "sha256": "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208"
     },
     "whisper.cpp:ggml-medium.en.bin": {
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "sha256": "a163589aa264d5188df3b05ed4eac56bfd97e26910f207809d869f7e99886fd2"
+      "sha256": "cc37e93478338ec7700281a7ac30a10128929eb8f427dda2e865faa8f6da4356"
     },
     "whisper.cpp:ggml-small.bin": {
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "sha256": "edd29d67e70b000132af65205b99bb774b77abc13d10103e14f80ce2242913e1"
+      "sha256": "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b"
     },
     "whisper.cpp:ggml-small.en.bin": {
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "sha256": "0d57184d34ae7d736e5bb2db5bf83debe730bd53dcefa235a0979b9dcfd33fb3"
+      "sha256": "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d"
     },
     "whisper.cpp:ggml-tiny.bin": {
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "sha256": "518970a29bedb265f23ac48d486ddbc63bedffd90967b10140ae5ac61243acf3"
+      "sha256": "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21"
     },
     "whisper.cpp:ggml-tiny.en.bin": {
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "sha256": "0d686a2a6a22b02da2ef3101d4c86e68461363a623c58f27f81b1b2d36b42317"
+      "sha256": "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f"
     },
     "whisperkit:openai_whisper-base": {
       "revision": "97a5bf9bbc74c7d9c12c755d04dea59e672e3808",

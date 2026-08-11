@@ -7,13 +7,15 @@ lets a download be rejected when upstream content changes: TLS already proves
 you reached the real host, but not that the host is still serving the bytes
 this catalog entry was reviewed against.
 
-Most digests are free to collect because Hugging Face publishes them:
-
-  * `GET /api/models/{repo}/tree/{rev}?expand=true` reports `lfs.oid`, the
-    SHA-256 of every LFS-backed file (which is every file large enough to be
-    a model weight).
-  * `HEAD /{repo}/resolve/{rev}/{file}` returns `x-linked-etag`, the same
-    digest, plus `x-repo-commit` for the current revision.
+Most digests are free to collect because Hugging Face publishes them via
+`GET /api/models/{repo}/tree/{rev}?expand=true`, which reports `lfs.oid`, the
+SHA-256 of every LFS-backed file (which is every file large enough to be a
+model weight). This is also why single-file `download_url` entries are
+resolved against the same tree endpoint rather than HEAD-ing the file's
+`resolve/` URL: for a repo migrated to Hugging Face's Xet storage backend,
+that URL 302s to a Xet CDN host, and the CDN's own `etag` header reports a
+Xet content hash, not the SHA-256 -- so a HEAD request that follows the
+redirect (as `urlopen` does by default) silently pins the wrong digest.
 
 Two sources publish no usable digest at all -- the sherpa-onnx GitHub release
 tarballs and the blob.handy.computer mirror, whose ETag is a multipart S3 hash
@@ -125,22 +127,6 @@ def _fetch_repo_tree(repo: str, revision: str) -> dict[str, str]:
     return digests
 
 
-def linked_etag(url: str) -> str | None:
-    """SHA-256 a Hugging Face resolve URL advertises without transferring it."""
-
-    def attempt() -> str:
-        with _request(url, method="HEAD") as response:
-            return response.headers.get("x-linked-etag") or response.headers.get("etag") or ""
-
-    try:
-        etag = _call_with_retries(attempt)
-    except _RETRYABLE_NETWORK_ERRORS as error:
-        print(f"    ! HEAD failed: {error}", file=sys.stderr)
-        return None
-    candidate = etag.strip().strip('"').lower()
-    return candidate if SHA256.match(candidate) else None
-
-
 def download_digest(url: str) -> str | None:
     """Last resort: stream the whole file and hash it."""
 
@@ -180,17 +166,20 @@ def harvest(model: CatalogModel, *, download_unpinnable: bool) -> dict[str, Any]
     if model.download_url:
         if "huggingface.co/" in model.download_url:
             # Pin the repo commit too, so the URL stops tracking `main`.
-            match = re.search(r"huggingface\.co/([^/]+/[^/]+)/resolve/", model.download_url)
-            if match and "revision" not in record:
-                revision = repo_revision(match.group(1))
+            match = re.search(
+                r"huggingface\.co/([^/]+/[^/]+)/resolve/[^/]+/(.+)$", model.download_url
+            )
+            if match:
+                repo, path = match.group(1), match.group(2)
+                if "revision" not in record:
+                    revision = repo_revision(repo)
+                    if revision:
+                        record["revision"] = revision
+                revision = record.get("revision")
                 if revision:
-                    record["revision"] = revision
-            url = model.download_url
-            if record.get("revision"):
-                url = url.replace("/resolve/main/", f"/resolve/{record['revision']}/", 1)
-            digest = linked_etag(url)
-            if digest:
-                record["sha256"] = digest
+                    digest = repo_digests(repo, "", revision).get(path)
+                    if digest:
+                        record["sha256"] = digest
         elif download_unpinnable:
             digest = download_digest(model.download_url)
             if digest:

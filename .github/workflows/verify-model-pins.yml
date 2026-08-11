@@ -1,0 +1,44 @@
+name: Verify model pins
+
+# Catches two different failure modes with the same script:
+#   * a PR that touches the pin file or the harvester re-introduces a bad
+#     digest (this is what happened to whisper.cpp:ggml-small.bin — every
+#     download of it failed SHA-256 verification because the pinned value was
+#     wrong from the moment it was harvested, not because of a network issue);
+#   * upstream re-uploads a file under a revision this repo already pinned,
+#     which only a scheduled re-check against the live tree API can catch.
+on:
+  schedule:
+    - cron: '0 9 * * 1' # Monday 09:00 UTC
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'app/model_pins.json'
+      - 'app/catalog.py'
+      - 'scripts/harvest-model-pins.py'
+      - 'scripts/verify-model-pins.py'
+      - '.github/workflows/verify-model-pins.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked --all-groups
+      - run: uv run scripts/verify-model-pins.py
