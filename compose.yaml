@@ -3,6 +3,15 @@ name: vocagateway
 # Every gateway service takes the same settings; only the build and the device
 # wiring differ per profile. Keeping them in one anchor means a variable added
 # here reaches all four services instead of three of them.
+# The commit each image is built from, reported by /v1/admin/status and the
+# WebUI. `just up` exports these from git; a bare `docker compose up --build`
+# leaves them empty and the gateway reports `commit: null`. They sit last in the
+# Dockerfiles, so a new commit only invalidates the final ENV layer.
+x-gateway-build-args: &gateway-build-args
+  VOCAGATEWAY_GIT_COMMIT: ${VOCAGATEWAY_GIT_COMMIT:-}
+  VOCAGATEWAY_GIT_COMMIT_SUBJECT: ${VOCAGATEWAY_GIT_COMMIT_SUBJECT:-}
+  VOCAGATEWAY_GIT_COMMIT_DATE: ${VOCAGATEWAY_GIT_COMMIT_DATE:-}
+
 x-gateway-environment: &gateway-environment
   VOCAGATEWAY_TOKEN_FILE: /run/secrets/vocagateway_token
   VOCAGATEWAY_DEBUG: ${VOCAGATEWAY_DEBUG:-false}
@@ -27,6 +36,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args: *gateway-build-args
     restart: unless-stopped
     init: true
     network_mode: ${VOCAGATEWAY_NETWORK_MODE:-bridge}
@@ -45,6 +55,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
+        <<: *gateway-build-args
         GGML_NATIVE: "ON"
     restart: unless-stopped
     init: true
@@ -61,6 +72,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.cuda
+      args: *gateway-build-args
     restart: unless-stopped
     init: true
     network_mode: ${VOCAGATEWAY_NETWORK_MODE:-bridge}
@@ -79,6 +91,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.vulkan
+      args: *gateway-build-args
     restart: unless-stopped
     init: true
     network_mode: ${VOCAGATEWAY_NETWORK_MODE:-bridge}

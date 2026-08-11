@@ -3,12 +3,14 @@ from __future__ import annotations
 import importlib.util
 from typing import Literal
 
+from app.build_info import current_commit
 from app.catalog import catalog_source_url, language_names, recommended_ids
 from app.context import BOOTSTRAP_TOKEN_ID, TOKEN_FILE_HINT, VERSION, GatewayContext
 from app.engine_state import active_model_path, available_engines, engine_id
 from app.schemas import (
     AdminModelEntry,
     AdminStatusResponse,
+    CommitStatus,
     ConfigResponse,
     DependencyStatus,
     DeviceTokenEntry,
@@ -114,8 +116,19 @@ async def status_payload(ctx: GatewayContext) -> AdminStatusResponse:
     readiness_details = await ctx.readiness.details()
     state = readiness_details.health
     metrics = ctx.service.metrics.snapshot(sample=True)
+    commit = current_commit() if ctx.settings.debug else None
     return AdminStatusResponse(
         version=VERSION,
+        commit=(
+            CommitStatus(
+                sha=commit.sha,
+                short_sha=commit.short_sha,
+                subject=commit.subject,
+                committed_at=commit.committed_at,
+            )
+            if commit is not None
+            else None
+        ),
         engine=EngineStatus(id=engine_id(ctx), name=state.name, ready=state.ready),
         system=SystemStatus(
             os=f"{system.os_name} {system.os_version}",

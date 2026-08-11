@@ -149,9 +149,19 @@ class ReadinessStatus(BaseModel):
     warmed_bytes: int
 
 
+class CommitStatus(BaseModel):
+    """The source commit the running gateway was built from."""
+
+    sha: str
+    short_sha: str
+    subject: str
+    committed_at: datetime | None = None
+
+
 class AdminStatusResponse(BaseModel):
     status: Literal["ok"] = "ok"
     version: str
+    commit: CommitStatus | None = None
     engine: EngineStatus
     system: SystemStatus
     dependencies: list[DependencyStatus]
@@ -300,6 +310,7 @@ class DiagnosticsBundle(BaseModel):
 
     generated_at: datetime
     version: str
+    commit: CommitStatus | None = None
     engine: EngineStatus
     system: SystemStatus
     dependencies: list[DependencyStatus]

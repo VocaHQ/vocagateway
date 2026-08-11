@@ -47,8 +47,13 @@ jobs:
           # cacheonly skips exporting the assembled image to the local daemon.
           # The question this job answers is whether the build succeeds, and
           # nothing downstream runs the image.
+          # Only the sha is stamped here: a commit subject is attacker-supplied
+          # text on a pull request, and expanding it into this shell would be an
+          # injection. Release builds that publish an image add the subject from
+          # a checkout instead.
           docker buildx build \
             --tag vocaphone-gateway:test \
+            --build-arg VOCAGATEWAY_GIT_COMMIT="${GITHUB_SHA}" \
             --cache-from type=gha,scope=gateway \
             --cache-to type=gha,mode=max,scope=gateway \
             --output type=cacheonly \

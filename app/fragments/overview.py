@@ -6,6 +6,7 @@ from html import escape
 from app.fragments.shared import _format_bytes, _format_latency, _format_uptime
 from app.schemas import (
     AdminStatusResponse,
+    CommitStatus,
     DependencyStatus,
     OperationalMetricsStatus,
     ReadinessStatus,
@@ -48,13 +49,18 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
         </div>
       </section>
       {operations_fragment(status.metrics, status.readiness)}
-      {_system_panel(status.system, status.version, machine_label)}
+      {_system_panel(status.system, status.version, machine_label, status.commit)}
       {_dependencies_panel(status.dependencies)}
       {onboarding}
     """
 
 
-def _system_panel(system: SystemStatus, version: str, machine_label: str) -> str:
+def _system_panel(
+    system: SystemStatus,
+    version: str,
+    machine_label: str,
+    commit: CommitStatus | None = None,
+) -> str:
     """Capability hero: glance-first hardware for local speech, details on expand."""
     gpus = [item for item in system.accelerators if item != "CPU"]
     primary_gpu = _short_gpu_label(gpus[0]) if gpus else None
@@ -92,6 +98,8 @@ def _system_panel(system: SystemStatus, version: str, machine_label: str) -> str
     spec_parts.append(_spec_chip(cpu_text, vendor=cpu_vendor, kind="cpu"))
     specs_html = '<span class="sys-spec-sep" aria-hidden="true">·</span>'.join(spec_parts)
     meta_line = f"{runtime} · {os_summary} · gateway {escape(version)}"
+    if commit is not None:
+        meta_line += f" · build {escape(commit.short_sha)}"
 
     if gpus:
         gpu_detail = _labeled_hw(_short_gpu_label(gpus[0]), gpus[0])
@@ -113,6 +121,8 @@ def _system_panel(system: SystemStatus, version: str, machine_label: str) -> str
         ("Runtime", escape(runtime)),
         ("Gateway", escape(version)),
     ]
+    if commit is not None:
+        details_rows.append(("Build", _commit_detail(commit)))
     facts = "".join(f"<dt>{escape(label)}</dt><dd>{value}</dd>" for label, value in details_rows)
     return f"""
       <div class="card system-card">
@@ -183,6 +193,20 @@ def _os_summary(os_line: str) -> str:
     if not text:
         return "Unknown OS"
     return text.split()[0]
+
+
+def _commit_detail(commit: CommitStatus) -> str:
+    """'0979263 · Merge pull request #10…', with the full sha on hover."""
+    subject = _ellipsize(commit.subject, 64)
+    text = f"{commit.short_sha} · {subject}" if subject else commit.short_sha
+    if commit.committed_at is not None:
+        text += f" ({commit.committed_at:%Y-%m-%d})"
+    return f'<span title="{escape(commit.sha)}">{escape(text)}</span>'
+
+
+def _ellipsize(text: str, limit: int) -> str:
+    stripped = text.strip()
+    return stripped if len(stripped) <= limit else stripped[: limit - 1].rstrip() + "…"
 
 
 def _hero_gpu_bit(label: str) -> str:

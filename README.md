@@ -212,6 +212,69 @@ Two ways out, both set in `.env`:
   directly on the host per `VOCAGATEWAY_BIND_HOST`/`VOCAGATEWAY_PORT`, so lock
   down port 8765 with the host firewall first.
 
+### Stamping the build commit
+
+A running container has no `.git` to read, so the commit it was built from is
+baked in as a build argument. `just up` and `just image` do this for you: the
+justfile exports `VOCAGATEWAY_GIT_COMMIT`, `VOCAGATEWAY_GIT_COMMIT_SUBJECT`, and
+`VOCAGATEWAY_GIT_COMMIT_DATE` from `git`, Compose interpolates them into every
+service's `build.args`, and `/v1/admin/status` then reports the revision.
+
+Reporting is gated on `VOCAGATEWAY_DEBUG=true`, the same switch that mounts
+`/docs`. A default deployment stamps the image but keeps the revision to itself:
+`commit` is `null` and the WebUI drops its **Build** row. Stamp at build time
+regardless — turning debug on later then costs a restart rather than a rebuild.
+
+Driving Compose or Docker directly works the same way once those variables are
+in the environment:
+
+```sh
+export VOCAGATEWAY_GIT_COMMIT="$(git rev-parse HEAD)"
+export VOCAGATEWAY_GIT_COMMIT_SUBJECT="$(git log -1 --format=%s)"
+export VOCAGATEWAY_GIT_COMMIT_DATE="$(git log -1 --format=%cI)"
+docker compose up --detach --build
+```
+
+Without them the build still succeeds and the gateway reports `commit: null` —
+stamping is informational, never a build requirement. Do not put them in `.env`:
+Compose would pin every later build to whatever commit was current when you
+wrote the file.
+
+With [direnv](https://direnv.net), an `.envrc` keeps them current for every
+command in the directory, so a plain `docker compose up --build` stamps the
+running revision without the justfile in front of it:
+
+```sh
+watch_file .git/HEAD
+watch_file .git/packed-refs
+watch_dir .git/refs/heads
+
+export VOCAGATEWAY_GIT_COMMIT="$(git rev-parse HEAD 2>/dev/null || true)"
+export VOCAGATEWAY_GIT_COMMIT_SUBJECT="$(git log -1 --format=%s 2>/dev/null || true)"
+export VOCAGATEWAY_GIT_COMMIT_DATE="$(git log -1 --format=%cI 2>/dev/null || true)"
+```
+
+The three watches are what keep this from becoming the `.env` trap in a slower
+form. direnv caches an evaluation until `.envrc` or something it watches
+changes, so without them the exported sha would keep naming whatever commit was
+current when the shell first entered the directory. Committing rewrites a loose
+ref under `.git/refs/heads`, checking out a branch rewrites `.git/HEAD`, and
+`git gc` folds loose refs into `.git/packed-refs` — watching all three covers
+every way HEAD moves. `.gitignore` already excludes `.envrc`, so it stays on
+your machine.
+
+The `ARG`/`ENV` pair sits after the last `COPY` in each Dockerfile, so a new
+commit only invalidates that final metadata layer. Rebuilds stay cached, and the
+`whisper.cpp` compile is never repeated for a commit change alone.
+
+None of this is needed to run the gateway natively. `just run` inherits the
+three variables from the justfile, which exports them for every recipe, and even
+without them the gateway reads `git` directly whenever it is running from a
+source checkout. Setting them by hand is only required where neither holds — an
+installed wheel outside a checkout, or a container built without the build args
+above. If a local `just run` reports no commit, check `VOCAGATEWAY_DEBUG` before
+suspecting the variables: reporting is gated on it, and it is off by default.
+
 ## WebUI
 
 The authenticated WebUI provides:
@@ -636,6 +699,13 @@ old URL.
   recording path negotiates on the socket itself to avoid a separate preflight.
 - Authenticated `/v1/admin/status` exposes setup, metrics, and readiness details
   used by the WebUI.
+- `/v1/admin/status` and the diagnostics bundle carry a `commit` object (`sha`,
+  `short_sha`, `subject`, `committed_at`) naming the source revision the gateway
+  runs, and the WebUI Overview shows it as `build <short sha>` plus a **Build**
+  row under *Hardware details*. This requires `VOCAGATEWAY_DEBUG=true`; without
+  it `commit` is `null` and the WebUI row is omitted. A source checkout reads
+  the revision from git; containers need it stamped at build time — see
+  [Stamping the build commit](#stamping-the-build-commit).
 
 Engine probes are cached for five seconds. sherpa-onnx, MLX Audio,
 `faster-whisper`, and Moonshine load their selected model once and keep it
