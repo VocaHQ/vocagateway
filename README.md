@@ -267,6 +267,14 @@ The `ARG`/`ENV` pair sits after the last `COPY` in each Dockerfile, so a new
 commit only invalidates that final metadata layer. Rebuilds stay cached, and the
 `whisper.cpp` compile is never repeated for a commit change alone.
 
+None of this is needed to run the gateway natively. `just run` inherits the
+three variables from the justfile, which exports them for every recipe, and even
+without them the gateway reads `git` directly whenever it is running from a
+source checkout. Setting them by hand is only required where neither holds — an
+installed wheel outside a checkout, or a container built without the build args
+above. If a local `just run` reports no commit, check `VOCAGATEWAY_DEBUG` before
+suspecting the variables: reporting is gated on it, and it is off by default.
+
 ## WebUI
 
 The authenticated WebUI provides:
