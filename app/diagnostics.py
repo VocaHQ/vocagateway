@@ -43,6 +43,7 @@ def build_diagnostics_bundle(
     return DiagnosticsBundle(
         generated_at=datetime.now(UTC),
         version=status.version,
+        commit=status.commit,
         engine=status.engine,
         system=status.system,
         dependencies=status.dependencies,

@@ -6,6 +6,15 @@ set dotenv-load := false
 # Do not update the env, when running
 export UV_NO_SYNC := '1'
 
+# Commit stamped into every image these recipes build, surfaced by
+# /v1/admin/status and the WebUI. Exported so `docker compose` interpolates them
+# into the build args and `docker build --build-arg NAME` (no value) picks them
+# up from the environment. Empty outside a checkout or without git — the gateway
+# then reports `commit: null` instead of failing.
+export VOCAGATEWAY_GIT_COMMIT := `git rev-parse HEAD 2>/dev/null || true`
+export VOCAGATEWAY_GIT_COMMIT_SUBJECT := `git log -1 --format=%s 2>/dev/null || true`
+export VOCAGATEWAY_GIT_COMMIT_DATE := `git log -1 --format=%cI 2>/dev/null || true`
+
 # List all available recipes
 _default:
     @just --list --unsorted --list-submodules
@@ -100,7 +109,11 @@ container-logs:
 # Build the gateway image without starting anything
 [group('container')]
 image:
-    docker build --tag vocaphone-gateway:local .
+    docker build --tag vocaphone-gateway:local \
+      --build-arg VOCAGATEWAY_GIT_COMMIT \
+      --build-arg VOCAGATEWAY_GIT_COMMIT_SUBJECT \
+      --build-arg VOCAGATEWAY_GIT_COMMIT_DATE \
+      .
 
 # Remove tool caches; the virtualenv stays, rebuilding it is a long download
 [group('build')]
