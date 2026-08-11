@@ -4,7 +4,8 @@ import hmac
 from dataclasses import dataclass
 from pathlib import Path
 
-from fastapi import Depends, Header, Request
+from fastapi import Depends, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import Settings
 from app.engines import EngineManager, EngineProvider
@@ -19,6 +20,21 @@ from app.tokens import TokenStore
 VERSION = "0.2.0"
 TOKEN_FILE_HINT = "~/.config/vocagateway/token"
 BOOTSTRAP_TOKEN_ID = "bootstrap"
+
+# Declaring the scheme (rather than reading the header by hand) is what puts an
+# Authorize button in the /docs Swagger page and makes it attach
+# `Authorization: Bearer <token>` to every Try-it-out request. auto_error=False
+# keeps rejection in `require_token`, so a missing or malformed header still
+# produces this API's 401 error envelope instead of Starlette's 403 default.
+bearer_scheme = HTTPBearer(
+    scheme_name="Bearer token",
+    description=(
+        "The gateway bearer token, or any device token. Paste the value alone — "
+        f"Swagger adds the `Bearer ` prefix. Find it in `{TOKEN_FILE_HINT}`, or "
+        "with `just token`."
+    ),
+    auto_error=False,
+)
 
 
 @dataclass
@@ -63,7 +79,9 @@ def get_context(request: Request) -> GatewayContext:
 
 def require_token(
     ctx: GatewayContext = Depends(get_context),
-    authorization: str | None = Header(default=None),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> None:
-    if not ctx.token_is_valid(authorization):
+    # credentials is None when the header is absent, empty, or carries a
+    # non-bearer scheme; all three are the same 401 as a wrong token.
+    if not ctx.token_matches(credentials.credentials if credentials else ""):
         raise APIProblem(401, "unauthorized", "A valid bearer token is required.")

@@ -90,6 +90,51 @@ async def test_admin_endpoints_require_token(admin_client: httpx.AsyncClient) ->
         assert response.status_code == 401, path
 
 
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [
+        (f"Bearer {TOKEN}", 200),
+        # RFC 7235 makes the scheme case-insensitive, and HTTPBearer honors that.
+        (f"bearer {TOKEN}", 200),
+        # The prefix is not optional: a bare token is as good as no token.
+        (TOKEN, 401),
+        (f"Basic {TOKEN}", 401),
+        ("Bearer", 401),
+        ("Bearer ", 401),
+        ("Bearer not-the-token", 401),
+    ],
+)
+async def test_authorization_header_forms(
+    admin_client: httpx.AsyncClient, header: str, expected: int
+) -> None:
+    response = await admin_client.get("/v1/admin/status", headers={"Authorization": header})
+    assert response.status_code == expected, header
+
+
+async def test_openapi_documents_the_bearer_scheme(admin_settings: Settings) -> None:
+    """Without this, Swagger UI has no Authorize button and cannot be used."""
+    # /openapi.json and /docs are only mounted in debug mode, which is also the
+    # only mode where the Swagger page this schema feeds exists at all.
+    debug_app = create_app(
+        dataclasses.replace(admin_settings, debug=True),
+        runtime_config=RuntimeConfig(),
+        normalizer=FakeNormalizer(),
+    )
+    schema = debug_app.openapi()
+    assert schema["components"]["securitySchemes"] == {
+        "Bearer token": {
+            "type": "http",
+            "scheme": "bearer",
+            "description": schema["components"]["securitySchemes"]["Bearer token"]["description"],
+        }
+    }
+    operation = schema["paths"]["/v1/admin/status"]["get"]
+    assert operation["security"] == [{"Bearer token": []}]
+    # The hand-rolled header parameter is what used to show up instead, as a
+    # free-text box that silently sent an unusable request.
+    assert "parameters" not in operation
+
+
 async def test_tokens_list_starts_with_only_the_bootstrap_entry(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
