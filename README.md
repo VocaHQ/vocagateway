@@ -141,7 +141,9 @@ The code encodes a versioned JSON payload:
 
 Discovery prefers private Wi‑Fi addresses (for example `192.168.x.x`). Override
 with `VOCAGATEWAY_PUBLIC_URL` or `VOCAGATEWAY_PAIRING_URL` when automatic selection
-is wrong. The same payload is available without the WebUI: on a TTY,
+is wrong — discovery cannot see a public hostname, so this override is mandatory
+behind a [reverse proxy](#https-reverse-proxy-vps). The same payload is available
+without the WebUI: on a TTY,
 `just token` (or `uv run vocaphone-token`) prints an ASCII QR for headless
 setup; use `just token --plain` when you only want the secret (pipes always get
 plain output).
@@ -514,7 +516,8 @@ Tailscale hostname is not mandatory. Supported arrangements include:
 - a trusted LAN hostname such as `http://homelabone:8765/`; for Docker, set
   `VOCAGATEWAY_PUBLISH_HOST=0.0.0.0` and protect the port with the host firewall
 - a loopback listener exposed privately through Tailscale Serve
-- a VPS loopback listener behind an HTTPS reverse proxy and trusted certificate
+- a VPS loopback listener behind an [HTTPS reverse proxy](#https-reverse-proxy-vps)
+  and trusted certificate
 
 HTTP does not encrypt the bearer token or recording. Use it only on a trusted
 LAN or encrypted VPN, never over the public internet.
@@ -530,6 +533,97 @@ tailscale serve status
 Use the reported private HTTPS URL in the iPhone or Android app. Do not use
 Funnel. See [deployment.md](docs/deployment.md) for LAN/VPS alternatives and
 [tailscale.md](docs/tailscale.md) for the private Serve setup.
+
+### HTTPS reverse proxy (VPS)
+
+Publish the gateway on host loopback, terminate TLS in nginx or Caddy, and keep
+port 8765 closed at the firewall. Bearer authentication stays on even when the
+proxy has its own access control.
+
+Two things surprise most first deployments: the WebUI works over 443 while the
+phone app cannot connect at all, and — once pairing is fixed — recordings fail
+on upload while short ones succeed.
+
+**Name the public URL.** The gateway does not know its own hostname. Pairing
+discovery inspects local interfaces and builds candidates like
+`http://<vps-ip>:8765`, which is what the QR encodes and what the phone then
+tries to reach — bypassing nginx entirely. Set the address explicitly:
+
+```dotenv
+VOCAGATEWAY_PUBLIC_URL=https://vocagateway.example.com
+```
+
+Omit the port; 443 is implied. The override is placed ahead of discovery in the
+pairing card and the QR.
+
+The override only applies when the WebUI has no saved choice, and a saved public
+address is never pruned as stale (only ambient LAN and tailnet IPs are). If the
+pairing card was ever opened before the override was set, clear the old entry
+with **Forget** on the card, or remove `pairing_url` and `pairing_urls` from
+`config.json` and restart.
+
+**Raise the nginx body limit.** The gateway accepts 25 MiB uploads; nginx
+defaults to 1 MiB and rejects real recordings with a `413` before they reach the
+application. `/v1/stream` is a WebSocket and needs the upgrade headers, and CPU
+transcription routinely outlives the 60-second proxy default:
+
+```nginx
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name vocagateway.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/vocagateway.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/vocagateway.example.com/privkey.pem;
+    include             /etc/letsencrypt/options-ssl-nginx.conf;
+
+    # 25 MiB upload ceiling plus headroom, so the gateway returns its own JSON
+    # error envelope instead of an nginx HTML page.
+    client_max_body_size 26m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8765;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # /v1/stream
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+
+        # transcription and model downloads
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+
+        proxy_request_buffering off;
+    }
+}
+```
+
+Serve the gateway at a domain or subdomain root rather than a subpath. The WebUI
+references `/assets/...` absolutely and sends `connect-src 'self'`, so a subpath
+mount breaks the interface even though a path component is accepted in the
+gateway URL itself.
+
+Verify the proxy and the encoded address:
+
+```sh
+curl -s https://vocagateway.example.com/health/live
+curl -s -H "Authorization: Bearer $TOKEN" \
+  https://vocagateway.example.com/v1/admin/pairing
+```
+
+The pairing response should report the public hostname, not an interface address
+with `:8765`. Re-scan the QR afterwards — a phone paired earlier still holds the
+old URL.
 
 ## Health and readiness
 
