@@ -100,16 +100,17 @@ loopback-only service; after gateway startup, `ps` should show a
 WhisperKit so warmup can start the service. If `serve` is unavailable, vocaphone
 deliberately falls back to the slower compatible one-shot CLI.
 
-Use the Test tab's three-run benchmark. It reports warm runs 2 and 3 separately
-from the first model-load run. If normalization is small but inference is slow,
+Use the Pair & test tab's three-run benchmark. It reports warm runs 2 and 3
+separately from the first model-load run. If normalization is small but inference is slow,
 try MLX Whisper Turbo 4-bit or a smaller WhisperKit model before changing
 network or iPhone settings. MLX requires a native arm64 macOS gateway installed
 with `uv sync --extra engines --extra apple`; it is unavailable inside Docker.
 
 ## Linux transcription is still slow
 
-Use the Test tab's three-run benchmark, which reports the warm second/third run.
-Model load should be zero after the first persistent-engine request. Check:
+Use the Pair & test tab's three-run benchmark, which reports the warm
+second/third run. Model load should be zero after the first persistent-engine
+request. Check:
 
 - the active engine is `sherpa-onnx`, Moonshine, or `faster-whisper`, not the
   per-request `whisper.cpp` CLI

@@ -33,7 +33,7 @@ git clone --recurse-submodules https://github.com/VocaHQ/vocaphone.git
 
 | Mode | Engines | Recommended use |
 | --- | --- | --- |
-| Native macOS | MLX Audio, WhisperKit, VocaMac, Handy, sherpa-onnx, `whisper.cpp` | Best performance on Apple silicon |
+| Native macOS | MLX Audio, WhisperKit, VocaMac, Handy, sherpa-onnx, faster-whisper, Moonshine, `whisper.cpp` | Best performance on Apple silicon |
 | Native Linux | sherpa-onnx INT8, faster-whisper, Moonshine, optional `whisper.cpp` | Linux desktop or home server without Docker |
 | Docker Compose | sherpa-onnx INT8, faster-whisper INT8, Moonshine, `whisper.cpp` | Reproducible Linux `amd64`/`arm64` images |
 
@@ -131,8 +131,9 @@ VOCAGATEWAY_BIND_HOST=127.0.0.1 uv run vocaphone-server
 
 ### Phone pairing QR
 
-After you authenticate in the WebUI, the Overview page shows a **Pair phone app**
-QR. The iPhone and Android apps scan it to fill the gateway URL and bearer token.
+After you authenticate in the WebUI, the **Pair & test** tab shows a **Pair phone**
+card with a QR. The iPhone and Android apps scan it to fill the gateway URL and
+bearer token.
 The code encodes a versioned JSON payload:
 
 ```json
@@ -149,7 +150,7 @@ setup; use `just token --plain` when you only want the secret (pipes always get
 plain output).
 
 The same card can create a named per-device token and immediately show its own
-QR instead of the shared bootstrap token, and a **Token to encode** dropdown
+QR instead of the shared bootstrap token, and a **Token** dropdown
 switches which one the QR (and the `/v1/admin/pairing` and
 `/v1/admin/pairing/qr.svg` JSON/SVG endpoints, via `?token_id=`) currently
 encodes. A device token's plaintext is cached in memory only for the life of
@@ -344,8 +345,8 @@ a language filter.
 | MLX Granite Speech 4.1 2B | Apple silicon with at least 12 GB RAM | ~2.38 GB | English only | You want top-ranked English accuracy on Apple silicon |
 
 Every adapter keeps its loaded model in the gateway process. Benchmark three
-runs in the Test tab: the first includes model load, while runs two and three
-show steady-state dictation speed. SenseVoice uses the FunASR Model License;
+runs in the Pair & test tab: the first includes model load, while runs two and
+three show steady-state dictation speed. SenseVoice uses the FunASR Model License;
 both Parakeet variants use CC BY 4.0; the quantized MLX Whisper model inherits
 Whisper's MIT license; Dolphin, Qwen3-ASR, and Granite Speech are Apache 2.0.
 Review the license shown on each model card before
@@ -434,8 +435,8 @@ On a CPU-only Linux host, start with SenseVoice Small INT8 when its five
 languages cover your use case, or Parakeet TDT INT8 for its 25 European
 languages. Keep faster-whisper Base as the broad Whisper fallback. Compute
 device and precision settings affect faster-whisper; sherpa models are already
-INT8 CPU exports. Use the Test tab's three-run benchmark after the first warm
-run.
+INT8 CPU exports. Use the Pair & test tab's three-run benchmark after the first
+warm run.
 
 Moonshine's English Medium, Small, and Tiny Streaming tiers, and the sherpa-onnx
 Streaming Zipformer English 20M INT8 model, accept float32 PCM over an
@@ -622,8 +623,8 @@ pairing card and the QR.
 The override only applies when the WebUI has no saved choice, and a saved public
 address is never pruned as stale (only ambient LAN and tailnet IPs are). If the
 pairing card was ever opened before the override was set, clear the old entry
-with **Forget** on the card, or remove `pairing_url` and `pairing_urls` from
-`config.json` and restart.
+with **Remove** under *Saved addresses* on the card, or remove `pairing_url` and
+`pairing_urls` from `config.json` and restart.
 
 **Raise the nginx body limit.** The gateway accepts 25 MiB uploads; nginx
 defaults to 1 MiB and rejects real recordings with a `413` before they reach the

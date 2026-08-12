@@ -35,8 +35,8 @@ portability.
 There is no honest fixed speed multiplier: model size, audio length, thermals,
 and host hardware all matter. For an apples-to-apples comparison, dictate the
 same saved recording several times with equivalent model sizes and compare the
-Test tab's three-run benchmark. It treats run 1 as model warmup/load and reports
-the warm average of runs 2 and 3. Compare inference time and real-time factor,
+Pair & test tab's three-run benchmark. It treats run 1 as model warmup/load and
+reports the warm average of runs 2 and 3. Compare inference time and real-time factor,
 not only end-to-end time.
 
 ## Native macOS deployment
