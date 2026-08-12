@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security.utils import get_authorization_scheme_param
 
 from app.config import Settings
 from app.engines import EngineManager, EngineProvider
@@ -58,18 +59,17 @@ class GatewayContext:
     config_path: Path
 
     def token_matches(self, supplied: str) -> bool:
-        if hmac.compare_digest(supplied, self.settings.token):
+        # Compared as bytes because `hmac.compare_digest` raises TypeError on
+        # `str` arguments holding non-ASCII characters.
+        if hmac.compare_digest(supplied.encode("utf-8"), self.settings.token.encode("utf-8")):
             return True
         return self.token_store.matches(supplied)
 
     def token_is_valid(self, authorization: str | None) -> bool:
-        prefix = "Bearer "
-        supplied = (
-            authorization[len(prefix) :]
-            if authorization and authorization.startswith(prefix)
-            else ""
-        )
-        return self.token_matches(supplied)
+        scheme, credentials = get_authorization_scheme_param(authorization)
+        if scheme.lower() != "bearer" or not credentials:
+            return False
+        return self.token_matches(credentials)
 
 
 def get_context(request: Request) -> GatewayContext:
