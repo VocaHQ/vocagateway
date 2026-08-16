@@ -1,5 +1,8 @@
 # VocaGateway
 
+[![Discord](https://img.shields.io/discord/1538633755877580810?logo=discord&logoColor=white&label=Discord)](https://discord.gg/UMJduhcqn)
+[![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e)](https://vocahq.com)
+
 Headless local transcription gateway for the [Voca](https://github.com/VocaHQ)
 family. Set it up once; pair phone and desktop clients to the same hardware.
 
