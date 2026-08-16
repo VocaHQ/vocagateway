@@ -152,8 +152,8 @@ Check that the gateway host is awake, reachable, and running. For a Tailscale
 deployment, also confirm Tailscale is connected and Serve is active. The
 recording should remain on the iPhone for Retry.
 
-For a container deployment, also check `docker compose ps` from `server/` and
-confirm the `vocagateway_vocagateway-data` volume is still mounted.
+For a container deployment, also check `docker compose ps` from the repository
+root and confirm the `vocagateway_vocagateway-data` volume is still mounted.
 
 ## A LAN hostname such as homelabone does not connect
 
@@ -187,9 +187,11 @@ change. See [deployment.md](deployment.md#trusted-local-network).
 
 If this device was paired with its own token, open the WebUI Settings tab and
 confirm it is still listed under **Paired device tokens** — revoking a token
-there immediately rejects it. Otherwise re-run `server/scripts/setup-token.sh`,
-copy the exact token into vocaphone, and save/test again. Never put the token
-in a URL or screenshot.
+there immediately rejects it. Otherwise confirm the bootstrap token with
+`just token` or `uv run vocaphone-token` (reads `VOCAGATEWAY_TOKEN` or
+`~/.config/vocagateway/token`), copy the exact value into vocaphone, and
+save/test again. Never put the token in a URL or screenshot. See
+[configuration.md](configuration.md).
 
 ## 413, 415, or 422
 

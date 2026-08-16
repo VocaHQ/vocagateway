@@ -3,19 +3,31 @@
 [![Discord](https://img.shields.io/discord/1538633755877580810?logo=discord&logoColor=white&label=Discord)](https://discord.gg/UMJduhcqn)
 [![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e)](https://vocahq.com)
 
-Headless local transcription gateway for the [Voca](https://github.com/VocaHQ)
-family. Set it up once; pair phone and desktop clients to the same hardware.
+**Early** optional self-hosted transcription gateway for the
+[Voca](https://github.com/VocaHQ) family. License:
+[AGPL-3.0](LICENSE). Contact:
+[hello@vocahq.com](mailto:hello@vocahq.com).
 
-The gateway accepts bounded recordings from [vocaphone](https://github.com/VocaHQ/vocaphone)
-(iOS/Android) and, soon, the Linux/macOS/Windows desktop apps. It normalizes
-audio with FFmpeg, invokes a local speech engine, and returns an idempotent
-transcript. An authenticated HTMX WebUI covers setup, model management, engine
-selection, microphone testing, and operational status.
+Set it up once on hardware you control; pair phone clients (and, later, desktop
+clients) to that host. Self-host on macOS or Linux, or use Docker Compose on
+Linux `amd64`/`arm64`. There is no Voca account and no hosted Voca cloud.
+
+The gateway accepts bounded recordings from
+[vocaphone](https://github.com/VocaHQ/vocaphone) (iOS/Android) and, soon, the
+Linux/macOS/Windows desktop apps. It normalizes audio with FFmpeg, invokes a
+local speech engine, and returns an idempotent transcript. An authenticated
+HTMX WebUI covers setup, model management, engine selection, microphone
+testing, and operational status.
+
+Gateway mode is **not** on-device processing: audio leaves the client and travels
+to the machine you chose. Prefer a trusted LAN, Tailscale, or HTTPS. Never
+expose port `8765` to the public internet.
 
 CLI entry points still use the historical `vocaphone-server` script names from
 the Python package (`vocaphone-gateway`). Environment variables and on-disk
 paths use the `vocagateway` prefix (`VOCAGATEWAY_*`, `~/.config/vocagateway/`,
-`~/.local/share/vocagateway/`).
+`~/.local/share/vocagateway/`). The live pairing and env contract is documented
+in [configuration.md](docs/configuration.md).
 
 ## Consumers
 
@@ -488,11 +500,14 @@ starts it on a random `127.0.0.1` port during warmup and reuses the loaded
 Core ML model. If an older CLI does not support `serve`, transcription falls
 back to the compatible one-shot command rather than becoming unavailable.
 
-VocaMac has no headless transcription command, so its adapter reuses the app's
-Core ML model library and tokenizers through `whisperkit-cli` rather than the
-app itself: it reads the model chosen in VocaMac's Models tab, verifies the
-downloaded files are complete, and skips partial downloads in favour of another
-complete model. VocaMac does not need to be running.
+Tagged VocaMac releases through `0.7.2` have no headless transcription command.
+VocaMac **main** now ships `--transcribe-file`
+([vocamac#200](https://github.com/VocaHQ/vocamac/issues/200)), but this
+gateway's `vocamac` adapter still runs through `whisperkit-cli`: it reuses the
+app's Core ML model library and tokenizers, reads the model chosen in VocaMac's
+Models tab, verifies downloads are complete, and skips partial downloads in
+favour of another complete model. It does not call `--transcribe-file` yet.
+VocaMac does not need to be running.
 
 To force VocaMac from the environment:
 
@@ -534,7 +549,7 @@ uv run vocaphone-server
 | `VOCAGATEWAY_TOKEN` | unset | unset | Direct token override; at least 32 characters |
 | `VOCAGATEWAY_TOKEN_FILE` | `~/.config/vocagateway/token` | `/run/secrets/vocagateway_token` | Bearer-token file |
 | `VOCAGATEWAY_DATA_DIR` | `~/.local/share/vocagateway` | `/data` | Sessions and application data |
-| `VOCAGATEWAY_MODELS_DIR` | `<data>/models` | `/data/models` | Downloaded models |
+| `VOCAGATEWAY_MODELS_DIR` | `~/.local/share/vocagateway/models` | `/data/models` | Downloaded models |
 | `VOCAGATEWAY_CONFIG_FILE` | `~/.config/vocagateway/config.json` | `/data/config/config.json` | WebUI engine/model choice |
 | `VOCAGATEWAY_ENGINE` | `auto` | `auto` | `auto`, `vocamac`, `handy`, `mlx-audio`, `whisperkit`, `sherpa-onnx`, `faster-whisper`, `moonshine`, or `whisper.cpp` |
 | `VOCAGATEWAY_WHISPER_BINARY` | `/opt/homebrew/bin/whisper-cli` | `/usr/local/bin/whisper-cli` | `whisper.cpp` executable |
@@ -570,6 +585,11 @@ in `.env`:
 
 Use [`.env.example`](.env.example) as a template and never commit the populated
 `.env` file.
+
+For the pairing QR payload (`{"v":1,"url":"...","token":"..."}`), native paths,
+and the full `VOCAGATEWAY_*` contract — including the note that older
+`VOCAPHONE_*` / `~/.config/vocaphone/` names are stale and unread — see
+[configuration.md](docs/configuration.md).
 
 ## Listener and network access
 
@@ -796,5 +816,11 @@ docker buildx build \
 ```
 
 For backup, update, and native-vs-container guidance, continue with
-[deployment.md](docs/deployment.md). For failures, see
+[deployment.md](docs/deployment.md). For pairing, paths, and env vars, see
+[configuration.md](docs/configuration.md). For failures, see
 [troubleshooting.md](docs/troubleshooting.md).
+
+## License and contact
+
+[AGPL-3.0](LICENSE). Questions and contributions:
+[hello@vocahq.com](mailto:hello@vocahq.com).
