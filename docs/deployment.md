@@ -10,7 +10,7 @@ portability.
 | Consideration | Native macOS | Native Linux | Docker Compose |
 | --- | --- | --- | --- |
 | Recommended host | Apple silicon Mac | Linux desktop or home server | Linux `amd64`/`arm64` when you want an image |
-| Engines | MLX Audio, WhisperKit, VocaMac, Handy, sherpa-onnx, `whisper.cpp` | sherpa-onnx, faster-whisper, Moonshine, optional `whisper.cpp` | sherpa-onnx, faster-whisper, Moonshine, `whisper.cpp` |
+| Engines | MLX Audio, WhisperKit, VocaMac, Handy, sherpa-onnx, faster-whisper, Moonshine, `whisper.cpp` | sherpa-onnx, faster-whisper, Moonshine, optional `whisper.cpp` | sherpa-onnx, faster-whisper, Moonshine, `whisper.cpp` |
 | Acceleration | Apple-native MLX and WhisperKit/Core ML paths | Host CPU (Python wheels); CUDA via Docker profiles | INT8 ONNX/OpenBLAS CPU; native CPU, CUDA, or Vulkan profiles |
 | Performance | Recommended on Mac; no Linux VM | No container overhead on Linux | Slightly more isolation cost; strong for CUDA images |
 | Portability | macOS LaunchAgent | systemd user unit | Reproducible across supported Linux architectures |
@@ -325,7 +325,9 @@ under `/data` in the `vocagateway-data` named volume.
 Environment variables use the `VOCAGATEWAY_*` prefix (for example
 `VOCAGATEWAY_TOKEN`, `VOCAGATEWAY_BIND_HOST`, `VOCAGATEWAY_PUBLIC_URL`). CLI
 entry points still ship as `vocaphone-server`, `vocaphone-token`, and related
-scripts from the `vocaphone-gateway` Python package.
+scripts from the `vocaphone-gateway` Python package. Older `VOCAPHONE_*`
+names and `~/.config/vocaphone/` paths are not read. Full contract:
+[configuration.md](configuration.md).
 
 Downloaded models carry a `.vocagateway-model.json` marker file in each model
 directory.
