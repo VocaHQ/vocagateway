@@ -24,6 +24,16 @@ _default:
 install:
     uv sync --all-groups --all-extras
 
+# Serve the landing page at http://127.0.0.1:4173/
+[group('dev')]
+site:
+    python3 -m http.server 4173 --directory web
+
+# Check landing-page structure, assets, and product claims
+[group('dev')]
+site-check:
+    node --test web/tests/site.test.mjs
+
 # Format code with ruff
 [group('dev')]
 format:
