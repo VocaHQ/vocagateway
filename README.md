@@ -9,7 +9,7 @@
 [hello@vocahq.com](mailto:hello@vocahq.com).
 
 The public landing page lives in [`web/`](web/) and deploys to
-[GitHub Pages](https://vocahq.github.io/vocagateway/).
+[vocagateway.vocahq.com](https://vocagateway.vocahq.com/).
 
 Set it up once on hardware you control; pair phone clients (and, later, desktop
 clients) to that host. Self-host on macOS or Linux, or use Docker Compose on

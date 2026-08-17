@@ -89,9 +89,14 @@ test("all local image assets exist", () => {
 });
 
 test("production metadata is complete", () => {
-  assert.match(html, /rel="canonical" href="https:\/\/vocahq\.github\.io\/vocagateway\/"/);
-  assert.match(html, /property="og:url" content="https:\/\/vocahq\.github\.io\/vocagateway\/"/);
+  assert.match(html, /rel="canonical" href="https:\/\/vocagateway\.vocahq\.com\/"/);
+  assert.match(html, /property="og:url" content="https:\/\/vocagateway\.vocahq\.com\/"/);
   assert.match(html, /name="twitter:card" content="summary"/);
+  assert.doesNotMatch(html, /github\.io\/vocagateway/);
+  assert.equal(
+    readFileSync(join(siteRoot, "CNAME"), "utf8").trim(),
+    "vocagateway.vocahq.com",
+  );
   for (const asset of [
     "assets/brand/voca-logo.svg",
     "assets/brand/voca-mark.svg",
@@ -101,6 +106,7 @@ test("production metadata is complete", () => {
     "robots.txt",
     "sitemap.xml",
     "site.webmanifest",
+    "CNAME",
   ]) {
     assert.ok(existsSync(join(siteRoot, asset)), `Missing ${asset}`);
   }
