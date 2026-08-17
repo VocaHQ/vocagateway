@@ -26,11 +26,12 @@ Gateway mode is **not** on-device processing: audio leaves the client and travel
 to the machine you chose. Prefer a trusted LAN, Tailscale, or HTTPS. Never
 expose port `8765` to the public internet.
 
-CLI entry points still use the historical `vocaphone-server` script names from
-the Python package (`vocaphone-gateway`). Environment variables and on-disk
-paths use the `vocagateway` prefix (`VOCAGATEWAY_*`, `~/.config/vocagateway/`,
-`~/.local/share/vocagateway/`). The live pairing and env contract is documented
-in [configuration.md](docs/configuration.md).
+The CLI is `vocagateway` (package `vocagateway`). Deprecated aliases
+(`vocaphone-server`, `vocaphone-token`, and related `vocaphone-*` scripts) still
+resolve for one cycle so older justfiles keep working. Environment variables and
+on-disk paths use the `vocagateway` prefix (`VOCAGATEWAY_*`,
+`~/.config/vocagateway/`, `~/.local/share/vocagateway/`). The live pairing and env
+contract is documented in [configuration.md](docs/configuration.md).
 
 ## Consumers
 
@@ -82,7 +83,7 @@ and selecting one through the API is rejected with `422 invalid_engine`.
 ```sh
 brew install ffmpeg whisperkit-cli whisper-cpp
 uv sync --all-groups --extra engines --extra apple
-uv run vocaphone-server
+uv run vocagateway
 ```
 
 The first run creates `~/.config/vocagateway/token` with mode `600`. Open
@@ -96,7 +97,7 @@ To keep the gateway running after terminal sessions and restart it after login:
 ```
 
 The LaunchAgent uses the checkout's `.venv`, adds standard Homebrew paths, and
-writes logs to `~/Library/Logs/Vocaphone/`.
+writes logs to `~/Library/Logs/VocaGateway/`.
 
 MLX Audio and WhisperKit are recommended on Apple silicon. The `apple` extra
 installs MLX only on an arm64 Mac; it is deliberately absent from Linux and
@@ -114,13 +115,13 @@ sudo apt install ffmpeg
 # Install uv if needed: curl -LsSf https://astral.sh/uv/install.sh | sh
 
 uv sync --all-groups --extra engines
-uv run vocaphone-server
+uv run vocagateway
 ```
 
 Do not pass `--extra apple` on Linux. The first run creates
 `~/.config/vocagateway/token` with mode `600`. The banner prints the WebUI URL and
 token path; show the secret (and a terminal pairing QR) with `just token` or
-`uv run vocaphone-token`. Open `http://127.0.0.1:8765/`, enter the token,
+`uv run vocagateway-token`. Open `http://127.0.0.1:8765/`, enter the token,
 download a recommended model (SenseVoice Small INT8 or Parakeet TDT INT8 on
 CPU), select it, and confirm **Ready for dictation**.
 
@@ -133,8 +134,8 @@ loginctl enable-linger "$USER"
 ```
 
 ```sh
-systemctl --user status com.vocahq.vocaphone.gateway.service
-journalctl --user -u com.vocahq.vocaphone.gateway.service -f
+systemctl --user status com.vocahq.vocagateway.service
+journalctl --user -u com.vocahq.vocagateway.service -f
 ```
 
 The unit uses the checkout's `.venv`. Re-run the installer after moving the
@@ -144,7 +145,7 @@ Phone clients on the same LAN can use `http://<host-lan-ip>:8765` while the
 gateway binds `0.0.0.0` (the default). For Tailscale Serve only, bind loopback:
 
 ```sh
-VOCAGATEWAY_BIND_HOST=127.0.0.1 uv run vocaphone-server
+VOCAGATEWAY_BIND_HOST=127.0.0.1 uv run vocagateway
 ```
 
 ### Phone pairing QR
@@ -163,7 +164,7 @@ with `VOCAGATEWAY_PUBLIC_URL` or `VOCAGATEWAY_PAIRING_URL` when automatic select
 is wrong — discovery cannot see a public hostname, so this override is mandatory
 behind a [reverse proxy](#https-reverse-proxy-vps). The same payload is available
 without the WebUI: on a TTY,
-`just token` (or `uv run vocaphone-token`) prints an ASCII QR for headless
+`just token` (or `uv run vocagateway-token`) prints an ASCII QR for headless
 setup; use `just token --plain` when you only want the secret (pipes always get
 plain output).
 
@@ -310,7 +311,7 @@ The authenticated WebUI provides:
   inference, real-time-factor, and peak-memory results
 - selected engine/model and readiness/warmup status
 - a redacted diagnostics export for bug reports (Settings tab or
-  `uv run vocaphone-diagnostics`); never includes the token, audio, transcripts,
+  `uv run vocagateway-diagnostics`); never includes the token, audio, transcripts,
   or session identifiers
 - named, independently revocable per-device tokens (Settings tab), so losing
   one phone means revoking that device's token instead of rotating everyone
@@ -517,7 +518,7 @@ To force VocaMac from the environment:
 ```sh
 export VOCAGATEWAY_ENGINE=vocamac
 export VOCAGATEWAY_VOCAMAC_MODEL='small'   # optional; otherwise VocaMac's own choice
-uv run vocaphone-server
+uv run vocagateway
 ```
 
 `VOCAGATEWAY_VOCAMAC_MODEL` accepts either a VocaMac model size (`small`,
@@ -531,7 +532,7 @@ To force Handy from the environment:
 export VOCAGATEWAY_ENGINE=handy
 export VOCAGATEWAY_HANDY_MODEL='owner/repository/model.gguf'
 export VOCAGATEWAY_HANDY_FALLBACK_MODEL='owner/repository/fallback-model.gguf'
-uv run vocaphone-server
+uv run vocagateway
 ```
 
 To force standalone `whisper.cpp`:
@@ -540,7 +541,7 @@ To force standalone `whisper.cpp`:
 export VOCAGATEWAY_ENGINE=whisper.cpp
 export VOCAGATEWAY_WHISPER_BINARY=/absolute/path/to/whisper-cli
 export VOCAGATEWAY_WHISPER_MODEL=/absolute/path/to/ggml-model.bin
-uv run vocaphone-server
+uv run vocagateway
 ```
 
 ## Configuration
@@ -584,7 +585,7 @@ in `.env`:
 | `VOCAGATEWAY_PUBLISH_HOST` | `127.0.0.1` | Host interface published by Docker |
 | `VOCAGATEWAY_PUBLISH_PORT` | `8765` | Host port published by Docker |
 | `VOCAGATEWAY_NETWORK_MODE` | `bridge` | Set to `host` on Linux Docker Engine to share the host's network namespace (ignores `VOCAGATEWAY_PUBLISH_HOST`/`PORT`); not supported by Docker Desktop |
-| `VOCAGATEWAY_IMAGE` | `vocaphone-gateway:local` | Local or registry image tag |
+| `VOCAGATEWAY_IMAGE` | `vocagateway:local` | Local or registry image tag |
 
 Use [`.env.example`](.env.example) as a template and never commit the populated
 `.env` file.
@@ -766,21 +767,27 @@ CPU there. The dashboard reports what devices the container can actually see.
 
 ## CLI and routine operations
 
+Primary console scripts are `vocagateway`, `vocagateway-token`,
+`vocagateway-status`, `vocagateway-diagnostics`, and `vocagateway-cleanup`.
+Deprecated aliases (`vocaphone-server`, `vocaphone-token`, `vocaphone-status`,
+`vocaphone-diagnostics`, `vocaphone-cleanup`) call the same entry points for one
+cycle.
+
 ```sh
 # Query the local backward-compatible health response
-uv run vocaphone-status
+uv run vocagateway-status
 
 # Download a redacted diagnostics bundle for a bug report
-uv run vocaphone-diagnostics
+uv run vocagateway-diagnostics
 
 # Remove sessions older than the configured retention window
-uv run vocaphone-cleanup
+uv run vocagateway-cleanup
 
 # Follow the native macOS LaunchAgent logs
-tail -f ~/Library/Logs/Vocaphone/gateway.log
+tail -f ~/Library/Logs/VocaGateway/gateway.log
 
 # Follow the native Linux systemd user unit logs
-journalctl --user -u com.vocahq.vocaphone.gateway.service -f
+journalctl --user -u com.vocahq.vocagateway.service -f
 
 # Follow container logs
 docker compose logs --follow gateway
@@ -805,7 +812,7 @@ uv run ruff format --check .
 uv run mypy app
 uv run pytest
 VOCAGATEWAY_TOKEN=test-token-with-at-least-thirty-two-characters docker compose config --quiet
-docker build --tag vocaphone-gateway:test .
+docker build --tag vocagateway:test .
 ```
 
 Build and publish one tag for both supported Linux architectures from the
@@ -814,7 +821,7 @@ repository root:
 ```sh
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  --tag ghcr.io/your-user/vocaphone-gateway:latest \
+  --tag ghcr.io/your-user/vocagateway:latest \
   --push .
 ```
 

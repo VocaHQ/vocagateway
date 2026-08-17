@@ -32,7 +32,7 @@ x-gateway-environment: &gateway-environment
 
 services:
   gateway:
-    image: ${VOCAGATEWAY_IMAGE:-vocaphone-gateway:local}
+    image: ${VOCAGATEWAY_IMAGE:-vocagateway:local}
     build:
       context: .
       dockerfile: Dockerfile
@@ -50,7 +50,7 @@ services:
 
   gateway-native:
     profiles: ["native"]
-    image: vocaphone-gateway:native
+    image: vocagateway:native
     build:
       context: .
       dockerfile: Dockerfile
@@ -68,7 +68,7 @@ services:
 
   gateway-cuda:
     profiles: ["cuda"]
-    image: vocaphone-gateway:cuda
+    image: vocagateway:cuda
     build:
       context: .
       dockerfile: Dockerfile.cuda
@@ -87,7 +87,7 @@ services:
 
   gateway-vulkan:
     profiles: ["vulkan"]
-    image: vocaphone-gateway:vulkan
+    image: vocagateway:vulkan
     build:
       context: .
       dockerfile: Dockerfile.vulkan

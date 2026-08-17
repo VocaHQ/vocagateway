@@ -19,7 +19,7 @@ network. Never use Funnel for this project.
 For a native macOS or Linux process:
 
 ```sh
-VOCAGATEWAY_BIND_HOST=127.0.0.1 uv run vocaphone-server
+VOCAGATEWAY_BIND_HOST=127.0.0.1 uv run vocagateway
 ```
 
 For Docker, keep the Compose default in `.env`:

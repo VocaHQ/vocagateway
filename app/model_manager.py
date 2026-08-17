@@ -813,7 +813,7 @@ def _download_moonshine_model(
         )
     except ImportError as error:
         raise RuntimeError(
-            "Moonshine support is not installed. Install vocaphone-gateway[engines]."
+            "Moonshine support is not installed. Install vocagateway[engines]."
         ) from error
     architecture = ModelArch(model_arch) if model_arch is not None else None
     return cast(

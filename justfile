@@ -79,27 +79,27 @@ compose:
 # Start the gateway on http://127.0.0.1:8765/
 [group('run')]
 run:
-    uv run vocaphone-server
+    uv run vocagateway
 
 # Start the gateway bound to loopback only, ignoring any LAN or tailnet address
 [group('run')]
 run-local:
-    VOCAGATEWAY_BIND_HOST=127.0.0.1 uv run vocaphone-server
+    VOCAGATEWAY_BIND_HOST=127.0.0.1 uv run vocagateway
 
 # Print the bearer token; on a TTY also show a phone-scannable pairing QR
 [group('run')]
 token *args='':
-    uv run vocaphone-token {{ args }}
+    uv run vocagateway-token {{ args }}
 
 # Ask a running gateway for its health
 [group('run')]
 status:
-    uv run vocaphone-status
+    uv run vocagateway-status
 
 # Ask a running gateway for its diagnostics report
 [group('run')]
 diag:
-    uv run vocaphone-diagnostics
+    uv run vocagateway-diagnostics
 
 # Build and start the container deployment in the background
 [group('container')]
@@ -119,7 +119,7 @@ container-logs:
 # Build the gateway image without starting anything
 [group('container')]
 image:
-    docker build --tag vocaphone-gateway:local \
+    docker build --tag vocagateway:local \
       --build-arg VOCAGATEWAY_GIT_COMMIT \
       --build-arg VOCAGATEWAY_GIT_COMMIT_SUBJECT \
       --build-arg VOCAGATEWAY_GIT_COMMIT_DATE \

@@ -375,7 +375,7 @@
             <h3>Apple silicon host</h3>
             <pre><code>brew install ffmpeg whisperkit-cli whisper-cpp
 uv sync --all-groups --extra engines --extra apple
-uv run vocaphone-server</code></pre>
+uv run vocagateway</code></pre>
           </article>
 
           <article class="start-card reveal">
@@ -383,7 +383,7 @@ uv run vocaphone-server</code></pre>
             <h3>desktop or home server</h3>
             <pre><code>sudo apt install ffmpeg
 uv sync --all-groups --extra engines
-uv run vocaphone-server</code></pre>
+uv run vocagateway</code></pre>
           </article>
 
           <article class="start-card reveal">
@@ -397,9 +397,10 @@ docker compose up --detach --build</code></pre>
 
         <p class="platform-honesty reveal">
           <span>command name:</span>
-          <code>vocaphone-server</code> is the leftover CLI entry point. The
-          product is VocaGateway. Full host notes, Tailscale, and reverse-proxy
-          setup live in the
+          <code>vocagateway</code> is the CLI. Deprecated
+          <code>vocaphone-server</code> and related aliases still work for one
+          cycle. The product is VocaGateway. Full host notes, Tailscale, and
+          reverse-proxy setup live in the
           <a href="https://github.com/VocaHQ/vocagateway/blob/main/README.md">README</a>
           and
           <a href="https://github.com/VocaHQ/vocagateway/blob/main/docs/deployment.md">deployment guide</a>.

@@ -1584,7 +1584,7 @@ wheels = [
 ]
 
 [[package]]
-name = "vocaphone-gateway"
+name = "vocagateway"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [

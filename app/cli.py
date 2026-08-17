@@ -93,7 +93,7 @@ def token() -> None:
     can still do ``TOKEN=$(just token --plain)``.
     """
     parser = argparse.ArgumentParser(
-        prog="vocaphone-token",
+        prog="vocagateway-token",
         description="Show the bootstrap bearer token and an optional terminal pairing QR.",
     )
     parser.add_argument(
