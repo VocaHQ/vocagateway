@@ -63,7 +63,7 @@ WebUI. For a native Handy setup, also check:
 ```sh
 test -x /Applications/Handy.app/Contents/MacOS/handy
 /Applications/Handy.app/Contents/MacOS/handy --list-models --json
-uv run vocaphone-status
+uv run vocagateway-status
 ```
 
 For a native VocaMac setup, check that the app is installed, that
@@ -188,7 +188,7 @@ change. See [deployment.md](deployment.md#trusted-local-network).
 If this device was paired with its own token, open the WebUI Settings tab and
 confirm it is still listed under **Paired device tokens** — revoking a token
 there immediately rejects it. Otherwise confirm the bootstrap token with
-`just token` or `uv run vocaphone-token` (reads `VOCAGATEWAY_TOKEN` or
+`just token` or `uv run vocagateway-token` (reads `VOCAGATEWAY_TOKEN` or
 `~/.config/vocagateway/token`), copy the exact value into vocaphone, and
 save/test again. Never put the token in a URL or screenshot. See
 [configuration.md](configuration.md).
@@ -251,7 +251,7 @@ response—never include the token or a private transcript.
 
 Attach the redacted diagnostics bundle instead of manually describing gateway
 state: open the WebUI **Settings** tab and click **Download diagnostics**, or run
-`uv run vocaphone-diagnostics` on the gateway host. It contains version, engine
+`uv run vocagateway-diagnostics` on the gateway host. It contains version, engine
 and dependency status, hardware detection, and operational counters, and never
 includes the bearer token, recordings, transcripts, or session identifiers.
 

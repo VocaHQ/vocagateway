@@ -200,6 +200,6 @@ def select_engine(settings: Settings) -> TranscriptionEngine:
         raise RuntimeError("VOCAGATEWAY_ENGINE is not a supported engine.")
     manager = ModelManager(settings.resolved_models_dir())
     # Same resolution path as the long-running server (including sherpa-onnx
-    # and mlx-audio). CLI tools like vocaphone-cleanup must accept every engine
+    # and mlx-audio). CLI tools like vocagateway-cleanup must accept every engine
     # VALID_ENGINES lists, not a hand-maintained subset.
     return build_engine(settings, RuntimeConfig(engine=settings.engine), manager)

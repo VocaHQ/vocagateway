@@ -52,7 +52,7 @@ jobs:
           # injection. Release builds that publish an image add the subject from
           # a checkout instead.
           docker buildx build \
-            --tag vocaphone-gateway:test \
+            --tag vocagateway:test \
             --build-arg VOCAGATEWAY_GIT_COMMIT="${GITHUB_SHA}" \
             --cache-from type=gha,scope=gateway \
             --cache-to type=gha,mode=max,scope=gateway \

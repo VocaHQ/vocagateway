@@ -3,10 +3,10 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.vocahq.vocaphone.gateway</string>
+  <string>com.vocahq.vocagateway</string>
   <key>ProgramArguments</key>
   <array>
-    <string>__REPOSITORY__/.venv/bin/vocaphone-server</string>
+    <string>__REPOSITORY__/.venv/bin/vocagateway</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -18,8 +18,8 @@
     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
   <key>StandardOutPath</key>
-  <string>__HOME__/Library/Logs/Vocaphone/gateway.log</string>
+  <string>__HOME__/Library/Logs/VocaGateway/gateway.log</string>
   <key>StandardErrorPath</key>
-  <string>__HOME__/Library/Logs/Vocaphone/gateway-error.log</string>
+  <string>__HOME__/Library/Logs/VocaGateway/gateway-error.log</string>
 </dict>
 </plist>

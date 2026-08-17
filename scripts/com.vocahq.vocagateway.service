@@ -7,7 +7,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=__REPOSITORY__
-ExecStart=__REPOSITORY__/.venv/bin/vocaphone-server
+ExecStart=__REPOSITORY__/.venv/bin/vocagateway
 Restart=on-failure
 RestartSec=3
 # Keep the usual user PATH so FFmpeg and optional tools resolve without a login shell.

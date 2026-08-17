@@ -1,8 +1,9 @@
 # Pairing, paths, and environment
 
-Source of truth for the live VocaGateway contract. CLI entry points still use
-the historical `vocaphone-*` script names from the `vocaphone-gateway` package;
-environment variables and on-disk paths use the `vocagateway` prefix.
+Source of truth for the live VocaGateway contract. The Python package and CLI
+are `vocagateway` (`vocagateway`, `vocagateway-token`, and related scripts).
+Deprecated `vocaphone-*` console-script aliases still resolve for one cycle.
+Environment variables and on-disk paths use the `vocagateway` prefix.
 
 ## Status and network boundary
 
@@ -40,7 +41,7 @@ Version `1`. Fields are `url` (phone-reachable gateway base URL) and `token`
 ```
 
 Show the bootstrap token (and an ASCII QR on a TTY) with `just token` or
-`uv run vocaphone-token`. Override the encoded address with
+`uv run vocagateway-token`. Override the encoded address with
 `VOCAGATEWAY_PUBLIC_URL` or `VOCAGATEWAY_PAIRING_URL` when auto-discovery is
 wrong.
 
@@ -85,7 +86,7 @@ Optional build/status stamps (when set): `VOCAGATEWAY_GIT_COMMIT`,
 | `VOCAGATEWAY_PUBLISH_HOST` | `127.0.0.1` | Host interface Docker publishes |
 | `VOCAGATEWAY_PUBLISH_PORT` | `8765` | Host port Docker publishes |
 | `VOCAGATEWAY_NETWORK_MODE` | `bridge` | Set `host` on Linux Docker Engine only |
-| `VOCAGATEWAY_IMAGE` | `vocaphone-gateway:local` | Local or registry image tag |
+| `VOCAGATEWAY_IMAGE` | `vocagateway:local` | Local or registry image tag |
 
 Container defaults for data paths are under `/data` (and the token secret under
 `/run/secrets/vocagateway_token`). See the [README configuration table](../README.md#configuration).
@@ -95,6 +96,10 @@ Container defaults for data paths are under `/data` (and the token secret under
 Older `VOCAPHONE_*` environment variables and `~/.config/vocaphone/` paths are
 **not** read by the current gateway. Use `VOCAGATEWAY_*` and
 `~/.config/vocagateway/` / `~/.local/share/vocagateway/` only.
+
+Deprecated CLI console-script aliases (`vocaphone-server`, `vocaphone-token`,
+`vocaphone-status`, `vocaphone-diagnostics`, `vocaphone-cleanup`) still resolve to
+the same entry points as `vocagateway*` for one cycle; prefer the new names.
 
 ## Related docs
 

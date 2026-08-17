@@ -47,7 +47,7 @@ not only end-to-end time.
 # ffmpeg (required), WhisperKit CLI, and the whisper.cpp CLI
 brew install ffmpeg whisperkit-cli whisper-cpp
 uv sync --all-groups --extra engines --extra apple
-uv run vocaphone-server
+uv run vocagateway
 ```
 
 The default listener is `0.0.0.0:8765`, while the local WebUI is
@@ -55,7 +55,7 @@ The default listener is `0.0.0.0:8765`, while the local WebUI is
 override the listener:
 
 ```sh
-VOCAGATEWAY_BIND_HOST=127.0.0.1 uv run vocaphone-server
+VOCAGATEWAY_BIND_HOST=127.0.0.1 uv run vocagateway
 ```
 
 The first run creates a mode-600 token file at
@@ -68,10 +68,10 @@ data directory, and WebUI choices are stored in
 
 ```sh
 ./scripts/install-launch-agent.sh
-launchctl print "gui/$(id -u)/com.vocahq.vocaphone.gateway"
+launchctl print "gui/$(id -u)/com.vocahq.vocagateway"
 ```
 
-Logs are written to `~/Library/Logs/Vocaphone/gateway.log` and
+Logs are written to `~/Library/Logs/VocaGateway/gateway.log` and
 `gateway-error.log`. Re-run the installer after changing the checkout location
 or gateway executable.
 
@@ -84,14 +84,14 @@ or gateway executable.
 sudo apt install ffmpeg
 # https://docs.astral.sh/uv/ — curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync --all-groups --extra engines
-uv run vocaphone-server
+uv run vocagateway
 ```
 
 Omit `--extra apple` on Linux. The default listener is `0.0.0.0:8765`. When
 Tailscale Serve is the only desired ingress, override the listener:
 
 ```sh
-VOCAGATEWAY_BIND_HOST=127.0.0.1 uv run vocaphone-server
+VOCAGATEWAY_BIND_HOST=127.0.0.1 uv run vocagateway
 ```
 
 Token, models, and config paths match the macOS native layout:
@@ -107,8 +107,8 @@ reachable URL such as `http://192.168.1.20:8765` on a trusted LAN.
 
 ```sh
 ./scripts/install-systemd-user.sh
-systemctl --user status com.vocahq.vocaphone.gateway.service
-journalctl --user -u com.vocahq.vocaphone.gateway.service -f
+systemctl --user status com.vocahq.vocagateway.service
+journalctl --user -u com.vocahq.vocagateway.service -f
 ```
 
 To keep the unit after logout:
@@ -231,7 +231,7 @@ Build one tag for both supported Linux architectures from the repository root:
 ```sh
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  --tag ghcr.io/your-user/vocaphone-gateway:latest \
+  --tag ghcr.io/your-user/vocagateway:latest \
   --push .
 ```
 
@@ -323,10 +323,11 @@ under `~/.local/share/vocagateway/`. Docker Compose persists the same layout
 under `/data` in the `vocagateway-data` named volume.
 
 Environment variables use the `VOCAGATEWAY_*` prefix (for example
-`VOCAGATEWAY_TOKEN`, `VOCAGATEWAY_BIND_HOST`, `VOCAGATEWAY_PUBLIC_URL`). CLI
-entry points still ship as `vocaphone-server`, `vocaphone-token`, and related
-scripts from the `vocaphone-gateway` Python package. Older `VOCAPHONE_*`
-names and `~/.config/vocaphone/` paths are not read. Full contract:
+`VOCAGATEWAY_TOKEN`, `VOCAGATEWAY_BIND_HOST`, `VOCAGATEWAY_PUBLIC_URL`). The
+Python package and primary CLI are `vocagateway` (`vocagateway`,
+`vocagateway-token`, and related scripts). Deprecated `vocaphone-*` aliases
+still resolve for one cycle. Older `VOCAPHONE_*` names and `~/.config/vocaphone/`
+paths are not read. Full contract:
 [configuration.md](configuration.md).
 
 Downloaded models carry a `.vocagateway-model.json` marker file in each model

@@ -24,7 +24,7 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
     engine_hint = (
         "brew install whisper-cpp or whisperkit-cli"
         if is_mac
-        else "Install vocaphone-gateway[engines] (sherpa-onnx / faster-whisper) or use Docker"
+        else "Install vocagateway[engines] (sherpa-onnx / faster-whisper) or use Docker"
     )
     ready = (
         status.setup.token_configured

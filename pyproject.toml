@@ -1,5 +1,5 @@
 [project]
-name = "vocaphone-gateway"
+name = "vocagateway"
 version = "0.2.0"
 description = "Headless local transcription gateway for Voca clients (vocaphone, desktop apps)"
 readme = "README.md"
@@ -28,6 +28,13 @@ apple = [
 ]
 
 [project.scripts]
+vocagateway = "app.cli:serve"
+vocagateway-status = "app.cli:status"
+vocagateway-diagnostics = "app.cli:diagnostics"
+vocagateway-cleanup = "app.cli:cleanup"
+vocagateway-token = "app.cli:token"
+# Deprecated aliases for one cycle so existing `uv run vocaphone-*` / phone
+# justfiles keep working. Prefer the vocagateway* names above.
 vocaphone-server = "app.cli:serve"
 vocaphone-status = "app.cli:status"
 vocaphone-diagnostics = "app.cli:diagnostics"

@@ -50,10 +50,12 @@ test("product truth stays scoped to Early self-hosted infrastructure", () => {
   assert.doesNotMatch(html, /googletagmanager|gtag\(|G-SHWKRJMCEN/i);
 });
 
-test("does not call the leftover CLI script a product name", () => {
-  assert.match(html, /vocaphone-server/);
-  assert.match(html, /leftover CLI entry point/);
+test("names the primary CLI vocagateway and keeps deprecated aliases honest", () => {
+  assert.match(html, /uv run vocagateway/);
+  assert.match(html, /vocagateway<\/code> is the CLI/);
+  assert.match(html, /Deprecated[\s\S]*vocaphone-server/);
   assert.doesNotMatch(html, /product is vocaphone-server/i);
+  assert.doesNotMatch(html, /leftover CLI entry point/);
 });
 
 test("source, org, and family products are linked", () => {
