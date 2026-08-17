@@ -8,6 +8,9 @@
 [AGPL-3.0](LICENSE). Contact:
 [hello@vocahq.com](mailto:hello@vocahq.com).
 
+The public landing page lives in [`web/`](web/) and deploys to
+[GitHub Pages](https://vocahq.github.io/vocagateway/).
+
 Set it up once on hardware you control; pair phone clients (and, later, desktop
 clients) to that host. Self-host on macOS or Linux, or use Docker Compose on
 Linux `amd64`/`arm64`. There is no Voca account and no hosted Voca cloud.

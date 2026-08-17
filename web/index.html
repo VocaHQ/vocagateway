@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="VocaGateway is early optional self-hosted speech-to-text for Voca clients. Run it on a Mac, a Linux machine, or Docker. Audio travels to the host you chose. It is not on-device, and there is no Voca cloud."
+    />
+    <meta name="theme-color" content="#f4f1e8" />
+    <meta name="robots" content="index, follow" />
+    <meta name="color-scheme" content="light" />
+    <link rel="canonical" href="https://vocahq.github.io/vocagateway/" />
+    <meta property="og:title" content="VocaGateway — your hardware, shared speech-to-text" />
+    <meta
+      property="og:description"
+      content="Optional self-hosted speech-to-text for Voca clients. Pair with a QR code. Use a trusted LAN, a private encrypted network, or HTTPS. Early. AGPL-3.0."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content="VocaGateway" />
+    <meta property="og:url" content="https://vocahq.github.io/vocagateway/" />
+    <meta
+      property="og:image"
+      content="https://vocahq.github.io/vocagateway/assets/brand/voca-logo-512.png"
+    />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta
+      property="og:image:alt"
+      content="Voca microphone mark on a teal circle."
+    />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="VocaGateway — your hardware, shared speech-to-text" />
+    <meta
+      name="twitter:description"
+      content="Optional self-hosted speech-to-text for Voca clients. Not on-device. No Voca account."
+    />
+    <meta
+      name="twitter:image"
+      content="https://vocahq.github.io/vocagateway/assets/brand/voca-logo-512.png"
+    />
+    <title>VocaGateway — your hardware, shared speech-to-text</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="assets/brand/voca-logo-512.png" type="image/png" sizes="512x512" />
+    <link rel="apple-touch-icon" href="assets/brand/voca-logo-512.png" />
+    <link rel="manifest" href="site.webmanifest" />
+    <link rel="sitemap" type="application/xml" href="sitemap.xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="script.js" defer></script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "VocaGateway",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS, Linux",
+        "url": "https://vocahq.github.io/vocagateway/",
+        "downloadUrl": "https://github.com/VocaHQ/vocagateway",
+        "isAccessibleForFree": true,
+        "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "description": "Early optional self-hosted speech-to-text gateway for Voca clients. Audio travels to the host you run. Not on-device.",
+        "isPartOf": {
+          "@type": "Organization",
+          "name": "VocaHQ",
+          "url": "https://vocahq.com/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+
+    <header class="menu-bar" data-menu-bar>
+      <a class="brand-link" href="#top" aria-label="VocaGateway home">
+        <img src="assets/brand/voca-logo.svg" alt="" width="32" height="32" />
+        <span>VocaGateway</span>
+      </a>
+
+      <button
+        class="menu-toggle"
+        type="button"
+        aria-expanded="false"
+        aria-controls="site-navigation"
+        data-menu-toggle
+      >
+        <span class="sr-only">Open navigation</span>
+        <span></span>
+        <span></span>
+      </button>
+
+      <nav id="site-navigation" class="site-nav" aria-label="Main navigation" data-navigation>
+        <a href="#how">how it works</a>
+        <a href="#privacy">privacy</a>
+        <a href="#start">get started</a>
+        <a href="#family">family</a>
+        <a href="#questions">questions</a>
+        <a class="nav-cta" href="https://github.com/VocaHQ/vocagateway">view the source</a>
+      </nav>
+
+      <div class="system-strip" aria-hidden="true">
+        <span class="signal">▣</span>
+        <span>early</span>
+        <span data-local-time>10:09</span>
+      </div>
+
+      <a class="header-cta" href="https://github.com/VocaHQ/vocagateway">
+        view the source
+        <span aria-hidden="true">↗</span>
+      </a>
+    </header>
+
+    <main id="main-content">
+      <section class="hero dot-field" id="top" aria-labelledby="hero-title">
+        <div class="hero-decor" aria-hidden="true">
+          <div class="floating-card privacy-note">
+            <span class="paperclip">⌇</span>
+            <p>audio leaves<br />the client.</p>
+            <span class="scribble">not on-device</span>
+          </div>
+
+          <div class="floating-card status-note">
+            <span>release status</span>
+            <b>early</b>
+            <b>optional</b>
+            <b>self-hosted</b>
+          </div>
+
+          <div class="floating-card pair-tile">
+            <div class="qr-stub">
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            </div>
+            <div>
+              <strong>Pair phone</strong>
+              <small>scan in VocaPhone</small>
+            </div>
+          </div>
+
+          <div class="floating-folder folder-one"><span></span><b>models</b></div>
+        </div>
+
+        <div class="hero-copy">
+          <img class="hero-mark" src="assets/brand/voca-mark.svg" alt="" width="66" height="78" />
+          <p class="eyebrow">optional self-hosted speech-to-text</p>
+          <h1 id="hero-title">vocagateway</h1>
+          <p class="hero-lede">your hardware, shared speech-to-text.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#start">get started</a>
+            <a class="button button-secondary" href="https://github.com/VocaHQ/vocagateway">
+              view the source
+              <span aria-hidden="true">↗</span>
+            </a>
+          </div>
+          <p class="hero-note">
+            early · macOS · Linux · Docker Compose · AGPL-3.0 · part of
+            <a href="https://vocahq.com/">vocahq.com</a>
+          </p>
+          <ul class="hero-proof">
+            <li>not on-device</li>
+            <li>pair with a QR code</li>
+            <li>no Voca account</li>
+          </ul>
+        </div>
+
+        <div class="hero-demo dash reveal" aria-hidden="true">
+          <div class="dash-bar">
+            <span class="dash-brand">
+              <img src="assets/brand/voca-mark-white.svg" alt="" width="14" height="16" />
+              VocaGateway
+            </span>
+            <span class="dash-ready"><i></i> Ready for dictation</span>
+          </div>
+          <div class="dash-tabs">
+            <span class="is-on">Overview</span>
+            <span>Models</span>
+            <span>Pair &amp; test</span>
+            <span>Settings</span>
+          </div>
+          <div class="dash-body">
+            <div class="dash-stat">
+              <b>Host</b>
+              <span>192.168.1.20:8765</span>
+            </div>
+            <div class="dash-stat">
+              <b>Model</b>
+              <span>SenseVoice Small INT8</span>
+            </div>
+            <div class="dash-stat">
+              <b>Pair</b>
+              <span>QR available</span>
+            </div>
+            <div class="dash-stat">
+              <b>Auth</b>
+              <span>bearer token</span>
+            </div>
+          </div>
+          <p class="dash-caption">
+            Authenticated WebUI on the machine you run. Pair a phone, pick a
+            model, confirm ready.
+          </p>
+        </div>
+      </section>
+
+      <div class="word-ribbon">
+        <div>
+          <span>record</span><b>✦</b><span>send</span><b>✦</b><span>transcribe</span><b>✦</b
+          ><span>your host</span><b>✦</b>
+          <span aria-hidden="true">record</span><b aria-hidden="true">✦</b
+          ><span aria-hidden="true">send</span><b aria-hidden="true">✦</b
+          ><span aria-hidden="true">transcribe</span><b aria-hidden="true">✦</b
+          ><span aria-hidden="true">your host</span><b aria-hidden="true">✦</b>
+        </div>
+      </div>
+
+      <section class="family-banner" aria-labelledby="family-banner-title">
+        <div class="family-banner-inner reveal">
+          <p class="tiny-label" id="family-banner-title">part of vocahq.com</p>
+          <p>
+            VocaGateway is optional infrastructure for the Voca family. It is
+            not a client app and it is not on-device. On-device speech-to-text
+            stays on the phone or computer; this path is the one you stand up
+            when you want shared or larger compute.
+            <a href="https://vocahq.com/">See the full map on vocahq.com</a>.
+          </p>
+        </div>
+      </section>
+
+      <section class="how-section" id="how" aria-labelledby="how-title">
+        <div class="section-heading reveal">
+          <span class="section-tag">how it works</span>
+          <h2 id="how-title">run it once.<br />pair the client.</h2>
+          <p>
+            Set the gateway up on hardware you control. Clients send a bounded
+            recording. A speech-to-text model on that host returns the
+            transcript.
+          </p>
+        </div>
+
+        <div class="steps-grid">
+          <article class="step-card reveal">
+            <div class="step-topline"><span>1</span><b>once</b></div>
+            <div class="step-art" aria-hidden="true">
+              <div class="host-chip">
+                <strong>your machine</strong>
+                <small>macOS · Linux · Docker</small>
+              </div>
+            </div>
+            <h3>run it on a host you own</h3>
+            <p>
+              Native on a Mac or a Linux box, or Docker Compose on Linux
+              amd64/arm64. There is no Voca-hosted service and no installer
+              to download.
+            </p>
+          </article>
+
+          <article class="step-card featured-step reveal">
+            <div class="step-topline"><span>2</span><b>pair</b></div>
+            <div class="step-art" aria-hidden="true">
+              <div class="qr-card">
+                <div class="qr-stub large">
+                  <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                </div>
+                <small>Pair phone</small>
+              </div>
+            </div>
+            <h3>scan the pairing QR</h3>
+            <p>
+              After you open the WebUI with the bearer token, Pair &amp; test
+              shows a QR. VocaPhone on iPhone or Android reads the gateway URL
+              and token from it.
+            </p>
+          </article>
+
+          <article class="step-card reveal">
+            <div class="step-topline"><span>3</span><b>speak</b></div>
+            <div class="step-art" aria-hidden="true">
+              <div class="return-chip">
+                <span>recording in</span>
+                <strong>transcript out</strong>
+              </div>
+            </div>
+            <h3>get text back</h3>
+            <p>
+              The client records. Audio travels to this host. The selected
+              model runs here and the transcript goes back to the app. Desktop
+              clients are planned; VocaPhone is the current consumer.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="privacy-section" id="privacy" aria-labelledby="privacy-title">
+        <div class="privacy-window paper-window reveal">
+          <div class="paper-bar"><span>where speech-to-text runs</span></div>
+          <div class="privacy-grid">
+            <div class="privacy-copy">
+              <span class="section-tag">privacy is a route</span>
+              <h2 id="privacy-title">on the host you run.<br />not a Voca cloud.</h2>
+              <p>
+                Gateway mode is not on-device. When a client is pointed at
+                VocaGateway, audio leaves that device and travels to the
+                machine you configured. The gateway runs a local speech-to-text
+                model and returns text.
+              </p>
+              <div class="gateway-paths">
+                <article class="gateway-path">
+                  <span>01</span>
+                  <div>
+                    <strong>Trusted LAN</strong>
+                    <p>
+                      Fine for a home or lab network you already trust. HTTP
+                      does not encrypt the token or the recording.
+                    </p>
+                  </div>
+                </article>
+                <article class="gateway-path">
+                  <span>02</span>
+                  <div>
+                    <strong>Private encrypted network or HTTPS</strong>
+                    <p>
+                      Use Tailscale Serve, another encrypted network, or a
+                      reverse proxy with a real certificate when the path
+                      leaves that LAN.
+                    </p>
+                  </div>
+                </article>
+                <article class="gateway-path">
+                  <span>03</span>
+                  <div>
+                    <strong>Not the public internet on :8765</strong>
+                    <p>
+                      Do not publish port 8765 to the open internet. That
+                      listener carries the bearer token and the audio.
+                    </p>
+                  </div>
+                </article>
+              </div>
+            </div>
+            <aside class="privacy-facts">
+              <p><b>Recorded</b> on the client (phone today)</p>
+              <p><b>Processed</b> by a speech-to-text model on your host</p>
+              <p><b>Network</b> required for this path, and for model download</p>
+              <p><b>Retained</b> successful audio is deleted by default</p>
+              <p><b>Account</b> none required</p>
+              <p>
+                <b>Website</b> this marketing page has no analytics tag or
+                tracker
+              </p>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="start-section" id="start" aria-labelledby="start-title">
+        <div class="section-heading reveal">
+          <span class="section-tag">get started</span>
+          <h2 id="start-title">run it from source<br />or from Compose.</h2>
+          <p>
+            Status is Early. There is no packaged installer. After the process
+            starts, open
+            <code>http://127.0.0.1:8765/</code>, enter the token, download a
+            model, and wait until Overview says Ready for dictation.
+          </p>
+        </div>
+
+        <div class="start-grid">
+          <article class="start-card reveal">
+            <p class="tiny-label">native macOS</p>
+            <h3>Apple silicon host</h3>
+            <pre><code>brew install ffmpeg whisperkit-cli whisper-cpp
+uv sync --all-groups --extra engines --extra apple
+uv run vocaphone-server</code></pre>
+          </article>
+
+          <article class="start-card reveal">
+            <p class="tiny-label">native Linux</p>
+            <h3>desktop or home server</h3>
+            <pre><code>sudo apt install ffmpeg
+uv sync --all-groups --extra engines
+uv run vocaphone-server</code></pre>
+          </article>
+
+          <article class="start-card reveal">
+            <p class="tiny-label">Docker Compose</p>
+            <h3>Linux amd64 / arm64</h3>
+            <pre><code>cp .env.example .env
+printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" &gt;&gt; .env
+docker compose up --detach --build</code></pre>
+          </article>
+        </div>
+
+        <p class="platform-honesty reveal">
+          <span>command name:</span>
+          <code>vocaphone-server</code> is the leftover CLI entry point. The
+          product is VocaGateway. Full host notes, Tailscale, and reverse-proxy
+          setup live in the
+          <a href="https://github.com/VocaHQ/vocagateway/blob/main/README.md">README</a>
+          and
+          <a href="https://github.com/VocaHQ/vocagateway/blob/main/docs/deployment.md">deployment guide</a>.
+        </p>
+      </section>
+
+      <section class="family-section" id="family" aria-labelledby="family-title">
+        <div class="section-heading reveal">
+          <span class="section-tag">the Voca ecosystem</span>
+          <h2 id="family-title">same privacy bar.<br />different machines.</h2>
+          <p>
+            Start at
+            <a href="https://vocahq.com/">vocahq.com</a>
+            for the directory. Each product keeps its own site, status, and
+            source.
+          </p>
+        </div>
+
+        <a class="hq-callout reveal" href="https://vocahq.com/">
+          <img src="assets/brand/voca-logo.svg" alt="" width="48" height="48" />
+          <div>
+            <p class="tiny-label">family home</p>
+            <strong>vocahq.com</strong>
+            <span>Private speech-to-text across the machines you own.</span>
+          </div>
+          <span class="hq-arrow" aria-hidden="true">↗</span>
+        </a>
+
+        <div class="eco-grid">
+          <article class="eco-card reveal">
+            <div class="eco-head">
+              <img src="assets/icons/android.svg" alt="" width="20" height="20" />
+              <span>iPhone + Android</span>
+              <small>beta / source build</small>
+            </div>
+            <h3>VocaPhone</h3>
+            <p>
+              The current gateway client. Android has a public beta. iPhone
+              currently needs an iOS 17+ source build. On-device is the
+              default path; this gateway is optional.
+            </p>
+            <div class="eco-links">
+              <a href="https://vocaphone.vocahq.com/">
+                vocaphone.vocahq.com <span aria-hidden="true">↗</span>
+              </a>
+              <a href="https://github.com/VocaHQ/vocaphone">source</a>
+            </div>
+          </article>
+
+          <article class="eco-card reveal">
+            <div class="eco-head">
+              <img src="assets/icons/linux.svg" alt="" width="20" height="20" />
+              <span>Linux</span>
+              <small>available now</small>
+            </div>
+            <h3>VocaLinux</h3>
+            <p>
+              System-wide voice typing for real Linux desktops. On-device
+              speech-to-text on X11 and Wayland. Gateway shipping from the
+              desktop app is planned.
+            </p>
+            <div class="eco-links">
+              <a href="https://vocalinux.com/">vocalinux.com <span aria-hidden="true">↗</span></a>
+              <a href="https://github.com/VocaHQ/vocalinux">source</a>
+            </div>
+          </article>
+
+          <article class="eco-card reveal">
+            <div class="eco-head">
+              <img src="assets/icons/apple.svg" alt="" width="20" height="20" />
+              <span>macOS</span>
+              <small>beta</small>
+            </div>
+            <h3>VocaMac</h3>
+            <p>
+              A native menu bar app for Apple Silicon. Hold a hotkey, speak,
+              and text appears at the cursor through an on-device
+              speech-to-text model.
+            </p>
+            <div class="eco-links">
+              <a href="https://vocamac.com/">vocamac.com <span aria-hidden="true">↗</span></a>
+              <a href="https://github.com/VocaHQ/vocamac">source</a>
+            </div>
+          </article>
+
+          <article class="eco-card reveal">
+            <div class="eco-head">
+              <img src="assets/icons/windows.svg" alt="" width="20" height="20" />
+              <span>Windows</span>
+              <small>coming soon</small>
+            </div>
+            <h3>VocaWin</h3>
+            <p>
+              A Windows-first foundation is in progress. There is no public
+              installer yet. It does not expose a gateway mode today.
+            </p>
+            <div class="eco-links">
+              <a href="https://vocawin.com/">vocawin.com <span aria-hidden="true">↗</span></a>
+              <a href="https://github.com/VocaHQ/vocawin">source</a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="faq-section" id="questions" aria-labelledby="questions-title">
+        <div class="faq-heading reveal">
+          <span class="section-tag">questions, answered</span>
+          <h2 id="questions-title">the useful bits.</h2>
+        </div>
+        <div class="faq-list reveal">
+          <details open>
+            <summary>Is VocaGateway on-device?<span aria-hidden="true">＋</span></summary>
+            <p>
+              No. On-device means the speech-to-text model and the audio stay
+              on the phone or computer after the model download. Gateway mode
+              is different: configured audio travels to the host you run. Do
+              not collapse those two paths.
+            </p>
+          </details>
+          <details>
+            <summary>Do I need this for VocaPhone?<span aria-hidden="true">＋</span></summary>
+            <p>
+              No. VocaPhone can transcribe on the phone after you download a
+              model. Use VocaGateway when you want shared hardware, a larger
+              model, or one service for more than one client.
+            </p>
+          </details>
+          <details>
+            <summary>What can pair with it today?<span aria-hidden="true">＋</span></summary>
+            <p>
+              VocaPhone on iOS and Android. Linux, macOS, and Windows desktop
+              apps are planned to start this same headless server later. There
+              is no Voca account.
+            </p>
+          </details>
+          <details>
+            <summary>Where should I expose the port?<span aria-hidden="true">＋</span></summary>
+            <p>
+              A trusted LAN, Tailscale Serve (or another encrypted private
+              network), or HTTPS on a reverse proxy. Never publish port 8765
+              to the public internet. HTTP does not encrypt the bearer token
+              or the recording.
+            </p>
+          </details>
+          <details>
+            <summary>Is it free and open source?<span aria-hidden="true">＋</span></summary>
+            <p>
+              Yes. The repository is
+              <a href="https://github.com/VocaHQ/vocagateway">github.com/VocaHQ/vocagateway</a>,
+              licensed under AGPL-3.0. The rest of the family lives under the
+              <a href="https://github.com/VocaHQ">VocaHQ organization</a>.
+            </p>
+          </details>
+        </div>
+      </section>
+
+      <section class="close-section dot-field" id="follow" aria-labelledby="follow-title">
+        <div class="close-copy reveal">
+          <img src="assets/brand/voca-logo.svg" alt="" width="88" height="88" />
+          <p class="eyebrow">early · self-hosted · optional</p>
+          <h2 id="follow-title">run it on hardware<br />you already have.</h2>
+          <p>
+            Clone the repo, start the process, pair a phone. If you only need
+            on-device dictation, skip this and pick a client on vocahq.com.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="https://github.com/VocaHQ/vocagateway">
+              view the source <span aria-hidden="true">↗</span>
+            </a>
+            <a class="button button-secondary" href="https://vocahq.com/">
+              open vocahq.com <span aria-hidden="true">↗</span>
+            </a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-brand">
+        <img src="assets/brand/voca-logo.svg" alt="" width="52" height="52" />
+        <div>
+          <strong>VocaGateway</strong>
+          <span>Optional self-hosted speech-to-text in the Voca family.</span>
+        </div>
+      </div>
+      <nav aria-label="Footer navigation">
+        <div>
+          <p>product</p>
+          <a href="#how">how it works</a>
+          <a href="#privacy">privacy</a>
+          <a href="#start">get started</a>
+          <a href="https://github.com/VocaHQ/vocagateway">source</a>
+          <a href="https://github.com/VocaHQ/vocagateway/blob/main/LICENSE">AGPL-3.0</a>
+        </div>
+        <div>
+          <p>family</p>
+          <a href="https://vocahq.com/">vocahq.com</a>
+          <a href="https://vocaphone.vocahq.com/">VocaPhone</a>
+          <a href="https://vocalinux.com/">VocaLinux</a>
+          <a href="https://vocamac.com/">VocaMac</a>
+          <a href="https://vocawin.com/">VocaWin</a>
+        </div>
+        <div>
+          <p>say hello</p>
+          <a href="https://github.com/VocaHQ">VocaHQ on GitHub</a>
+          <a href="https://discord.gg/UMJduhcqn">Discord</a>
+          <a href="mailto:hello@vocahq.com">hello@vocahq.com</a>
+        </div>
+      </nav>
+      <div class="footer-bottom">
+        <span>© <span data-current-year>2026</span> VocaHQ</span>
+        <span>early infrastructure. the rest of the family lives at vocahq.com.</span>
+      </div>
+    </footer>
+  </body>
+</html>
