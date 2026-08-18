@@ -17,6 +17,8 @@
 [![Discord](https://img.shields.io/discord/1538633755877580810?logo=discord&logoColor=white&label=Discord)](https://discord.gg/UMJduhcqn)
 [![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e)](https://vocahq.com)
 
+<img src="https://raw.githubusercontent.com/VocaHQ/.github/main/brand/vocagateway/vocagateway-rack.svg" alt="" width="280" height="280">
+
 </div>
 
 **Early** optional self-hosted transcription gateway for the
