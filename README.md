@@ -1,7 +1,21 @@
 # VocaGateway
 
+<div align="center">
+
+[![Quality](https://github.com/VocaHQ/vocagateway/actions/workflows/quality.yml/badge.svg)](https://github.com/VocaHQ/vocagateway/actions/workflows/quality.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![Status: Early / alpha](https://img.shields.io/badge/status-Early%20%2F%20alpha-yellow)](#vocagateway)
+[![Release](https://img.shields.io/github/v/release/VocaHQ/vocagateway?label=Release)](https://github.com/VocaHQ/vocagateway/releases)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Platform: macOS + Linux + Docker](https://img.shields.io/badge/platform-macOS%20%2B%20Linux%20%2B%20Docker-lightgrey)](#deployment-summary)
+
+[![Privacy: self-hosted, not on-device](https://img.shields.io/badge/privacy-self--hosted%20%7C%20not%20on--device-success)](#vocagateway)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/VocaHQ/vocagateway/pulls)
+[![GitHub Issues](https://img.shields.io/github/issues/VocaHQ/vocagateway)](https://github.com/VocaHQ/vocagateway/issues)
 [![Discord](https://img.shields.io/discord/1538633755877580810?logo=discord&logoColor=white&label=Discord)](https://discord.gg/UMJduhcqn)
 [![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e)](https://vocahq.com)
+
+</div>
 
 **Early** optional self-hosted transcription gateway for the
 [Voca](https://github.com/VocaHQ) family. License:
