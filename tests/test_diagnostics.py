@@ -18,7 +18,7 @@ from app.schemas import (
 
 def _status(paths: PathStatus) -> AdminStatusResponse:
     return AdminStatusResponse(
-        version="0.2.0",
+        version="0.1.0",
         engine=EngineStatus(id="whisper.cpp", name="whisper.cpp:ggml-base.en.bin", ready=True),
         system=SystemStatus(
             os="Darwin",

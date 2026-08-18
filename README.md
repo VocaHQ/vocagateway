@@ -1,37 +1,52 @@
 # VocaGateway
 
+<div align="center">
+
+[![Quality](https://github.com/VocaHQ/vocagateway/actions/workflows/quality.yml/badge.svg)](https://github.com/VocaHQ/vocagateway/actions/workflows/quality.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![Status: Early / alpha](https://img.shields.io/badge/status-Early%20%2F%20alpha-yellow)](#vocagateway)
+[![Release](https://img.shields.io/github/v/release/VocaHQ/vocagateway?label=Release)](https://github.com/VocaHQ/vocagateway/releases)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Platform: macOS + Linux + Docker](https://img.shields.io/badge/platform-macOS%20%2B%20Linux%20%2B%20Docker-lightgrey)](#deployment-summary)
+
+[![Privacy: self-hosted, not on-device](https://img.shields.io/badge/privacy-self--hosted%20%7C%20not%20on--device-success)](#vocagateway)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/VocaHQ/vocagateway/pulls)
+[![GitHub Issues](https://img.shields.io/github/issues/VocaHQ/vocagateway)](https://github.com/VocaHQ/vocagateway/issues)
 [![Discord](https://img.shields.io/discord/1538633755877580810?logo=discord&logoColor=white&label=Discord)](https://discord.gg/UMJduhcqn)
 [![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e)](https://vocahq.com)
+
+</div>
 
 **Early** optional self-hosted transcription gateway for the
 [Voca](https://github.com/VocaHQ) family. License:
 [AGPL-3.0](LICENSE). Contact:
 [hello@vocahq.com](mailto:hello@vocahq.com).
 
-The public landing page lives in [`web/`](web/) and deploys to
+The public landing page is in [`web/`](web/) and deploys to
 [vocagateway.vocahq.com](https://vocagateway.vocahq.com/).
 
-Set it up once on hardware you control; pair phone clients (and, later, desktop
-clients) to that host. Self-host on macOS or Linux, or use Docker Compose on
-Linux `amd64`/`arm64`. There is no Voca account and no hosted Voca cloud.
+Install it once on a machine you control, then pair phone clients to that host.
+Desktop clients are Planned. You can self-host on macOS or Linux, or use Docker
+Compose on Linux `amd64`/`arm64`. There is no Voca account and no hosted Voca
+cloud.
 
-The gateway accepts bounded recordings from
-[vocaphone](https://github.com/VocaHQ/vocaphone) (iOS/Android) and, soon, the
-Linux/macOS/Windows desktop apps. It normalizes audio with FFmpeg, invokes a
-local speech engine, and returns an idempotent transcript. An authenticated
-HTMX WebUI covers setup, model management, engine selection, microphone
-testing, and operational status.
+The gateway takes bounded recordings from
+[vocaphone](https://github.com/VocaHQ/vocaphone) (iOS/Android). Linux, macOS,
+and Windows desktop apps come later. FFmpeg normalizes the audio, a local speech
+engine transcribes it, and the gateway returns an idempotent transcript. The
+authenticated HTMX WebUI covers setup, model management, engine selection,
+microphone testing, and operational status.
 
-Gateway mode is **not** on-device processing: audio leaves the client and travels
-to the machine you chose. Prefer a trusted LAN, Tailscale, or HTTPS. Never
-expose port `8765` to the public internet.
+Gateway mode is not on-device processing. Audio leaves the client and travels to
+the machine you chose. Prefer a trusted LAN, Tailscale, or HTTPS. Never expose
+port `8765` to the public internet.
 
 The CLI is `vocagateway` (package `vocagateway`). Deprecated aliases
 (`vocaphone-server`, `vocaphone-token`, and related `vocaphone-*` scripts) still
 resolve for one cycle so older justfiles keep working. Environment variables and
 on-disk paths use the `vocagateway` prefix (`VOCAGATEWAY_*`,
 `~/.config/vocagateway/`, `~/.local/share/vocagateway/`). The live pairing and env
-contract is documented in [configuration.md](docs/configuration.md).
+contract is in [configuration.md](docs/configuration.md).
 
 ## Consumers
 
@@ -58,24 +73,24 @@ git clone --recurse-submodules https://github.com/VocaHQ/vocaphone.git
 
 Native MLX Audio and WhisperKit are the accelerated choices on Apple silicon.
 Docker Desktop runs the portable Linux image in a VM, so it cannot use the
-macOS MLX/WhisperKit/Core ML paths. See [deployment.md](docs/deployment.md) for the
-performance explanation, operational commands, and persistence details.
+macOS MLX/WhisperKit/Core ML paths. See [deployment.md](docs/deployment.md) for
+performance notes, operational commands, and persistence.
 
 ## Native macOS quick start
 
 Requires [Homebrew](https://brew.sh/), Python 3.12+, and
 [uv](https://docs.astral.sh/uv/). Install the host dependencies first:
 
-- `ffmpeg` — audio normalization (required by every engine)
-- `whisperkit-cli` — WhisperKit/Core ML engine on Apple silicon, and the engine
+- `ffmpeg`: audio normalization (required by every engine)
+- `whisperkit-cli`: WhisperKit/Core ML engine on Apple silicon, and the engine
   behind the VocaMac adapter
-- `whisper-cpp` — provides `whisper-cli` for GGML `whisper.cpp` models,
+- `whisper-cpp`: provides `whisper-cli` for GGML `whisper.cpp` models,
   including the Handy model family, which runs without the Handy app
 
 The [VocaMac](https://github.com/VocaHQ/vocamac) and
-[Handy](https://handy.computer) desktop apps are **optional and Mac-only**:
-VocaMac needs an Apple silicon Mac, Handy needs macOS. Install neither and the
-gateway downloads and runs its own models; install either and the gateway can
+[Handy](https://handy.computer) desktop apps are **optional and Mac-only**.
+VocaMac needs an Apple silicon Mac. Handy needs macOS. If you install neither,
+the gateway downloads and runs its own models. If you install either, it can
 reuse the models that app already downloaded instead of asking for a second
 copy. On Linux and in containers both engines are hidden from the WebUI picker,
 and selecting one through the API is rejected with `422 invalid_engine`.
@@ -100,9 +115,9 @@ The LaunchAgent uses the checkout's `.venv`, adds standard Homebrew paths, and
 writes logs to `~/Library/Logs/VocaGateway/`.
 
 MLX Audio and WhisperKit are recommended on Apple silicon. The `apple` extra
-installs MLX only on an arm64 Mac; it is deliberately absent from Linux and
-Docker. The standalone `whisper.cpp` engine uses the `whisper-cli` binary
-installed above (override its location with `VOCAGATEWAY_WHISPER_BINARY`); on a
+installs MLX only on an arm64 Mac. It is left out of Linux and Docker on
+purpose. The standalone `whisper.cpp` engine uses the `whisper-cli` binary
+installed above (override its location with `VOCAGATEWAY_WHISPER_BINARY`). On a
 native Linux host it is optional and can be built from source instead.
 
 ## Native Linux quick start
@@ -120,7 +135,7 @@ uv run vocagateway
 
 Do not pass `--extra apple` on Linux. The first run creates
 `~/.config/vocagateway/token` with mode `600`. The banner prints the WebUI URL and
-token path; show the secret (and a terminal pairing QR) with `just token` or
+token path. Show the secret (and a terminal pairing QR) with `just token` or
 `uv run vocagateway-token`. Open `http://127.0.0.1:8765/`, enter the token,
 download a recommended model (SenseVoice Small INT8 or Parakeet TDT INT8 on
 CPU), select it, and confirm **Ready for dictation**.
@@ -159,26 +174,26 @@ The code encodes a versioned JSON payload:
 {"v":1,"url":"http://192.168.1.20:8765","token":"..."}
 ```
 
-Discovery prefers private Wi‑Fi addresses (for example `192.168.x.x`). Override
+Discovery prefers private Wi-Fi addresses (for example `192.168.x.x`). Override
 with `VOCAGATEWAY_PUBLIC_URL` or `VOCAGATEWAY_PAIRING_URL` when automatic selection
-is wrong — discovery cannot see a public hostname, so this override is mandatory
+is wrong. Discovery cannot see a public hostname, so this override is mandatory
 behind a [reverse proxy](#https-reverse-proxy-vps). The same payload is available
 without the WebUI: on a TTY,
 `just token` (or `uv run vocagateway-token`) prints an ASCII QR for headless
-setup; use `just token --plain` when you only want the secret (pipes always get
+setup. Use `just token --plain` when you only want the secret (pipes always get
 plain output).
 
 The same card can create a named per-device token and immediately show its own
-QR instead of the shared bootstrap token, and a **Token** dropdown
-switches which one the QR (and the `/v1/admin/pairing` and
-`/v1/admin/pairing/qr.svg` JSON/SVG endpoints, via `?token_id=`) currently
-encodes. A device token's plaintext is cached in memory only for the life of
-the gateway process — long enough to regenerate its QR at a different address
-without creating a duplicate — and is dropped immediately on revoke.
+QR instead of the shared bootstrap token. A **Token** dropdown switches which
+one the QR currently encodes, along with the `/v1/admin/pairing` and
+`/v1/admin/pairing/qr.svg` JSON/SVG endpoints via `?token_id=`. A device token's
+plaintext is cached in memory only for the life of the gateway process, long
+enough to regenerate its QR at a different address without creating a duplicate,
+and is dropped immediately on revoke.
 
 ## Docker Compose quick start
 
-[compose.yaml](compose.yaml) is the canonical container deployment. It builds a
+[compose.yaml](compose.yaml) is the container deployment we document. It builds a
 non-root Linux image containing FFmpeg, the gateway, and a pinned `whisper.cpp`
 CLI. The same Dockerfile builds on Linux `amd64` and `arm64`.
 
@@ -191,51 +206,51 @@ docker compose ps
 curl --fail http://127.0.0.1:8765/health/live
 ```
 
-[`.env.example`](.env.example) is the annotated template: it already sets the
-loopback publication defaults and comments out every other supported setting,
-so starting from it is how you find out what is tunable. Appending the token
-overrides the empty `VOCAGATEWAY_TOKEN=` placeholder it ships with — Compose
+[`.env.example`](.env.example) is the annotated template. It already sets the
+loopback publication defaults and comments out every other supported setting, so
+starting from it is how you find out what is tunable. Appending the token
+overrides the empty `VOCAGATEWAY_TOKEN=` placeholder it ships with. Compose
 takes the last assignment of a repeated key.
 
 The token is provided as a Compose secret rather than a container environment
 variable. Models, configuration, and the SQLite database persist in the
 `vocagateway_vocagateway-data` named volume mounted at `/data`.
 
-Before pairing a phone, read the bridge-network note below: on the default
+Before pairing a phone, read the bridge-network note below. On the default
 network the QR cannot auto-discover a reachable address, and
 `VOCAGATEWAY_PUBLIC_URL` in `.env` is what fixes it.
 
 The container is live before a model is installed, so `/health/ready` initially
-returns `503`. Open the WebUI, enter the token from `.env`, download/select a
+returns `503`. Open the WebUI, enter the token from `.env`, download and select a
 recommended sherpa-onnx, Moonshine, or faster-whisper model, and check again:
 
 ```sh
 curl --fail http://127.0.0.1:8765/health/ready
 ```
 
-The default Compose publication is host loopback only. This is appropriate for
-Tailscale Serve. To intentionally allow direct LAN access, set
-`VOCAGATEWAY_PUBLISH_HOST=0.0.0.0` in `.env` and protect the port with the host
-firewall. Never expose port 8765 to the public internet.
+The default Compose publication is host loopback only. That fits Tailscale
+Serve. To allow direct LAN access, set `VOCAGATEWAY_PUBLISH_HOST=0.0.0.0` in
+`.env` and protect the port with the host firewall. Never expose port 8765 to
+the public internet.
 
 The default bridge network also hides the host's real LAN address from the
-gateway's own address auto-discovery (used for the pairing QR): the container
-only ever sees its private bridge IP, not the host's Wi-Fi/Ethernet interface.
-Two ways out, both set in `.env`:
+gateway's own address auto-discovery (used for the pairing QR). The container
+only ever sees its private bridge IP, not the host's Wi-Fi or Ethernet
+interface. Two ways out, both set in `.env`:
 
 - `VOCAGATEWAY_PUBLIC_URL=http://192.168.1.20:8765` names the address the phone
   should use and skips discovery entirely. This works everywhere, including
   Docker Desktop on macOS and Windows.
 - `VOCAGATEWAY_NETWORK_MODE=host`, on Linux Docker Engine only, shares the
   host's network namespace so discovery finds the real `192.168.x.x` address by
-  itself. This ignores `VOCAGATEWAY_PUBLISH_HOST`/`PORT` — the container binds
+  itself. This ignores `VOCAGATEWAY_PUBLISH_HOST`/`PORT`. The container binds
   directly on the host per `VOCAGATEWAY_BIND_HOST`/`VOCAGATEWAY_PORT`, so lock
   down port 8765 with the host firewall first.
 
 ### Stamping the build commit
 
 A running container has no `.git` to read, so the commit it was built from is
-baked in as a build argument. `just up` and `just image` do this for you: the
+baked in as a build argument. `just up` and `just image` do this for you. The
 justfile exports `VOCAGATEWAY_GIT_COMMIT`, `VOCAGATEWAY_GIT_COMMIT_SUBJECT`, and
 `VOCAGATEWAY_GIT_COMMIT_DATE` from `git`, Compose interpolates them into every
 service's `build.args`, and `/v1/admin/status` then reports the revision.
@@ -243,7 +258,7 @@ service's `build.args`, and `/v1/admin/status` then reports the revision.
 Reporting is gated on `VOCAGATEWAY_DEBUG=true`, the same switch that mounts
 `/docs`. A default deployment stamps the image but keeps the revision to itself:
 `commit` is `null` and the WebUI drops its **Build** row. Stamp at build time
-regardless — turning debug on later then costs a restart rather than a rebuild.
+anyway. Turning debug on later then costs a restart rather than a rebuild.
 
 Driving Compose or Docker directly works the same way once those variables are
 in the environment:
@@ -255,8 +270,8 @@ export VOCAGATEWAY_GIT_COMMIT_DATE="$(git log -1 --format=%cI)"
 docker compose up --detach --build
 ```
 
-Without them the build still succeeds and the gateway reports `commit: null` —
-stamping is informational, never a build requirement. Do not put them in `.env`:
+Without them the build still succeeds and the gateway reports `commit: null`.
+Stamping is informational, never a build requirement. Do not put them in `.env`.
 Compose would pin every later build to whatever commit was current when you
 wrote the file.
 
@@ -279,7 +294,7 @@ form. direnv caches an evaluation until `.envrc` or something it watches
 changes, so without them the exported sha would keep naming whatever commit was
 current when the shell first entered the directory. Committing rewrites a loose
 ref under `.git/refs/heads`, checking out a branch rewrites `.git/HEAD`, and
-`git gc` folds loose refs into `.git/packed-refs` — watching all three covers
+`git gc` folds loose refs into `.git/packed-refs`. Watching all three covers
 every way HEAD moves. `.gitignore` already excludes `.envrc`, so it stays on
 your machine.
 
@@ -290,10 +305,10 @@ commit only invalidates that final metadata layer. Rebuilds stay cached, and the
 None of this is needed to run the gateway natively. `just run` inherits the
 three variables from the justfile, which exports them for every recipe, and even
 without them the gateway reads `git` directly whenever it is running from a
-source checkout. Setting them by hand is only required where neither holds — an
+source checkout. Setting them by hand is only required where neither holds: an
 installed wheel outside a checkout, or a container built without the build args
 above. If a local `just run` reports no commit, check `VOCAGATEWAY_DEBUG` before
-suspecting the variables: reporting is gated on it, and it is off by default.
+suspecting the variables. Reporting is gated on it, and it is off by default.
 
 ## WebUI
 
@@ -320,16 +335,16 @@ The authenticated WebUI provides:
 Operational counters stay in process memory, contain no audio or transcript
 content, and reset when the gateway process restarts.
 
-The catalog contains WhisperKit Core ML and MLX models for Apple silicon,
-portable sherpa-onnx INT8 models, persistent CTranslate2 `faster-whisper`
-models, Moonshine models for Arabic, English, Spanish, Japanese, Korean,
-Mandarin Chinese, Ukrainian, and Vietnamese, and portable `whisper.cpp` models.
-It also includes compact Whisper Medium,
-Whisper Large v3, and Breeze ASR builds from
+The catalog has WhisperKit Core ML and MLX models for Apple silicon, portable
+sherpa-onnx INT8 models, persistent CTranslate2 `faster-whisper` models,
+Moonshine models for Arabic, English, Spanish, Japanese, Korean, Mandarin
+Chinese, Ukrainian, and Vietnamese, and portable `whisper.cpp` models. It also
+includes compact Whisper Medium, Whisper Large v3, and Breeze ASR builds from
 [Handy's documented model family](https://handy.computer/docs/models) that run
-directly through `whisper.cpp`; Handy does not need to be installed.
-SenseVoice, Parakeet, GigaAM, Canary, Dolphin, and Qwen3-ASR now all run independently of Handy through sherpa-onnx;
-Parakeet, Qwen3-ASR, and Granite Speech also have Apple-native MLX options.
+directly through `whisper.cpp`. Handy does not need to be installed.
+SenseVoice, Parakeet, GigaAM, Canary, Dolphin, and Qwen3-ASR all run through
+sherpa-onnx without Handy. Parakeet, Qwen3-ASR, and Granite Speech also have
+Apple-native MLX options.
 GigaAM (Russian, CTC or RNNT) and Canary (English only in this build; the
 underlying model also covers German, French, and Spanish, but source/target
 language is fixed when the recognizer loads rather than per request) download
@@ -340,13 +355,13 @@ Qwen3-ASR reads a Hugging Face tokenizer
 directory instead of a `tokens.txt`, so the gateway fetches `tokenizer/` and
 passes the folder to the recognizer.
 
-Parakeet ships in two generations, and newer is not automatically better: v3
-covers 25 European languages, while the English-only v2 spends all of its
-capacity on English and transcribes it more accurately. Pick v2 if you dictate
-only in English.
+Parakeet ships in two generations, and newer is not automatically better. v3
+covers 25 European languages. The English-only v2 spends all of its capacity on
+English and transcribes it more accurately. Pick v2 if you dictate only in
+English.
 
-Full per-model language coverage — all 58 models, and a reverse index from each
-of the 108 languages to the models that cover it — is in
+Full per-model language coverage (all 58 models, and a reverse index from each
+of the 108 languages to the models that cover it) is in
 [models.md](docs/models.md). The WebUI Models tab shows the same per card, with
 a language filter.
 
@@ -375,15 +390,15 @@ redistributing weights.
 
 Every catalog download is pinned and verified. Each entry in
 [`app/model_pins.json`](app/model_pins.json) records the Hugging Face commit a
-model is fetched from and the SHA-256 of its files; the gateway hashes each
+model is fetched from and the SHA-256 of its files. The gateway hashes each
 file as it streams and discards anything that does not match, so a rejected
 model is never left on disk for an engine to load.
 
-Be clear about what this does and does not buy you:
+Threats and how they are handled:
 
 | Threat | Handled by |
 | --- | --- |
-| Network attacker swapping bytes in flight | TLS — every download is HTTPS with certificate verification, and non-HTTPS custom URLs are refused outright |
+| Network attacker swapping bytes in flight | TLS: every download is HTTPS with certificate verification, and non-HTTPS custom URLs are refused outright |
 | Upstream repo or account compromise serving altered weights | **Pinned digests**, because the attacker is the origin and its certificate is perfectly valid |
 | Silent re-upload changing a model under an existing catalog entry | **Pinned commits**, which stop downloads tracking `main` |
 | Truncated or corrupted transfer | Digest verification, which also fixes the partially-downloaded-model failure mode |
@@ -395,19 +410,19 @@ time. That ordering is the point: metadata fetched from a compromised host
 would agree with the compromised file, so only a digest reviewed in git is
 evidence of anything.
 
-Model weights are executed by ONNX, GGUF, and Core ML runtimes, so a swapped
-model is a code-execution concern rather than just a bad transcript.
+Model weights are executed by ONNX, GGUF, and Core ML runtimes. A swapped
+model can execute code in those runtimes.
 
 ### Coverage
 
 40 of 58 catalog models are pinned, covering every Hugging Face source. The
 remainder cannot be pinned from published metadata:
 
-- **13 Moonshine models** are downloaded by the `moonshine_voice` library
-  rather than by the gateway, so their transfer is outside our control.
-- **3 Handy-mirrored models** on `blob.handy.computer` return a multipart S3
-  ETag, which is not a digest of the file content.
-- **2 sherpa-onnx release tarballs** on GitHub publish no checksum.
+- 13 Moonshine models are downloaded by the `moonshine_voice` library rather
+  than by the gateway, so their transfer is outside our control.
+- 3 Handy-mirrored models on `blob.handy.computer` return a multipart S3 ETag,
+  which is not a digest of the file content.
+- 2 sherpa-onnx release tarballs on GitHub publish no checksum.
 
 The last five can be pinned by hashing them locally, which transfers about
 3.5 GB:
@@ -416,9 +431,9 @@ The last five can be pinned by hashing them locally, which transfers about
 uv run scripts/harvest-model-pins.py --download-unpinnable
 ```
 
-Unpinned models still download normally over HTTPS; they simply get no
-digest check. Nothing is silently downgraded — a pinned model that fails
-verification fails the download.
+Unpinned models still download normally over HTTPS. They simply get no
+digest check. A pinned model that fails verification fails the download. Nothing
+is silently downgraded.
 
 ### Refreshing pins
 
@@ -459,24 +474,24 @@ warm run.
 
 Moonshine's English Medium, Small, and Tiny Streaming tiers, and the sherpa-onnx
 Streaming Zipformer English 20M INT8 model, accept float32 PCM over an
-authenticated WebSocket while the iPhone records — real incremental decoding
-with partial results, not a periodic re-transcription of the growing buffer.
-Moonshine Medium favors accuracy, Small is the balanced Linux default, and Tiny
-favors latency; the Zipformer model favors speed over accuracy at a fraction of
-the download size. The ordinary WAV is still retained during the request and
-automatically used by the batch API if streaming is unavailable or interrupted.
-Streaming support is negotiated on that socket to avoid an extra network round
-trip before every recording.
+authenticated WebSocket while the iPhone records. That is real incremental
+decoding with partial results, not a periodic re-transcription of the growing
+buffer. Moonshine Medium favors accuracy, Small is the balanced Linux default,
+and Tiny favors latency. The Zipformer model favors speed over accuracy at a
+fraction of the download size. The ordinary WAV is still retained during the
+request and automatically used by the batch API if streaming is unavailable or
+interrupted. Streaming support is negotiated on that socket to avoid an extra
+network round trip before every recording.
 
-Every other model — the remaining Moonshine tiers, WhisperKit, faster-whisper,
-and every other sherpa-onnx model above — uses its fast batch path after
+Every other model (the remaining Moonshine tiers, WhisperKit, faster-whisper,
+and every other sherpa-onnx model above) uses its fast batch path after
 recording. The server returns a structured unsupported response for those, so
 the app immediately continues through the ordinary upload pipeline. In the
 iPhone app or keyboard, **Automatic** uses the active gateway model. Choosing a
 named language requires the active model to support that same language.
 
 Moonshine's English code and weights use the MIT license. Its non-English weights
-use the Moonshine Community License and are limited to non-commercial use; the
+use the Moonshine Community License and are limited to non-commercial use. The
 WebUI labels these models **personal use**. Review the current
 [Moonshine licensing and model documentation](https://github.com/moonshine-ai/moonshine)
 before deploying them outside a personal setup.
@@ -591,17 +606,17 @@ Use [`.env.example`](.env.example) as a template and never commit the populated
 `.env` file.
 
 For the pairing QR payload (`{"v":1,"url":"...","token":"..."}`), native paths,
-and the full `VOCAGATEWAY_*` contract — including the note that older
-`VOCAPHONE_*` / `~/.config/vocaphone/` names are stale and unread — see
+and the full `VOCAGATEWAY_*` contract (including the note that older
+`VOCAPHONE_*` / `~/.config/vocaphone/` names are stale and unread), see
 [configuration.md](docs/configuration.md).
 
 ## Listener and network access
 
-The native default listener is `0.0.0.0:8765`; the startup banner and WebUI show
+The native default listener is `0.0.0.0:8765`. The startup banner and WebUI show
 that listener separately from the local browser URL. An all-interface listener
 is reachable from connected networks, so keep the host firewall enabled.
 
-The iPhone and Android apps accept ordinary HTTP and HTTPS gateway URLs; a
+The iPhone and Android apps accept ordinary HTTP and HTTPS gateway URLs. A
 Tailscale hostname is not mandatory. Supported arrangements include:
 
 - a trusted LAN hostname such as `http://homelabone:8765/`; for Docker, set
@@ -613,7 +628,7 @@ Tailscale hostname is not mandatory. Supported arrangements include:
 HTTP does not encrypt the bearer token or recording. Use it only on a trusted
 LAN or encrypted VPN, never over the public internet.
 
-For the smallest private exposure, bind/publish on host loopback and use
+For the smallest private exposure, bind or publish on host loopback and use
 Tailscale Serve:
 
 ```sh
@@ -631,14 +646,14 @@ Publish the gateway on host loopback, terminate TLS in nginx or Caddy, and keep
 port 8765 closed at the firewall. Bearer authentication stays on even when the
 proxy has its own access control.
 
-Two things surprise most first deployments: the WebUI works over 443 while the
-phone app cannot connect at all, and — once pairing is fixed — recordings fail
-on upload while short ones succeed.
+Two things surprise most first deployments. The WebUI works over 443 while the
+phone app cannot connect at all. Once pairing is fixed, recordings fail on
+upload while short ones succeed.
 
-**Name the public URL.** The gateway does not know its own hostname. Pairing
-discovery inspects local interfaces and builds candidates like
-`http://<vps-ip>:8765`, which is what the QR encodes and what the phone then
-tries to reach — bypassing nginx entirely. Set the address explicitly:
+The gateway does not know its own hostname. Pairing discovery inspects local
+interfaces and builds candidates like `http://<vps-ip>:8765`, which is what the
+QR encodes and what the phone then tries to reach, bypassing nginx entirely.
+Set `VOCAGATEWAY_PUBLIC_URL` to the public address:
 
 ```dotenv
 VOCAGATEWAY_PUBLIC_URL=https://vocagateway.example.com
@@ -653,10 +668,10 @@ pairing card was ever opened before the override was set, clear the old entry
 with **Remove** under *Saved addresses* on the card, or remove `pairing_url` and
 `pairing_urls` from `config.json` and restart.
 
-**Raise the nginx body limit.** The gateway accepts 25 MiB uploads; nginx
-defaults to 1 MiB and rejects real recordings with a `413` before they reach the
-application. `/v1/stream` is a WebSocket and needs the upgrade headers, and CPU
-transcription routinely outlives the 60-second proxy default:
+The gateway accepts 25 MiB uploads. nginx defaults to 1 MiB and rejects real
+recordings with a `413` before they reach the application, so raise
+`client_max_body_size`. `/v1/stream` is a WebSocket and needs the upgrade
+headers, and CPU transcription routinely outlives the 60-second proxy default:
 
 ```nginx
 map $http_upgrade $connection_upgrade {
@@ -713,7 +728,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 The pairing response should report the public hostname, not an interface address
-with `:8765`. Re-scan the QR afterwards — a phone paired earlier still holds the
+with `:8765`. Re-scan the QR afterwards. A phone paired earlier still holds the
 old URL.
 
 ## Health and readiness
@@ -732,7 +747,7 @@ old URL.
   runs, and the WebUI Overview shows it as `build <short sha>` plus a **Build**
   row under *Hardware details*. This requires `VOCAGATEWAY_DEBUG=true`; without
   it `commit` is `null` and the WebUI row is omitted. A source checkout reads
-  the revision from git; containers need it stamped at build time — see
+  the revision from git; containers need it stamped at build time. See
   [Stamping the build commit](#stamping-the-build-commit).
 
 Engine probes are cached for five seconds. sherpa-onnx, MLX Audio,
@@ -744,7 +759,7 @@ warmup behavior.
 
 ## Docker performance profiles
 
-Only run one gateway service at a time; every profile publishes the same port
+Only run one gateway service at a time. Every profile publishes the same port
 and shares the same model volume.
 
 ```sh
