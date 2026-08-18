@@ -1,6 +1,8 @@
-# VocaGateway
-
 <div align="center">
+
+<img src="https://raw.githubusercontent.com/VocaHQ/.github/main/brand/vocagateway/vocagateway-tower.svg" alt="VocaGateway" width="160" height="160">
+
+# VocaGateway
 
 [![Quality](https://github.com/VocaHQ/vocagateway/actions/workflows/quality.yml/badge.svg)](https://github.com/VocaHQ/vocagateway/actions/workflows/quality.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
