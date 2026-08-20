@@ -85,6 +85,7 @@ async def test_admin_endpoints_require_token(admin_client: httpx.AsyncClient) ->
         "/ui/partials/overview",
         "/ui/partials/models",
         "/ui/partials/settings",
+        "/ui/partials/about",
     ):
         response = await admin_client.get(path)
         assert response.status_code == 401, path
@@ -757,11 +758,62 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     assert "0.0.0.0:8765" in pill.text
     assert "http://127.0.0.1:8765/" in pill.text
 
+    about = await admin_client.get("/ui/partials/about", headers=auth)
+    assert about.status_code == 200
+    _assert_about_surface(about.text)
+
+
+def _assert_about_surface(html: str) -> None:
+    assert 'id="about-this-build"' in html
+    assert 'id="about-family"' in html
+    assert 'id="about-talk"' in html
+    assert "This build" in html
+    assert "Part of VocaHQ" in html
+    assert "Talk to us" in html
+    assert "VocaGateway is optional self-hosted compute for other Voca clients." in html
+    assert "Never expose port" in html and "8765" in html
+    assert "AGPL-3.0" in html
+    for host in (
+        "https://vocahq.com",
+        "https://vocalinux.com",
+        "https://vocamac.com",
+        "https://vocawin.com",
+        "https://vocaphone.vocahq.com",
+        "https://vocagateway.vocahq.com",
+    ):
+        assert host in html
+    assert "https://github.com/VocaHQ/vocagateway/issues" in html
+    assert "Report a bug or idea" in html
+    assert "https://discord.gg/UMJduhcqn" in html
+    assert "https://x.com/vocahq" in html
+    assert "mailto:hello@vocahq.com" in html
+    assert "Discord</a>" in html
+    assert "X</a>" in html
+    assert "Email</a>" in html
+    assert "X @vocahq" not in html
+    # Official VocaHQ/.github social marks, consumed as-is (fill=currentColor).
+    assert "M20.317 4.3698" in html
+    assert "M18.901 1.153" in html
+    assert "M12 .297" in html
+    assert "M3 5h18a2 2 0 0 1 2 2v10" in html
+    assert 'fill="currentColor"' in html
+    assert "twitter.com" not in html.lower()
+    assert "Twitter" not in html
+    lowered = html.lower()
+    assert "on-device" not in lowered
+    assert "hosted cloud" not in lowered
+    assert "vocagateway.com" not in html.replace("vocagateway.vocahq.com", "")
+
 
 async def test_webui_shell_is_public(admin_client: httpx.AsyncClient) -> None:
     response = await admin_client.get("/")
     assert response.status_code == 200
     assert "htmx.min.js" in response.text
+    assert 'data-tab="about"' in response.text
+    assert 'hx-get="/ui/partials/about"' in response.text
+    # Fifth tab, after the existing four. Hash routing uses data-tab="about".
+    tabs = [part.split('"', 1)[0] for part in response.text.split('data-tab="')[1:]]
+    assert tabs[:5] == ["overview", "models", "pair", "settings", "about"]
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-frame-options"] == "DENY"
     assert response.headers["x-content-type-options"] == "nosniff"

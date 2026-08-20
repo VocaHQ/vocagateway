@@ -2482,6 +2482,110 @@ button.danger.ghost:hover {
 
 .htmx-request .actions button, .actions button.htmx-request { opacity: 0.45; pointer-events: none; }
 
+/* About — family discovery. Same cream canvas and teal accent as the rest of
+   the WebUI. Three cards follow Win's information architecture, not its chrome. */
+
+.about-hero { margin: 0 0 22px; }
+.about-kicker,
+.about-card-kicker {
+  margin: 0 0 6px;
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.about-hero h2 {
+  margin: 0 0 8px;
+  font-size: 1.7rem;
+  line-height: 1.15;
+}
+.about-status { color: var(--accent); font-weight: 500; }
+.about-hero p { max-width: 40rem; }
+
+#panel > .card.about-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 18px 18px 16px;
+  background: var(--surface);
+}
+.about-card > p { max-width: 42rem; }
+.about-facts { margin-top: 14px; }
+
+.about-family-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.about-family-links a {
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  text-decoration: none;
+}
+
+/* Talk-to-us marks: official SVGs use fill=currentColor. VocaDesign inks
+   (do not bake Discord blurple or X black into the files):
+   ink #14231C on light, settings teal #0F6B57 on dark, cream #F2F6F2 on teal. */
+.about-page {
+  --about-ink: #14231c;
+  --about-settings-teal: #0f6b57;
+  --about-cream: #f2f6f2;
+  --about-mark: var(--about-ink);
+}
+html[data-theme="dark"] .about-page {
+  --about-mark: var(--about-settings-teal);
+}
+
+.about-cta,
+.about-contact {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--r-pill);
+  text-decoration: none;
+  font-weight: 700;
+}
+.about-cta {
+  background: var(--about-settings-teal);
+  color: var(--about-cream);
+  padding: 9px 18px;
+}
+.about-cta:hover {
+  background: color-mix(in srgb, var(--about-settings-teal) 88%, black);
+  color: var(--about-cream);
+}
+.about-contacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.about-contact {
+  border: 1px solid var(--line-strong);
+  color: var(--about-mark);
+  padding: 8px 14px;
+}
+.about-contact:hover {
+  border-color: var(--about-mark);
+  color: var(--about-mark);
+}
+.about-icon {
+  display: flex;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: inherit;
+}
+.about-icon svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
 /* ---------------------------------------------------------------- responsive */
 
 @media (max-width: 1000px) {
@@ -2528,6 +2632,9 @@ button.danger.ghost:hover {
   .test-field select { width: 100%; min-width: 0; }
   .test-actions { width: 100%; }
   .test-actions .primary { flex: 1; }
+  .about-hero h2 { font-size: 1.4rem; }
+  .about-contacts { flex-direction: column; align-items: stretch; }
+  .about-cta, .about-contact { justify-content: center; }
   .row { flex-direction: column; align-items: stretch; }
   .row button, .row select, .row input { width: 100%; }
   .settings-grid { grid-template-columns: 1fr; }

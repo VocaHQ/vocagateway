@@ -7,6 +7,7 @@ from app.admin_queries import config_response, status_payload
 from app.context import GatewayContext, get_context, require_token
 from app.diagnostics import build_diagnostics_bundle
 from app.engine_state import engine_id
+from app.fragments.about import about_fragment
 from app.fragments.engine import engine_pill_fragment
 from app.fragments.exposure import exposure_banner_fragment
 from app.fragments.overview import operations_fragment, overview_fragment
@@ -35,6 +36,12 @@ async def get_admin_diagnostics(
 async def ui_overview(ctx: GatewayContext = Depends(get_context)) -> HTMLResponse:
     status = await status_payload(ctx)
     return HTMLResponse(overview_fragment(status))
+
+
+@router.get("/ui/partials/about", response_class=HTMLResponse)
+async def ui_about(ctx: GatewayContext = Depends(get_context)) -> HTMLResponse:
+    status = await status_payload(ctx)
+    return HTMLResponse(about_fragment(status.version, status.commit))
 
 
 @router.get("/ui/partials/operations", response_class=HTMLResponse)

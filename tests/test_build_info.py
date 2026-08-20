@@ -128,6 +128,11 @@ async def test_status_and_diagnostics_carry_the_commit(
     assert "build 0979263" in overview.text
     assert "<dt>Build</dt>" in overview.text
 
+    about = await debug_client.get("/ui/partials/about", headers=authorization)
+    assert about.status_code == 200
+    assert "<dt>Build</dt>" in about.text
+    assert "0979263" in about.text
+
 
 async def test_commit_is_hidden_without_debug(
     client: httpx.AsyncClient, authorization: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -151,6 +156,12 @@ async def test_commit_is_hidden_without_debug(
     assert "build 0979263" not in overview.text
     assert "<dt>Build</dt>" not in overview.text
     assert SHA not in overview.text
+
+    about = await client.get("/ui/partials/about", headers=authorization)
+    assert about.status_code == 200
+    assert "<dt>Build</dt>" not in about.text
+    assert "0979263" not in about.text
+    assert SHA not in about.text
 
 
 def _git_repo(root: Path, *, subject: str) -> None:
