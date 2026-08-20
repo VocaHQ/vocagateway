@@ -27,6 +27,7 @@ def test_about_fragment_shows_commit_when_given() -> None:
     assert "<dt>Build</dt>" in html
     assert "0979263" in html
     assert f'title="{SHA}"' in html
+    assert "Add About tab" not in html
 
 
 def test_social_marks_are_the_official_files() -> None:
@@ -45,12 +46,25 @@ def test_social_marks_are_the_official_files() -> None:
     assert "M3 5h18a2 2 0 0 1 2 2v10" in mail
 
 
-def test_talk_to_us_styles_use_design_currentcolor_ink() -> None:
+def test_official_1u_mark_is_vendored() -> None:
+    mark = (
+        Path(__file__).resolve().parents[1]
+        / "app"
+        / "webui"
+        / "brand"
+        / "vocagateway"
+        / "vocagateway-1u.svg"
+    ).read_text(encoding="utf-8")
+    assert 'viewBox="0 0 1024 1024"' in mark
+    assert "#0F6B57" in mark
+    assert "#F2F6F2" in mark
+    assert 'aria-label="VocaGateway"' in mark
+
+
+def test_about_styles_reuse_webui_chrome() -> None:
     css = (Path(__file__).resolve().parents[1] / "app" / "webui" / "styles.css").read_text()
-    about = css.split("/* Talk-to-us marks", 1)[1]
-    assert "#14231c" in about
-    assert "#0f6b57" in about
-    assert "#f2f6f2" in about
-    assert "currentColor" in about or "currentcolor" in about.lower()
-    assert "5865F2" not in about
-    assert "#000" not in about or "--about" in about
+    assert "text-transform: uppercase" not in css.split("/* About reuses")[1]
+    assert "about-kicker" not in css
+    assert "about-card-kicker" not in css
+    assert ".about-icon" in css
+    assert "5865F2" not in css.split("/* About reuses")[1]

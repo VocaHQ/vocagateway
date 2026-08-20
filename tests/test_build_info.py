@@ -132,6 +132,7 @@ async def test_status_and_diagnostics_carry_the_commit(
     assert about.status_code == 200
     assert "<dt>Build</dt>" in about.text
     assert "0979263" in about.text
+    assert "Merge pull request #10" not in about.text
 
 
 async def test_commit_is_hidden_without_debug(

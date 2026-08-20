@@ -7,9 +7,10 @@ from pathlib import Path
 
 from app.schemas import CommitStatus
 
-# Official Talk-to-us marks from VocaHQ/.github (brand/vocahq/social @ 61c8eee).
-# Do not redraw. Swap the files in app/webui/brand/social/ when Design updates them.
+# Official marks from VocaHQ/.github. Do not redraw.
+# Talk-to-us: brand/vocahq/social. Host hero: brand/vocagateway/vocagateway-1u.svg.
 _SOCIAL_DIR = Path(__file__).resolve().parent.parent / "webui" / "brand" / "social"
+_MARK_1U = "/assets/brand/vocagateway/vocagateway-1u.svg"
 _ISSUES_URL = "https://github.com/VocaHQ/vocagateway/issues"
 _LICENSE_URL = "https://github.com/VocaHQ/vocagateway/blob/main/LICENSE"
 _SITE_HOST = "vocagateway.vocahq.com"
@@ -43,67 +44,81 @@ def _link_target(url: str) -> str:
 
 def about_fragment(version: str, commit: CommitStatus | None = None) -> str:
     family_links = "".join(
-        f'<li><a href="{escape(url, quote=True)}" target="_blank" '
-        f'rel="noopener noreferrer">{escape(label)}</a></li>'
+        f'<a href="{escape(url, quote=True)}" target="_blank" '
+        f'rel="noopener noreferrer">{escape(label)}</a>'
         for url, label in _FAMILY_LINKS
     )
     contacts = "".join(
-        f'<a class="about-contact" href="{escape(url, quote=True)}"'
+        f'<a class="ghost" href="{escape(url, quote=True)}"'
         f"{_link_target(url)}>"
         f'<span class="about-icon">{_icon(name)}</span>{escape(label)}</a>'
         for name, url, label in _CONTACT_LINKS
     )
-    facts = [("<dt>Version</dt>", f"<dd>{escape(version)}</dd>")]
+    facts = [
+        (
+            "<dt>License</dt>",
+            f'<dd><a href="{_LICENSE_URL}" target="_blank" '
+            f'rel="noopener noreferrer">AGPL-3.0</a></dd>',
+        ),
+        ("<dt>Version</dt>", f"<dd>{escape(version)}</dd>"),
+    ]
     if commit is not None:
         facts.append(("<dt>Build</dt>", f"<dd>{_build_fact(commit)}</dd>"))
     facts_html = "".join(label + value for label, value in facts)
     return f"""
-      <section class="about-page" aria-labelledby="about-title">
-        <header class="about-hero">
-          <p class="about-kicker">About</p>
-          <h2 id="about-title">VocaGateway <span class="about-status">early.</span></h2>
-          <p>Optional self-hosted compute for other Voca clients.</p>
-          <p><a href="{_SITE_URL}" target="_blank" rel="noopener noreferrer">{_SITE_HOST}</a></p>
-        </header>
+      <div class="page-head">
+        <div>
+          <h2>VocaGateway</h2>
+          <p>Optional self-hosted compute for other Voca clients. Never on-device.
+             <a href="{_SITE_URL}" target="_blank" rel="noopener noreferrer">{_SITE_HOST}</a></p>
+        </div>
+      </div>
 
-        <article class="card about-card" id="about-this-build">
-          <h3 class="about-card-kicker">This build</h3>
-          <p>VocaGateway is Early (alpha). Optional self-hosted compute for other
-             Voca clients. This is infrastructure, not a dictation client.</p>
-          <p>Audio leaves the client. This host transcribes it. There is no Voca
-             account and no Voca cloud.</p>
-          <p>Keep it on a trusted LAN, Tailscale, or HTTPS. Never expose port
-             8765 to the public internet.</p>
-          <p>License <a href="{_LICENSE_URL}" target="_blank"
-             rel="noopener noreferrer">AGPL-3.0</a>.</p>
-          <dl class="facts about-facts">{facts_html}</dl>
-        </article>
+      <div class="card system-card" id="about-host">
+        <div class="sys-hero">
+          <img class="about-1u" src="{_MARK_1U}" width="52" height="52" alt="VocaGateway" />
+          <div class="sys-hero-copy">
+            <p class="sys-hero-kicker">Early</p>
+            <h2 class="sys-hero-headline">The host you run</h2>
+            <p class="sys-hero-meta">Audio you send here is transcribed on this machine.</p>
+          </div>
+        </div>
+      </div>
 
-        <article class="card about-card" id="about-family">
-          <h3 class="about-card-kicker">Part of VocaHQ</h3>
-          <p>VocaGateway is part of the VocaHQ family. Companion apps: VocaLinux,
-             VocaMac, VocaWin, and VocaPhone.</p>
-          <p>VocaGateway is optional self-hosted compute for other Voca clients.</p>
-          <ul class="about-family-links">{family_links}</ul>
-        </article>
+      <div class="card" id="about-this-build">
+        <h2>This build</h2>
+        <p>VocaGateway is Early optional self-hosted compute for other Voca clients.
+           This is infrastructure, not a dictation client.</p>
+        <p>Audio leaves the client. This host transcribes it. There is no Voca
+           account and no Voca cloud.</p>
+        <div class="callout">
+          <strong>Keep this host private.</strong>
+          <span>Trusted LAN, Tailscale, or HTTPS. Never expose port 8765
+                to the public internet.</span>
+        </div>
+        <dl class="facts">{facts_html}</dl>
+      </div>
 
-        <article class="card about-card" id="about-talk">
-          <h3 class="about-card-kicker">Talk to us</h3>
-          <p>Bugs and feature ideas go on GitHub issues.</p>
-          <p>
-            <a class="about-cta" href="{_ISSUES_URL}" target="_blank"
-               rel="noopener noreferrer">
-              <span class="about-icon">{_icon("github")}</span>Report a bug or idea
-            </a>
-          </p>
-          <div class="about-contacts">{contacts}</div>
-        </article>
-      </section>
+      <div class="card" id="about-family">
+        <h2>Part of VocaHQ</h2>
+        <p>VocaGateway is part of the VocaHQ family. Companion apps: VocaLinux,
+           VocaMac, VocaWin, and VocaPhone. VocaGateway is optional self-hosted
+           compute for other Voca clients.</p>
+        <p class="about-family-links">{family_links}</p>
+      </div>
+
+      <div class="card" id="about-talk">
+        <h2>Talk to us</h2>
+        <p>Bugs and feature ideas go on GitHub issues.</p>
+        <div class="onboarding-actions">
+          <a class="primary" href="{_ISSUES_URL}" target="_blank" rel="noopener noreferrer">
+            <span class="about-icon">{_icon("github")}</span>Report a bug or idea
+          </a>
+          {contacts}
+        </div>
+      </div>
     """
 
 
 def _build_fact(commit: CommitStatus) -> str:
-    text = commit.short_sha
-    if commit.subject.strip():
-        text += f" · {commit.subject.strip()}"
-    return f'<span title="{escape(commit.sha)}">{escape(text)}</span>'
+    return f'<span title="{escape(commit.sha)}">{escape(commit.short_sha)}</span>'

@@ -764,14 +764,28 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
 
 
 def _assert_about_surface(html: str) -> None:
+    assert 'class="page-head"' in html
+    assert 'id="about-host"' in html
+    assert 'class="card system-card"' in html
+    assert 'class="sys-hero-kicker"' in html
+    assert "Early" in html
+    assert "The host you run" in html
+    assert "/assets/brand/vocagateway/vocagateway-1u.svg" in html
     assert 'id="about-this-build"' in html
     assert 'id="about-family"' in html
     assert 'id="about-talk"' in html
-    assert "This build" in html
-    assert "Part of VocaHQ" in html
-    assert "Talk to us" in html
-    assert "VocaGateway is optional self-hosted compute for other Voca clients." in html
+    assert "<h2>This build</h2>" in html
+    assert "<h2>Part of VocaHQ</h2>" in html
+    assert "<h2>Talk to us</h2>" in html
+    assert "about-kicker" not in html
+    assert "about-card-kicker" not in html
+    assert "VocaGateway early." not in html
+    assert "self-hosted compute" in html
+    assert "other Voca clients" in html
+    assert "Never on-device" in html
+    assert "is on-device" not in html.lower()
     assert "Never expose port" in html and "8765" in html
+    assert 'class="callout"' in html
     assert "AGPL-3.0" in html
     for host in (
         "https://vocahq.com",
@@ -799,9 +813,7 @@ def _assert_about_surface(html: str) -> None:
     assert 'fill="currentColor"' in html
     assert "twitter.com" not in html.lower()
     assert "Twitter" not in html
-    lowered = html.lower()
-    assert "on-device" not in lowered
-    assert "hosted cloud" not in lowered
+    assert "hosted cloud" not in html.lower()
     assert "vocagateway.com" not in html.replace("vocagateway.vocahq.com", "")
 
 
