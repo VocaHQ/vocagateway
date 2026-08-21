@@ -67,7 +67,8 @@ test("source, org, and family products are linked", () => {
   assert.match(html, /href="https:\/\/vocawin\.com\/"/);
   assert.match(html, /href="https:\/\/vocaphone\.vocahq\.com\/"/);
   assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocaphone"/);
-  assert.match(html, /href="https:\/\/discord\.gg\/UMJduhcqn"/);
+  assert.match(html, /href="https:\/\/discord\.gg\/t6muquAJbm"/);
+  assert.match(html, /href="https:\/\/x\.com\/vocahq"/);
 });
 
 test("hero shows pairing, readiness, and charcoal dashboard chrome", () => {

@@ -14,7 +14,8 @@
 [![Privacy: self-hosted, not on-device](https://img.shields.io/badge/privacy-self--hosted%20%7C%20not%20on--device-success)](#vocagateway)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/VocaHQ/vocagateway/pulls)
 [![GitHub Issues](https://img.shields.io/github/issues/VocaHQ/vocagateway)](https://github.com/VocaHQ/vocagateway/issues)
-[![Discord](https://img.shields.io/discord/1538633755877580810?logo=discord&logoColor=white&label=Discord)](https://discord.gg/UMJduhcqn)
+[![Discord](https://img.shields.io/discord/1538633755877580810?logo=discord&logoColor=white&label=Discord)](https://discord.gg/t6muquAJbm)
+[![Follow on X](https://img.shields.io/badge/Follow%20%40vocahq-000000?style=flat&logo=x&logoColor=white)](https://x.com/vocahq)
 [![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e)](https://vocahq.com)
 
 </div>
@@ -850,4 +851,6 @@ For backup, update, and native-vs-container guidance, continue with
 ## License and contact
 
 [AGPL-3.0](LICENSE). Questions and contributions:
+[Discord](https://discord.gg/t6muquAJbm),
+[@vocahq](https://x.com/vocahq) on X, or
 [hello@vocahq.com](mailto:hello@vocahq.com).
