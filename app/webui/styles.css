@@ -2268,22 +2268,33 @@ button {
   border-radius: var(--r-pill);
   border: 1px solid transparent;
 }
-button.primary {
+button.primary, a.primary {
   background: var(--accent);
   color: var(--accent-ink);
   font-weight: 700;
   padding: 9px 18px;
+  border: 1px solid transparent;
 }
-button.primary:hover { background: var(--accent-hover); }
-button.ghost {
+button.primary:hover, a.primary:hover { background: var(--accent-hover); color: var(--accent-ink); }
+button.ghost, a.ghost {
   background: transparent;
-  border-color: var(--line-strong);
+  border: 1px solid var(--line-strong);
   color: var(--text);
   padding: 8px 16px;
 }
-button.ghost:hover {
+button.ghost:hover, a.ghost:hover {
   color: var(--accent);
   border-color: var(--accent);
+}
+a.primary, a.ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  cursor: pointer;
 }
 button.small { padding: 6px 12px; font-size: 0.88rem; }
 button.danger:hover { color: var(--error); border-color: var(--error); }
@@ -2481,6 +2492,40 @@ button.danger.ghost:hover {
 .toast.error { border-left-color: var(--error); }
 
 .htmx-request .actions button, .actions button.htmx-request { opacity: 0.45; pointer-events: none; }
+
+/* About reuses Overview / Settings chrome. Official 1U mark is 52px in the
+   system-card hero. Talk-to-us icons stay 16px and inherit currentColor. */
+#about-host .sys-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.about-1u {
+  display: block;
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--r);
+}
+.about-family-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 14px;
+}
+.about-family-links a { text-decoration: none; }
+.about-icon {
+  display: flex;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: inherit;
+}
+.about-icon svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
 
 /* ---------------------------------------------------------------- responsive */
 
