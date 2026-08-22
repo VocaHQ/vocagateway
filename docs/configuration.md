@@ -69,9 +69,9 @@ Prefix: `VOCAGATEWAY_*`. Values below match `Settings.from_env()` and
 | `VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO` | `true` | Delete audio after success |
 | `VOCAGATEWAY_WHISPER_BINARY` | `/opt/homebrew/bin/whisper-cli` | `whisper.cpp` CLI |
 | `VOCAGATEWAY_WHISPER_MODEL` | `~/.local/share/whisper.cpp/models/ggml-base.en.bin` | Fallback `whisper.cpp` model |
-| `VOCAGATEWAY_WHISPERKIT_BINARY` | `whisperkit-cli` | WhisperKit CLI (macOS) |
+| `VOCAGATEWAY_WHISPERKIT_BINARY` | `whisperkit-cli` | WhisperKit CLI (macOS); also the 0.7.2 VocaMac fallback |
 | `VOCAGATEWAY_VOCAMAC_APP` | `/Applications/VocaMac.app` | Optional VocaMac bundle |
-| `VOCAGATEWAY_VOCAMAC_MODEL` | unset | Pin a VocaMac model size/folder |
+| `VOCAGATEWAY_VOCAMAC_MODEL` | unset | Pin a VocaMac model ID instead of following the app |
 | `VOCAGATEWAY_HANDY_BINARY` | `/Applications/Handy.app/Contents/MacOS/handy` | Optional Handy binary |
 | `VOCAGATEWAY_HANDY_MODEL` | unset | Pin a Handy model id |
 | `VOCAGATEWAY_HANDY_FALLBACK_MODEL` | `handy-computer/whisper-base-gguf/whisper-base-Q8_0.gguf` | Handy fallback model |

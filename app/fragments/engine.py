@@ -21,8 +21,8 @@ ENGINE_LABELS = {
 ENGINE_HINTS = {
     "auto": "Picks the fastest compatible local engine already installed on this machine.",
     "vocamac": (
-        "Optional Apple silicon Mac app. Reuses VocaMac's downloaded Core ML models "
-        "via whisperkit-cli. No separate download."
+        "Optional Apple silicon Mac app. Follows VocaMac's selected downloaded "
+        "model through its headless interface. No second download needed."
     ),
     "handy": (
         "Optional macOS app. Reuses the Handy app and its downloaded models. No separate download."
