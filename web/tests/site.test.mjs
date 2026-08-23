@@ -9,6 +9,14 @@ const html = readFileSync(join(siteRoot, "index.html"), "utf8");
 const css = readFileSync(join(siteRoot, "styles.css"), "utf8");
 const script = readFileSync(join(siteRoot, "script.js"), "utf8");
 
+function pngDimensions(buffer) {
+  assert.equal(buffer.toString("ascii", 1, 4), "PNG", "asset must be a PNG");
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20),
+  };
+}
+
 test("page has one title and landmark structure", () => {
   assert.match(html, /<title>VocaGateway: self-hosted speech-to-text on your hardware<\/title>/);
   assert.equal((html.match(/<h1\b/g) || []).length, 1);
@@ -94,13 +102,26 @@ test("all local image assets exist", () => {
 test("production metadata is complete", () => {
   assert.match(html, /rel="canonical" href="https:\/\/vocagateway\.vocahq\.com\/"/);
   assert.match(html, /property="og:url" content="https:\/\/vocagateway\.vocahq\.com\/"/);
-  assert.match(html, /name="twitter:card" content="summary"/);
+  assert.match(
+    html,
+    /property="og:image" content="https:\/\/vocagateway\.vocahq\.com\/assets\/og-image\.png"/,
+  );
+  assert.match(html, /property="og:image:width" content="1200"/);
+  assert.match(html, /property="og:image:height" content="630"/);
+  assert.match(html, /name="twitter:card" content="summary_large_image"/);
+  assert.match(
+    html,
+    /name="twitter:image" content="https:\/\/vocagateway\.vocahq\.com\/assets\/og-image\.png"/,
+  );
   assert.doesNotMatch(html, /github\.io\/vocagateway/);
   assert.equal(
     readFileSync(join(siteRoot, "CNAME"), "utf8").trim(),
     "vocagateway.vocahq.com",
   );
   for (const asset of [
+    "assets/og-image.png",
+    "assets/og/src/og-default.html",
+    "assets/og/src/preview.html",
     "assets/brand/voca-logo.svg",
     "assets/brand/voca-mark.svg",
     "assets/brand/voca-logo-512.png",
@@ -112,6 +133,24 @@ test("production metadata is complete", () => {
     "CNAME",
   ]) {
     assert.ok(existsSync(join(siteRoot, asset)), `Missing ${asset}`);
+  }
+
+  const ogImage = readFileSync(join(siteRoot, "assets/og-image.png"));
+  assert.deepEqual(pngDimensions(ogImage), { width: 1200, height: 630 });
+});
+
+test("Open Graph card follows the Voca paper language", () => {
+  const ogSource = readFileSync(join(siteRoot, "assets/og/src/og-default.html"), "utf8");
+  assert.match(ogSource, /--paper:\s*#f4f1e8/);
+  assert.match(ogSource, /--ink:\s*#14231c/);
+  assert.match(ogSource, /--brand:\s*#0f6b57/);
+  assert.match(ogSource, /--charcoal:\s*#1c1e1c/);
+  assert.match(ogSource, /not on-device/i);
+  assert.match(ogSource, /Ready for dictation/);
+  assert.doesNotMatch(ogSource, /traffic-lights/);
+  const bannedFunction = ["linear-" + "gradient", "radial-" + "gradient", "conic-" + "gradient"];
+  for (const token of bannedFunction) {
+    assert.ok(!ogSource.includes(token), `Unexpected ${token} in OG source`);
   }
 });
 
