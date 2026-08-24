@@ -73,10 +73,30 @@ test("source, org, and family products are linked", () => {
   assert.match(html, /href="https:\/\/vocalinux\.com\/"/);
   assert.match(html, /href="https:\/\/vocamac\.com\/"/);
   assert.match(html, /href="https:\/\/vocawin\.com\/"/);
+  assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocawin\/tree\/v0\.1\.0-beta\.1"/);
+  assert.doesNotMatch(html, /href="https:\/\/github\.com\/VocaHQ\/vocawin\/releases"/);
   assert.match(html, /href="https:\/\/vocaphone\.vocahq\.com\/"/);
   assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocaphone"/);
   assert.match(html, /href="https:\/\/discord\.gg\/t6muquAJbm"/);
   assert.match(html, /href="https:\/\/x\.com\/vocahq"/);
+});
+
+test("VocaWin family card is Beta with honest unsigned-tag copy", () => {
+  const winCard = html.match(
+    /<article class="eco-card reveal">\s*<div class="eco-head">\s*<img src="assets\/icons\/windows\.svg"[\s\S]*?<\/article>/,
+  );
+  assert.ok(winCard, "VocaWin eco-card is present");
+  assert.match(winCard[0], /<small>beta<\/small>/);
+  assert.match(winCard[0], /Unsigned/);
+  assert.match(winCard[0], /v0\.1\.0-beta\.1/);
+  assert.match(winCard[0], /SmartScreen/);
+  assert.match(winCard[0], /not a store listing/i);
+  assert.match(winCard[0], /does\s+not expose a gateway mode today/);
+  assert.doesNotMatch(winCard[0], /coming soon/i);
+  assert.doesNotMatch(winCard[0], /no public installer/i);
+  assert.doesNotMatch(winCard[0], /available now/i);
+  assert.doesNotMatch(winCard[0], /\/releases/);
+  assert.doesNotMatch(winCard[0], /GitHub Releases/);
 });
 
 test("hero shows pairing, readiness, and charcoal dashboard chrome", () => {
