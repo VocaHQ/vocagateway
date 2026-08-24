@@ -51,11 +51,24 @@ on-disk paths use the `vocagateway` prefix (`VOCAGATEWAY_*`,
 `~/.config/vocagateway/`, `~/.local/share/vocagateway/`). The live pairing and env
 contract is in [configuration.md](docs/configuration.md).
 
+## The Voca family
+
+Directory: [vocahq.com](https://vocahq.com). [VocaPhone](https://vocaphone.vocahq.com)
+is the live consumer. Desktop gateway integration stays Planned.
+
+| Product | Status | Website | Source |
+| --- | --- | --- | --- |
+| [VocaLinux](https://vocalinux.com/) | Available now (`v0.16.0`) | [vocalinux.com](https://vocalinux.com/) | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) |
+| [VocaMac](https://vocamac.com/) | Beta (`v0.9.0`) | [vocamac.com](https://vocamac.com/) | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) |
+| [VocaWin](https://vocawin.com/) | Unsigned beta (`v0.1.0-beta.1`) | [vocawin.com](https://vocawin.com/) | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) |
+| [VocaPhone](https://vocaphone.vocahq.com) | Android beta / iOS [TestFlight](https://testflight.apple.com/join/wd85wQ3W) (live consumer) | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) |
+| [VocaGateway](https://vocagateway.vocahq.com/) | Early | [vocagateway.vocahq.com](https://vocagateway.vocahq.com/) | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) |
+
 ## Consumers
 
 | Project | How it uses this gateway |
 | --- | --- |
-| [vocaphone](https://github.com/VocaHQ/vocaphone) | Git submodule at `server/` for the iOS/Android clients |
+| [vocaphone](https://github.com/VocaHQ/vocaphone) | Live consumer. Git submodule at `server/` for the iOS/Android clients |
 | [vocalinux](https://github.com/VocaHQ/vocalinux) / [vocamac](https://github.com/VocaHQ/vocamac) / [vocawin](https://github.com/VocaHQ/vocawin) | Planned: ship and start the headless server from the desktop app |
 
 Clone with submodules when working from a consumer:
