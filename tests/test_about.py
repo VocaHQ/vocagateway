@@ -14,6 +14,8 @@ SHA = "0979263b31465a19a6c5fa375ccdd0f2af250ca5"
 def test_about_fragment_has_the_family_surface() -> None:
     html = about_fragment(VERSION)
     _assert_about_surface(html)
+    assert "Beta" in html
+    assert "Early" not in html
     assert VERSION in html
     assert "<dt>Version</dt>" in html
     assert "<dt>Build</dt>" not in html

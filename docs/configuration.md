@@ -7,7 +7,7 @@ Environment variables and on-disk paths use the `vocagateway` prefix.
 
 ## Status and network boundary
 
-VocaGateway is **Early** optional self-hosted infrastructure. There is no Voca
+VocaGateway is **Beta** optional self-hosted infrastructure. There is no Voca
 account and no hosted Voca cloud. When a client is configured to use the
 gateway, audio travels to the machine you run it on — that is **not** on-device
 processing. Prefer a trusted LAN, Tailscale, or HTTPS. Never expose port

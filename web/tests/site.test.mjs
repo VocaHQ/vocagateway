@@ -38,9 +38,11 @@ test("document ids are unique", () => {
   assert.equal(new Set(ids).size, ids.length);
 });
 
-test("product truth stays scoped to Early self-hosted infrastructure", () => {
+test("product truth stays scoped to Beta self-hosted infrastructure", () => {
   assert.match(html, /your hardware, shared speech-to-text/i);
-  assert.match(html, /\bearly\b/i);
+  assert.match(html, /\bbeta\b/i);
+  assert.doesNotMatch(html, /\bearly\b/i);
+  assert.doesNotMatch(html, /\balpha\b/i);
   assert.match(html, /not on-device/i);
   assert.match(html, /audio leaves/i);
   assert.match(html, /trusted LAN/i);
@@ -50,6 +52,12 @@ test("product truth stays scoped to Early self-hosted infrastructure", () => {
   assert.match(html, /public internet/i);
   assert.match(html, /no Voca account/i);
   assert.match(html, /AGPL-3\.0/);
+  assert.match(html, /Ready for dictation/);
+  assert.match(html, /https:\/\/github\.com\/VocaHQ\/vocagateway\/releases\/tag\/v0\.1\.0/);
+  assert.match(html, /class="button button-primary" href="https:\/\/github\.com\/VocaHQ\/vocagateway\/releases\/tag\/v0\.1\.0"/);
+  assert.match(html, /no packaged installer/i);
+  assert.doesNotMatch(html, /download the beta \.exe/i);
+  assert.doesNotMatch(html, /https?:\/\/vocagateway\.com\b/i);
   assert.doesNotMatch(html, /100% offline/i);
   assert.doesNotMatch(html, /free forever/i);
   assert.doesNotMatch(html, /AI-powered/i);
@@ -113,7 +121,9 @@ test("all local image assets exist", () => {
     (match) => match[1],
   );
   assert.ok(localImages.includes("assets/brand/voca-logo.svg"));
-  assert.ok(localImages.includes("assets/brand/voca-mark.svg"));
+  assert.ok(localImages.includes("assets/brand/vocagateway/vocagateway-tower.svg"));
+  assert.match(html, /class="hero-mark" src="assets\/brand\/vocagateway\/vocagateway-tower\.svg"/);
+  assert.doesNotMatch(html, /class="hero-mark" src="assets\/brand\/voca-mark\.svg"/);
   for (const asset of localImages) {
     assert.ok(existsSync(join(siteRoot, asset)), `Missing ${asset}`);
   }
@@ -144,6 +154,7 @@ test("production metadata is complete", () => {
     "assets/og/src/preview.html",
     "assets/brand/voca-logo.svg",
     "assets/brand/voca-mark.svg",
+    "assets/brand/vocagateway/vocagateway-tower.svg",
     "assets/brand/voca-logo-512.png",
     "assets/paper-dots.svg",
     "favicon.svg",
@@ -167,6 +178,8 @@ test("Open Graph card follows the Voca paper language", () => {
   assert.match(ogSource, /--charcoal:\s*#1c1e1c/);
   assert.match(ogSource, /not on-device/i);
   assert.match(ogSource, /Ready for dictation/);
+  assert.match(ogSource, /\bbeta\b/i);
+  assert.doesNotMatch(ogSource, /\bearly\b/i);
   assert.doesNotMatch(ogSource, /traffic-lights/);
   const bannedFunction = ["linear-" + "gradient", "radial-" + "gradient", "conic-" + "gradient"];
   for (const token of bannedFunction) {
