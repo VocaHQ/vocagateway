@@ -6,7 +6,7 @@
 
 [![Quality](https://github.com/VocaHQ/vocagateway/actions/workflows/quality.yml/badge.svg)](https://github.com/VocaHQ/vocagateway/actions/workflows/quality.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-[![Status: Early / alpha](https://img.shields.io/badge/status-Early%20%2F%20alpha-yellow)](#vocagateway)
+[![Status: Beta](https://img.shields.io/badge/status-Beta-0f6b57)](#vocagateway)
 [![Release](https://img.shields.io/github/v/release/VocaHQ/vocagateway?label=Release)](https://github.com/VocaHQ/vocagateway/releases)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Platform: macOS + Linux + Docker](https://img.shields.io/badge/platform-macOS%20%2B%20Linux%20%2B%20Docker-lightgrey)](#deployment-summary)
@@ -20,7 +20,7 @@
 
 </div>
 
-**Early** optional self-hosted transcription gateway for the
+**Beta** optional self-hosted transcription gateway for the
 [Voca](https://github.com/VocaHQ) family. License:
 [AGPL-3.0](LICENSE). Contact:
 [hello@vocahq.com](mailto:hello@vocahq.com).
@@ -62,7 +62,7 @@ is the live consumer. Desktop gateway integration stays Planned.
 | [VocaMac](https://vocamac.com/) | Beta (`v0.9.0`) | [vocamac.com](https://vocamac.com/) | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) |
 | [VocaWin](https://vocawin.com/) | Unsigned beta (`v0.1.0-beta.1`) | [vocawin.com](https://vocawin.com/) | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) |
 | [VocaPhone](https://vocaphone.vocahq.com) | Android beta / iOS [TestFlight](https://testflight.apple.com/join/wd85wQ3W) (live consumer) | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) |
-| [VocaGateway](https://vocagateway.vocahq.com/) | Early | [vocagateway.vocahq.com](https://vocagateway.vocahq.com/) | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) |
+| [VocaGateway](https://vocagateway.vocahq.com/) | Beta | [vocagateway.vocahq.com](https://vocagateway.vocahq.com/) | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) |
 
 ## Consumers
 

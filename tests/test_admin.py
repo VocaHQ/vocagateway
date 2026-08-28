@@ -768,7 +768,8 @@ def _assert_about_surface(html: str) -> None:
     assert 'id="about-host"' in html
     assert 'class="card system-card"' in html
     assert 'class="sys-hero-kicker"' in html
-    assert "Early" in html
+    assert "Beta" in html
+    assert "Early" not in html
     assert "The host you run" in html
     assert "/assets/brand/vocagateway/vocagateway-1u.svg" in html
     assert 'id="about-this-build"' in html

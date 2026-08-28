@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="VocaGateway is early optional self-hosted speech-to-text for Voca clients. Run it on a Mac, a Linux machine, or Docker. Audio travels to the host you chose. It is not on-device, and there is no Voca cloud."
+      content="VocaGateway is Beta optional self-hosted speech-to-text for Voca clients. Run it on a Mac, a Linux machine, or Docker. Audio travels to the host you chose. It is not on-device, and there is no Voca cloud."
     />
     <meta name="theme-color" content="#f4f1e8" />
     <meta name="robots" content="index, follow" />
@@ -14,7 +14,7 @@
     <meta property="og:title" content="VocaGateway: self-hosted speech-to-text on your hardware" />
     <meta
       property="og:description"
-      content="Optional self-hosted speech-to-text for Voca clients. Pair with a QR code. Use a trusted LAN, a private encrypted network, or HTTPS. Early. AGPL-3.0."
+      content="Optional self-hosted speech-to-text for Voca clients. Pair with a QR code. Use a trusted LAN, a private encrypted network, or HTTPS. Beta. AGPL-3.0."
     />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="en_US" />
@@ -68,7 +68,7 @@
           "price": "0",
           "priceCurrency": "USD"
         },
-        "description": "Early optional self-hosted speech-to-text gateway for Voca clients. Audio travels to the host you run. Not on-device.",
+        "description": "Beta optional self-hosted speech-to-text gateway for Voca clients. Audio travels to the host you run. Not on-device.",
         "isPartOf": {
           "@type": "Organization",
           "name": "VocaHQ",
@@ -104,17 +104,17 @@
         <a href="#start">get started</a>
         <a href="#family">family</a>
         <a href="#questions">questions</a>
-        <a class="nav-cta" href="https://github.com/VocaHQ/vocagateway">view the source</a>
+        <a class="nav-cta" href="https://github.com/VocaHQ/vocagateway/releases/tag/v0.1.0">v0.1.0 release</a>
       </nav>
 
       <div class="system-strip" aria-hidden="true">
         <span class="signal">▣</span>
-        <span>early</span>
+        <span>beta</span>
         <span data-local-time>10:09</span>
       </div>
 
-      <a class="header-cta" href="https://github.com/VocaHQ/vocagateway">
-        view the source
+      <a class="header-cta" href="https://github.com/VocaHQ/vocagateway/releases/tag/v0.1.0">
+        v0.1.0 release
         <span aria-hidden="true">↗</span>
       </a>
     </header>
@@ -130,7 +130,7 @@
 
           <div class="floating-card status-note">
             <span>release status</span>
-            <b>early</b>
+            <b>beta</b>
             <b>optional</b>
             <b>self-hosted</b>
           </div>
@@ -149,19 +149,19 @@
         </div>
 
         <div class="hero-copy">
-          <img class="hero-mark" src="assets/brand/voca-mark.svg" alt="" width="66" height="78" />
+          <img class="hero-mark" src="assets/brand/vocagateway/vocagateway-tower.svg" alt="" width="72" height="72" />
           <p class="eyebrow">optional self-hosted speech-to-text</p>
           <h1 id="hero-title">vocagateway</h1>
           <p class="hero-lede">your hardware, shared speech-to-text.</p>
           <div class="hero-actions">
-            <a class="button button-primary" href="#start">get started</a>
+            <a class="button button-primary" href="https://github.com/VocaHQ/vocagateway/releases/tag/v0.1.0">try v0.1.0</a>
             <a class="button button-secondary" href="https://github.com/VocaHQ/vocagateway">
               view the source
               <span aria-hidden="true">↗</span>
             </a>
           </div>
           <p class="hero-note">
-            early · macOS · Linux · Docker Compose · AGPL-3.0 · part of
+            beta · macOS · Linux · Docker Compose · AGPL-3.0 · part of
             <a href="https://vocahq.com/">vocahq.com</a>
           </p>
           <ul class="hero-proof">
@@ -231,6 +231,38 @@
             when you want shared or larger compute.
             <a href="https://vocahq.com/">See the full map on vocahq.com</a>.
           </p>
+        </div>
+      </section>
+
+      <section class="captures-section" id="webui" aria-labelledby="captures-title">
+        <div class="captures-inner">
+          <p class="tiny-label" id="captures-title">the WebUI</p>
+          <div class="captures-grid">
+            <figure class="capture-figure reveal">
+              <img
+                src="assets/brand/vocagateway/vocagateway-webui-overview-ready.png"
+                alt="VocaGateway WebUI Overview. Ready for dictation."
+                width="2560"
+                height="1800"
+              />
+              <figcaption>
+                <span class="tiny-label">Overview</span>
+                Real WebUI capture. Ready for dictation.
+              </figcaption>
+            </figure>
+            <figure class="capture-figure reveal">
+              <img
+                src="assets/brand/vocagateway/vocagateway-webui-pair-qr.png"
+                alt="VocaGateway WebUI Pair and test. Example QR from a stopped local host, not a live token."
+                width="2560"
+                height="1800"
+              />
+              <figcaption>
+                <span class="tiny-label">Pair and test</span>
+                Real WebUI capture. Example QR from a stopped local host, not a live token. After you run a host, scan the QR in your own WebUI.
+              </figcaption>
+            </figure>
+          </div>
         </div>
       </section>
 
@@ -365,7 +397,10 @@
           <span class="section-tag">get started</span>
           <h2 id="start-title">run it from source<br />or from Compose.</h2>
           <p>
-            Status is Early. There is no packaged installer. After the process
+            Status is Beta. There is no packaged installer. Run Compose or
+            native from the
+            <a href="https://github.com/VocaHQ/vocagateway/releases/tag/v0.1.0">v0.1.0 tag</a>,
+            not from main. After the process
             starts, open
             <code>http://127.0.0.1:8765/</code>, enter the token, download a
             model, and wait until Overview says Ready for dictation.
@@ -567,10 +602,10 @@ docker compose up --detach --build</code></pre>
       <section class="close-section dot-field" id="follow" aria-labelledby="follow-title">
         <div class="close-copy reveal">
           <img src="assets/brand/voca-logo.svg" alt="" width="88" height="88" />
-          <p class="eyebrow">early · self-hosted · optional</p>
+          <p class="eyebrow">beta · self-hosted · optional</p>
           <h2 id="follow-title">run it on hardware<br />you already have.</h2>
           <p>
-            Clone the repo, start the process, pair a phone. If you only need
+            Start from the v0.1.0 tag, run the process, pair a phone. If you only need
             on-device dictation, skip this and pick a client on vocahq.com.
           </p>
           <div class="hero-actions">
@@ -620,7 +655,7 @@ docker compose up --detach --build</code></pre>
       </nav>
       <div class="footer-bottom">
         <span>© <span data-current-year>2026</span> VocaHQ</span>
-        <span>early infrastructure. the rest of the family lives at vocahq.com.</span>
+        <span>beta infrastructure. the rest of the family lives at vocahq.com.</span>
       </div>
     </footer>
   </body>

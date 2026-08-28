@@ -78,7 +78,7 @@ def about_fragment(version: str, commit: CommitStatus | None = None) -> str:
         <div class="sys-hero">
           <img class="about-1u" src="{_MARK_1U}" width="52" height="52" alt="VocaGateway" />
           <div class="sys-hero-copy">
-            <p class="sys-hero-kicker">Early</p>
+            <p class="sys-hero-kicker">Beta</p>
             <h2 class="sys-hero-headline">The host you run</h2>
             <p class="sys-hero-meta">Audio you send here is transcribed on this machine.</p>
           </div>
@@ -87,7 +87,7 @@ def about_fragment(version: str, commit: CommitStatus | None = None) -> str:
 
       <div class="card" id="about-this-build">
         <h2>This build</h2>
-        <p>VocaGateway is Early optional self-hosted compute for other Voca clients.
+        <p>VocaGateway is Beta optional self-hosted compute for other Voca clients.
            This is infrastructure, not a dictation client.</p>
         <p>Audio leaves the client. This host transcribes it. There is no Voca
            account and no Voca cloud.</p>
