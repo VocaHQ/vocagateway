@@ -107,6 +107,26 @@ test("VocaWin family card is Beta with honest unsigned-tag copy", () => {
   assert.doesNotMatch(winCard[0], /GitHub Releases/);
 });
 
+test("VocaPhone family card names public TestFlight, not source-only iPhone", () => {
+  const phoneCard = html.match(
+    /<article class="eco-card reveal">\s*<div class="eco-head">\s*<img src="assets\/icons\/android\.svg"[\s\S]*?<\/article>/,
+  );
+  assert.ok(phoneCard, "VocaPhone eco-card is present");
+  assert.match(phoneCard[0], /<h3>VocaPhone<\/h3>/);
+  assert.match(phoneCard[0], /<small>beta \/ testflight<\/small>/);
+  assert.match(phoneCard[0], /Android has a public beta/);
+  assert.match(phoneCard[0], /href="https:\/\/testflight\.apple\.com\/join\/wd85wQ3W"/);
+  assert.match(phoneCard[0], /eco-links[\s\S]*TestFlight/);
+  assert.match(phoneCard[0], /1,?000 seats/);
+  assert.match(phoneCard[0], /iOS 17\+ source build/);
+  assert.match(phoneCard[0], /href="https:\/\/vocaphone\.vocahq\.com\/"/);
+  assert.match(phoneCard[0], /href="https:\/\/github\.com\/VocaHQ\/vocaphone"/);
+  assert.match(phoneCard[0], /on-device is the default path/i);
+  assert.match(phoneCard[0], /gateway is optional/i);
+  assert.doesNotMatch(phoneCard[0], /beta \/ source build/);
+  assert.doesNotMatch(phoneCard[0], /currently needs an iOS 17\+ source build/);
+});
+
 test("hero shows pairing, readiness, and charcoal dashboard chrome", () => {
   assert.match(html, /Ready for dictation/);
   assert.match(html, /Pair phone/);
