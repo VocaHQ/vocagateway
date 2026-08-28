@@ -223,3 +223,28 @@ test("mobile navigation can be dismissed with the keyboard", () => {
   assert.match(script, /event\.key === "Escape"/);
   assert.match(script, /closeNavigation\(\{ returnFocus: true \}\)/);
 });
+
+test("landing vendors official WebUI captures and does not treat the pair PNG as a live QR", () => {
+  const overview = "assets/brand/vocagateway/vocagateway-webui-overview-ready.png";
+  const pair = "assets/brand/vocagateway/vocagateway-webui-pair-qr.png";
+  for (const asset of [overview, pair]) {
+    const fullPath = join(siteRoot, asset);
+    assert.ok(existsSync(fullPath), `Missing ${asset}`);
+    pngDimensions(readFileSync(fullPath));
+  }
+  assert.match(html, /src="assets\/brand\/vocagateway\/vocagateway-webui-overview-ready\.png"/);
+  assert.match(html, /src="assets\/brand\/vocagateway\/vocagateway-webui-pair-qr\.png"/);
+  assert.match(html, /Ready for dictation/);
+  assert.doesNotMatch(html, /raw\.githubusercontent\.com/);
+
+  const pairFigure = html.match(
+    /<figure class="capture-figure reveal">\s*<img\s+src="assets\/brand\/vocagateway\/vocagateway-webui-pair-qr\.png"[\s\S]*?<\/figure>/,
+  );
+  assert.ok(pairFigure, "pair capture figure is present");
+  assert.match(pairFigure[0], /stopped local host/i);
+  assert.match(pairFigure[0], /not a live token/i);
+  assert.match(pairFigure[0], /scan the QR in your own WebUI/);
+  assert.doesNotMatch(pairFigure[0], /scan this (image|png|qr|code)/i);
+  assert.doesNotMatch(pairFigure[0], /scan this pairing/i);
+  assert.doesNotMatch(pairFigure[0], /point (your )?phone at this/i);
+});
