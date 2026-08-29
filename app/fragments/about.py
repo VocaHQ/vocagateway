@@ -26,7 +26,7 @@ _FAMILY_LINKS: tuple[tuple[str, str], ...] = (
 )
 
 _CONTACT_LINKS: tuple[tuple[str, str, str], ...] = (
-    ("discord", "https://discord.gg/UMJduhcqn", "Discord"),
+    ("discord", "https://discord.gg/t6muquAJbm", "Discord"),
     ("x", "https://x.com/vocahq", "X"),
     ("mail", "mailto:hello@vocahq.com", "Email"),
 )
