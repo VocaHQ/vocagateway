@@ -799,7 +799,7 @@ def _assert_about_surface(html: str) -> None:
         assert host in html
     assert "https://github.com/VocaHQ/vocagateway/issues" in html
     assert "Report a bug or idea" in html
-    assert "https://discord.gg/UMJduhcqn" in html
+    assert "https://discord.gg/t6muquAJbm" in html
     assert "https://x.com/vocahq" in html
     assert "mailto:hello@vocahq.com" in html
     assert "Discord</a>" in html
