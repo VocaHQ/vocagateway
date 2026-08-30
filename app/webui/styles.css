@@ -461,15 +461,14 @@ main {
 .site-footer {
   flex: 0 0 auto;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px 20px;
+  justify-content: center;
   margin-top: auto;
   padding: 18px var(--gutter) 22px;
   border-top: 1px solid var(--line-soft);
   color: var(--faint);
   font-size: 0.84rem;
+  text-align: center;
 }
 .footer-copy {
   margin: 0;
@@ -480,18 +479,6 @@ main {
   text-decoration: none;
 }
 .footer-copy a:hover { color: var(--accent); }
-.footer-links {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 14px;
-}
-.footer-links a {
-  color: var(--muted);
-  text-decoration: none;
-  font-weight: 500;
-}
-.footer-links a:hover { color: var(--accent); }
 
 /* ------------------------------------------------------------------ sections */
 
@@ -2493,27 +2480,57 @@ button.danger.ghost:hover {
 
 .htmx-request .actions button, .actions button.htmx-request { opacity: 0.45; pointer-events: none; }
 
-/* About reuses Overview / Settings chrome. Official 1U mark is 52px in the
-   system-card hero. Talk-to-us icons stay 16px and inherit currentColor. */
+/* About reuses Overview / Settings chrome. Official tower mark is 52px in the
+   system-card hero. Family and talk-to-us icons stay 16px currentColor. */
 #about-host .sys-hero {
   display: flex;
   align-items: center;
   gap: 16px;
+  background: var(--surface);
 }
-.about-1u {
+.about-host-mark {
   display: block;
   flex: 0 0 auto;
   width: 52px;
   height: 52px;
   border-radius: var(--r);
 }
-.about-family-links {
+.about-info {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  margin-top: 14px;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 16px 0 20px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: var(--r-lg);
+  background: var(--accent-wash);
 }
-.about-family-links a { text-decoration: none; }
+.about-info-mark {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-style: italic;
+  line-height: 1;
+}
+.about-info strong {
+  display: block;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.about-info div span {
+  display: block;
+  color: var(--muted);
+}
 .about-icon {
   display: flex;
   flex: 0 0 auto;
@@ -2521,10 +2538,24 @@ button.danger.ghost:hover {
   height: 16px;
   color: inherit;
 }
-.about-icon svg {
+.about-icon svg,
+.about-icon img {
   display: block;
   width: 16px;
   height: 16px;
+}
+#about-this-build .facts {
+  align-items: baseline;
+  column-gap: 12px;
+  row-gap: 6px;
+}
+#about-this-build .facts dt,
+#about-this-build .facts dd {
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+#about-this-build .facts dd a {
+  text-underline-offset: 0.18em;
 }
 
 /* ---------------------------------------------------------------- responsive */
@@ -2541,9 +2572,6 @@ button.danger.ghost:hover {
   :root { --gutter: 16px; }
   main { padding: 20px 16px 40px; }
   .site-footer {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
     padding-block: 16px 20px;
   }
   .brand .muted { display: none; }

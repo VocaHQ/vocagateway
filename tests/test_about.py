@@ -7,7 +7,9 @@ from app.fragments.about import about_fragment
 from app.schemas import CommitStatus
 from tests.test_admin import _assert_about_surface
 
-SOCIAL = Path(__file__).resolve().parents[1] / "app" / "webui" / "brand" / "social"
+BRAND = Path(__file__).resolve().parents[1] / "app" / "webui" / "brand"
+SOCIAL = BRAND / "social"
+PLATFORM = BRAND / "platform"
 SHA = "0979263b31465a19a6c5fa375ccdd0f2af250ca5"
 
 
@@ -18,6 +20,7 @@ def test_about_fragment_has_the_family_surface() -> None:
     assert "Early" not in html
     assert "https://discord.gg/t6muquAJbm" in html
     assert VERSION in html
+    assert "<h2>About</h2>" in html
     assert "<dt>Version</dt>" in html
     assert "<dt>Build</dt>" not in html
 
@@ -49,6 +52,36 @@ def test_social_marks_are_the_official_files() -> None:
     assert "M3 5h18a2 2 0 0 1 2 2v10" in mail
 
 
+def test_platform_marks_are_the_official_files() -> None:
+    linux = (PLATFORM / "linux.svg").read_text(encoding="utf-8")
+    apple = (PLATFORM / "apple.svg").read_text(encoding="utf-8")
+    windows = (PLATFORM / "windows.svg").read_text(encoding="utf-8")
+    android = (PLATFORM / "android.svg").read_text(encoding="utf-8")
+    for svg in (linux, apple, windows, android):
+        assert 'viewBox="0 0 24 24"' in svg
+        assert 'fill="currentColor"' in svg
+        assert "5865F2" not in svg
+        assert "#000" not in svg
+        assert "#0F6B57" not in svg
+    assert "M12.504 0c-.155" in linux
+    assert "M12.152 6.896" in apple
+    assert "M0,0H11.377" in windows
+    assert "M18.4395 5.5586" in android
+
+
+def test_family_marks_are_current_color() -> None:
+    hq = (BRAND / "vocahq" / "voca-mark.svg").read_text(encoding="utf-8")
+    gateway = (BRAND / "vocagateway" / "vocagateway-1u-mark.svg").read_text(encoding="utf-8")
+    for svg in (hq, gateway):
+        assert 'fill="currentColor"' in svg
+        assert "#0F6B57" not in svg
+        assert "#0B1A15" not in svg
+        assert "#F2F6F2" not in svg
+    assert "M 164 127 A 65 65" in hq
+    assert 'viewBox="96 372 832 280"' in gateway
+    assert 'width="832" height="280"' in gateway
+
+
 def test_official_1u_mark_is_vendored() -> None:
     mark = (
         Path(__file__).resolve().parents[1]
@@ -64,10 +97,32 @@ def test_official_1u_mark_is_vendored() -> None:
     assert 'aria-label="VocaGateway"' in mark
 
 
+def test_official_tower_mark_is_vendored() -> None:
+    mark = (
+        Path(__file__).resolve().parents[1]
+        / "app"
+        / "webui"
+        / "brand"
+        / "vocagateway"
+        / "vocagateway-tower.svg"
+    ).read_text(encoding="utf-8")
+    assert 'viewBox="0 0 1024 1024"' in mark
+    assert "#0F6B57" in mark
+    assert "#F2F6F2" in mark
+    assert 'aria-label="VocaGateway"' in mark
+    assert 'y="148" width="440" height="676"' in mark
+
+
 def test_about_styles_reuse_webui_chrome() -> None:
     css = (Path(__file__).resolve().parents[1] / "app" / "webui" / "styles.css").read_text()
     assert "text-transform: uppercase" not in css.split("/* About reuses")[1]
     assert "about-kicker" not in css
     assert "about-card-kicker" not in css
     assert ".about-icon" in css
+    assert ".about-info" in css
+    assert ".about-host-mark" in css
+    assert "about-family-links" not in css
+    assert "about-1u" not in css.split("/* About reuses")[1]
     assert "5865F2" not in css.split("/* About reuses")[1]
+    about_css = css.split("/* About reuses")[1]
+    assert "linear-gradient" not in about_css

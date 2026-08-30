@@ -771,7 +771,7 @@ def _assert_about_surface(html: str) -> None:
     assert "Beta" in html
     assert "Early" not in html
     assert "The host you run" in html
-    assert "/assets/brand/vocagateway/vocagateway-1u.svg" in html
+    assert "/assets/brand/vocagateway/vocagateway-tower.svg" in html
     assert 'id="about-this-build"' in html
     assert 'id="about-family"' in html
     assert 'id="about-talk"' in html
@@ -786,7 +786,8 @@ def _assert_about_surface(html: str) -> None:
     assert "Never on-device" in html
     assert "is on-device" not in html.lower()
     assert "Never expose port" in html and "8765" in html
-    assert 'class="callout"' in html
+    assert "about-info" in html
+    assert 'class="callout"' not in html
     assert "AGPL-3.0" in html
     for host in (
         "https://vocahq.com",
@@ -797,6 +798,22 @@ def _assert_about_surface(html: str) -> None:
         "https://vocagateway.vocahq.com",
     ):
         assert host in html
+    assert "about-family-links" not in html
+    assert html.count('class="onboarding-actions"') == 2
+    assert "VocaHQ</a>" in html
+    assert "VocaLinux</a>" in html
+    assert "VocaMac</a>" in html
+    assert "VocaWin</a>" in html
+    assert "VocaPhone</a>" in html
+    assert "VocaGateway</a>" in html
+    # Family row is currentColor: HQ mic, 1U chassis, platform marks.
+    assert "M 164 127 A 65 65" in html
+    assert 'width="832" height="280"' in html
+    # Official platform marks from VocaHQ/.github brand/promo/cards/platform.
+    assert "M12.504 0c-.155" in html
+    assert "M12.152 6.896" in html
+    assert "M0,0H11.377" in html
+    assert "M18.4395 5.5586" in html
     assert "https://github.com/VocaHQ/vocagateway/issues" in html
     assert "Report a bug or idea" in html
     assert "https://discord.gg/t6muquAJbm" in html
@@ -827,6 +844,9 @@ async def test_webui_shell_is_public(admin_client: httpx.AsyncClient) -> None:
     # Fifth tab, after the existing four. Hash routing uses data-tab="about".
     tabs = [part.split('"', 1)[0] for part in response.text.split('data-tab="')[1:]]
     assert tabs[:5] == ["overview", "models", "pair", "settings", "about"]
+    assert "footer-copy" in response.text
+    assert "footer-links" not in response.text
+    assert "© 2026" in response.text or "&copy; 2026" in response.text
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-frame-options"] == "DENY"
     assert response.headers["x-content-type-options"] == "nosniff"
