@@ -7,7 +7,9 @@ from app.fragments.about import about_fragment
 from app.schemas import CommitStatus
 from tests.test_admin import _assert_about_surface
 
-SOCIAL = Path(__file__).resolve().parents[1] / "app" / "webui" / "brand" / "social"
+BRAND = Path(__file__).resolve().parents[1] / "app" / "webui" / "brand"
+SOCIAL = BRAND / "social"
+PLATFORM = BRAND / "platform"
 SHA = "0979263b31465a19a6c5fa375ccdd0f2af250ca5"
 
 
@@ -18,6 +20,7 @@ def test_about_fragment_has_the_family_surface() -> None:
     assert "Early" not in html
     assert "https://discord.gg/t6muquAJbm" in html
     assert VERSION in html
+    assert "<h2>About</h2>" in html
     assert "<dt>Version</dt>" in html
     assert "<dt>Build</dt>" not in html
 
@@ -49,6 +52,23 @@ def test_social_marks_are_the_official_files() -> None:
     assert "M3 5h18a2 2 0 0 1 2 2v10" in mail
 
 
+def test_platform_marks_are_the_official_files() -> None:
+    linux = (PLATFORM / "linux.svg").read_text(encoding="utf-8")
+    apple = (PLATFORM / "apple.svg").read_text(encoding="utf-8")
+    windows = (PLATFORM / "windows.svg").read_text(encoding="utf-8")
+    android = (PLATFORM / "android.svg").read_text(encoding="utf-8")
+    for svg in (linux, apple, windows, android):
+        assert 'viewBox="0 0 24 24"' in svg
+        assert 'fill="currentColor"' in svg
+        assert "5865F2" not in svg
+        assert "#000" not in svg
+        assert "#0F6B57" not in svg
+    assert "M12.504 0c-.155" in linux
+    assert "M12.152 6.896" in apple
+    assert "M0,0H11.377" in windows
+    assert "M18.4395 5.5586" in android
+
+
 def test_official_1u_mark_is_vendored() -> None:
     mark = (
         Path(__file__).resolve().parents[1]
@@ -70,4 +90,7 @@ def test_about_styles_reuse_webui_chrome() -> None:
     assert "about-kicker" not in css
     assert "about-card-kicker" not in css
     assert ".about-icon" in css
+    assert "about-family-links" not in css
     assert "5865F2" not in css.split("/* About reuses")[1]
+    about_css = css.split("/* About reuses")[1]
+    assert "linear-gradient" not in about_css

@@ -797,6 +797,20 @@ def _assert_about_surface(html: str) -> None:
         "https://vocagateway.vocahq.com",
     ):
         assert host in html
+    assert "about-family-links" not in html
+    assert html.count('class="onboarding-actions"') == 2
+    assert "VocaHQ</a>" in html
+    assert "VocaLinux</a>" in html
+    assert "VocaMac</a>" in html
+    assert "VocaWin</a>" in html
+    assert "VocaPhone</a>" in html
+    assert "VocaGateway</a>" in html
+    assert "/assets/voca-logo.svg" in html
+    # Official platform marks from VocaHQ/.github brand/promo/cards/platform.
+    assert "M12.504 0c-.155" in html
+    assert "M12.152 6.896" in html
+    assert "M0,0H11.377" in html
+    assert "M18.4395 5.5586" in html
     assert "https://github.com/VocaHQ/vocagateway/issues" in html
     assert "Report a bug or idea" in html
     assert "https://discord.gg/t6muquAJbm" in html

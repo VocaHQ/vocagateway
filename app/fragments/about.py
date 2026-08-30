@@ -8,21 +8,23 @@ from pathlib import Path
 from app.schemas import CommitStatus
 
 # Official marks from VocaHQ/.github. Do not redraw.
-# Talk-to-us: brand/vocahq/social. Host hero: brand/vocagateway/vocagateway-1u.svg.
-_SOCIAL_DIR = Path(__file__).resolve().parent.parent / "webui" / "brand" / "social"
+# Talk-to-us: brand/vocahq/social.
+# Family platforms: brand/promo/cards/platform.
+# Host hero: brand/vocagateway/vocagateway-1u.svg.
+_BRAND_DIR = Path(__file__).resolve().parent.parent / "webui" / "brand"
 _MARK_1U = "/assets/brand/vocagateway/vocagateway-1u.svg"
+_MARK_HQ = "/assets/voca-logo.svg"
 _ISSUES_URL = "https://github.com/VocaHQ/vocagateway/issues"
 _LICENSE_URL = "https://github.com/VocaHQ/vocagateway/blob/main/LICENSE"
-_SITE_HOST = "vocagateway.vocahq.com"
-_SITE_URL = f"https://{_SITE_HOST}/"
 
-_FAMILY_LINKS: tuple[tuple[str, str], ...] = (
-    ("https://vocahq.com", "vocahq.com"),
-    ("https://vocalinux.com", "vocalinux.com"),
-    ("https://vocamac.com", "vocamac.com"),
-    ("https://vocawin.com", "vocawin.com"),
-    ("https://vocaphone.vocahq.com", "vocaphone.vocahq.com"),
-    ("https://vocagateway.vocahq.com", "vocagateway.vocahq.com"),
+# icon, href, label. Platform names are files in webui/brand/platform/.
+_FAMILY_LINKS: tuple[tuple[str, str, str], ...] = (
+    ("hq", "https://vocahq.com", "VocaHQ"),
+    ("linux", "https://vocalinux.com", "VocaLinux"),
+    ("apple", "https://vocamac.com", "VocaMac"),
+    ("windows", "https://vocawin.com", "VocaWin"),
+    ("android", "https://vocaphone.vocahq.com", "VocaPhone"),
+    ("gateway", "https://vocagateway.vocahq.com", "VocaGateway"),
 )
 
 _CONTACT_LINKS: tuple[tuple[str, str, str], ...] = (
@@ -32,8 +34,8 @@ _CONTACT_LINKS: tuple[tuple[str, str, str], ...] = (
 )
 
 
-def _icon(name: str) -> str:
-    return (_SOCIAL_DIR / f"{name}.svg").read_text(encoding="utf-8").strip()
+def _icon(name: str, folder: str = "social") -> str:
+    return (_BRAND_DIR / folder / f"{name}.svg").read_text(encoding="utf-8").strip()
 
 
 def _link_target(url: str) -> str:
@@ -42,11 +44,28 @@ def _link_target(url: str) -> str:
     return ' target="_blank" rel="noopener noreferrer"'
 
 
+def _mark_img(src: str) -> str:
+    return (
+        f'<span class="about-icon">'
+        f'<img src="{escape(src, quote=True)}" width="16" height="16" alt="" />'
+        f"</span>"
+    )
+
+
+def _family_icon(name: str) -> str:
+    if name == "hq":
+        return _mark_img(_MARK_HQ)
+    if name == "gateway":
+        return _mark_img(_MARK_1U)
+    return f'<span class="about-icon">{_icon(name, folder="platform")}</span>'
+
+
 def about_fragment(version: str, commit: CommitStatus | None = None) -> str:
-    family_links = "".join(
-        f'<a href="{escape(url, quote=True)}" target="_blank" '
-        f'rel="noopener noreferrer">{escape(label)}</a>'
-        for url, label in _FAMILY_LINKS
+    family = "".join(
+        f'<a class="ghost" href="{escape(url, quote=True)}"'
+        f"{_link_target(url)}>"
+        f"{_family_icon(name)}{escape(label)}</a>"
+        for name, url, label in _FAMILY_LINKS
     )
     contacts = "".join(
         f'<a class="ghost" href="{escape(url, quote=True)}"'
@@ -68,9 +87,8 @@ def about_fragment(version: str, commit: CommitStatus | None = None) -> str:
     return f"""
       <div class="page-head">
         <div>
-          <h2>VocaGateway</h2>
-          <p>Optional self-hosted compute for other Voca clients. Never on-device.
-             <a href="{_SITE_URL}" target="_blank" rel="noopener noreferrer">{_SITE_HOST}</a></p>
+          <h2>About</h2>
+          <p>Optional self-hosted compute for other Voca clients. Never on-device.</p>
         </div>
       </div>
 
@@ -87,10 +105,8 @@ def about_fragment(version: str, commit: CommitStatus | None = None) -> str:
 
       <div class="card" id="about-this-build">
         <h2>This build</h2>
-        <p>VocaGateway is Beta optional self-hosted compute for other Voca clients.
-           This is infrastructure, not a dictation client.</p>
-        <p>Audio leaves the client. This host transcribes it. There is no Voca
-           account and no Voca cloud.</p>
+        <p>This is infrastructure, not a dictation client. Audio leaves the client.
+           This host transcribes it. There is no Voca account and no Voca cloud.</p>
         <div class="callout">
           <strong>Keep this host private.</strong>
           <span>Trusted LAN, Tailscale, or HTTPS. Never expose port 8765
@@ -101,10 +117,8 @@ def about_fragment(version: str, commit: CommitStatus | None = None) -> str:
 
       <div class="card" id="about-family">
         <h2>Part of VocaHQ</h2>
-        <p>VocaGateway is part of the VocaHQ family. Companion apps: VocaLinux,
-           VocaMac, VocaWin, and VocaPhone. VocaGateway is optional self-hosted
-           compute for other Voca clients.</p>
-        <p class="about-family-links">{family_links}</p>
+        <p>Companion apps: VocaLinux, VocaMac, VocaWin, and VocaPhone.</p>
+        <div class="onboarding-actions">{family}</div>
       </div>
 
       <div class="card" id="about-talk">

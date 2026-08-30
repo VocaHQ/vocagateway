@@ -2494,11 +2494,13 @@ button.danger.ghost:hover {
 .htmx-request .actions button, .actions button.htmx-request { opacity: 0.45; pointer-events: none; }
 
 /* About reuses Overview / Settings chrome. Official 1U mark is 52px in the
-   system-card hero. Talk-to-us icons stay 16px and inherit currentColor. */
+   system-card hero. Family and talk-to-us icons stay 16px. Platform glyphs
+   inherit currentColor; HQ and Gateway lockups keep approved fills. */
 #about-host .sys-hero {
   display: flex;
   align-items: center;
   gap: 16px;
+  background: var(--surface);
 }
 .about-1u {
   display: block;
@@ -2507,13 +2509,6 @@ button.danger.ghost:hover {
   height: 52px;
   border-radius: var(--r);
 }
-.about-family-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  margin-top: 14px;
-}
-.about-family-links a { text-decoration: none; }
 .about-icon {
   display: flex;
   flex: 0 0 auto;
@@ -2521,10 +2516,14 @@ button.danger.ghost:hover {
   height: 16px;
   color: inherit;
 }
-.about-icon svg {
+.about-icon svg,
+.about-icon img {
   display: block;
   width: 16px;
   height: 16px;
+}
+.about-icon img {
+  border-radius: 3px;
 }
 
 /* ---------------------------------------------------------------- responsive */
