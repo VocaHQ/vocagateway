@@ -69,6 +69,19 @@ def test_platform_marks_are_the_official_files() -> None:
     assert "M18.4395 5.5586" in android
 
 
+def test_family_marks_are_current_color() -> None:
+    hq = (BRAND / "vocahq" / "voca-mark.svg").read_text(encoding="utf-8")
+    gateway = (BRAND / "vocagateway" / "vocagateway-1u-mark.svg").read_text(encoding="utf-8")
+    for svg in (hq, gateway):
+        assert 'fill="currentColor"' in svg
+        assert "#0F6B57" not in svg
+        assert "#0B1A15" not in svg
+        assert "#F2F6F2" not in svg
+    assert "M 164 127 A 65 65" in hq
+    assert 'viewBox="96 372 832 280"' in gateway
+    assert 'width="832" height="280"' in gateway
+
+
 def test_official_1u_mark_is_vendored() -> None:
     mark = (
         Path(__file__).resolve().parents[1]

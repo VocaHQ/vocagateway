@@ -461,15 +461,14 @@ main {
 .site-footer {
   flex: 0 0 auto;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px 20px;
+  justify-content: center;
   margin-top: auto;
   padding: 18px var(--gutter) 22px;
   border-top: 1px solid var(--line-soft);
   color: var(--faint);
   font-size: 0.84rem;
+  text-align: center;
 }
 .footer-copy {
   margin: 0;
@@ -480,18 +479,6 @@ main {
   text-decoration: none;
 }
 .footer-copy a:hover { color: var(--accent); }
-.footer-links {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 14px;
-}
-.footer-links a {
-  color: var(--muted);
-  text-decoration: none;
-  font-weight: 500;
-}
-.footer-links a:hover { color: var(--accent); }
 
 /* ------------------------------------------------------------------ sections */
 
@@ -2494,8 +2481,7 @@ button.danger.ghost:hover {
 .htmx-request .actions button, .actions button.htmx-request { opacity: 0.45; pointer-events: none; }
 
 /* About reuses Overview / Settings chrome. Official tower mark is 52px in the
-   system-card hero. Family and talk-to-us icons stay 16px. Platform glyphs
-   inherit currentColor; HQ and Gateway lockups keep approved fills. */
+   system-card hero. Family and talk-to-us icons stay 16px currentColor. */
 #about-host .sys-hero {
   display: flex;
   align-items: center;
@@ -2558,8 +2544,18 @@ button.danger.ghost:hover {
   width: 16px;
   height: 16px;
 }
-.about-icon img {
-  border-radius: 3px;
+#about-this-build .facts {
+  align-items: baseline;
+  column-gap: 12px;
+  row-gap: 6px;
+}
+#about-this-build .facts dt,
+#about-this-build .facts dd {
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+#about-this-build .facts dd a {
+  text-underline-offset: 0.18em;
 }
 
 /* ---------------------------------------------------------------- responsive */
@@ -2576,9 +2572,6 @@ button.danger.ghost:hover {
   :root { --gutter: 16px; }
   main { padding: 20px 16px 40px; }
   .site-footer {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
     padding-block: 16px 20px;
   }
   .brand .muted { display: none; }

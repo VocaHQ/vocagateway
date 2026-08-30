@@ -772,7 +772,6 @@ def _assert_about_surface(html: str) -> None:
     assert "Early" not in html
     assert "The host you run" in html
     assert "/assets/brand/vocagateway/vocagateway-tower.svg" in html
-    assert "/assets/brand/vocagateway/vocagateway-1u.svg" in html
     assert 'id="about-this-build"' in html
     assert 'id="about-family"' in html
     assert 'id="about-talk"' in html
@@ -807,7 +806,9 @@ def _assert_about_surface(html: str) -> None:
     assert "VocaWin</a>" in html
     assert "VocaPhone</a>" in html
     assert "VocaGateway</a>" in html
-    assert "/assets/voca-logo.svg" in html
+    # Family row is currentColor: HQ mic, 1U chassis, platform marks.
+    assert "M 164 127 A 65 65" in html
+    assert 'width="832" height="280"' in html
     # Official platform marks from VocaHQ/.github brand/promo/cards/platform.
     assert "M12.504 0c-.155" in html
     assert "M12.152 6.896" in html
@@ -843,6 +844,9 @@ async def test_webui_shell_is_public(admin_client: httpx.AsyncClient) -> None:
     # Fifth tab, after the existing four. Hash routing uses data-tab="about".
     tabs = [part.split('"', 1)[0] for part in response.text.split('data-tab="')[1:]]
     assert tabs[:5] == ["overview", "models", "pair", "settings", "about"]
+    assert "footer-copy" in response.text
+    assert "footer-links" not in response.text
+    assert "© 2026" in response.text or "&copy; 2026" in response.text
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-frame-options"] == "DENY"
     assert response.headers["x-content-type-options"] == "nosniff"

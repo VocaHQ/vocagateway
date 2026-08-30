@@ -9,24 +9,21 @@ from app.schemas import CommitStatus
 
 # Official marks from VocaHQ/.github. Do not redraw.
 # Talk-to-us: brand/vocahq/social.
-# Family platforms: brand/promo/cards/platform.
+# Family row: brand/promo/cards/platform, vocahq/voca-mark, vocagateway-1u chassis.
 # Host hero: brand/vocagateway/vocagateway-tower.svg.
-# Small family button: brand/vocagateway/vocagateway-1u.svg (holds at 16px).
 _BRAND_DIR = Path(__file__).resolve().parent.parent / "webui" / "brand"
 _MARK_TOWER = "/assets/brand/vocagateway/vocagateway-tower.svg"
-_MARK_1U = "/assets/brand/vocagateway/vocagateway-1u.svg"
-_MARK_HQ = "/assets/voca-logo.svg"
 _ISSUES_URL = "https://github.com/VocaHQ/vocagateway/issues"
 _LICENSE_URL = "https://github.com/VocaHQ/vocagateway/blob/main/LICENSE"
 
-# icon, href, label. Platform names are files in webui/brand/platform/.
-_FAMILY_LINKS: tuple[tuple[str, str, str], ...] = (
-    ("hq", "https://vocahq.com", "VocaHQ"),
-    ("linux", "https://vocalinux.com", "VocaLinux"),
-    ("apple", "https://vocamac.com", "VocaMac"),
-    ("windows", "https://vocawin.com", "VocaWin"),
-    ("android", "https://vocaphone.vocahq.com", "VocaPhone"),
-    ("gateway", "https://vocagateway.vocahq.com", "VocaGateway"),
+# folder, file stem, href, label.
+_FAMILY_LINKS: tuple[tuple[str, str, str, str], ...] = (
+    ("vocahq", "voca-mark", "https://vocahq.com", "VocaHQ"),
+    ("platform", "linux", "https://vocalinux.com", "VocaLinux"),
+    ("platform", "apple", "https://vocamac.com", "VocaMac"),
+    ("platform", "windows", "https://vocawin.com", "VocaWin"),
+    ("platform", "android", "https://vocaphone.vocahq.com", "VocaPhone"),
+    ("vocagateway", "vocagateway-1u-mark", "https://vocagateway.vocahq.com", "VocaGateway"),
 )
 
 _CONTACT_LINKS: tuple[tuple[str, str, str], ...] = (
@@ -46,28 +43,13 @@ def _link_target(url: str) -> str:
     return ' target="_blank" rel="noopener noreferrer"'
 
 
-def _mark_img(src: str) -> str:
-    return (
-        f'<span class="about-icon">'
-        f'<img src="{escape(src, quote=True)}" width="16" height="16" alt="" />'
-        f"</span>"
-    )
-
-
-def _family_icon(name: str) -> str:
-    if name == "hq":
-        return _mark_img(_MARK_HQ)
-    if name == "gateway":
-        return _mark_img(_MARK_1U)
-    return f'<span class="about-icon">{_icon(name, folder="platform")}</span>'
-
-
 def about_fragment(version: str, commit: CommitStatus | None = None) -> str:
     family = "".join(
         f'<a class="ghost" href="{escape(url, quote=True)}"'
         f"{_link_target(url)}>"
-        f"{_family_icon(name)}{escape(label)}</a>"
-        for name, url, label in _FAMILY_LINKS
+        f'<span class="about-icon">{_icon(stem, folder=folder)}</span>'
+        f"{escape(label)}</a>"
+        for folder, stem, url, label in _FAMILY_LINKS
     )
     contacts = "".join(
         f'<a class="ghost" href="{escape(url, quote=True)}"'
