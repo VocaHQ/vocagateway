@@ -771,6 +771,7 @@ def _assert_about_surface(html: str) -> None:
     assert "Beta" in html
     assert "Early" not in html
     assert "The host you run" in html
+    assert "/assets/brand/vocagateway/vocagateway-tower.svg" in html
     assert "/assets/brand/vocagateway/vocagateway-1u.svg" in html
     assert 'id="about-this-build"' in html
     assert 'id="about-family"' in html
@@ -786,7 +787,8 @@ def _assert_about_surface(html: str) -> None:
     assert "Never on-device" in html
     assert "is on-device" not in html.lower()
     assert "Never expose port" in html and "8765" in html
-    assert 'class="callout"' in html
+    assert "about-info" in html
+    assert 'class="callout"' not in html
     assert "AGPL-3.0" in html
     for host in (
         "https://vocahq.com",

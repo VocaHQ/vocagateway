@@ -84,13 +84,32 @@ def test_official_1u_mark_is_vendored() -> None:
     assert 'aria-label="VocaGateway"' in mark
 
 
+def test_official_tower_mark_is_vendored() -> None:
+    mark = (
+        Path(__file__).resolve().parents[1]
+        / "app"
+        / "webui"
+        / "brand"
+        / "vocagateway"
+        / "vocagateway-tower.svg"
+    ).read_text(encoding="utf-8")
+    assert 'viewBox="0 0 1024 1024"' in mark
+    assert "#0F6B57" in mark
+    assert "#F2F6F2" in mark
+    assert 'aria-label="VocaGateway"' in mark
+    assert 'y="148" width="440" height="676"' in mark
+
+
 def test_about_styles_reuse_webui_chrome() -> None:
     css = (Path(__file__).resolve().parents[1] / "app" / "webui" / "styles.css").read_text()
     assert "text-transform: uppercase" not in css.split("/* About reuses")[1]
     assert "about-kicker" not in css
     assert "about-card-kicker" not in css
     assert ".about-icon" in css
+    assert ".about-info" in css
+    assert ".about-host-mark" in css
     assert "about-family-links" not in css
+    assert "about-1u" not in css.split("/* About reuses")[1]
     assert "5865F2" not in css.split("/* About reuses")[1]
     about_css = css.split("/* About reuses")[1]
     assert "linear-gradient" not in about_css

@@ -2493,7 +2493,7 @@ button.danger.ghost:hover {
 
 .htmx-request .actions button, .actions button.htmx-request { opacity: 0.45; pointer-events: none; }
 
-/* About reuses Overview / Settings chrome. Official 1U mark is 52px in the
+/* About reuses Overview / Settings chrome. Official tower mark is 52px in the
    system-card hero. Family and talk-to-us icons stay 16px. Platform glyphs
    inherit currentColor; HQ and Gateway lockups keep approved fills. */
 #about-host .sys-hero {
@@ -2502,12 +2502,48 @@ button.danger.ghost:hover {
   gap: 16px;
   background: var(--surface);
 }
-.about-1u {
+.about-host-mark {
   display: block;
   flex: 0 0 auto;
   width: 52px;
   height: 52px;
   border-radius: var(--r);
+}
+.about-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 16px 0 20px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: var(--r-lg);
+  background: var(--accent-wash);
+}
+.about-info-mark {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-style: italic;
+  line-height: 1;
+}
+.about-info strong {
+  display: block;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.about-info div span {
+  display: block;
+  color: var(--muted);
 }
 .about-icon {
   display: flex;

@@ -10,8 +10,10 @@ from app.schemas import CommitStatus
 # Official marks from VocaHQ/.github. Do not redraw.
 # Talk-to-us: brand/vocahq/social.
 # Family platforms: brand/promo/cards/platform.
-# Host hero: brand/vocagateway/vocagateway-1u.svg.
+# Host hero: brand/vocagateway/vocagateway-tower.svg.
+# Small family button: brand/vocagateway/vocagateway-1u.svg (holds at 16px).
 _BRAND_DIR = Path(__file__).resolve().parent.parent / "webui" / "brand"
+_MARK_TOWER = "/assets/brand/vocagateway/vocagateway-tower.svg"
 _MARK_1U = "/assets/brand/vocagateway/vocagateway-1u.svg"
 _MARK_HQ = "/assets/voca-logo.svg"
 _ISSUES_URL = "https://github.com/VocaHQ/vocagateway/issues"
@@ -94,7 +96,8 @@ def about_fragment(version: str, commit: CommitStatus | None = None) -> str:
 
       <div class="card system-card" id="about-host">
         <div class="sys-hero">
-          <img class="about-1u" src="{_MARK_1U}" width="52" height="52" alt="VocaGateway" />
+          <img class="about-host-mark" src="{_MARK_TOWER}"
+               width="52" height="52" alt="VocaGateway" />
           <div class="sys-hero-copy">
             <p class="sys-hero-kicker">Beta</p>
             <h2 class="sys-hero-headline">The host you run</h2>
@@ -107,10 +110,13 @@ def about_fragment(version: str, commit: CommitStatus | None = None) -> str:
         <h2>This build</h2>
         <p>This is infrastructure, not a dictation client. Audio leaves the client.
            This host transcribes it. There is no Voca account and no Voca cloud.</p>
-        <div class="callout">
-          <strong>Keep this host private.</strong>
-          <span>Trusted LAN, Tailscale, or HTTPS. Never expose port 8765
-                to the public internet.</span>
+        <div class="about-info" role="note">
+          <span class="about-info-mark" aria-hidden="true">i</span>
+          <div>
+            <strong>Keep this host private.</strong>
+            <span>Trusted LAN, Tailscale, or HTTPS. Never expose port 8765
+                  to the public internet.</span>
+          </div>
         </div>
         <dl class="facts">{facts_html}</dl>
       </div>
