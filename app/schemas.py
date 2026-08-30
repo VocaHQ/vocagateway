@@ -290,6 +290,10 @@ class TestTranscriptionResponse(BaseModel):
     peak_memory_mb: float | None
 
 
+class OpenAITranscriptionResponse(BaseModel):
+    text: str
+
+
 class ErrorDetail(BaseModel):
     code: str
     message: str

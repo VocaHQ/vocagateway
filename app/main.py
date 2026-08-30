@@ -32,6 +32,7 @@ from app.routes import (
     pairing,
     sessions,
     streaming,
+    transcriptions,
 )
 from app.runtime_config import RuntimeConfig
 from app.schemas import ErrorDetail, ErrorEnvelope
@@ -182,6 +183,7 @@ def create_app(
 
     app.include_router(health.router)
     app.include_router(sessions.router)
+    app.include_router(transcriptions.router)
     app.include_router(streaming.router)
     app.include_router(admin_status.router)
     app.include_router(admin_tokens.router)
