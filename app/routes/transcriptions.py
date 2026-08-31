@@ -29,11 +29,13 @@ def reject_oversized_multipart(
 ) -> None:
     raw = request.headers.get("content-length")
     if raw is None:
-        return
+        raise APIProblem(411, "length_required", "Content-Length is required.")
     try:
         length = int(raw)
-    except ValueError:
-        return
+    except ValueError as error:
+        raise APIProblem(400, "invalid_content_length", "Content-Length is invalid.") from error
+    if length < 0:
+        raise APIProblem(400, "invalid_content_length", "Content-Length is invalid.")
     if length > ctx.settings.maximum_upload_bytes + _MULTIPART_WRAP_SLACK:
         raise APIProblem(413, "audio_too_large", "The recording exceeds the upload limit.")
 
@@ -44,7 +46,8 @@ class _EarlyUploadLimitRoute(APIRoute):
     `get_request_handler` calls `request.form()` before it solves router
     dependencies whenever the endpoint has File()/Form() parameters. A 413
     raised from a dependency would still parse the body. Wrapping the handler
-    is what fails an oversized Content-Length closed without reading it.
+    is what fails a missing, invalid, or oversized Content-Length closed
+    without reading the body.
     """
 
     def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:

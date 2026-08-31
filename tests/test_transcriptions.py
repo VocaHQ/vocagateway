@@ -227,3 +227,55 @@ async def test_oversized_content_length_without_a_token_is_401(
     response = await client.send(request)
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "unauthorized"
+
+
+async def test_missing_content_length_is_411(
+    client: httpx.AsyncClient, authorization: dict[str, str]
+) -> None:
+    """A missing Content-Length 411s before FastAPI parses multipart."""
+    request = client.build_request(
+        "POST",
+        TRANSCRIPTIONS,
+        headers={
+            **authorization,
+            "Content-Type": "multipart/form-data; boundary=----x",
+        },
+        content=b"xxxxxxxx",
+    )
+    request.headers.pop("content-length", None)
+    response = await client.send(request)
+    assert response.status_code == 411
+    assert response.json()["error"]["code"] == "length_required"
+
+
+async def test_missing_content_length_without_a_token_is_401(
+    client: httpx.AsyncClient,
+) -> None:
+    request = client.build_request(
+        "POST",
+        TRANSCRIPTIONS,
+        headers={"Content-Type": "multipart/form-data; boundary=----x"},
+        content=b"xxxxxxxx",
+    )
+    request.headers.pop("content-length", None)
+    response = await client.send(request)
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "unauthorized"
+
+
+async def test_invalid_content_length_is_400(
+    client: httpx.AsyncClient, authorization: dict[str, str]
+) -> None:
+    request = client.build_request(
+        "POST",
+        TRANSCRIPTIONS,
+        headers={
+            **authorization,
+            "Content-Type": "multipart/form-data; boundary=----x",
+        },
+        content=b"xxxxxxxx",
+    )
+    request.headers["content-length"] = "nope"
+    response = await client.send(request)
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_content_length"
