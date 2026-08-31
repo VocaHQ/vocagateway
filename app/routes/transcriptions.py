@@ -1,23 +1,69 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Coroutine
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
+from fastapi.routing import APIRoute
 
 from app.audio import ALLOWED_AUDIO_TYPES, atomic_upload_path, complete_atomic_upload
 from app.context import GatewayContext, get_context, require_token
 from app.errors import APIProblem
 from app.schemas import OpenAITranscriptionResponse
 
-router = APIRouter(dependencies=[Depends(require_token)])
-
 _LANGUAGE_PATTERN = re.compile(r"^[A-Za-z-]+$|^auto$")
 _TRUTHY = frozenset({"true", "1", "yes"})
 _MAX_LANGUAGE_LENGTH = 20
 _READ_CHUNK = 64 * 1024
+# Multipart wrapping (boundaries, disposition headers) sits on top of the audio
+# bytes. Slack lets a file at the cap through the header check; the copy loop
+# still enforces maximum_upload_bytes on the file itself.
+_MULTIPART_WRAP_SLACK = 65536
+
+
+def reject_oversized_multipart(
+    request: Request, ctx: GatewayContext = Depends(get_context)
+) -> None:
+    raw = request.headers.get("content-length")
+    if raw is None:
+        return
+    try:
+        length = int(raw)
+    except ValueError:
+        return
+    if length > ctx.settings.maximum_upload_bytes + _MULTIPART_WRAP_SLACK:
+        raise APIProblem(413, "audio_too_large", "The recording exceeds the upload limit.")
+
+
+class _EarlyUploadLimitRoute(APIRoute):
+    """Run auth and the Content-Length cap before FastAPI spools multipart.
+
+    `get_request_handler` calls `request.form()` before it solves router
+    dependencies whenever the endpoint has File()/Form() parameters. A 413
+    raised from a dependency would still parse the body. Wrapping the handler
+    is what fails an oversized Content-Length closed without reading it.
+    """
+
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        original = super().get_route_handler()
+
+        async def handler(request: Request) -> Response:
+            ctx = get_context(request)
+            if not ctx.token_is_valid(request.headers.get("authorization")):
+                raise APIProblem(401, "unauthorized", "A valid bearer token is required.")
+            reject_oversized_multipart(request, ctx)
+            return await original(request)
+
+        return handler
+
+
+router = APIRouter(
+    route_class=_EarlyUploadLimitRoute,
+    dependencies=[Depends(require_token), Depends(reject_oversized_multipart)],
+)
 
 
 def _audio_suffix(content_type: str | None, filename: str | None) -> str:
@@ -102,7 +148,7 @@ async def create_transcription(
             if received < 128:
                 raise APIProblem(422, "audio_empty", "The recording is empty.")
             complete_atomic_upload(temporary, final)
-        except Exception:
+        except BaseException:
             temporary.unlink(missing_ok=True)
             raise
         try:

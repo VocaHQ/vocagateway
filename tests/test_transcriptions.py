@@ -193,3 +193,37 @@ async def test_unknown_form_fields_are_ignored(
     )
     assert response.status_code == 200
     assert response.json() == {"text": "hello from the local model"}
+
+
+async def test_content_length_over_the_cap_is_413_without_a_body(
+    client: httpx.AsyncClient, authorization: dict[str, str]
+) -> None:
+    """The header check 413s before FastAPI parses multipart."""
+    request = client.build_request(
+        "POST",
+        TRANSCRIPTIONS,
+        headers={
+            **authorization,
+            "Content-Type": "multipart/form-data; boundary=----x",
+        },
+        content=b"",
+    )
+    request.headers["content-length"] = "1000000"
+    response = await client.send(request)
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "audio_too_large"
+
+
+async def test_oversized_content_length_without_a_token_is_401(
+    client: httpx.AsyncClient,
+) -> None:
+    request = client.build_request(
+        "POST",
+        TRANSCRIPTIONS,
+        headers={"Content-Type": "multipart/form-data; boundary=----x"},
+        content=b"",
+    )
+    request.headers["content-length"] = "1000000"
+    response = await client.send(request)
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "unauthorized"
