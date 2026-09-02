@@ -1,26 +1,25 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Response
 
+from app.catalog import CatalogModel
 from app.context import GatewayContext, get_context
 from app.engine_state import active_catalog_model
 from app.models.base import StreamingEngine
 from app.schemas import HealthResponse, LivenessResponse, ReadinessResponse
 
 router = APIRouter()
+GatewayContextDependency = Annotated[GatewayContext, Depends(get_context)]
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health(ctx: GatewayContext = Depends(get_context)) -> HealthResponse:
+async def health(ctx: GatewayContextDependency) -> HealthResponse:
     state = await ctx.readiness.probe()
     selected_engine = ctx.engine_provider.current()
     active_model = active_catalog_model(ctx)
-    languages: tuple[str, ...] = ()
-    if active_model is not None:
-        # Moonshine keeps its single language in the singular field.
-        languages = active_model.language_codes or (
-            (active_model.language_code,) if active_model.language_code else ()
-        )
+    languages = _model_languages(active_model)
     return HealthResponse(
         engine_ready=state.ready,
         engine=state.name,
@@ -37,14 +36,12 @@ async def health(ctx: GatewayContext = Depends(get_context)) -> HealthResponse:
 
 
 @router.get("/health/live", response_model=LivenessResponse)
-async def liveness(ctx: GatewayContext = Depends(get_context)) -> LivenessResponse:
+async def liveness(ctx: GatewayContextDependency) -> LivenessResponse:
     return LivenessResponse(uptime_seconds=ctx.service.metrics.snapshot().uptime_seconds)
 
 
 @router.get("/health/ready", response_model=ReadinessResponse)
-async def ready(
-    response: Response, ctx: GatewayContext = Depends(get_context)
-) -> ReadinessResponse:
+async def ready(response: Response, ctx: GatewayContextDependency) -> ReadinessResponse:
     details = await ctx.readiness.details()
     if not details.health.ready:
         response.status_code = 503
@@ -55,3 +52,15 @@ async def ready(
         probe_age_seconds=round(details.checked_age_seconds, 3),
         warmup_state=details.warmup_state,
     )
+
+
+def _model_languages(active_model: CatalogModel | None) -> tuple[str, ...]:
+    """Return catalog language codes, including single-language Moonshine entries."""
+    if active_model is None:
+        return ()
+    language_codes = active_model.language_codes
+    if language_codes:
+        return language_codes
+    if active_model.language_code:
+        return (active_model.language_code,)
+    return ()
