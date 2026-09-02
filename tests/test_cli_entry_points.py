@@ -31,7 +31,7 @@ def _pyproject_scripts() -> dict[str, str]:
     return {str(name): str(target) for name, target in scripts.items()}
 
 
-def test_pyproject_declares_primary_and_deprecated_cli_scripts() -> None:
+def test_pyproject_declares_primary_and_dep_5e999() -> None:
     scripts = _pyproject_scripts()
     for name, target in PRIMARY_SCRIPTS.items():
         assert scripts[name] == target
@@ -39,7 +39,7 @@ def test_pyproject_declares_primary_and_deprecated_cli_scripts() -> None:
         assert scripts[alias] == scripts[primary]
 
 
-def test_installed_entry_points_resolve_primary_and_aliases() -> None:
+def test_installed_entry_points_resolve_pri_dca7a() -> None:
     """Require the editable/venv install so `uv run` / console scripts work."""
     console = entry_points().select(group="console_scripts")
     by_name = {ep.name: ep for ep in console}

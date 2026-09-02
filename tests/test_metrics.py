@@ -35,7 +35,7 @@ def test_runtime_metrics_track_work_and_outcomes() -> None:
     assert snapshot.history == ()
 
 
-def test_runtime_metrics_history_samples_when_requested(monkeypatch) -> None:
+def test_runtime_metrics_history_samples_wh_4652a(monkeypatch) -> None:
     metrics = RuntimeMetrics(concurrency_limit=1)
     clock = {"t": 1000.0}
 

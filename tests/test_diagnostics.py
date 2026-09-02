@@ -68,11 +68,11 @@ def test_redact_home_path_replaces_home_prefix() -> None:
     assert redact_home_path(home) == "~"
 
 
-def test_redact_home_path_leaves_other_paths_untouched() -> None:
+def test_redact_home_path_leaves_other_path_93533() -> None:
     assert redact_home_path("/data/models") == "/data/models"
 
 
-def test_build_diagnostics_bundle_redacts_paths_and_lists_exclusions() -> None:
+def test_build_diagnostics_bundle_redacts_p_82ebb() -> None:
     home = str(Path.home())
     status = _status(
         PathStatus(
@@ -92,7 +92,7 @@ def test_build_diagnostics_bundle_redacts_paths_and_lists_exclusions() -> None:
     assert "Bearer" not in dumped
 
 
-def test_build_diagnostics_bundle_redacts_config_model_paths() -> None:
+def test_build_diagnostics_bundle_redacts_c_a8a1b() -> None:
     """whisper_model/whisperkit_model/faster_whisper_model are absolute paths
     (set via `str(path)` in EngineManager.select_model), unlike
     moonshine_model/sherpa_model/mlx_audio_model, which are opaque catalog

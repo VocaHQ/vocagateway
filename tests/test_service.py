@@ -10,14 +10,14 @@ def test_cleanup_is_conservative() -> None:
     assert conservative_cleanup("space before , punctuation") == "space before, punctuation."
 
 
-def test_formal_style_capitalizes_and_adds_complete_punctuation() -> None:
+def test_formal_style_capitalizes_and_adds__93453() -> None:
     assert (
         apply_writing_style("  hello   world , how are you  ", "formal")
         == "Hello world, how are you."
     )
 
 
-def test_casual_style_drops_only_the_closing_period() -> None:
+def test_casual_style_drops_only_the_closin_f3c53() -> None:
     """Commas used to be stripped wholesale, which corrupted prices and lists.
     Casual now differs from formal by running sentences together instead."""
     assert (
@@ -32,7 +32,7 @@ def test_casual_style_drops_only_the_closing_period() -> None:
     assert apply_writing_style("Hello there. It is fine.", "casual") == ("Hello there. It is fine")
 
 
-def test_very_casual_style_lowercases_without_mangling_words() -> None:
+def test_very_casual_style_lowercases_witho_e1bef() -> None:
     """Stripping every punctuation mark turned "Don't" into "dont" and broke
     decimals, times and addresses. Only the casing is casual now."""
     assert (

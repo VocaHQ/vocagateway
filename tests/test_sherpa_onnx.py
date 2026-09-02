@@ -151,7 +151,7 @@ def test_sherpa_nemo_ctc_loads_with_its_own_files(
     assert constructions[0]["tokens"] == str(root / "tokens.txt")
 
 
-def test_sherpa_nemo_canary_loads_english_only_by_default(
+def test_sherpa_nemo_canary_loads_english_o_75ade(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     catalog_model = _catalog("nemo_canary")
@@ -175,7 +175,7 @@ def test_sherpa_nemo_canary_loads_english_only_by_default(
     assert "tgt_lang" not in constructions[0]
 
 
-def test_sherpa_nemo_transducer_uses_each_files_own_quantization(
+def test_sherpa_nemo_transducer_uses_each_f_bf636(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """GigaAM's RNNT export ships an INT8 encoder but a non-quantized decoder/joiner."""
@@ -217,7 +217,7 @@ def test_sherpa_dolphin_loads_a_single_file_ctc(
         assert constructions[0]["tokens"] == str(root / "tokens.txt")
 
 
-def test_sherpa_qwen3_asr_loads_a_tokenizer_directory(
+def test_sherpa_qwen3_asr_loads_a_tokenizer_fe25a(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """This family takes a Hugging Face tokenizer folder, not a `tokens.txt`."""
@@ -249,7 +249,7 @@ def test_sherpa_qwen3_asr_loads_a_tokenizer_directory(
     assert "tokens" not in constructions[0]
 
 
-def test_streaming_zipformer_loads_via_online_recognizer(
+def test_streaming_zipformer_loads_via_onli_83e76(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     catalog_model = _catalog(
@@ -275,7 +275,7 @@ def test_streaming_zipformer_loads_via_online_recognizer(
     assert constructions[0]["enable_endpoint_detection"] is True
 
 
-async def test_create_stream_wraps_the_recognizers_stream(
+async def test_create_stream_wraps_the_recognizer_0c8c0(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     catalog_model = _catalog(
@@ -308,7 +308,7 @@ async def test_create_stream_wraps_the_recognizers_stream(
     assert adapter._stream is raw_stream
 
 
-def test_every_shipped_sherpa_model_type_has_a_loader(
+def test_every_shipped_sherpa_model_type_ha_46e51(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A new catalog entry must not reach users before its engine branch exists."""
@@ -367,7 +367,7 @@ async def test_sherpa_rejects_unsupported_language(tmp_path: Path) -> None:
         )
 
 
-def test_decode_wave_online_reads_result_from_the_recognizer(tmp_path: Path) -> None:
+def test_decode_wave_online_reads_result_fr_743aa(tmp_path: Path) -> None:
     from app.models.sherpa_onnx import _decode_wave_online
 
     audio = tmp_path / "audio.wav"
@@ -412,7 +412,7 @@ def test_decode_wave_online_reads_result_from_the_recognizer(tmp_path: Path) -> 
     assert recognizer.stream.waveform is not None
 
 
-def test_supports_streaming_only_for_the_streaming_model_type(tmp_path: Path) -> None:
+def test_supports_streaming_only_for_the_st_2a881(tmp_path: Path) -> None:
     streaming_model = _catalog(
         "streaming_zipformer",
         required_files=("encoder.onnx", "decoder.onnx", "joiner.onnx", "tokens.txt"),
@@ -428,7 +428,7 @@ def test_supports_streaming_only_for_the_streaming_model_type(tmp_path: Path) ->
     assert no_model_engine.supports_streaming is False
 
 
-async def test_create_stream_rejects_a_non_streaming_model(tmp_path: Path) -> None:
+async def test_create_stream_rejects_a_non_stream_691a5(tmp_path: Path) -> None:
     catalog_model = _catalog("sense_voice")
     engine = SherpaOnnxEngine(_model_root(tmp_path, catalog_model), catalog_model)
 
@@ -481,7 +481,7 @@ class _FakeOnlineRecognizer:
         self.endpoint = False
 
 
-def test_stream_adapter_reports_partial_then_completes_a_line() -> None:
+def test_stream_adapter_reports_partial_the_40a51() -> None:
     recognizer = _FakeOnlineRecognizer()
     stream = _FakeOnlineStream()
     adapter = _SherpaOnnxStreamAdapter(recognizer, stream)
@@ -509,7 +509,7 @@ def test_stream_adapter_reports_partial_then_completes_a_line() -> None:
     assert stream.finished is True
 
 
-def test_stream_adapter_starts_a_new_line_after_each_endpoint() -> None:
+def test_stream_adapter_starts_a_new_line_a_6802b() -> None:
     recognizer = _FakeOnlineRecognizer()
     stream = _FakeOnlineStream()
     adapter = _SherpaOnnxStreamAdapter(recognizer, stream)
@@ -531,7 +531,7 @@ def test_stream_adapter_starts_a_new_line_after_each_endpoint() -> None:
     ]
 
 
-def test_stream_adapter_does_not_repeat_identical_partial_text() -> None:
+def test_stream_adapter_does_not_repeat_ide_4b43b() -> None:
     recognizer = _FakeOnlineRecognizer()
     stream = _FakeOnlineStream()
     adapter = _SherpaOnnxStreamAdapter(recognizer, stream)

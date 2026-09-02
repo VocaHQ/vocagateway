@@ -16,13 +16,13 @@ def repository(tmp_path: Path) -> SessionRepository:
     return repo
 
 
-def test_initialize_creates_the_database_file_and_parent_directories(
+def test_initialize_creates_the_database_fi_7ffa6(
     repository: SessionRepository,
 ) -> None:
     assert repository.database_path.is_file()
 
 
-def test_create_or_get_is_idempotent_for_the_same_session_id(
+def test_create_or_get_is_idempotent_for_th_d1296(
     repository: SessionRepository,
 ) -> None:
     session_id = uuid4()
@@ -36,7 +36,7 @@ def test_create_or_get_is_idempotent_for_the_same_session_id(
     assert second.state == "created"
 
 
-def test_create_or_get_assigns_a_unique_job_id_per_session(
+def test_create_or_get_assigns_a_unique_job_782e9(
     repository: SessionRepository,
 ) -> None:
     first = repository.create_or_get(uuid4(), "en", "raw")
@@ -61,7 +61,7 @@ def test_update_preserves_audio_name_by_default(repository: SessionRepository) -
     assert updated.state == "completed"
 
 
-def test_update_can_overwrite_the_audio_name_explicitly(repository: SessionRepository) -> None:
+def test_update_can_overwrite_the_audio_nam_265b0(repository: SessionRepository) -> None:
     session_id = uuid4()
     repository.create_or_get(session_id, "en", "raw")
     repository.update(session_id, state="processing", audio_name="first.wav")
@@ -83,12 +83,12 @@ def test_update_bumps_updated_at(repository: SessionRepository) -> None:
     assert updated.error_code == "engine_unavailable"
 
 
-def test_update_raises_key_error_for_an_unknown_session(repository: SessionRepository) -> None:
+def test_update_raises_key_error_for_an_unk_736a8(repository: SessionRepository) -> None:
     with pytest.raises(KeyError):
         repository.update(uuid4(), state="completed")
 
 
-def test_delete_removes_the_session_and_returns_the_prior_state(
+def test_delete_removes_the_session_and_ret_fdaac(
     repository: SessionRepository,
 ) -> None:
     session_id = uuid4()
@@ -101,11 +101,11 @@ def test_delete_removes_the_session_and_returns_the_prior_state(
     assert repository.get(session_id) is None
 
 
-def test_delete_returns_none_for_an_unknown_session(repository: SessionRepository) -> None:
+def test_delete_returns_none_for_an_unknown_30c02(repository: SessionRepository) -> None:
     assert repository.delete(uuid4()) is None
 
 
-def test_expired_only_returns_sessions_past_the_retention_window(
+def test_expired_only_returns_sessions_past_41a5f(
     repository: SessionRepository,
 ) -> None:
     fresh_id = uuid4()

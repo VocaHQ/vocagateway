@@ -56,7 +56,7 @@ async def test_pairing_payload_and_qr(
 
 
 @pytest.mark.asyncio
-async def test_pairing_defaults_to_bootstrap_token_dropdown(
+async def test_pairing_defaults_to_bootstrap_toke_dd6ed(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -69,7 +69,7 @@ async def test_pairing_defaults_to_bootstrap_token_dropdown(
 
 
 @pytest.mark.asyncio
-async def test_pairing_can_select_a_device_token_for_the_qr(
+async def test_pairing_can_select_a_device_token__0cdff(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -102,7 +102,7 @@ async def test_pairing_can_select_a_device_token_for_the_qr(
 
 
 @pytest.mark.asyncio
-async def test_pairing_falls_back_to_bootstrap_for_revoked_or_unknown_token(
+async def test_pairing_falls_back_to_bootstrap_fo_f0248(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -132,7 +132,7 @@ async def test_pairing_falls_back_to_bootstrap_for_revoked_or_unknown_token(
 
 
 @pytest.mark.asyncio
-async def test_pairing_offers_to_rotate_a_stale_device_token(
+async def test_pairing_offers_to_rotate_a_stale_d_96119(
     settings: Settings,
     fake_engine: FakeEngine,
     monkeypatch: pytest.MonkeyPatch,
@@ -179,7 +179,7 @@ async def test_pairing_offers_to_rotate_a_stale_device_token(
 
 
 @pytest.mark.asyncio
-async def test_creating_a_pairing_token_shows_its_own_qr(
+async def test_creating_a_pairing_token_shows_its_1ad48(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -200,7 +200,7 @@ async def test_creating_a_pairing_token_shows_its_own_qr(
 
 
 @pytest.mark.asyncio
-async def test_switching_networks_forgets_the_old_lan_address(tmp_path: Path) -> None:
+async def test_switching_networks_forgets_the_old_a94f7(tmp_path: Path) -> None:
     """Reproduces the reported bug: an old Wi-Fi's LAN IP lingered forever
     alongside the new one instead of being superseded by fresh discovery."""
     settings = Settings(
@@ -266,7 +266,7 @@ async def test_pairing_accepts_bare_tailscale_address(
 
 
 @pytest.mark.asyncio
-async def test_refresh_keeps_a_saved_tailscale_address_once_discovery_sees_it(
+async def test_refresh_keeps_a_saved_tailscale_ad_3f6f4(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,

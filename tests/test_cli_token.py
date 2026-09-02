@@ -53,7 +53,7 @@ def test_token_reads_env_override(
     assert capsys.readouterr().out == secret + "\n"
 
 
-def test_token_blank_token_file_env_falls_back_to_default(
+def test_token_blank_token_file_env_falls_b_9c6c2(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     home = _isolate_home(monkeypatch, tmp_path)
@@ -98,7 +98,7 @@ def test_token_tty_prints_pairing_qr(
     assert any(ch in out for ch in ("█", "▀", "▄", "#", "*"))
 
 
-def test_token_tty_prefers_saved_webui_pairing_url(
+def test_token_tty_prefers_saved_webui_pair_cd3e2(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     home = _isolate_home(monkeypatch, tmp_path)

@@ -5,7 +5,7 @@ from pathlib import Path
 from app.tokens import TokenStore
 
 
-def test_create_returns_plaintext_once_and_matches_validates_it(tmp_path: Path) -> None:
+def test_create_returns_plaintext_once_and__f107e(tmp_path: Path) -> None:
     store = TokenStore(tmp_path / "device_tokens.json")
     record, plaintext = store.create("Kanishk's iPhone")
     assert record.label == "Kanishk's iPhone"
@@ -40,7 +40,7 @@ def test_tokens_persist_across_store_instances(tmp_path: Path) -> None:
     assert second.matches(plaintext) is True
 
 
-def test_missing_or_corrupt_file_yields_empty_store(tmp_path: Path) -> None:
+def test_missing_or_corrupt_file_yields_emp_1f276(tmp_path: Path) -> None:
     missing = TokenStore(tmp_path / "does-not-exist.json")
     assert missing.all() == []
 
@@ -56,7 +56,7 @@ def test_blank_label_defaults_to_unnamed_device(tmp_path: Path) -> None:
     assert record.label == "Unnamed device"
 
 
-def test_cached_plaintext_available_after_create_and_gone_after_revoke(tmp_path: Path) -> None:
+def test_cached_plaintext_available_after_c_f4371(tmp_path: Path) -> None:
     store = TokenStore(tmp_path / "device_tokens.json")
     record, plaintext = store.create("iPad")
     assert store.cached_plaintext(record.id) == plaintext
@@ -67,7 +67,7 @@ def test_cached_plaintext_available_after_create_and_gone_after_revoke(tmp_path:
     assert store.cached_entries() == []
 
 
-def test_cache_does_not_survive_a_fresh_store_instance(tmp_path: Path) -> None:
+def test_cache_does_not_survive_a_fresh_sto_88a22(tmp_path: Path) -> None:
     path = tmp_path / "device_tokens.json"
     first = TokenStore(path)
     record, _ = first.create("Old laptop")

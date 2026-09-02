@@ -30,7 +30,7 @@ class WrongLanguageEngine:
         )
 
 
-async def test_unsupported_language_is_reported_as_permanent(
+async def test_unsupported_language_is_reported_a_d68a4(
     settings: Settings, authorization: dict[str, str], audio_bytes: bytes
 ) -> None:
     """A language the loaded model cannot serve must not look like a transient fault.
@@ -64,7 +64,7 @@ async def test_unsupported_language_is_reported_as_permanent(
         assert session.json()["error_code"] == "language_unsupported"
 
 
-async def test_health_is_public_and_separates_engine_readiness(
+async def test_health_is_public_and_separates_eng_088d4(
     client: httpx.AsyncClient, fake_engine: FakeEngine
 ) -> None:
     response = await client.get("/health")
@@ -101,7 +101,7 @@ async def test_private_endpoints_require_bearer_token(client: httpx.AsyncClient)
     assert TOKEN not in response.text
 
 
-async def test_readiness_can_fail_without_failing_liveness(tmp_path) -> None:
+async def test_readiness_can_fail_without_failing_ca0a7(tmp_path) -> None:
     settings = Settings(
         token=TOKEN,
         data_dir=tmp_path,
@@ -121,7 +121,7 @@ async def test_readiness_can_fail_without_failing_liveness(tmp_path) -> None:
     assert readiness.json()["engine"] == "missing-model"
 
 
-async def test_complete_flow_is_idempotent_and_deletes_successful_audio(
+async def test_complete_flow_is_idempotent_and_de_77d1d(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
     audio_bytes: bytes,
@@ -153,7 +153,7 @@ async def test_complete_flow_is_idempotent_and_deletes_successful_audio(
     assert finished_again.json()["job_id"] == finished.json()["job_id"]
 
 
-async def test_session_accepts_writing_styles_and_rejects_unknown_values(
+async def test_session_accepts_writing_styles_and_4e4fb(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
 ) -> None:
@@ -174,7 +174,7 @@ async def test_session_accepts_writing_styles_and_rejects_unknown_values(
     assert invalid.status_code == 422
 
 
-async def test_writing_style_is_applied_to_the_local_transcript(
+async def test_writing_style_is_applied_to_the_lo_02b03(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
     audio_bytes: bytes,
@@ -197,7 +197,7 @@ async def test_writing_style_is_applied_to_the_local_transcript(
     assert finished.json()["transcript"] == "Hello from the local model."
 
 
-async def test_upload_rejects_unsupported_empty_and_oversized_audio(
+async def test_upload_rejects_unsupported_empty_a_f2c1d(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
 ) -> None:
@@ -248,7 +248,7 @@ async def test_delete_is_idempotent(
     assert second.json() == {"deleted": False}
 
 
-async def test_health_reports_what_the_loaded_model_can_do(
+async def test_health_reports_what_the_loaded_mod_6836e(
     settings: Settings, audio_bytes: bytes
 ) -> None:
     """Clients cannot offer a sensible language picker without knowing whether the
@@ -288,7 +288,7 @@ class BoomEngine:
         raise RuntimeError("engine exploded")
 
 
-async def test_unexpected_finish_error_leaves_session_retryable(
+async def test_unexpected_finish_error_leaves_ses_f5519(
     settings: Settings, authorization: dict[str, str], audio_bytes: bytes
 ) -> None:
     """Bare exceptions must not leave the session stuck in 'transcribing'.

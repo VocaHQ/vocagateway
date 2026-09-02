@@ -14,7 +14,7 @@ def _write_binary(path: Path, script: str) -> None:
     path.chmod(0o700)
 
 
-async def test_health_requires_both_the_binary_and_the_model(tmp_path: Path) -> None:
+async def test_health_requires_both_the_binary_an_09b44(tmp_path: Path) -> None:
     binary = tmp_path / "whisper-cli"
     model = tmp_path / "model.bin"
 
@@ -30,7 +30,7 @@ async def test_health_requires_both_the_binary_and_the_model(tmp_path: Path) -> 
     assert health.name == f"whisper.cpp:{model.name}"
 
 
-async def test_transcribe_writes_the_output_stem_and_returns_its_contents(
+async def test_transcribe_writes_the_output_stem__9a70c(
     tmp_path: Path,
 ) -> None:
     binary = tmp_path / "whisper-cli"
@@ -64,7 +64,7 @@ printf '%s' "private local result" > "$of.txt"
     assert arguments[arguments.index("-f") + 1] == str(audio)
 
 
-async def test_transcribe_omits_the_language_flag_when_auto(tmp_path: Path) -> None:
+async def test_transcribe_omits_the_language_flag_d8504(tmp_path: Path) -> None:
     binary = tmp_path / "whisper-cli"
     _write_binary(
         binary,
@@ -93,7 +93,7 @@ printf '%s' "auto detected" > "$of.txt"
     assert "-l" not in arguments
 
 
-async def test_transcribe_raises_when_the_engine_is_unavailable(tmp_path: Path) -> None:
+async def test_transcribe_raises_when_the_engine__85d3c(tmp_path: Path) -> None:
     engine = WhisperCppEngine(tmp_path / "missing-cli", tmp_path / "missing-model.bin")
 
     with pytest.raises(EngineUnavailableError):
@@ -114,7 +114,7 @@ async def test_transcribe_raises_on_a_nonzero_exit_code(tmp_path: Path) -> None:
         await engine.transcribe(audio, TranscriptionOptions("auto", "raw"))
 
 
-async def test_transcribe_raises_when_the_transcript_is_empty(tmp_path: Path) -> None:
+async def test_transcribe_raises_when_the_transcr_c5efb(tmp_path: Path) -> None:
     binary = tmp_path / "whisper-cli"
     _write_binary(
         binary,

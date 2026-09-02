@@ -86,7 +86,7 @@ def websocket_close_code(client: TestClient, header: str | None) -> int | None:
         pytest.param(b"\xe9", id="no-scheme"),
     ],
 )
-async def test_non_ascii_credential_is_rejected_rather_than_crashing(
+async def test_non_ascii_credential_is_rejected_r_11204(
     auth_client: httpx.AsyncClient, raw: bytes
 ) -> None:
     """A high byte in the header must be a 401, never a 500.
@@ -101,7 +101,7 @@ async def test_non_ascii_credential_is_rejected_rather_than_crashing(
     assert response.json()["error"]["code"] == "unauthorized"
 
 
-async def test_rejection_never_echoes_the_supplied_credential(
+async def test_rejection_never_echoes_the_supplie_900f2(
     auth_client: httpx.AsyncClient,
 ) -> None:
     """A 401 body must not reflect the attempt back into logs or proxies."""
@@ -117,7 +117,7 @@ async def test_rejection_never_echoes_the_supplied_credential(
 # ------------------------------------------------------- the protected surface
 
 
-async def test_no_documented_route_answers_without_a_token(
+async def test_no_documented_route_answers_withou_8fad0(
     auth_app: FastAPI, auth_client: httpx.AsyncClient
 ) -> None:
     """Guard against a new router shipping without `require_token`.
@@ -185,11 +185,11 @@ def test_websocket_rejects_bad_credentials(sync_client: TestClient, header: str 
         pytest.param(f"BEARER {TOKEN}", id="uppercase-scheme"),
     ],
 )
-def test_websocket_accepts_the_scheme_http_accepts(sync_client: TestClient, header: str) -> None:
+def test_websocket_accepts_the_scheme_http__41bcb(sync_client: TestClient, header: str) -> None:
     assert websocket_close_code(sync_client, header) is None
 
 
-def test_websocket_and_http_agree_on_every_header_form(sync_client: TestClient) -> None:
+def test_websocket_and_http_agree_on_every__d806a(sync_client: TestClient) -> None:
     """The two code paths must never diverge on what counts as authenticated."""
     forms = [
         f"Bearer {TOKEN}",
@@ -210,7 +210,7 @@ def test_websocket_and_http_agree_on_every_header_form(sync_client: TestClient) 
         assert http_ok == socket_ok, header
 
 
-def test_websocket_accepts_a_device_token_until_it_is_revoked(
+def test_websocket_accepts_a_device_token_u_b7078(
     sync_client: TestClient,
 ) -> None:
     auth = {"Authorization": f"Bearer {TOKEN}"}
@@ -231,7 +231,7 @@ def test_websocket_accepts_a_device_token_until_it_is_revoked(
 # ------------------------------------------------- device token lifecycle
 
 
-async def test_rotating_a_device_token_invalidates_the_previous_secret(
+async def test_rotating_a_device_token_invalidate_6c785(
     auth_client: httpx.AsyncClient,
 ) -> None:
     auth = {"Authorization": f"Bearer {TOKEN}"}
@@ -253,7 +253,7 @@ async def test_rotating_a_device_token_invalidates_the_previous_secret(
     assert new.status_code == 200
 
 
-async def test_bootstrap_token_cannot_be_rotated_through_the_api(
+async def test_bootstrap_token_cannot_be_rotated__3d9da(
     auth_client: httpx.AsyncClient,
 ) -> None:
     """It lives in a file or the environment; rotating it here would be theatre."""

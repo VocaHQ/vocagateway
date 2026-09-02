@@ -22,7 +22,7 @@ def _write_downloaded_model(cache: Path, model: str) -> Path:
     return model_path
 
 
-async def test_handy_adapter_uses_downloaded_model_and_parses_json(
+async def test_handy_adapter_uses_downloaded_mode_6cbeb(
     tmp_path: Path,
 ) -> None:
     model = "owner/repository/model.gguf"
@@ -52,7 +52,7 @@ async def test_handy_adapter_uses_downloaded_model_and_parses_json(
     assert transcript == "private local result"
 
 
-async def test_handy_health_is_false_when_model_is_not_downloaded(
+async def test_handy_health_is_false_when_model_i_f7f57(
     tmp_path: Path,
 ) -> None:
     binary = tmp_path / "handy"
@@ -66,7 +66,7 @@ async def test_handy_health_is_false_when_model_is_not_downloaded(
     assert (await engine.health()).ready is False
 
 
-async def test_handy_reports_an_unavailable_model_selected_in_the_app(tmp_path: Path) -> None:
+async def test_handy_reports_an_unavailable_model_e479e(tmp_path: Path) -> None:
     selected = "owner/repository/missing.gguf"
     settings_file = tmp_path / "settings_store.json"
     _write_selected_model(settings_file, selected)
@@ -85,7 +85,7 @@ async def test_handy_reports_an_unavailable_model_selected_in_the_app(tmp_path: 
     assert health.name == f"handy:{selected}"
 
 
-async def test_handy_retries_empty_primary_result_with_downloaded_fallback(
+async def test_handy_retries_empty_primary_result_e08a0(
     tmp_path: Path,
 ) -> None:
     primary = "owner/primary/primary.gguf"
@@ -130,7 +130,7 @@ async def test_handy_retries_empty_primary_result_with_downloaded_fallback(
     assert transcript == "fallback result"
 
 
-async def test_handy_follows_the_model_selected_in_the_app_without_restart(
+async def test_handy_follows_the_model_selected_i_32648(
     tmp_path: Path,
 ) -> None:
     first = "owner/first/first.gguf"
@@ -165,7 +165,7 @@ async def test_handy_follows_the_model_selected_in_the_app_without_restart(
     assert f"--model {second}" in arguments
 
 
-async def test_handy_explicit_model_override_does_not_follow_the_app(
+async def test_handy_explicit_model_override_does_c5495(
     tmp_path: Path,
 ) -> None:
     configured = "owner/configured/configured.gguf"

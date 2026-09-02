@@ -24,7 +24,7 @@ class WarmableFakeEngine:
         return "unused"
 
 
-async def test_readiness_caches_probes_and_tracks_warmup() -> None:
+async def test_readiness_caches_probes_and_tracks_f8ea4() -> None:
     engine = WarmableFakeEngine()
     monitor = ReadinessMonitor(StaticEngineProvider(engine), ttl_seconds=30)
 

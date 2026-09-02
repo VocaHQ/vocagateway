@@ -20,7 +20,7 @@ def _isolate_home(monkeypatch: MonkeyPatch, tmp_path: Path) -> Path:
     return home
 
 
-def test_environment_defaults_to_all_interface_listener(monkeypatch: MonkeyPatch) -> None:
+def test_environment_defaults_to_all_interf_b6e88(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("VOCAGATEWAY_TOKEN", "test-" + ("x" * 48))
     monkeypatch.delenv("VOCAGATEWAY_BIND_HOST", raising=False)
 
@@ -31,7 +31,7 @@ def test_environment_defaults_to_all_interface_listener(monkeypatch: MonkeyPatch
     assert local_webui_url(settings.bind_host, settings.port) == "http://127.0.0.1:8765/"
 
 
-def test_ipv6_listener_and_local_url_are_bracketed() -> None:
+def test_ipv6_listener_and_local_url_are_br_7b75f() -> None:
     assert format_host_port("::", 8765) == "[::]:8765"
     assert local_webui_url("::", 8765) == "http://[::1]:8765/"
 

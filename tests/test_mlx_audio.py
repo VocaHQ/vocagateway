@@ -70,7 +70,7 @@ async def test_mlx_audio_keeps_one_model_loaded(
     assert constructions == [root]
 
 
-async def test_mlx_rejects_a_language_the_model_cannot_serve(tmp_path: Path) -> None:
+async def test_mlx_rejects_a_language_the_model_c_44853(tmp_path: Path) -> None:
     """English-only MLX entries (Parakeet v2, Granite Speech) must refuse other
     languages with the specific error the API turns into `language_unsupported`."""
     root = tmp_path / "mlx-model"

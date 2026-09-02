@@ -136,7 +136,7 @@ async def test_openapi_documents_the_bearer_scheme(admin_settings: Settings) -> 
     assert "parameters" not in operation
 
 
-async def test_tokens_list_starts_with_only_the_bootstrap_entry(
+async def test_tokens_list_starts_with_only_the_b_78b1a(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.get("/v1/admin/tokens", headers=auth)
@@ -152,7 +152,7 @@ async def test_tokens_list_starts_with_only_the_bootstrap_entry(
     ]
 
 
-async def test_created_device_token_authenticates_and_can_be_revoked(
+async def test_created_device_token_authenticates_a04c2(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     created = await admin_client.post("/v1/admin/tokens", headers=auth, json={"label": "Pixel 6a"})
@@ -197,7 +197,7 @@ async def test_bootstrap_token_cannot_be_revoked(
     assert response.json()["error"]["code"] == "bootstrap_token_not_revocable"
 
 
-async def test_diagnostics_bundle_is_downloadable_and_redacted(
+async def test_diagnostics_bundle_is_downloadable_3c490(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.get("/v1/admin/diagnostics", headers=auth)
@@ -345,7 +345,7 @@ async def test_models_list_installed_only_filter(
     assert all(entry["state"] == "installed" for entry in filtered.values())
 
 
-async def test_ui_select_preserves_installed_only_filter(
+async def test_ui_select_preserves_installed_only_53724(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     model_id = "whisper.cpp:ggml-tiny.bin"
@@ -372,7 +372,7 @@ async def test_ui_select_preserves_installed_only_filter(
     assert "No models downloaded yet" not in selected.text
 
 
-def test_language_filter_answers_which_model_should_i_use() -> None:
+def test_language_filter_answers_which_mode_f8f45() -> None:
     """The filter exists to invert the question people actually ask. Driven off
     the real catalog, since the stub the admin fixtures use has one model."""
     from app.catalog import DEFAULT_CATALOG, language_names
@@ -430,7 +430,7 @@ def test_language_filter_answers_which_model_should_i_use() -> None:
     assert odia and all(e.detects_language_automatically for e in odia)
 
 
-def test_language_filter_offers_only_languages_some_model_covers() -> None:
+def test_language_filter_offers_only_langua_b4011() -> None:
     from app.fragments.models import _language_filter_options
 
     options = _language_filter_options()
@@ -506,7 +506,7 @@ async def test_ui_actions_preserve_the_language_filter(
     assert "Cantonese" in filtered_out.text or 'class="model-card"' in filtered_out.text
 
 
-async def test_admin_models_api_accepts_the_language_filter(
+async def test_admin_models_api_accepts_the_langu_837fe(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.get("/v1/admin/models", params={"language": "hi"}, headers=auth)
@@ -594,7 +594,7 @@ async def test_config_update_persists_engine(
     assert RuntimeConfig.load(admin_settings.config_path).engine == "sherpa-onnx"
 
 
-async def test_mac_only_engines_are_hidden_and_rejected_on_other_hosts(
+async def test_mac_only_engines_are_hidden_and_re_67df5(
     admin_client: httpx.AsyncClient,
     auth: dict[str, str],
     admin_settings: Settings,
@@ -616,7 +616,7 @@ async def test_mac_only_engines_are_hidden_and_rejected_on_other_hosts(
     assert RuntimeConfig.load(admin_settings.config_path).engine != "vocamac"
 
 
-async def test_mac_only_engines_are_labelled_with_their_host(
+async def test_mac_only_engines_are_labelled_with_9ec0b(
     admin_client: httpx.AsyncClient, auth: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(engine_state, "engine_runs_on", lambda engine, **_: True)
@@ -628,7 +628,7 @@ async def test_mac_only_engines_are_labelled_with_their_host(
     assert "sherpa-onnx</option>" in settings_html
 
 
-async def test_ui_config_update_switches_engine_and_renders_a_fragment(
+async def test_ui_config_update_switches_engine_a_abe0c(
     admin_client: httpx.AsyncClient, auth: dict[str, str], admin_settings: Settings
 ) -> None:
     response = await admin_client.put(
@@ -642,7 +642,7 @@ async def test_ui_config_update_switches_engine_and_renders_a_fragment(
     assert RuntimeConfig.load(admin_settings.config_path).engine == "sherpa-onnx"
 
 
-async def test_ui_config_update_rejects_an_invalid_engine(
+async def test_ui_config_update_rejects_an_invali_0962d(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.put(
@@ -949,7 +949,7 @@ def test_model_cards_name_their_languages() -> None:
     assert "model-more" not in parakeet
 
 
-async def test_recorder_offers_every_language_a_client_can_request(
+async def test_recorder_offers_every_language_a_c_ca791(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     """The Test tab must not be narrower than the mobile pickers.
@@ -999,7 +999,7 @@ async def test_test_transcription_endpoint(
     assert metrics["last_latency_ms"] == payload["duration_ms"]
 
 
-async def test_test_transcription_rejects_unsupported_type(
+async def test_test_transcription_rejects_unsuppo_f97c8(
     client: httpx.AsyncClient, authorization: dict[str, str]
 ) -> None:
     response = await client.post(
@@ -1010,7 +1010,7 @@ async def test_test_transcription_rejects_unsupported_type(
     assert response.status_code == 415
 
 
-def test_a_filtered_list_warns_which_models_suit_dictation() -> None:
+def test_a_filtered_list_warns_which_models_dfdf9() -> None:
     """Every auto-detecting model tested returned the wrong writing system on a
     short phrase, and dictation is mostly short phrases. A list mixing both kinds
     has to say which half to trust."""

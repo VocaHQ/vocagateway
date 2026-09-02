@@ -18,14 +18,14 @@ from app.pairing import (
 )
 
 
-def test_is_ambient_lan_address_matches_private_and_tailnet_ips() -> None:
+def test_is_ambient_lan_address_matches_pri_71ceb() -> None:
     assert is_ambient_lan_address("http://192.168.1.20:8765") is True
     assert is_ambient_lan_address("http://10.0.0.5:8765") is True
     assert is_ambient_lan_address("http://172.16.5.5:8765") is True
     assert is_ambient_lan_address("http://100.101.102.103:8765") is True  # Tailscale/CGNAT
 
 
-def test_is_ambient_lan_address_leaves_hostnames_and_public_ips_alone() -> None:
+def test_is_ambient_lan_address_leaves_host_4c25a() -> None:
     assert is_ambient_lan_address("https://homelabone.tail1234.ts.net:8765") is False
     assert is_ambient_lan_address("https://flow.example.com") is False
     assert is_ambient_lan_address("http://8.8.8.8:8765") is False
@@ -61,7 +61,7 @@ def test_decode_rejects_garbage() -> None:
         decode_pairing_payload('{"v":1,"url":"http://192.168.1.1:8765","token":""}')
 
 
-def test_encode_rejects_public_credentials_and_query() -> None:
+def test_encode_rejects_public_credentials__04731() -> None:
     with pytest.raises(ValueError, match="credentials"):
         encode_pairing_payload(
             "http://user:pass@192.168.1.1:8765",
@@ -98,12 +98,12 @@ def test_qr_ascii_is_multiline_and_dense() -> None:
     assert any(ch in ascii_qr for ch in ("█", "▀", "▄", "#", "*"))
 
 
-def test_primary_gateway_base_url_prefers_override(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_primary_gateway_base_url_prefers_o_6d74d(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("VOCAGATEWAY_PUBLIC_URL", "http://homelab.example:8765")
     assert primary_gateway_base_url(8765) == "http://homelab.example:8765"
 
 
-def test_default_pairing_url_prefers_saved_non_ambient_url(
+def test_default_pairing_url_prefers_saved__0ad3d(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("VOCAGATEWAY_PUBLIC_URL", "http://192.168.1.20:8765")
@@ -113,7 +113,7 @@ def test_default_pairing_url_prefers_saved_non_ambient_url(
     )
 
 
-def test_default_pairing_url_drops_stale_ambient_lan(
+def test_default_pairing_url_drops_stale_am_a7a5a(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("VOCAGATEWAY_PUBLIC_URL", "http://192.168.9.9:8765")
@@ -124,7 +124,7 @@ def test_default_pairing_url_drops_stale_ambient_lan(
     )
 
 
-def test_default_pairing_url_keeps_live_ambient_lan(
+def test_default_pairing_url_keeps_live_amb_3b326(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("VOCAGATEWAY_PUBLIC_URL", "http://192.168.1.20:8765")
@@ -134,22 +134,22 @@ def test_default_pairing_url_keeps_live_ambient_lan(
     )
 
 
-def test_normalize_gateway_input_adds_scheme_and_default_port() -> None:
+def test_normalize_gateway_input_adds_schem_af165() -> None:
     assert normalize_gateway_input("100.101.102.103", 8765) == "http://100.101.102.103:8765"
 
 
-def test_normalize_gateway_input_keeps_explicit_port() -> None:
+def test_normalize_gateway_input_keeps_expl_7ffc2() -> None:
     assert normalize_gateway_input("100.101.102.103:9000", 8765) == "http://100.101.102.103:9000"
 
 
-def test_normalize_gateway_input_accepts_tailscale_hostname() -> None:
+def test_normalize_gateway_input_accepts_ta_cd888() -> None:
     assert (
         normalize_gateway_input("phone.tailnet-name.ts.net", 8765)
         == "http://phone.tailnet-name.ts.net:8765"
     )
 
 
-def test_normalize_gateway_input_passes_through_full_url() -> None:
+def test_normalize_gateway_input_passes_thr_ee5ba() -> None:
     assert normalize_gateway_input("http://192.168.1.5:8765", 8765) == "http://192.168.1.5:8765"
 
 
@@ -158,7 +158,7 @@ def test_normalize_gateway_input_rejects_empty() -> None:
         normalize_gateway_input("   ", 8765)
 
 
-def test_parse_ifconfig_ipv4_addresses_finds_macos_tailscale_interface() -> None:
+def test_parse_ifconfig_ipv4_addresses_find_b716f() -> None:
     # Trimmed macOS `ifconfig` output: a LAN NIC plus a Tailscale utun.
     output = """
 lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
@@ -171,7 +171,7 @@ utun2: flags=8051<UP,POINTOPOINT,RUNNING,MULTICAST> mtu 1280
     assert _parse_ifconfig_ipv4_addresses(output) == ["192.168.0.211", "100.89.197.121"]
 
 
-def test_parse_ifconfig_ipv4_addresses_finds_linux_net_tools_interface() -> None:
+def test_parse_ifconfig_ipv4_addresses_find_044ac() -> None:
     output = """
 eth0      Link encap:Ethernet  HWaddr 00:00:00:00:00:00
           inet addr:10.0.0.5  Bcast:10.0.0.255  Mask:255.255.255.0
@@ -181,6 +181,6 @@ tailscale0 Link encap:UNSPEC
     assert _parse_ifconfig_ipv4_addresses(output) == ["10.0.0.5", "100.64.1.2"]
 
 
-def test_parse_ifconfig_ipv4_addresses_ignores_loopback() -> None:
+def test_parse_ifconfig_ipv4_addresses_igno_75e33() -> None:
     output = "lo0: flags=8049<UP,LOOPBACK>\n\tinet 127.0.0.1 netmask 0xff000000\n"
     assert _parse_ifconfig_ipv4_addresses(output) == []

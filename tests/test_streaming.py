@@ -56,9 +56,7 @@ class FakeStream:
         self.closed = True
 
 
-def test_authenticated_moonshine_stream_returns_styled_transcript(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
+def test_authenticated_moonshine_stream_ret_df9ab(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     settings = Settings(
         token=TOKEN,
         data_dir=tmp_path,
@@ -97,9 +95,7 @@ def test_authenticated_moonshine_stream_returns_styled_transcript(
     assert stream.closed is True
 
 
-def test_health_advertises_ready_moonshine_streaming(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
+def test_health_advertises_ready_moonshine__dbde8(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     settings = Settings(
         token=TOKEN,
         data_dir=tmp_path,
@@ -120,9 +116,7 @@ def test_health_advertises_ready_moonshine_streaming(
     assert response.json()["streaming_supported"] is True
 
 
-def test_batch_moonshine_gets_structured_stream_fallback(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
+def test_batch_moonshine_gets_structured_st_f78fb(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     settings = Settings(
         token=TOKEN,
         data_dir=tmp_path,
@@ -172,7 +166,7 @@ class FakeStreamingEngine:
         return self._stream
 
 
-def test_authenticated_sherpa_onnx_style_stream_returns_styled_transcript(tmp_path: Path) -> None:
+def test_authenticated_sherpa_onnx_style_st_b5a1f(tmp_path: Path) -> None:
     settings = Settings(
         token=TOKEN,
         data_dir=tmp_path,
@@ -202,7 +196,7 @@ def test_authenticated_sherpa_onnx_style_stream_returns_styled_transcript(tmp_pa
     assert stream.closed is True
 
 
-def test_authenticated_batch_engine_gets_structured_stream_fallback(tmp_path: Path) -> None:
+def test_authenticated_batch_engine_gets_st_7630a(tmp_path: Path) -> None:
     settings = Settings(
         token=TOKEN,
         data_dir=tmp_path,
