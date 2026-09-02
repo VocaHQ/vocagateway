@@ -592,7 +592,7 @@ def _pipeline_chart(
     ]
     total = sum(ms for _, ms, _ in stages)
     if total <= 0:
-        bar = Markup('<div class="ops-bar ops-bar-empty" aria-hidden="true"></div>')
+        chart_markup = Markup('<div class="ops-bar ops-bar-empty" aria-hidden="true"></div>')
         footer = "Run a test to measure stages"
         sub = "Normalize · load · infer"
     else:
@@ -602,11 +602,17 @@ def _pipeline_chart(
             for label, ms, css in stages
             if ms > 0
         )
-        bar = Markup(
+        chart_markup = Markup(
             f'<div class="ops-bar" role="img" '
             f'aria-label="Last pipeline {_format_latency(total)}">'
             f"{segs}</div>"
         )
         footer = " · ".join(f"{label} {_format_latency(ms)}" for label, ms, _ in stages if ms > 0)
         sub = f"RTF {rtf_value}" + (f" · {rtf_detail}" if rtf_detail else "")
-    return {"title": "Last job stages", "sub": sub, "body": bar, "footer": footer, "bar_body": True}
+    return {
+        "title": "Last job stages",
+        "sub": sub,
+        "body": chart_markup,
+        "footer": footer,
+        "bar_body": True,
+    }
