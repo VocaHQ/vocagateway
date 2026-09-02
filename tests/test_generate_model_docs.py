@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 SCRIPT_PATH = Path(__file__).resolve().parent.parent / "scripts" / "generate_model_docs.py"
+LANGUAGE_SET_SIZE = 12
 
 
 def _load_module():
@@ -20,8 +21,8 @@ def test_set_anchor_differs_for_same_length_aa() -> None:
     so any two distinct language sets of the same length collided into one HTML id
     and one link target — silently pointing readers at the wrong section."""
     module = _load_module()
-    first = tuple(f"lang-{index}" for index in range(12))
-    second = tuple(f"other-{index}" for index in range(12))
+    first = tuple(f"lang-{index}" for index in range(LANGUAGE_SET_SIZE))
+    second = tuple(f"other-{index}" for index in range(LANGUAGE_SET_SIZE))
     assert len(first) == len(second)
     assert module.set_anchor(first) != module.set_anchor(second)
 

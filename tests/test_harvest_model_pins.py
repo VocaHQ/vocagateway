@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 SCRIPT_PATH = Path(__file__).resolve().parent.parent / "scripts" / "harvest-model-pins.py"
+SHA256_DIGEST_LENGTH = 64
 
 
 def _load_module():
@@ -43,8 +44,8 @@ def test_single_file_digest_comes_from_the_aa(monkeypatch) -> None:
     from the tree API's `lfs.oid`, which the redirect can't touch."""
     module = _load_module()
 
-    real_sha256 = "1" * 64
-    xet_hash_a_head_request_would_wrongly_read = "2" * 64
+    real_sha256 = "1" * SHA256_DIGEST_LENGTH
+    xet_hash_a_head_request_would_wrongly_read = "2" * SHA256_DIGEST_LENGTH
 
     def fake_request(url: str, method: str = "GET") -> _FakeResponse:
         if method == "HEAD":

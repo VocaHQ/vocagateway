@@ -13,7 +13,10 @@ from app.main import create_app
 from app.models.base import EngineHealth, TranscriptionOptions
 from app.models.moonshine import MoonshineEngine
 
-TOKEN = "stream-" + ("x" * 48)
+TOKEN_PADDING_LENGTH = 48
+NORMALIZED_SAMPLE_RATE_HZ = 16_000
+
+TOKEN = "stream-" + ("x" * TOKEN_PADDING_LENGTH)
 
 
 def moonshine_engine(tmp_path: Path, model_arch: int = 5) -> MoonshineEngine:
@@ -44,7 +47,7 @@ class FakeStream:
 
     def add_audio(self, samples: list[float], sample_rate: int) -> None:
         assert samples
-        assert sample_rate == 16_000
+        assert sample_rate == NORMALIZED_SAMPLE_RATE_HZ
         line = SimpleNamespace(text="hello", line_id=1)
         assert callable(self.listener)
         self.listener(SimpleNamespace(line=line))
