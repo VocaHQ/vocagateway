@@ -29,16 +29,17 @@ The public landing page is in [`web/`](web/) and deploys to
 [vocagateway.vocahq.com](https://vocagateway.vocahq.com/).
 
 Install it once on a machine you control, then pair phone clients to that host.
-Desktop clients are Planned. You can self-host on macOS or Linux, or use Docker
-Compose on Linux `amd64`/`arm64`. There is no Voca account and no hosted Voca
-cloud.
+Desktop embed is Planned. A shipped VocaLinux can already point its `remote_api`
+engine at `POST /v1/audio/transcriptions` on this host. You can self-host on
+macOS or Linux, or use Docker Compose on Linux `amd64`/`arm64`. There is no Voca
+account and no hosted Voca cloud.
 
 The gateway takes bounded recordings from
-[vocaphone](https://github.com/VocaHQ/vocaphone) (iOS/Android). Linux, macOS,
-and Windows desktop apps come later. FFmpeg normalizes the audio, a local speech
-engine transcribes it, and the gateway returns an idempotent transcript. The
-authenticated HTMX WebUI covers setup, model management, engine selection,
-microphone testing, and operational status.
+[vocaphone](https://github.com/VocaHQ/vocaphone) (iOS/Android), and from
+VocaLinux when that app is set to `remote_api`. FFmpeg normalizes the audio, a
+local speech engine transcribes it, and the gateway returns an idempotent
+transcript. The authenticated HTMX WebUI covers setup, model management, engine
+selection, microphone testing, and operational status.
 
 Gateway mode is not on-device processing. Audio leaves the client and travels to
 the machine you chose. Prefer a trusted LAN, Tailscale, or HTTPS. Never expose
@@ -54,7 +55,7 @@ contract is in [configuration.md](docs/configuration.md).
 ## The Voca family
 
 Directory: [vocahq.com](https://vocahq.com). [VocaPhone](https://vocaphone.vocahq.com)
-is the live consumer. Desktop gateway integration stays Planned.
+is the live consumer. Embedding this gateway in a desktop app stays Planned.
 
 | Product | Status | Website | Source |
 | --- | --- | --- | --- |
@@ -69,7 +70,33 @@ is the live consumer. Desktop gateway integration stays Planned.
 | Project | How it uses this gateway |
 | --- | --- |
 | [vocaphone](https://github.com/VocaHQ/vocaphone) | Live consumer. Git submodule at `server/` for the iOS/Android clients |
-| [vocalinux](https://github.com/VocaHQ/vocalinux) / [vocamac](https://github.com/VocaHQ/vocamac) / [vocawin](https://github.com/VocaHQ/vocawin) | Planned: ship and start the headless server from the desktop app |
+| [vocalinux](https://github.com/VocaHQ/vocalinux) | `remote_api` can POST audio to `/v1/audio/transcriptions` on this host. Embedding the gateway in the app is still Planned. |
+| [vocamac](https://github.com/VocaHQ/vocamac) / [vocawin](https://github.com/VocaHQ/vocawin) | Planned: ship and start the headless server from the desktop app |
+
+### VocaLinux `remote_api`
+
+A running VocaLinux can treat this host as an OpenAI transcription server. Set
+the engine to `remote_api`. Server URL is the gateway origin, for example
+`http://192.168.1.20:8765`. API Endpoint must be OpenAI
+`/v1/audio/transcriptions`, not VocaLinux's default `/inference`. API Key is the
+gateway bearer token. The Model field is ignored; the engine you loaded in the
+WebUI is what runs.
+
+```sh
+curl -H "Authorization: Bearer $TOKEN" -F file=@sample.wav -F model=whisper-1 \
+  http://127.0.0.1:8765/v1/audio/transcriptions
+```
+
+VocaLinux's Test Connection is `GET /` on that origin, which is the
+unauthenticated WebUI, so a bad key can still look green. The first dictation is
+the real check. The client times out after 30 seconds, and a cold model load can
+miss that. Default concurrency is one in-flight transcription; a busy gateway
+returns 503. The gateway speaks HTTP on the LAN by default. HTTPS needs a
+certificate the desktop OS trusts.
+
+This is still optional self-hosted compute. Audio leaves the desktop and travels
+to the gateway host. It is not on-device transcription, and this endpoint does
+not stream.
 
 Clone with submodules when working from a consumer:
 
