@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+from starlette.status import HTTP_400_BAD_REQUEST, HTTP_503_SERVICE_UNAVAILABLE
+
 from app.context import BOOTSTRAP_TOKEN_ID, GatewayContext
 from app.errors import APIProblem
 from app.fragments.pairing import PairingFragmentData, pairing_fragment
@@ -148,7 +150,7 @@ def forget_pairing_url(ctx: GatewayContext, url: str) -> str:
     try:
         normalized = normalize_gateway_input(url, ctx.settings.port)
     except ValueError as error:
-        raise APIProblem(400, "invalid_pairing_url", str(error)) from error
+        raise APIProblem(HTTP_400_BAD_REQUEST, "invalid_pairing_url", str(error)) from error
     pairing_config = ctx.pairing_config
     if ctx.engine_manager is not None and normalized in pairing_config.pairing_urls:
         pairing_config.pairing_urls.remove(normalized)
@@ -164,10 +166,10 @@ def resolve_pairing_url(ctx: GatewayContext, url: str | None) -> str:
         try:
             return normalize_gateway_input(url, ctx.settings.port)
         except ValueError as error:
-            raise APIProblem(400, "invalid_pairing_url", str(error)) from error
+            raise APIProblem(HTTP_400_BAD_REQUEST, "invalid_pairing_url", str(error)) from error
     if not candidates:
         raise APIProblem(
-            503,
+            HTTP_503_SERVICE_UNAVAILABLE,
             "pairing_unavailable",
             "No phone-reachable gateway address was detected. "
             "Set VOCAGATEWAY_PUBLIC_URL and retry.",
