@@ -305,30 +305,30 @@ def apply_writing_style(text: str, style: str, language: str = "auto") -> str:
     normalized = _normalize_spacing(masked, punctuation)
 
     if style == "clean":
-        result = _ensure_terminator(normalized, punctuation)
+        formatted_text = _ensure_terminator(normalized, punctuation)
     elif style == "formal":
-        result = _formal(normalized, punctuation)
+        formatted_text = _formal(normalized, punctuation)
     elif style == "casual":
-        result = _casual(normalized, punctuation)
+        formatted_text = _casual(normalized, punctuation)
     else:
         # Only the styles that rewrite sentence terminators need real
         # boundaries; getting them wrong turns "Dr. Smith" into "Dr! Smith".
         # Formal and casual leave terminators alone, so they skip the cost.
         sentences = _segment(normalized, punctuation)
         if style == "very_casual":
-            result = _very_casual(sentences, punctuation)
+            formatted_text = _very_casual(sentences, punctuation)
         else:
-            result = _excited(sentences, punctuation)
+            formatted_text = _excited(sentences, punctuation)
 
     if style == "very_casual":
         tokens = [token if _ADDRESS.match(token) else token.lower() for token in tokens]
-    return _restore(result, tokens)
+    return _restore(formatted_text, tokens)
 
 
 def _normalize_spacing(text: str, punctuation: Punctuation) -> str:
-    result = re.sub(r"\s+", " ", text).strip()
+    normalized_text = re.sub(r"\s+", " ", text).strip()
     marks = re.escape(punctuation.terminators + punctuation.separator + ";:")
-    return re.sub(rf"\s+([{marks}])", r"\1", result)
+    return re.sub(rf"\s+([{marks}])", r"\1", normalized_text)
 
 
 def _capitalize(text: str) -> str:
@@ -384,17 +384,17 @@ def _casual(text: str, punctuation: Punctuation) -> str:
     """Sentence structure is preserved; only a closing full stop is dropped, the
     way a dictated message is usually typed. A question mark or an exclamation
     carries meaning and stays."""
-    result = _capitalize_sentence_starts(text, punctuation)
+    formatted_text = _capitalize_sentence_starts(text, punctuation)
     # The empty-terminator guard is load-bearing, not defensive: Thai and Lao end
     # sentences with nothing at all, and `"text".endswith("")` is True while
     # `result[:-0]` is the empty string, so an unguarded drop erases the transcript.
     if (
         punctuation.terminator
-        and result.endswith(punctuation.terminator)
-        and not result.endswith("..")
+        and formatted_text.endswith(punctuation.terminator)
+        and not formatted_text.endswith("..")
     ):
-        return result[: -len(punctuation.terminator)]
-    return result
+        return formatted_text[: -len(punctuation.terminator)]
+    return formatted_text
 
 
 def _very_casual(sentences: list[str], punctuation: Punctuation) -> str:
