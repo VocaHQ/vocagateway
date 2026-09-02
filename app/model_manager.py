@@ -92,9 +92,9 @@ class ModelIntegrityError(Exception):
     """
 
 
-def normalize_sha256(value: str) -> str:
+def normalize_sha256(digest_text: str) -> str:
     """Validate and canonicalise a user- or catalog-supplied SHA-256."""
-    candidate = value.strip().lower()
+    candidate = digest_text.strip().lower()
     if candidate.startswith("sha256:"):
         candidate = candidate[len("sha256:") :]
     if not _SHA256_PATTERN.match(candidate):
@@ -163,14 +163,14 @@ class ModelManager:
     # --------------------------------------------------------------- listing
 
     def installed(self) -> list[InstalledModel]:
-        results: list[InstalledModel] = []
+        installed_models: list[InstalledModel] = []
         catalog_paths: set[Path] = set()
         for model in self.catalog:
             path = self.model_path(model)
             marker = path / model.marker_file if model.marker_file else path
             if marker.exists():
                 catalog_paths.add(path)
-                results.append(
+                installed_models.append(
                     InstalledModel(
                         id=model.id,
                         engine=model.engine,
@@ -181,20 +181,20 @@ class ModelManager:
                 )
         whisper_cpp_dir = self.models_dir / ENGINE_WHISPER_CPP
         if whisper_cpp_dir.is_dir():
-            for file in sorted(whisper_cpp_dir.iterdir()):
-                if not file.is_file() or file.suffix not in {".bin", ".gguf"}:
+            for model_file in sorted(whisper_cpp_dir.iterdir()):
+                if not model_file.is_file() or model_file.suffix not in {".bin", ".gguf"}:
                     continue
-                if file in catalog_paths:
+                if model_file in catalog_paths:
                     continue
-                catalog_model = self._by_key(file.name, ENGINE_WHISPER_CPP)
-                model_id = catalog_model.id if catalog_model else f"custom:{file.name}"
-                results.append(
+                catalog_model = self._by_key(model_file.name, ENGINE_WHISPER_CPP)
+                model_id = catalog_model.id if catalog_model else f"custom:{model_file.name}"
+                installed_models.append(
                     InstalledModel(
                         id=model_id,
                         engine=ENGINE_WHISPER_CPP,
-                        key=file.name,
-                        path=file,
-                        size_bytes=file.stat().st_size,
+                        key=model_file.name,
+                        path=model_file,
+                        size_bytes=model_file.stat().st_size,
                         custom=catalog_model is None,
                     )
                 )
@@ -207,7 +207,7 @@ class ModelManager:
                     continue
                 catalog_model = self._by_key(folder.name, ENGINE_WHISPERKIT)
                 model_id = catalog_model.id if catalog_model else f"custom:{folder.name}"
-                results.append(
+                installed_models.append(
                     InstalledModel(
                         id=model_id,
                         engine=ENGINE_WHISPERKIT,
@@ -217,14 +217,14 @@ class ModelManager:
                         custom=catalog_model is None,
                     )
                 )
-        return results
+        return installed_models
 
     def downloads(self) -> list[DownloadState]:
-        return [handle.state for handle in self._downloads.values()]
+        return [download_handle.state for download_handle in self._downloads.values()]
 
     def download_state(self, model_id: str) -> DownloadState | None:
-        handle = self._downloads.get(model_id)
-        return handle.state if handle else None
+        download_handle = self._downloads.get(model_id)
+        return download_handle.state if download_handle else None
 
     def catalog_model(self, model_id: str) -> CatalogModel | None:
         """Return catalog metadata without exposing the manager's mutable index."""
@@ -236,7 +236,10 @@ class ModelManager:
         model = self._by_id.get(model_id)
         if model is None:
             raise UnknownModelError(model_id)
-        return self._start(model_id, lambda handle: self._run_catalog_download(model, handle))
+        return self._start(
+            model_id,
+            lambda download_handle: self._run_catalog_download(model, download_handle),
+        )
 
     def start_custom_download(self, url: str, sha256: str | None = None) -> DownloadState:
         """Download a user-supplied model URL, optionally pinned to a digest.
@@ -254,19 +257,21 @@ class ModelManager:
         destination = self.models_dir / ENGINE_WHISPER_CPP / filename
         return self._start(
             model_id,
-            lambda handle: self._run_single_file(url, destination, handle, expected),
+            lambda download_handle: self._run_single_file(
+                url, destination, download_handle, expected
+            ),
         )
 
     def cancel_download(self, model_id: str) -> bool:
-        handle = self._downloads.get(model_id)
-        if handle is None or handle.state.status != "downloading":
+        download_handle = self._downloads.get(model_id)
+        if download_handle is None or download_handle.state.status != "downloading":
             return False
-        handle.cancel.set()
+        download_handle.cancel.set()
         return True
 
     def delete(self, model_id: str) -> bool:
-        handle = self._downloads.get(model_id)
-        if handle is not None and handle.state.status == "downloading":
+        download_handle = self._downloads.get(model_id)
+        if download_handle is not None and download_handle.state.status == "downloading":
             raise DownloadInProgressError(model_id)
         path = self._path_for_id(model_id)
         if path is None or not path.exists():
@@ -288,43 +293,49 @@ class ModelManager:
         existing = self._downloads.get(model_id)
         if existing is not None and existing.state.status == "downloading":
             raise DownloadInProgressError(model_id)
-        handle = _DownloadHandle(state=DownloadState(model_id=model_id), cancel=threading.Event())
-        self._downloads[model_id] = handle
-        handle.task = asyncio.create_task(self._guarded(model_id, runner, handle))
-        return handle.state
+        download_handle = _DownloadHandle(
+            state=DownloadState(model_id=model_id), cancel=threading.Event()
+        )
+        self._downloads[model_id] = download_handle
+        download_handle.task = asyncio.create_task(self._guarded(model_id, runner, download_handle))
+        return download_handle.state
 
-    async def _guarded(self, model_id: str, runner: Any, handle: _DownloadHandle) -> None:
+    async def _guarded(self, model_id: str, runner: Any, download_handle: _DownloadHandle) -> None:
         try:
-            await runner(handle)
+            await runner(download_handle)
         except DownloadCancelled:
-            handle.state.status = "cancelled"
+            download_handle.state.status = "cancelled"
         except Exception as error:  # noqa: BLE001 - surfaced through the API
-            handle.state.status = "failed"
+            download_handle.state.status = "failed"
             # Long enough that a SHA-256 mismatch message (which embeds two
             # 64-character hex digests plus a nested WhisperKit-style path)
             # isn't clipped before the reader can see what to compare.
-            handle.state.error = str(error)[:600]
+            download_handle.state.error = str(error)[:600]
 
-    async def _run_catalog_download(self, model: CatalogModel, handle: _DownloadHandle) -> None:
+    async def _run_catalog_download(
+        self, model: CatalogModel, download_handle: _DownloadHandle
+    ) -> None:
         if model.engine == ENGINE_MOONSHINE:
-            await self._run_moonshine_download(model, handle)
+            await self._run_moonshine_download(model, download_handle)
             return
         if model.archive_url is not None:
-            await self._run_archive_download(model, handle)
+            await self._run_archive_download(model, download_handle)
             return
         if model.engine == ENGINE_SHERPA_ONNX and model.huggingface_repo is not None:
-            await self._run_sherpa_huggingface_download(model, handle)
+            await self._run_sherpa_huggingface_download(model, download_handle)
             return
         if model.huggingface_repo is not None:
-            await self._run_huggingface_download(model, handle)
+            await self._run_huggingface_download(model, download_handle)
             return
         if model.download_url is None:
             raise UnknownModelError(model.id)
         await self._run_single_file(
-            model.download_url, self.model_path(model), handle, model.sha256
+            model.download_url, self.model_path(model), download_handle, model.sha256
         )
 
-    async def _run_archive_download(self, model: CatalogModel, handle: _DownloadHandle) -> None:
+    async def _run_archive_download(
+        self, model: CatalogModel, download_handle: _DownloadHandle
+    ) -> None:
         if not model.archive_url or not model.archive_root or not model.required_files:
             raise UnknownModelError(f"Archive metadata is incomplete for {model.id}.")
         final_dir = self.model_path(model)
@@ -342,12 +353,12 @@ class ModelManager:
                 _download_file,
                 model.archive_url,
                 archive_path,
-                handle.state,
-                handle.cancel,
+                download_handle.state,
+                download_handle.cancel,
                 Path(model.archive_url).name,
                 model.sha256,
             )
-            if handle.cancel.is_set():
+            if download_handle.cancel.is_set():
                 raise DownloadCancelled
             await asyncio.to_thread(_safe_extract_archive, archive_path, extraction_dir)
             extracted = extraction_dir / model.archive_root
@@ -372,20 +383,20 @@ class ModelManager:
             (partial_dir / ".vocagateway-model.json").write_text(
                 json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
             )
-            if handle.cancel.is_set():
+            if download_handle.cancel.is_set():
                 raise DownloadCancelled
             final_dir.parent.mkdir(parents=True, exist_ok=True)
             shutil.rmtree(final_dir, ignore_errors=True)
             partial_dir.replace(final_dir)
-            handle.state.status = "completed"
+            download_handle.state.status = "completed"
         finally:
             archive_path.unlink(missing_ok=True)
             shutil.rmtree(extraction_dir, ignore_errors=True)
-            if handle.state.status != "completed":
+            if download_handle.state.status != "completed":
                 shutil.rmtree(partial_dir, ignore_errors=True)
 
     async def _run_sherpa_huggingface_download(
-        self, model: CatalogModel, handle: _DownloadHandle
+        self, model: CatalogModel, download_handle: _DownloadHandle
     ) -> None:
         """Download exactly `required_files` from a plain Hugging Face model repo.
 
@@ -407,21 +418,21 @@ class ModelManager:
                 _list_repo_folder, model.huggingface_repo, "", _revision(model)
             )
             available = {entry.relative_path: entry for entry in listing}
-            handle.state.total_bytes = sum(
+            download_handle.state.total_bytes = sum(
                 entry.size_bytes
                 for name in model.required_files
                 if (entry := available.get(name)) is not None
             )
             for name in model.required_files:
-                if handle.cancel.is_set():
+                if download_handle.cancel.is_set():
                     raise DownloadCancelled
                 listed = available.get(name)
                 await asyncio.to_thread(
                     _download_file,
                     _resolve_url(model, name),
                     partial_dir / name,
-                    handle.state,
-                    handle.cancel,
+                    download_handle.state,
+                    download_handle.cancel,
                     name,
                     _expected_digest(model, name, listed.sha256 if listed else None),
                 )
@@ -437,23 +448,25 @@ class ModelManager:
             (partial_dir / ".vocagateway-model.json").write_text(
                 json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
             )
-            if handle.cancel.is_set():
+            if download_handle.cancel.is_set():
                 raise DownloadCancelled
             final_dir.parent.mkdir(parents=True, exist_ok=True)
             shutil.rmtree(final_dir, ignore_errors=True)
             partial_dir.replace(final_dir)
-            handle.state.status = "completed"
+            download_handle.state.status = "completed"
         finally:
-            if handle.state.status != "completed":
+            if download_handle.state.status != "completed":
                 shutil.rmtree(partial_dir, ignore_errors=True)
 
-    async def _run_moonshine_download(self, model: CatalogModel, handle: _DownloadHandle) -> None:
+    async def _run_moonshine_download(
+        self, model: CatalogModel, download_handle: _DownloadHandle
+    ) -> None:
         final_dir = self.model_path(model)
         partial_dir = final_dir.with_name(final_dir.name + ".partial")
         shutil.rmtree(partial_dir, ignore_errors=True)
         partial_dir.mkdir(parents=True, exist_ok=True)
-        handle.state.total_bytes = model.size_bytes
-        handle.state.current_file = "Moonshine model assets"
+        download_handle.state.total_bytes = model.size_bytes
+        download_handle.state.current_file = "Moonshine model assets"
         try:
             model_path, model_arch = await asyncio.to_thread(
                 _download_moonshine_model,
@@ -461,7 +474,7 @@ class ModelManager:
                 model.model_arch,
                 partial_dir,
             )
-            if handle.cancel.is_set():
+            if download_handle.cancel.is_set():
                 raise DownloadCancelled
             relative_path = Path(model_path).resolve().relative_to(partial_dir.resolve())
             metadata = {
@@ -473,20 +486,20 @@ class ModelManager:
             (partial_dir / ".vocagateway-model.json").write_text(
                 json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
             )
-            handle.state.downloaded_bytes = _directory_size(partial_dir)
+            download_handle.state.downloaded_bytes = _directory_size(partial_dir)
             final_dir.parent.mkdir(parents=True, exist_ok=True)
             shutil.rmtree(final_dir, ignore_errors=True)
             partial_dir.replace(final_dir)
-            handle.state.status = "completed"
+            download_handle.state.status = "completed"
         finally:
-            if handle.state.status != "completed":
+            if download_handle.state.status != "completed":
                 shutil.rmtree(partial_dir, ignore_errors=True)
 
     async def _run_single_file(
         self,
         url: str,
         destination: Path,
-        handle: _DownloadHandle,
+        download_handle: _DownloadHandle,
         expected_sha256: str | None = None,
     ) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -496,20 +509,22 @@ class ModelManager:
                 _download_file,
                 url,
                 partial,
-                handle.state,
-                handle.cancel,
+                download_handle.state,
+                download_handle.cancel,
                 "",
                 expected_sha256,
             )
-            if handle.cancel.is_set():
+            if download_handle.cancel.is_set():
                 raise DownloadCancelled
             partial.replace(destination)
-            handle.state.status = "completed"
+            download_handle.state.status = "completed"
         finally:
-            if handle.state.status != "completed":
+            if download_handle.state.status != "completed":
                 partial.unlink(missing_ok=True)
 
-    async def _run_huggingface_download(self, model: CatalogModel, handle: _DownloadHandle) -> None:
+    async def _run_huggingface_download(
+        self, model: CatalogModel, download_handle: _DownloadHandle
+    ) -> None:
         if not model.huggingface_repo or model.huggingface_folder is None:
             raise UnknownModelError(model.id)
         files = await asyncio.to_thread(
@@ -517,14 +532,14 @@ class ModelManager:
         )
         if not files:
             raise UnknownModelError(f"No model files found in {model.huggingface_repo}.")
-        handle.state.total_bytes = sum(entry.size_bytes for entry in files)
+        download_handle.state.total_bytes = sum(entry.size_bytes for entry in files)
         final_dir = self.model_path(model)
         partial_dir = final_dir.with_name(final_dir.name + ".partial")
         shutil.rmtree(partial_dir, ignore_errors=True)
         partial_dir.mkdir(parents=True, exist_ok=True)
         try:
             for entry in files:
-                if handle.cancel.is_set():
+                if download_handle.cancel.is_set():
                     raise DownloadCancelled
                 relative = entry.relative_path
                 if not is_safe_relative_path(relative):
@@ -533,19 +548,19 @@ class ModelManager:
                     _download_file,
                     _resolve_url(model, _repo_path(model.huggingface_folder, relative)),
                     partial_dir / relative,
-                    handle.state,
-                    handle.cancel,
+                    download_handle.state,
+                    download_handle.cancel,
                     relative,
                     _expected_digest(model, relative, entry.sha256),
                 )
-            if handle.cancel.is_set():
+            if download_handle.cancel.is_set():
                 raise DownloadCancelled
             final_dir.parent.mkdir(parents=True, exist_ok=True)
             shutil.rmtree(final_dir, ignore_errors=True)
             partial_dir.replace(final_dir)
-            handle.state.status = "completed"
+            download_handle.state.status = "completed"
         finally:
-            if handle.state.status != "completed":
+            if download_handle.state.status != "completed":
                 shutil.rmtree(partial_dir, ignore_errors=True)
 
     def _by_key(self, key: str, engine: str) -> CatalogModel | None:
@@ -699,8 +714,8 @@ def _expected_digest(model: CatalogModel, relative: str, listed: str | None) -> 
 
 def _sha256_path(path: Path) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(CHUNK_SIZE), b""):
+    with path.open("rb") as file_stream:
+        for chunk in iter(lambda: file_stream.read(CHUNK_SIZE), b""):
             digest.update(chunk)
     return digest.hexdigest()
 
@@ -798,7 +813,9 @@ def _download_file(
 
 
 def _directory_size(path: Path) -> int:
-    return sum(file.stat().st_size for file in path.rglob("*") if file.is_file())
+    return sum(
+        nested_path.stat().st_size for nested_path in path.rglob("*") if nested_path.is_file()
+    )
 
 
 def _download_moonshine_model(
