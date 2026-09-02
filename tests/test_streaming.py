@@ -15,6 +15,13 @@ from app.models.moonshine import MoonshineEngine
 
 TOKEN_PADDING_LENGTH = 48
 NORMALIZED_SAMPLE_RATE_HZ = 16_000
+WHISPER_BINARY_NAME = "whisper-cli"
+MODEL_FILE_NAME = "model.bin"
+STREAM_PATH = "/v1/stream"
+AUTHORIZATION_HEADER = "Authorization"
+MESSAGE_TYPE_KEY = "type"
+ENGINE_KEY = "engine"
+TRANSCRIPT_KEY = "transcript"
 
 TOKEN = "stream-" + ("x" * TOKEN_PADDING_LENGTH)
 
@@ -63,8 +70,8 @@ def test_authenticated_moonshine_stream_ret_df9ab(tmp_path: Path, monkeypatch: M
     settings = Settings(
         token=TOKEN,
         data_dir=tmp_path,
-        whisper_binary=tmp_path / "whisper-cli",
-        whisper_model=tmp_path / "model.bin",
+        whisper_binary=tmp_path / WHISPER_BINARY_NAME,
+        whisper_model=tmp_path / MODEL_FILE_NAME,
     )
     engine = moonshine_engine(tmp_path)
     stream = FakeStream()
@@ -82,17 +89,17 @@ def test_authenticated_moonshine_stream_ret_df9ab(tmp_path: Path, monkeypatch: M
     with (
         TestClient(app) as client,
         client.websocket_connect(
-            "/v1/stream", headers={"Authorization": f"Bearer {TOKEN}"}
+            STREAM_PATH, headers={AUTHORIZATION_HEADER: f"Bearer {TOKEN}"}
         ) as websocket,
     ):
-        websocket.send_json({"type": "start", "sample_rate": 16_000, "style": "formal"})
-        assert websocket.receive_json() == {"type": "ready", "engine": "moonshine"}
+        websocket.send_json({MESSAGE_TYPE_KEY: "start", "sample_rate": 16_000, "style": "formal"})
+        assert websocket.receive_json() == {MESSAGE_TYPE_KEY: "ready", ENGINE_KEY: "moonshine"}
         websocket.send_bytes(array("f", [0.1, -0.1]).tobytes())
-        assert websocket.receive_json() == {"type": "partial", "transcript": "hello"}
-        websocket.send_json({"type": "finish"})
+        assert websocket.receive_json() == {MESSAGE_TYPE_KEY: "partial", TRANSCRIPT_KEY: "hello"}
+        websocket.send_json({MESSAGE_TYPE_KEY: "finish"})
         assert websocket.receive_json() == {
-            "type": "complete",
-            "transcript": "Hello world.",
+            MESSAGE_TYPE_KEY: "complete",
+            TRANSCRIPT_KEY: "Hello world.",
         }
 
     assert stream.closed is True
@@ -102,8 +109,8 @@ def test_health_advertises_ready_moonshine_dbde8(tmp_path: Path, monkeypatch: Mo
     settings = Settings(
         token=TOKEN,
         data_dir=tmp_path,
-        whisper_binary=tmp_path / "whisper-cli",
-        whisper_model=tmp_path / "model.bin",
+        whisper_binary=tmp_path / WHISPER_BINARY_NAME,
+        whisper_model=tmp_path / MODEL_FILE_NAME,
     )
     engine = moonshine_engine(tmp_path)
 
@@ -123,8 +130,8 @@ def test_batch_moonshine_gets_structured_st_f78fb(tmp_path: Path, monkeypatch: M
     settings = Settings(
         token=TOKEN,
         data_dir=tmp_path,
-        whisper_binary=tmp_path / "whisper-cli",
-        whisper_model=tmp_path / "model.bin",
+        whisper_binary=tmp_path / WHISPER_BINARY_NAME,
+        whisper_model=tmp_path / MODEL_FILE_NAME,
     )
     engine = moonshine_engine(tmp_path, model_arch=1)
 
@@ -137,13 +144,13 @@ def test_batch_moonshine_gets_structured_st_f78fb(tmp_path: Path, monkeypatch: M
     with (
         TestClient(app) as client,
         client.websocket_connect(
-            "/v1/stream", headers={"Authorization": f"Bearer {TOKEN}"}
+            STREAM_PATH, headers={AUTHORIZATION_HEADER: f"Bearer {TOKEN}"}
         ) as websocket,
     ):
         assert websocket.receive_json() == {
-            "type": "unsupported",
+            MESSAGE_TYPE_KEY: "unsupported",
             "reason": "active_engine",
-            "engine": "moonshine:es",
+            ENGINE_KEY: "moonshine:es",
         }
 
     with TestClient(app) as client:
@@ -173,8 +180,8 @@ def test_authenticated_sherpa_onnx_style_st_b5a1f(tmp_path: Path) -> None:
     settings = Settings(
         token=TOKEN,
         data_dir=tmp_path,
-        whisper_binary=tmp_path / "whisper-cli",
-        whisper_model=tmp_path / "model.bin",
+        whisper_binary=tmp_path / WHISPER_BINARY_NAME,
+        whisper_model=tmp_path / MODEL_FILE_NAME,
     )
     stream = FakeStream()
     engine = FakeStreamingEngine(stream)
@@ -183,17 +190,17 @@ def test_authenticated_sherpa_onnx_style_st_b5a1f(tmp_path: Path) -> None:
     with (
         TestClient(app) as client,
         client.websocket_connect(
-            "/v1/stream", headers={"Authorization": f"Bearer {TOKEN}"}
+            STREAM_PATH, headers={AUTHORIZATION_HEADER: f"Bearer {TOKEN}"}
         ) as websocket,
     ):
-        websocket.send_json({"type": "start", "sample_rate": 16_000, "style": "formal"})
-        assert websocket.receive_json() == {"type": "ready", "engine": "sherpa-onnx"}
+        websocket.send_json({MESSAGE_TYPE_KEY: "start", "sample_rate": 16_000, "style": "formal"})
+        assert websocket.receive_json() == {MESSAGE_TYPE_KEY: "ready", ENGINE_KEY: "sherpa-onnx"}
         websocket.send_bytes(array("f", [0.1, -0.1]).tobytes())
-        assert websocket.receive_json() == {"type": "partial", "transcript": "hello"}
-        websocket.send_json({"type": "finish"})
+        assert websocket.receive_json() == {MESSAGE_TYPE_KEY: "partial", TRANSCRIPT_KEY: "hello"}
+        websocket.send_json({MESSAGE_TYPE_KEY: "finish"})
         assert websocket.receive_json() == {
-            "type": "complete",
-            "transcript": "Hello world.",
+            MESSAGE_TYPE_KEY: "complete",
+            TRANSCRIPT_KEY: "Hello world.",
         }
 
     assert stream.closed is True
@@ -203,19 +210,19 @@ def test_authenticated_batch_engine_gets_st_aa(tmp_path: Path) -> None:
     settings = Settings(
         token=TOKEN,
         data_dir=tmp_path,
-        whisper_binary=tmp_path / "whisper-cli",
-        whisper_model=tmp_path / "model.bin",
+        whisper_binary=tmp_path / WHISPER_BINARY_NAME,
+        whisper_model=tmp_path / MODEL_FILE_NAME,
     )
     app = create_app(settings, engine=BatchOnlyEngine())
 
     with (
         TestClient(app) as client,
         client.websocket_connect(
-            "/v1/stream", headers={"Authorization": f"Bearer {TOKEN}"}
+            STREAM_PATH, headers={AUTHORIZATION_HEADER: f"Bearer {TOKEN}"}
         ) as websocket,
     ):
         assert websocket.receive_json() == {
-            "type": "unsupported",
+            MESSAGE_TYPE_KEY: "unsupported",
             "reason": "active_engine",
-            "engine": "whisperkit:test-model",
+            ENGINE_KEY: "whisperkit:test-model",
         }
