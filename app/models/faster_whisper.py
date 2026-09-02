@@ -122,9 +122,9 @@ class FasterWhisperEngine:
         ).strip()
 
 
-def _resolved_device(value: str) -> str:
-    if value in {"cpu", "cuda"}:
-        return value
+def _resolved_device(configured_device: str) -> str:
+    if configured_device in {"cpu", "cuda"}:
+        return configured_device
     try:
         import ctranslate2
 
@@ -135,9 +135,9 @@ def _resolved_device(value: str) -> str:
     return "cpu"
 
 
-def _resolved_compute_type(value: str, device: str) -> str:
-    if value != "auto":
-        return value
+def _resolved_compute_type(configured_type: str, device: str) -> str:
+    if configured_type != "auto":
+        return configured_type
     return "float16" if device == "cuda" else "int8"
 
 
@@ -146,4 +146,6 @@ def _elapsed_ms(started: float) -> int:
 
 
 def _directory_size(path: Path) -> int:
-    return sum(file.stat().st_size for file in path.rglob("*") if file.is_file())
+    return sum(
+        nested_path.stat().st_size for nested_path in path.rglob("*") if nested_path.is_file()
+    )

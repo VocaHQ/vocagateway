@@ -104,20 +104,22 @@ class MLXAudioEngine:
 
 
 def _generate_text(model: Any, audio_path: Path, language: str) -> str:
-    parameters = inspect.signature(model.generate).parameters
+    generate_parameters = inspect.signature(model.generate).parameters
     arguments: dict[str, Any] = {}
-    if language != "auto" and "language" in parameters:
+    if language != "auto" and "language" in generate_parameters:
         arguments["language"] = _language_code(language)
-    result = model.generate(str(audio_path), **arguments)
-    return str(result.text).strip()
+    generation = model.generate(str(audio_path), **arguments)
+    return str(generation.text).strip()
 
 
-def _language_code(value: str) -> str:
-    return value.lower().split("-", maxsplit=1)[0]
+def _language_code(language_tag: str) -> str:
+    return language_tag.lower().split("-", maxsplit=1)[0]
 
 
 def _directory_size(path: Path) -> int:
-    return sum(file.stat().st_size for file in path.rglob("*") if file.is_file())
+    return sum(
+        nested_path.stat().st_size for nested_path in path.rglob("*") if nested_path.is_file()
+    )
 
 
 def _elapsed_ms(started: float) -> int:
