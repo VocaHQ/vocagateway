@@ -257,13 +257,13 @@ SIZE_FILTER_CAPS: dict[str, int] = {
 }
 
 
-def _as_str_list(value: str | list[str] | None) -> list[str]:
+def _as_str_list(input_values: str | list[str] | None) -> list[str]:
     """Normalize FastAPI Query/Form values (single string, list, or empty)."""
-    if value is None:
+    if input_values is None:
         return []
-    if isinstance(value, str):
-        return [value] if value else []
-    return [item for item in value if item]
+    if isinstance(input_values, str):
+        return [input_values] if input_values else []
+    return [entry for entry in input_values if entry]
 
 
 def filtered_model_entries(
