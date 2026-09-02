@@ -35,7 +35,9 @@ async def test_pairing_payload_and_qr(
     decoded = decode_pairing_payload(body["payload"])
     assert decoded.url == "http://192.168.1.75:8765"
     assert decoded.token == TOKEN
-    assert TOKEN not in json.dumps({k: v for k, v in body.items() if k != "payload"})
+    assert TOKEN not in json.dumps(
+        {key: entry_value for key, entry_value in body.items() if key != "payload"}
+    )
 
     qr = await client.get(
         "/v1/admin/pairing/qr.svg",

@@ -20,10 +20,10 @@ def test_set_anchor_differs_for_same_length_aa() -> None:
     so any two distinct language sets of the same length collided into one HTML id
     and one link target — silently pointing readers at the wrong section."""
     module = _load_module()
-    a = tuple(f"lang-{i}" for i in range(12))
-    b = tuple(f"other-{i}" for i in range(12))
-    assert len(a) == len(b)
-    assert module.set_anchor(a) != module.set_anchor(b)
+    first = tuple(f"lang-{index}" for index in range(12))
+    second = tuple(f"other-{index}" for index in range(12))
+    assert len(first) == len(second)
+    assert module.set_anchor(first) != module.set_anchor(second)
 
 
 def test_set_anchor_is_stable_for_the_same_codes() -> None:

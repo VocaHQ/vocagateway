@@ -381,53 +381,53 @@ def test_language_filter_answers_which_mode_f8f45() -> None:
 
     entries = [
         AdminModelEntry(
-            id=m.id,
-            engine=m.engine,
-            label=m.label,
-            size_bytes=m.size_bytes,
-            languages=m.languages,
-            quality=m.quality,
-            family=m.family,
-            description=m.description,
-            source=m.source,
+            id=model.id,
+            engine=model.engine,
+            label=model.label,
+            size_bytes=model.size_bytes,
+            languages=model.languages,
+            quality=model.quality,
+            family=model.family,
+            description=model.description,
+            source=model.source,
             state="not_installed",
             active=False,
             recommended=False,
-            detects_language_automatically=m.detects_language_automatically,
-            language_names=language_names(m.language_codes),
-            language_codes=list(m.language_codes),
+            detects_language_automatically=model.detects_language_automatically,
+            language_names=language_names(model.language_codes),
+            language_codes=list(model.language_codes),
         )
-        for m in DEFAULT_CATALOG
+        for model in DEFAULT_CATALOG
     ]
 
-    hindi = [e for e in entries if _model_covers(e, "hi")]
+    hindi = [entry for entry in entries if _model_covers(entry, "hi")]
     assert hindi, "Hindi must match something"
     assert len(hindi) < len(entries), "the filter has to actually narrow the list"
     # Both the auto-detecting recogniser and the pinnable Whisper builds appear,
     # so the badge is what tells them apart rather than their absence.
-    assert any("dolphin" in e.id for e in hindi)
-    assert any(e.engine == "whisper.cpp" for e in hindi)
+    assert any("dolphin" in entry.id for entry in hindi)
+    assert any(entry.engine == "whisper.cpp" for entry in hindi)
     # An English-only build must not surface under Hindi.
-    assert not any(e.id.endswith(".en.bin") for e in hindi)
+    assert not any(entry.id.endswith(".en.bin") for entry in hindi)
 
     # A model with no declared languages (an imported one) matches everything
     # rather than disappearing from every filter.
     unlabelled = entries[0].model_copy(update={"language_codes": []})
     assert _model_covers(unlabelled, "hi") and _model_covers(unlabelled, "yo")
 
-    english = [e for e in entries if _model_covers(e, "en")]
-    assert any(e.id.endswith(".en.bin") for e in english)
+    english = [entry for entry in entries if _model_covers(entry, "en")]
+    assert any(entry.id.endswith(".en.bin") for entry in english)
 
     # Moonshine carries its language in `language_code`, not `language_codes`.
     # Leaving the tuple empty made every English Moonshine match "covers
     # everything", so they all turned up under Hindi.
-    assert not any(e.engine == "moonshine" and e.id != "moonshine:hi" for e in hindi)
-    assert any(e.engine == "moonshine" for e in english)
+    assert not any(entry.engine == "moonshine" and entry.id != "moonshine:hi" for entry in hindi)
+    assert any(entry.engine == "moonshine" for entry in english)
 
     # Odia is real but Whisper-less: only Dolphin covers it, which
     # is exactly why the phone clients do not offer it as a choice.
-    odia = [e for e in entries if _model_covers(e, "or")]
-    assert odia and all(e.detects_language_automatically for e in odia)
+    odia = [entry for entry in entries if _model_covers(entry, "or")]
+    assert odia and all(entry.detects_language_automatically for entry in odia)
 
 
 def test_language_filter_offers_only_langua_b4011() -> None:
@@ -455,32 +455,34 @@ def test_multi_select_filters_combine_with_and_or() -> None:
     # Drive off catalog fields without a live gateway: pure predicate checks.
     entries = [
         AdminModelEntry(
-            id=m.id,
-            engine=m.engine,
-            label=m.label,
-            size_bytes=m.size_bytes,
-            languages=m.languages,
-            quality=m.quality,
-            family=m.family,
-            description=m.description,
-            source=m.source,
+            id=model.id,
+            engine=model.engine,
+            label=model.label,
+            size_bytes=model.size_bytes,
+            languages=model.languages,
+            quality=model.quality,
+            family=model.family,
+            description=model.description,
+            source=model.source,
             state="not_installed",
             active=False,
             recommended=False,
-            language_codes=list(m.language_codes),
+            language_codes=list(model.language_codes),
         )
-        for m in DEFAULT_CATALOG
+        for model in DEFAULT_CATALOG
     ]
 
     # OR across languages.
-    hi_or_yue = [e for e in entries if model_covers(e, "hi") or model_covers(e, "yue")]
+    hi_or_yue = [
+        entry for entry in entries if model_covers(entry, "hi") or model_covers(entry, "yue")
+    ]
     assert hi_or_yue and len(hi_or_yue) < len(entries)
 
     # Size cap is a hard upper bound.
     cap = SIZE_FILTER_CAPS["300mb"]
-    under = [e for e in entries if e.size_bytes <= cap]
-    assert under and all(e.size_bytes <= cap for e in under)
-    assert any(e.size_bytes > cap for e in entries)
+    under = [entry for entry in entries if entry.size_bytes <= cap]
+    assert under and all(entry.size_bytes <= cap for entry in under)
+    assert any(entry.size_bytes > cap for entry in entries)
 
     # filtered_model_entries wiring is covered by the API tests below; keep the
     # helper import live so a rename fails here.
@@ -886,7 +888,7 @@ def test_model_cards_name_their_languages() -> None:
     from app.schemas import AdminModelEntry
 
     def card(model_id: str) -> str:
-        model = next(m for m in DEFAULT_CATALOG if m.id == model_id)
+        model = next(model for model in DEFAULT_CATALOG if model.id == model_id)
         entry = AdminModelEntry(
             id=model.id,
             engine=model.engine,
@@ -1021,18 +1023,18 @@ def test_a_filtered_list_warns_which_models_dfdf9() -> None:
 
     entries = [
         AdminModelEntry(
-            id=m.id, engine=m.engine, label=m.label, size_bytes=m.size_bytes,
-            languages=m.languages, quality=m.quality, family=m.family,
-            description=m.description, source=m.source, state="not_installed",
+            id=model.id, engine=model.engine, label=model.label, size_bytes=model.size_bytes,
+            languages=model.languages, quality=model.quality, family=model.family,
+            description=model.description, source=model.source, state="not_installed",
             active=False, recommended=False,
-            detects_language_automatically=m.detects_language_automatically,
-            language_names=language_names(m.language_codes),
-            language_codes=list(m.language_codes),
+            detects_language_automatically=model.detects_language_automatically,
+            language_names=language_names(model.language_codes),
+            language_codes=list(model.language_codes),
         )
-        for m in DEFAULT_CATALOG
+        for model in DEFAULT_CATALOG
     ]  # fmt: skip
 
-    hindi = [e for e in entries if _model_covers(e, "hi")]
+    hindi = [entry for entry in entries if _model_covers(entry, "hi")]
     rendered = models_list_fragment(hindi, languages=["hi"])
     assert "models-language-hint" in rendered
     # Still accepts the legacy single-string kwarg.
@@ -1041,7 +1043,7 @@ def test_a_filtered_list_warns_which_models_dfdf9() -> None:
     assert "Hindi" in rendered
 
     # No hint when there is nothing to choose between.
-    only_auto = [e for e in hindi if e.detects_language_automatically]
+    only_auto = [entry for entry in hindi if entry.detects_language_automatically]
     assert "models-language-hint" not in models_list_fragment(only_auto, language="hi")
     # And never on the unfiltered catalog, where it would just be noise.
     assert "models-language-hint" not in models_list_fragment(entries)

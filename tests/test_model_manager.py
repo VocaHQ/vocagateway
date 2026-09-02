@@ -732,7 +732,7 @@ def test_pinned_catalog_revisions_reach_the_aa() -> None:
     """Pins must change the bytes actually fetched, not just be metadata."""
     from app.catalog import pin_download_url
 
-    pinned = [m for m in DEFAULT_CATALOG if m.revision]
+    pinned = [model for model in DEFAULT_CATALOG if model.revision]
     assert pinned, "expected the shipped pin file to cover part of the catalog"
     for model in pinned:
         if model.download_url and "huggingface.co/" in model.download_url:

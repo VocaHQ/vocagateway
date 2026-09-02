@@ -255,7 +255,9 @@ async def test_health_reports_what_the_loaded_mod_a(settings: Settings, audio_by
     from app.catalog import DEFAULT_CATALOG
     from app.models.base import EngineHealth
 
-    dolphin = next(m for m in DEFAULT_CATALOG if m.id == "sherpa-onnx:dolphin-small-ctc-int8")
+    dolphin = next(
+        model for model in DEFAULT_CATALOG if model.id == "sherpa-onnx:dolphin-small-ctc-int8"
+    )
 
     class DolphinLikeEngine:
         catalog_model = dolphin
