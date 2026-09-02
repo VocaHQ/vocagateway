@@ -107,7 +107,7 @@ def _resolve_binary(binary: str) -> str | None:
 
 def _sysctl(key: str) -> str:
     try:
-        result = subprocess.run(
+        command_result = subprocess.run(
             ["sysctl", "-n", key],
             capture_output=True,
             text=True,
@@ -116,7 +116,7 @@ def _sysctl(key: str) -> str:
         )
     except (OSError, subprocess.TimeoutExpired):
         return ""
-    return result.stdout.strip() if result.returncode == 0 else ""
+    return command_result.stdout.strip() if command_result.returncode == 0 else ""
 
 
 def _ram_gb(is_mac: bool) -> float:
@@ -172,9 +172,9 @@ def _effective_cpu_count(logical_cpus: int) -> float:
     return round(min(limits), 2)
 
 
-def _count_cpu_set(value: str) -> int:
+def _count_cpu_set(cpu_set_text: str) -> int:
     count = 0
-    for part in value.split(","):
+    for part in cpu_set_text.split(","):
         if not part:
             continue
         if "-" in part:
@@ -198,19 +198,19 @@ def _is_containerized() -> bool:
 
 def _accelerators(is_mac: bool, arch: str) -> tuple[str, ...]:
     """Capability labels for the WebUI. Prefer named GPUs when tools are present."""
-    values: list[str] = ["CPU"]
+    accelerator_labels: list[str] = ["CPU"]
     if is_mac and arch == "arm64":
-        values.append("Metal / Core ML")
+        accelerator_labels.append("Metal / Core ML")
     nvidia = _nvidia_gpu_labels()
     if nvidia:
-        values.extend(nvidia)
+        accelerator_labels.extend(nvidia)
     elif Path("/dev/nvidia0").exists() or shutil.which("nvidia-smi"):
-        values.append("NVIDIA CUDA")
+        accelerator_labels.append("NVIDIA CUDA")
     amd = _amd_gpu_labels()
     if amd:
-        values.extend(amd)
+        accelerator_labels.extend(amd)
     elif Path("/dev/kfd").exists():
-        values.append("AMD ROCm")
+        accelerator_labels.append("AMD ROCm")
     # Only mention a generic DRM device when no named GPU was found above.
     if (
         Path("/dev/dri/renderD128").exists()
@@ -218,8 +218,8 @@ def _accelerators(is_mac: bool, arch: str) -> tuple[str, ...]:
         and not amd
         and not (is_mac and arch == "arm64")
     ):
-        values.append("Vulkan / VAAPI device")
-    return tuple(values)
+        accelerator_labels.append("Vulkan / VAAPI device")
+    return tuple(accelerator_labels)
 
 
 def _nvidia_gpu_labels() -> list[str]:
@@ -227,7 +227,7 @@ def _nvidia_gpu_labels() -> list[str]:
     if not shutil.which("nvidia-smi"):
         return []
     try:
-        result = subprocess.run(
+        command_result = subprocess.run(
             [
                 "nvidia-smi",
                 "--query-gpu=name,memory.total",
@@ -240,10 +240,10 @@ def _nvidia_gpu_labels() -> list[str]:
         )
     except (OSError, subprocess.TimeoutExpired):
         return []
-    if result.returncode != 0 or not result.stdout.strip():
+    if command_result.returncode != 0 or not command_result.stdout.strip():
         return []
     labels: list[str] = []
-    for line in result.stdout.splitlines():
+    for line in command_result.stdout.splitlines():
         parts = [part.strip() for part in line.split(",")]
         if not parts or not parts[0]:
             continue
@@ -278,7 +278,7 @@ def _lspci_gpu_labels(*, vendor: str) -> list[str]:
     if not shutil.which("lspci"):
         return []
     try:
-        result = subprocess.run(
+        command_result = subprocess.run(
             ["lspci", "-mm"],
             capture_output=True,
             text=True,
@@ -287,11 +287,11 @@ def _lspci_gpu_labels(*, vendor: str) -> list[str]:
         )
     except (OSError, subprocess.TimeoutExpired):
         return []
-    if result.returncode != 0:
+    if command_result.returncode != 0:
         return []
     labels: list[str] = []
     vendor_key = vendor.lower()
-    for line in result.stdout.splitlines():
+    for line in command_result.stdout.splitlines():
         # lspci -mm: Slot "Class" "Vendor" "Device" ...
         if '"VGA compatible controller"' not in line and '"3D controller"' not in line:
             continue
@@ -313,7 +313,7 @@ def _rocm_gpu_labels() -> list[str]:
     if not shutil.which("rocm-smi"):
         return []
     try:
-        result = subprocess.run(
+        command_result = subprocess.run(
             ["rocm-smi", "--showproductname"],
             capture_output=True,
             text=True,
@@ -322,10 +322,10 @@ def _rocm_gpu_labels() -> list[str]:
         )
     except (OSError, subprocess.TimeoutExpired):
         return []
-    if result.returncode != 0:
+    if command_result.returncode != 0:
         return []
     labels: list[str] = []
-    for line in result.stdout.splitlines():
+    for line in command_result.stdout.splitlines():
         # Typical: "GPU[0] : Card series: Radeon RX 7900 XTX"
         if ":" not in line or "GPU[" not in line.upper():
             continue
