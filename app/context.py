@@ -3,6 +3,7 @@ from __future__ import annotations
 import hmac
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -75,6 +76,9 @@ class GatewayContext:
 def get_context(request: Request) -> GatewayContext:
     ctx: GatewayContext = request.app.state.ctx
     return ctx
+
+
+GatewayContextDependency = Annotated[GatewayContext, Depends(get_context)]
 
 
 def require_token(
