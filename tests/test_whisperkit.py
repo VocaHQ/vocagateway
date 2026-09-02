@@ -8,6 +8,8 @@ from app.models import whisperkit
 from app.models.base import EngineTranscription, TranscriptionOptions
 from app.models.whisperkit import WhisperKitEngine
 
+FAKE_SERVER_PORT = 50123
+
 
 class FakeProcess:
     def __init__(self) -> None:
@@ -43,7 +45,7 @@ async def test_whisperkit_keeps_one_native_server_aa(
     def start_server(_: str, __: Path, ___: Path | None = None) -> whisperkit._WhisperKitServer:
         nonlocal starts
         starts += 1
-        return whisperkit._WhisperKitServer(process=process, port=50123)  # type: ignore[arg-type]
+        return whisperkit._WhisperKitServer(process=process, port=FAKE_SERVER_PORT)  # type: ignore[arg-type]
 
     def transcribe(
         _: whisperkit._WhisperKitServer,

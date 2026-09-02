@@ -8,10 +8,12 @@ from app.errors import EngineUnavailableError, TranscriptionProcessError
 from app.models.base import TranscriptionOptions
 from app.models.whisper_cpp import WhisperCppEngine
 
+EXECUTABLE_FILE_MODE = 0o700
+
 
 def _write_binary(path: Path, script: str) -> None:
     path.write_text(script, encoding="utf-8")
-    path.chmod(0o700)
+    path.chmod(EXECUTABLE_FILE_MODE)
 
 
 async def test_health_requires_both_the_binary_an_aa(tmp_path: Path) -> None:

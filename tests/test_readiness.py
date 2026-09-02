@@ -6,6 +6,8 @@ from app.engines import StaticEngineProvider
 from app.models.base import EngineHealth, TranscriptionOptions
 from app.readiness import ReadinessMonitor
 
+READINESS_CACHE_SECONDS = 30
+
 
 class WarmableFakeEngine:
     def __init__(self) -> None:
@@ -26,7 +28,7 @@ class WarmableFakeEngine:
 
 async def test_readiness_caches_probes_and_tracks_f8ea4() -> None:
     engine = WarmableFakeEngine()
-    monitor = ReadinessMonitor(StaticEngineProvider(engine), ttl_seconds=30)
+    monitor = ReadinessMonitor(StaticEngineProvider(engine), ttl_seconds=READINESS_CACHE_SECONDS)
 
     first = await monitor.probe()
     second = await monitor.probe()

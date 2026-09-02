@@ -8,6 +8,8 @@ import pytest
 
 from app.storage import SessionRepository
 
+STALE_SESSION_AGE_HOURS = 48
+
 
 @pytest.fixture
 def repository(tmp_path: Path) -> SessionRepository:
@@ -113,7 +115,7 @@ def test_expired_only_returns_sessions_past_aa(
     repository.create_or_get(fresh_id, "en", "raw")
     repository.create_or_get(stale_id, "en", "raw")
 
-    stale_time = (datetime.now(UTC) - timedelta(hours=48)).isoformat()
+    stale_time = (datetime.now(UTC) - timedelta(hours=STALE_SESSION_AGE_HOURS)).isoformat()
     with repository._connect() as connection:
         connection.execute(
             "UPDATE sessions SET updated_at = ? WHERE session_id = ?",
