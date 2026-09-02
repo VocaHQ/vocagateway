@@ -4,7 +4,7 @@ from typing import Literal
 
 from app.context import BOOTSTRAP_TOKEN_ID, GatewayContext
 from app.errors import APIProblem
-from app.fragments.pairing import pairing_fragment
+from app.fragments.pairing import PairingFragmentData, pairing_fragment
 from app.pairing import (
     discover_gateway_base_urls,
     encode_pairing_payload,
@@ -127,22 +127,20 @@ def pairing_html(
     qr_svg = ""
     if selected:
         qr_svg = qr_svg_for_payload(encode_pairing_payload(selected, token))
-    import platform
-
     return pairing_fragment(
-        selected_url=selected,
-        candidates=candidates,
-        token_redacted=redacted,
-        token_plaintext=token,
-        qr_svg=qr_svg,
-        saved_urls=pairing_config.pairing_urls,
-        token_options=pairing_token_options(ctx),
-        selected_token_id=resolved_token_id,
-        token_status=token_status,
-        requested_token_id=token_id or "",
-        requested_token_label=requested_label,
-        bind_host=ctx.settings.bind_host,
-        is_mac=platform.system() == "Darwin",
+        PairingFragmentData(
+            selected_url=selected,
+            candidates=candidates,
+            token_redacted=redacted,
+            token_plaintext=token,
+            qr_svg=qr_svg,
+            saved_urls=pairing_config.pairing_urls,
+            token_options=pairing_token_options(ctx),
+            selected_token_id=resolved_token_id,
+            token_status=token_status,
+            requested_token_id=token_id or "",
+            requested_token_label=requested_label,
+        )
     )
 
 
