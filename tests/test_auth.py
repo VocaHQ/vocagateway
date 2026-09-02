@@ -86,7 +86,7 @@ def websocket_close_code(client: TestClient, header: str | None) -> int | None:
         pytest.param(b"\xe9", id="no-scheme"),
     ],
 )
-async def test_non_ascii_credential_is_rejected_r_11204(
+async def test_non_ascii_credential_is_rejected_r_aa(
     auth_client: httpx.AsyncClient, raw: bytes
 ) -> None:
     """A high byte in the header must be a 401, never a 500.
@@ -101,7 +101,7 @@ async def test_non_ascii_credential_is_rejected_r_11204(
     assert response.json()["error"]["code"] == "unauthorized"
 
 
-async def test_rejection_never_echoes_the_supplie_900f2(
+async def test_rejection_never_echoes_the_supplie_aaa(
     auth_client: httpx.AsyncClient,
 ) -> None:
     """A 401 body must not reflect the attempt back into logs or proxies."""
@@ -117,7 +117,7 @@ async def test_rejection_never_echoes_the_supplie_900f2(
 # ------------------------------------------------------- the protected surface
 
 
-async def test_no_documented_route_answers_withou_8fad0(
+async def test_no_documented_route_answers_withou_aaaa(
     auth_app: FastAPI, auth_client: httpx.AsyncClient
 ) -> None:
     """Guard against a new router shipping without `require_token`.
@@ -185,7 +185,7 @@ def test_websocket_rejects_bad_credentials(sync_client: TestClient, header: str 
         pytest.param(f"BEARER {TOKEN}", id="uppercase-scheme"),
     ],
 )
-def test_websocket_accepts_the_scheme_http__41bcb(sync_client: TestClient, header: str) -> None:
+def test_websocket_accepts_the_scheme_http__aaaaa(sync_client: TestClient, header: str) -> None:
     assert websocket_close_code(sync_client, header) is None
 
 
@@ -231,7 +231,7 @@ def test_websocket_accepts_a_device_token_u_b7078(
 # ------------------------------------------------- device token lifecycle
 
 
-async def test_rotating_a_device_token_invalidate_6c785(
+async def test_rotating_a_device_token_invalidate_a(
     auth_client: httpx.AsyncClient,
 ) -> None:
     auth = {"Authorization": f"Bearer {TOKEN}"}
@@ -253,7 +253,7 @@ async def test_rotating_a_device_token_invalidate_6c785(
     assert new.status_code == 200
 
 
-async def test_bootstrap_token_cannot_be_rotated__3d9da(
+async def test_bootstrap_token_cannot_be_rotated__aa(
     auth_client: httpx.AsyncClient,
 ) -> None:
     """It lives in a file or the environment; rotating it here would be theatre."""

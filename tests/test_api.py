@@ -64,7 +64,7 @@ async def test_unsupported_language_is_reported_a_d68a4(
         assert session.json()["error_code"] == "language_unsupported"
 
 
-async def test_health_is_public_and_separates_eng_088d4(
+async def test_health_is_public_and_separates_eng_aa(
     client: httpx.AsyncClient, fake_engine: FakeEngine
 ) -> None:
     response = await client.get("/health")
@@ -121,7 +121,7 @@ async def test_readiness_can_fail_without_failing_ca0a7(tmp_path) -> None:
     assert readiness.json()["engine"] == "missing-model"
 
 
-async def test_complete_flow_is_idempotent_and_de_77d1d(
+async def test_complete_flow_is_idempotent_and_de_aaa(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
     audio_bytes: bytes,
@@ -153,7 +153,7 @@ async def test_complete_flow_is_idempotent_and_de_77d1d(
     assert finished_again.json()["job_id"] == finished.json()["job_id"]
 
 
-async def test_session_accepts_writing_styles_and_4e4fb(
+async def test_session_accepts_writing_styles_and_aaaa(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
 ) -> None:
@@ -174,7 +174,7 @@ async def test_session_accepts_writing_styles_and_4e4fb(
     assert invalid.status_code == 422
 
 
-async def test_writing_style_is_applied_to_the_lo_02b03(
+async def test_writing_style_is_applied_to_the_lo_aaaaa(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
     audio_bytes: bytes,
@@ -248,9 +248,7 @@ async def test_delete_is_idempotent(
     assert second.json() == {"deleted": False}
 
 
-async def test_health_reports_what_the_loaded_mod_6836e(
-    settings: Settings, audio_bytes: bytes
-) -> None:
+async def test_health_reports_what_the_loaded_mod_a(settings: Settings, audio_bytes: bytes) -> None:
     """Clients cannot offer a sensible language picker without knowing whether the
     loaded model can be pinned at all. An engine holding a catalog entry reports
     that entry's languages; one that picks its own language says so."""

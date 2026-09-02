@@ -5,7 +5,7 @@ from pathlib import Path
 from app.models.warmup import prefetch_model_paths
 
 
-def test_prefetch_a_single_file_advises_its_7569f(tmp_path: Path) -> None:
+def test_prefetch_a_single_file_advises_its_aa(tmp_path: Path) -> None:
     path = tmp_path / "model.bin"
     path.write_bytes(b"x" * 4096)
 
@@ -25,7 +25,7 @@ def test_prefetch_skips_paths_that_do_not_exist(tmp_path: Path) -> None:
     assert prefetch_model_paths([tmp_path / "does-not-exist"]) == 0
 
 
-def test_prefetch_stops_once_the_byte_budge_17024(tmp_path: Path) -> None:
+def test_prefetch_stops_once_the_byte_budge_aaa(tmp_path: Path) -> None:
     large = tmp_path / "large.bin"
     large.write_bytes(b"x" * 4096)
     small = tmp_path / "small.bin"

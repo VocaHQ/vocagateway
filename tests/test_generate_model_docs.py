@@ -15,7 +15,7 @@ def _load_module():
     return module
 
 
-def test_set_anchor_differs_for_same_length_45c9d() -> None:
+def test_set_anchor_differs_for_same_length_aa() -> None:
     """Reproduces the reported bug: the anchor used to be `language-set-{len(codes)}`,
     so any two distinct language sets of the same length collided into one HTML id
     and one link target — silently pointing readers at the wrong section."""

@@ -21,7 +21,7 @@ def model_root(tmp_path: Path, model_arch: int) -> Path:
     return root
 
 
-def test_streaming_capability_comes_from_mo_960cf(tmp_path: Path) -> None:
+def test_streaming_capability_comes_from_mo_aa(tmp_path: Path) -> None:
     assert MoonshineEngine(model_root(tmp_path, 5), "en").supports_streaming is True
     assert MoonshineEngine(model_root(tmp_path, 3), "en").supports_streaming is True
     assert MoonshineEngine(model_root(tmp_path, 1), "zh").supports_streaming is False
@@ -50,7 +50,7 @@ def test_non_latin_model_uses_expanded_deco_c79b6(
     assert captured["options"] == {"max_tokens_per_second": "13.0"}
 
 
-async def test_language_must_match_selected_moons_89314(tmp_path: Path) -> None:
+async def test_language_must_match_selected_moons_aaa(tmp_path: Path) -> None:
     engine = MoonshineEngine(model_root(tmp_path, 1), "zh")
 
     with pytest.raises(LanguageUnsupportedError, match="supports zh"):

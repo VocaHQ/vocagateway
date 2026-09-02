@@ -196,7 +196,7 @@ def test_authenticated_sherpa_onnx_style_st_b5a1f(tmp_path: Path) -> None:
     assert stream.closed is True
 
 
-def test_authenticated_batch_engine_gets_st_7630a(tmp_path: Path) -> None:
+def test_authenticated_batch_engine_gets_st_aa(tmp_path: Path) -> None:
     settings = Settings(
         token=TOKEN,
         data_dir=tmp_path,

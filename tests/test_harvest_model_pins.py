@@ -31,7 +31,7 @@ class _FakeResponse:
         return json.dumps(self._payload).encode()
 
 
-def test_single_file_digest_comes_from_the__44778(monkeypatch) -> None:
+def test_single_file_digest_comes_from_the__aa(monkeypatch) -> None:
     """Reproduces the exact bug this script shipped with: a repo migrated to
     Hugging Face's Xet storage backend makes `HEAD /{repo}/resolve/{rev}/{file}`
     302 to a Xet CDN host, and `urlopen` follows that redirect by default. The

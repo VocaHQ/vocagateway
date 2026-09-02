@@ -10,7 +10,7 @@ def test_cleanup_is_conservative() -> None:
     assert conservative_cleanup("space before , punctuation") == "space before, punctuation."
 
 
-def test_formal_style_capitalizes_and_adds__93453() -> None:
+def test_formal_style_capitalizes_and_adds__aa() -> None:
     assert (
         apply_writing_style("  hello   world , how are you  ", "formal")
         == "Hello world, how are you."

@@ -136,7 +136,7 @@ async def test_openapi_documents_the_bearer_scheme(admin_settings: Settings) -> 
     assert "parameters" not in operation
 
 
-async def test_tokens_list_starts_with_only_the_b_78b1a(
+async def test_tokens_list_starts_with_only_the_b_aa(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.get("/v1/admin/tokens", headers=auth)
@@ -181,7 +181,7 @@ async def test_created_device_token_authenticates_a04c2(
     assert now_rejected.status_code == 401
 
 
-async def test_revoking_unknown_token_returns_404(
+async def test_revoking_unknown_token_returns_number(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.delete("/v1/admin/tokens/does-not-exist", headers=auth)
@@ -197,7 +197,7 @@ async def test_bootstrap_token_cannot_be_revoked(
     assert response.json()["error"]["code"] == "bootstrap_token_not_revocable"
 
 
-async def test_diagnostics_bundle_is_downloadable_3c490(
+async def test_diagnostics_bundle_is_downloadable_aaaa(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.get("/v1/admin/diagnostics", headers=auth)
@@ -345,7 +345,7 @@ async def test_models_list_installed_only_filter(
     assert all(entry["state"] == "installed" for entry in filtered.values())
 
 
-async def test_ui_select_preserves_installed_only_53724(
+async def test_ui_select_preserves_installed_only_aaaaa(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     model_id = "whisper.cpp:ggml-tiny.bin"
@@ -506,7 +506,7 @@ async def test_ui_actions_preserve_the_language_filter(
     assert "Cantonese" in filtered_out.text or 'class="model-card"' in filtered_out.text
 
 
-async def test_admin_models_api_accepts_the_langu_837fe(
+async def test_admin_models_api_accepts_the_langu_a(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.get("/v1/admin/models", params={"language": "hi"}, headers=auth)
@@ -572,7 +572,7 @@ async def test_models_list_accepts_cleared_filters(
     assert 'class="family-tile"' in empty_bools.text or 'class="model-card"' in empty_bools.text
 
 
-async def test_unknown_model_download_404(
+async def test_unknown_model_download_number(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.post(
@@ -594,7 +594,7 @@ async def test_config_update_persists_engine(
     assert RuntimeConfig.load(admin_settings.config_path).engine == "sherpa-onnx"
 
 
-async def test_mac_only_engines_are_hidden_and_re_67df5(
+async def test_mac_only_engines_are_hidden_and_re_aaa(
     admin_client: httpx.AsyncClient,
     auth: dict[str, str],
     admin_settings: Settings,
@@ -616,7 +616,7 @@ async def test_mac_only_engines_are_hidden_and_re_67df5(
     assert RuntimeConfig.load(admin_settings.config_path).engine != "vocamac"
 
 
-async def test_mac_only_engines_are_labelled_with_9ec0b(
+async def test_mac_only_engines_are_labelled_with_aaaa(
     admin_client: httpx.AsyncClient, auth: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(engine_state, "engine_runs_on", lambda engine, **_: True)
@@ -642,7 +642,7 @@ async def test_ui_config_update_switches_engine_a_abe0c(
     assert RuntimeConfig.load(admin_settings.config_path).engine == "sherpa-onnx"
 
 
-async def test_ui_config_update_rejects_an_invali_0962d(
+async def test_ui_config_update_rejects_an_invali_aaaaa(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.put(

@@ -22,7 +22,7 @@ def _write_downloaded_model(cache: Path, model: str) -> Path:
     return model_path
 
 
-async def test_handy_adapter_uses_downloaded_mode_6cbeb(
+async def test_handy_adapter_uses_downloaded_mode_aa(
     tmp_path: Path,
 ) -> None:
     model = "owner/repository/model.gguf"
@@ -130,7 +130,7 @@ async def test_handy_retries_empty_primary_result_e08a0(
     assert transcript == "fallback result"
 
 
-async def test_handy_follows_the_model_selected_i_32648(
+async def test_handy_follows_the_model_selected_i_aaa(
     tmp_path: Path,
 ) -> None:
     first = "owner/first/first.gguf"

@@ -40,7 +40,7 @@ def test_tokens_persist_across_store_instances(tmp_path: Path) -> None:
     assert second.matches(plaintext) is True
 
 
-def test_missing_or_corrupt_file_yields_emp_1f276(tmp_path: Path) -> None:
+def test_missing_or_corrupt_file_yields_emp_aa(tmp_path: Path) -> None:
     missing = TokenStore(tmp_path / "does-not-exist.json")
     assert missing.all() == []
 
@@ -67,7 +67,7 @@ def test_cached_plaintext_available_after_c_f4371(tmp_path: Path) -> None:
     assert store.cached_entries() == []
 
 
-def test_cache_does_not_survive_a_fresh_sto_88a22(tmp_path: Path) -> None:
+def test_cache_does_not_survive_a_fresh_sto_aaa(tmp_path: Path) -> None:
     path = tmp_path / "device_tokens.json"
     first = TokenStore(path)
     record, _ = first.create("Old laptop")

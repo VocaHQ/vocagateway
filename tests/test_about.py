@@ -82,7 +82,7 @@ def test_family_marks_are_current_color() -> None:
     assert 'width="832" height="280"' in gateway
 
 
-def test_official_1u_mark_is_vendored() -> None:
+def test_official_numberu_mark_is_vendored() -> None:
     mark = (
         Path(__file__).resolve().parents[1]
         / "app"

@@ -100,7 +100,7 @@ def test_catalog_includes_standalone_handy__a94aa() -> None:
     assert entries["breeze-asr-q5_k.bin"].family == "Breeze ASR"
 
 
-def test_distilled_faster_whisper_uses_publ_5492d() -> None:
+def test_distilled_faster_whisper_uses_publ_aa() -> None:
     entries = {model.id: model for model in DEFAULT_CATALOG}
 
     assert (
@@ -109,7 +109,7 @@ def test_distilled_faster_whisper_uses_publ_5492d() -> None:
     )
 
 
-def test_catalog_includes_all_moonshine_lan_0d964() -> None:
+def test_catalog_includes_all_moonshine_lan_aaa() -> None:
     entries = {model.id: model for model in DEFAULT_CATALOG}
 
     assert {entry.language_code for entry in entries.values() if entry.engine == "moonshine"} == {
@@ -132,7 +132,7 @@ def test_catalog_includes_all_moonshine_lan_0d964() -> None:
     )
 
 
-def test_catalog_includes_portable_and_appl_54286() -> None:
+def test_catalog_includes_portable_and_appl_aaaa() -> None:
     entries = {model.id: model for model in DEFAULT_CATALOG}
 
     sensevoice = entries["sherpa-onnx:sensevoice-small-int8"]
@@ -149,7 +149,7 @@ def test_catalog_includes_portable_and_appl_54286() -> None:
     assert mlx_turbo.marker_file == "model.safetensors"
 
 
-def test_catalog_includes_gigaam_and_canary_1a0c9() -> None:
+def test_catalog_includes_gigaam_and_canary_aaaaa() -> None:
     entries = {model.id: model for model in DEFAULT_CATALOG}
 
     gigaam_ctc = entries["sherpa-onnx:gigaam-v3-ctc-russian-int8"]
@@ -254,7 +254,7 @@ def test_every_catalog_model_has_a_download_f979c() -> None:
             assert model.model_type, f"{model.id} must declare a model_type"
 
 
-def test_sherpa_onnx_helper_requires_a_down_08d52() -> None:
+def test_sherpa_onnx_helper_requires_a_down_a() -> None:
     from app.catalog import _sherpa_onnx
 
     with pytest.raises(ValueError, match="archive_url/archive_root or huggingface_repo"):
@@ -391,7 +391,7 @@ async def test_root_huggingface_folder_download(
     assert (installed / "model.bin").read_bytes() == b"model"
 
 
-async def test_moonshine_download_uses_catalog_la_4433c(
+async def test_moonshine_download_uses_catalog_la_aa(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     manager = ModelManager(tmp_path / "models", catalog=(MOONSHINE_SPANISH,))
@@ -418,7 +418,7 @@ async def test_moonshine_download_uses_catalog_la_4433c(
     assert '"language": "es"' in metadata
 
 
-async def test_archive_download_extracts_validate_59e19(tmp_path: Path) -> None:
+async def test_archive_download_extracts_validate_aaa(tmp_path: Path) -> None:
     source = tmp_path / "model.tar.bz2"
     content = tmp_path / "published-model"
     content.mkdir()
@@ -566,7 +566,7 @@ def test_normalize_sha256_rejects_malformed(value: str) -> None:
         normalize_sha256(value)
 
 
-async def test_single_file_download_accepts_match_4e053(
+async def test_single_file_download_accepts_match_aaaa(
     tmp_path: Path, tiny_file_model: CatalogModel
 ) -> None:
     model = dataclasses.replace(tiny_file_model, sha256=_sha256(b"hello model"))
@@ -581,7 +581,7 @@ async def test_single_file_download_accepts_match_4e053(
     assert installed is not None and installed.read_bytes() == b"hello model"
 
 
-async def test_single_file_download_rejects_wrong_3c841(
+async def test_single_file_download_rejects_wrong_aaaaa(
     tmp_path: Path, tiny_file_model: CatalogModel
 ) -> None:
     model = dataclasses.replace(tiny_file_model, sha256=HELLO_SHA256)
@@ -680,7 +680,7 @@ async def test_custom_download_rejects_wrong_user_d7ea6(
     assert not (manager.models_dir / "whisper.cpp" / "my-model.gguf").exists()
 
 
-async def test_custom_download_accepts_matching_u_35e5f(
+async def test_custom_download_accepts_matching_u_a(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     source = tmp_path / "source.gguf"
@@ -728,7 +728,7 @@ async def test_archive_download_rejects_wrong_arc_a7516(tmp_path: Path) -> None:
     assert manager.installed_path(model.id) is None
 
 
-def test_pinned_catalog_revisions_reach_the_9be6e() -> None:
+def test_pinned_catalog_revisions_reach_the_aa() -> None:
     """Pins must change the bytes actually fetched, not just be metadata."""
     from app.catalog import pin_download_url
 
@@ -765,7 +765,7 @@ def test_shipped_pin_file_is_well_formed() -> None:
             assert normalize_sha256(digest) == digest, f"{model_id}:{name}"
 
 
-def test_download_file_raises_and_removes_t_18198(tmp_path: Path) -> None:
+def test_download_file_raises_and_removes_t_aaa(tmp_path: Path) -> None:
     """The low-level guarantee every other integrity test depends on."""
     import threading
 
@@ -791,7 +791,7 @@ def test_download_file_raises_and_removes_t_18198(tmp_path: Path) -> None:
     assert destination.read_bytes() == b"real-bytes"
 
 
-def test_download_file_retries_transient_ne_08c27(
+def test_download_file_retries_transient_ne_aaaa(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A dropped connection is retried, not reported as a bad file."""
@@ -883,7 +883,7 @@ def test_ordinary_listing_paths_are_accepted(relative: str) -> None:
     assert model_manager.is_safe_relative_path(relative)
 
 
-async def test_folder_download_refuses_a_listing__6b596(
+async def test_folder_download_refuses_a_listing__aaaaa(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A repo listing must not be able to place files outside the model dir."""
@@ -978,7 +978,7 @@ def _disclosure_html(entry: object) -> str:
     return models_list_fragment([entry])  # type: ignore[list-item]
 
 
-def test_language_preview_names_the_first_f_9bea6() -> None:
+def test_language_preview_names_the_first_f_a() -> None:
     """The point of the change: answerable without opening every card."""
     html = _disclosure_html(
         _entry(language_names=["Bulgarian", "Croatian", "Czech", "Danish", "Dutch", "English"])
@@ -991,21 +991,21 @@ def test_language_preview_names_the_first_f_9bea6() -> None:
     assert "Dutch" in html and "English" in html
 
 
-def test_short_language_lists_are_shown_wit_0d868() -> None:
+def test_short_language_lists_are_shown_wit_aa() -> None:
     html = _disclosure_html(_entry(language_names=["English", "French", "German"]))
     assert "<details" not in html
     for name in ("English", "French", "German"):
         assert name in html
 
 
-def test_a_single_hidden_language_is_shown__23f38() -> None:
+def test_a_single_hidden_language_is_shown__aaa() -> None:
     """Five languages should not cost a click to reveal the fifth."""
     html = _disclosure_html(_entry(language_names=["a", "b", "c", "d", "e"]))
     assert "<details" not in html
     assert "more" not in html
 
 
-def test_single_language_models_render_no_l_3f8d6() -> None:
+def test_single_language_models_render_no_l_aaaa() -> None:
     html = _disclosure_html(_entry(language_names=["English"]))
     assert "model-languages" not in html
 

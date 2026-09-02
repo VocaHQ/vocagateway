@@ -29,7 +29,7 @@ class FakeProcess:
         self.return_code = -9
 
 
-async def test_whisperkit_keeps_one_native_server_82d12(
+async def test_whisperkit_keeps_one_native_server_aa(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     model_path = tmp_path / "openai_whisper-small"
@@ -70,7 +70,7 @@ async def test_whisperkit_keeps_one_native_server_82d12(
     assert process.terminated is True
 
 
-def test_whisperkit_multipart_contains_mode_33a8f(tmp_path: Path) -> None:
+def test_whisperkit_multipart_contains_mode_aaa(tmp_path: Path) -> None:
     audio_path = tmp_path / "sample.wav"
     audio_path.write_bytes(b"wave-bytes")
 

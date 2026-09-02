@@ -134,7 +134,7 @@ def _headless_model(
     }
 
 
-async def test_vocamac_headless_cli_uses_the_apps_91a4d(
+async def test_vocamac_headless_cli_uses_the_apps_aa(
     tmp_path: Path,
 ) -> None:
     engine, executable = _build_headless_engine(
@@ -159,7 +159,7 @@ async def test_vocamac_headless_cli_uses_the_apps_91a4d(
     assert "--model" not in arguments
 
 
-async def test_vocamac_headless_cli_honours_an_ex_68a03(
+async def test_vocamac_headless_cli_honours_an_ex_aaa(
     tmp_path: Path,
 ) -> None:
     engine, executable = _build_headless_engine(
@@ -182,7 +182,7 @@ async def test_vocamac_headless_cli_honours_an_ex_68a03(
     assert arguments[arguments.index("--language") + 1] == "auto"
 
 
-async def test_vocamac_headless_cli_reports_an_un_26f82(
+async def test_vocamac_headless_cli_reports_an_un_aaaa(
     tmp_path: Path,
 ) -> None:
     engine, _ = _build_headless_engine(
@@ -197,7 +197,7 @@ async def test_vocamac_headless_cli_reports_an_un_26f82(
     assert health.name == "vocamac:parakeet-tdt-0.6b-v2"
 
 
-async def test_vocamac_headless_cli_surfaces_mode_231dc(
+async def test_vocamac_headless_cli_surfaces_mode_aaaaa(
     tmp_path: Path,
 ) -> None:
     engine, _ = _build_headless_engine(
@@ -215,7 +215,7 @@ async def test_vocamac_headless_cli_surfaces_mode_231dc(
         await engine.transcribe(audio, TranscriptionOptions("auto", "raw"))
 
 
-async def test_vocamac_headless_warmup_does_not_l_95be3(
+async def test_vocamac_headless_warmup_does_not_l_a(
     tmp_path: Path,
 ) -> None:
     engine, executable = _build_headless_engine(
@@ -227,7 +227,7 @@ async def test_vocamac_headless_warmup_does_not_l_95be3(
     assert not Path(f"{executable}.args").exists()
 
 
-async def test_vocamac_without_headless_cli_keeps_1c51a(tmp_path: Path) -> None:
+async def test_vocamac_without_headless_cli_keeps_aa(tmp_path: Path) -> None:
     engine, models_dir = _build_engine(tmp_path)
     executable = engine.app_path / "Contents" / "MacOS" / "VocaMac"
     executable.parent.mkdir(parents=True)
@@ -251,7 +251,7 @@ async def test_vocamac_without_headless_cli_keeps_1c51a(tmp_path: Path) -> None:
     assert arguments[arguments.index("--model-path") + 1] == str(selected)
 
 
-async def test_vocamac_runs_the_model_selected_in_81f1a(tmp_path: Path) -> None:
+async def test_vocamac_runs_the_model_selected_in_aaa(tmp_path: Path) -> None:
     engine, models_dir = _build_engine(tmp_path)
     _write_model(models_dir, "openai_whisper-tiny", weight_bytes=512)
     selected = _write_model(models_dir, "openai_whisper-small")
@@ -286,7 +286,7 @@ async def test_vocamac_skips_an_interrupted_download(tmp_path: Path) -> None:
     assert health.name == "vocamac:openai_whisper-small"
 
 
-async def test_vocamac_does_not_replace_a_selecte_6b4fc(
+async def test_vocamac_does_not_replace_a_selecte_aaaa(
     tmp_path: Path,
 ) -> None:
     engine, models_dir = _build_engine(tmp_path)
@@ -305,7 +305,7 @@ async def test_vocamac_does_not_replace_a_selecte_6b4fc(
         await engine.transcribe(audio, TranscriptionOptions("auto", "raw"))
 
 
-async def test_vocamac_does_not_replace_an_unknow_1d623(
+async def test_vocamac_does_not_replace_an_unknow_aaaaa(
     tmp_path: Path,
 ) -> None:
     engine, models_dir = _build_engine(tmp_path)
@@ -319,7 +319,7 @@ async def test_vocamac_does_not_replace_an_unknow_1d623(
     assert health.name == "vocamac:future-vocamac-engine-model"
 
 
-async def test_vocamac_prefers_the_largest_model__4d5db(tmp_path: Path) -> None:
+async def test_vocamac_prefers_the_largest_model__a(tmp_path: Path) -> None:
     engine, models_dir = _build_engine(tmp_path)
     _write_model(models_dir, "openai_whisper-tiny", weight_bytes=16)
     largest = _write_model(models_dir, "openai_whisper-small", weight_bytes=512)
@@ -327,7 +327,7 @@ async def test_vocamac_prefers_the_largest_model__4d5db(tmp_path: Path) -> None:
     assert (await engine.health()).name == f"vocamac:{largest.name}"
 
 
-async def test_vocamac_honours_an_explicit_model__2f0b3(tmp_path: Path) -> None:
+async def test_vocamac_honours_an_explicit_model__aa(tmp_path: Path) -> None:
     engine, models_dir = _build_engine(tmp_path, model="tiny")
     pinned = _write_model(models_dir, "openai_whisper-tiny")
     _write_model(models_dir, "openai_whisper-small", weight_bytes=512)
@@ -347,7 +347,7 @@ async def test_vocamac_never_substitutes_a_config_f22a7(tmp_path: Path) -> None:
     assert health.name == "vocamac:openai_whisper-large-v3"
 
 
-async def test_vocamac_is_unavailable_without_the_59a60(tmp_path: Path) -> None:
+async def test_vocamac_is_unavailable_without_the_aaa(tmp_path: Path) -> None:
     engine, models_dir = _build_engine(tmp_path)
 
     assert engine.is_available() is False
@@ -361,7 +361,7 @@ async def test_vocamac_is_unavailable_without_the_59a60(tmp_path: Path) -> None:
     assert (await engine.health()).ready is False
 
 
-async def test_vocamac_is_unavailable_without_whi_530e5(tmp_path: Path) -> None:
+async def test_vocamac_is_unavailable_without_whi_aaaa(tmp_path: Path) -> None:
     engine, models_dir = _build_engine(tmp_path)
     _write_model(models_dir, "openai_whisper-small")
     Path(engine.whisperkit_binary).unlink()

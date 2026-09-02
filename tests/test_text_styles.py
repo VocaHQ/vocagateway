@@ -61,7 +61,7 @@ def test_raw_returns_the_model_output_untouched() -> None:
     assert apply_writing_style("  hello   there  ", "raw") == "hello   there"
 
 
-def test_clean_normalizes_spacing_without_a_35845() -> None:
+def test_clean_normalizes_spacing_without_a_aa() -> None:
     assert apply_writing_style("hello   there ,ok", "clean") == "hello there,ok."
 
 
@@ -91,7 +91,7 @@ def test_very_casual_lowercases_prose_but_n_ef338() -> None:
     assert styled.startswith("email")
 
 
-def test_excited_exclaims_every_statement_a_09426() -> None:
+def test_excited_exclaims_every_statement_a_aaa() -> None:
     assert apply_writing_style("Wow. That worked. I'm happy.", "excited") == (
         "Wow! That worked! I'm happy!"
     )
@@ -101,7 +101,7 @@ def test_excited_exclaims_every_statement_a_09426() -> None:
 
 
 @pytest.mark.parametrize("style", sorted(SUPPORTED_WRITING_STYLES))
-def test_an_ellipsis_is_never_mistaken_for__41668(style: str) -> None:
+def test_an_ellipsis_is_never_mistaken_for__aaaa(style: str) -> None:
     styled = apply_writing_style("Wait... I am not sure.", style)
     assert "..." in styled
 
@@ -152,7 +152,7 @@ def test_arabic_uses_an_arabic_clause_separator() -> None:
 HINDI = "मैं घर गया। जॉन ने बाद में फोन किया।"
 
 
-def test_hindi_is_terminated_with_a_danda_n_6f48b() -> None:
+def test_hindi_is_terminated_with_a_danda_n_aaaaa() -> None:
     """Indic scripts end a sentence with "।". Appending "." both looked wrong and,
     because the danda was not recognised as a terminator, produced a second one on
     text the model had already punctuated."""
@@ -169,7 +169,7 @@ def test_hindi_sentences_are_actually_segmented() -> None:
     assert apply_writing_style(HINDI, "very_casual", "hi") == "मैं घर गया, जॉन ने बाद में फोन किया"
 
 
-def test_a_danda_is_detected_without_an_exp_15e33() -> None:
+def test_a_danda_is_detected_without_an_exp_a() -> None:
     """Several models detect the language themselves, so Hindi commonly arrives
     with the request language still set to Automatic."""
     assert apply_writing_style(HINDI, "excited", "auto") == "मैं घर गया! जॉन ने बाद में फोन किया!"
@@ -184,7 +184,7 @@ def test_bengali_uses_the_danda_but_tamil_u_d9a86() -> None:
     assert apply_writing_style(tamil, "clean", "ta") == "நான் நன்றாக இருக்கிறேன்."
 
 
-def test_thai_and_lao_end_sentences_with_no_6f5de() -> None:
+def test_thai_and_lao_end_sentences_with_no_aa() -> None:
     """These scripts have no sentence-ending mark, so no style may add one — and
     dropping a zero-length terminator must not truncate the transcript, since
     `"x".endswith("")` is True and `"x"[:-0]` is the empty string."""
@@ -206,7 +206,7 @@ def test_scripts_with_their_own_sentence_marks() -> None:
     assert apply_writing_style("مان ٺيڪ آهيان", "clean", "sd").endswith("۔")
 
 
-def test_no_style_ever_erases_a_transcript__27c90() -> None:
+def test_no_style_ever_erases_a_transcript__aaa() -> None:
     """The broad invariant behind the per-language tables: whatever the language,
     styling is presentation only and can never leave the user with nothing."""
     samples = ["hello", "मैं ठीक हूँ", "私は元気です", "ผมสบายดี", "مان ٺيڪ آهيان", "hi।", "ok..."]
@@ -223,25 +223,25 @@ def test_a_language_pysbd_lacks_still_gets_styled() -> None:
     assert apply_writing_style(KOREAN, "excited", "ko") == ("집에 갔어요! 존이 나중에 전화했어요!")
 
 
-def test_german_abbreviations_come_from_the_425c6() -> None:
+def test_german_abbreviations_come_from_the_aaaa() -> None:
     styled = apply_writing_style("Ich ging nach Hause. Herr z.B. Schmidt rief an.", "excited", "de")
     assert styled == "Ich ging nach Hause! Herr z.B. Schmidt rief an!"
 
 
-def test_auto_infers_the_script_from_the_tr_0208e() -> None:
+def test_auto_infers_the_script_from_the_tr_aaaaa() -> None:
     """ "auto" is the default, so the script has to be inferred from the text."""
     assert apply_writing_style(JAPANESE, "excited", "auto") == (
         "家に帰りました！ジョンが電話してきました！"
     )
 
 
-def test_a_country_code_word_is_not_mistake_3f2a0() -> None:
+def test_a_country_code_word_is_not_mistake_a() -> None:
     """ ".it" is a real suffix, so "home.It" must not be read as an address."""
     styled = apply_writing_style("I went home.It was fine.", "formal", "en")
     assert styled == "I went home.It was fine."
 
 
-def test_a_foreign_terminator_is_recognised_34af6() -> None:
+def test_a_foreign_terminator_is_recognised_aa() -> None:
     """A model that picks its own language leaks that language's punctuation:
     Dolphin ends a Hindi sentence with the CJK "。". Appending a danda to text
     that already ended produced "。।" at the cursor."""
@@ -254,7 +254,7 @@ def test_a_foreign_terminator_is_recognised_34af6() -> None:
     assert apply_writing_style("私は元気です।", "clean", "ja") == "私は元気です।"
 
 
-def test_recognising_foreign_marks_does_not_8c10b() -> None:
+def test_recognising_foreign_marks_does_not_aaa() -> None:
     for language, text in (
         ("hi", "मैं घर गया। जॉन ने फोन किया।"),
         ("en", "I went home. John called."),

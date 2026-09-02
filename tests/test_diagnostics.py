@@ -68,11 +68,11 @@ def test_redact_home_path_replaces_home_prefix() -> None:
     assert redact_home_path(home) == "~"
 
 
-def test_redact_home_path_leaves_other_path_93533() -> None:
+def test_redact_home_path_leaves_other_path_aa() -> None:
     assert redact_home_path("/data/models") == "/data/models"
 
 
-def test_build_diagnostics_bundle_redacts_p_82ebb() -> None:
+def test_build_diagnostics_bundle_redacts_p_aaa() -> None:
     home = str(Path.home())
     status = _status(
         PathStatus(

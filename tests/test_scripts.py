@@ -15,7 +15,7 @@ def test_the_dolphin_cyrillic_bug_is_rejected() -> None:
         _require_matching_script("насте", "hi")
 
 
-def test_transliteration_into_another_scrip_4b49a() -> None:
+def test_transliteration_into_another_scrip_aa() -> None:
     """A model under evaluation rendered "send me the report by Friday" in Arabic
     script. A presence test let it through on the single stray Latin "o" in
     "رoرت", which is why the check is proportional rather than binary."""
@@ -113,7 +113,7 @@ def test_every_client_language_can_be_judged() -> None:
         ("Сәлеметсіз бе", "kk", "Kazakh Cyrillic"),
     ],
 )
-def test_languages_written_in_two_scripts_a_7e855(text: str, language: str, script: str) -> None:
+def test_languages_written_in_two_scripts_a_aaa(text: str, language: str, script: str) -> None:
     """A guard that rejects transcripts must not be wrong about a language's
     writing system. Holding Serbian to one alphabet would throw away half the
     country's writing, and a false rejection destroys a good dictation."""

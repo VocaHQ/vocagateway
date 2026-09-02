@@ -31,7 +31,7 @@ def _pyproject_scripts() -> dict[str, str]:
     return {str(name): str(target) for name, target in scripts.items()}
 
 
-def test_pyproject_declares_primary_and_dep_5e999() -> None:
+def test_pyproject_declares_primary_and_dep_aa() -> None:
     scripts = _pyproject_scripts()
     for name, target in PRIMARY_SCRIPTS.items():
         assert scripts[name] == target

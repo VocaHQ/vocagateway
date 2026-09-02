@@ -54,7 +54,7 @@ from app.system import engine_requirement, engine_runs_on
         ),
     ],
 )
-def test_model_selection_builds_new_engine__34692(
+def test_model_selection_builds_new_engine__aa(
     tmp_path: Path,
     catalog_model: CatalogModel,
     expected_type: type[SherpaOnnxEngine] | type[MLXAudioEngine],
@@ -97,7 +97,7 @@ def test_model_selection_builds_new_engine__34692(
         ("auto", True, True, True),
     ],
 )
-def test_desktop_and_apple_engines_only_run_27b1b(
+def test_desktop_and_apple_engines_only_run_aaa(
     engine: str, linux: bool, intel_mac: bool, apple_silicon: bool
 ) -> None:
     assert engine_runs_on(engine, is_mac=False, is_apple_silicon=False) is linux
@@ -126,7 +126,7 @@ def test_configure_rejects_an_engine_the_ho_db78a(tmp_path: Path, monkeypatch: M
     assert engine_requirement("vocamac") == "Apple silicon"
 
 
-def test_build_engine_honours_forced_settin_636c2(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+def test_build_engine_honours_forced_settin_aaaa(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     """VOCAGATEWAY_ENGINE must win over a persisted runtime config of 'auto'."""
     from app.engines import build_engine
     from app.models.whisper_cpp import WhisperCppEngine
@@ -148,7 +148,7 @@ def test_build_engine_honours_forced_settin_636c2(tmp_path: Path, monkeypatch: M
     assert isinstance(engine, WhisperCppEngine)
 
 
-def test_forget_if_active_clears_moonshine__2a058(tmp_path: Path) -> None:
+def test_forget_if_active_clears_moonshine__aaaaa(tmp_path: Path) -> None:
     """Reproduces the reported bug: deleting the active Moonshine model reset
     `runtime_config.engine` back to "auto" but left `moonshine_model` pointing at
     the now-deleted id — unlike the sherpa-onnx and mlx-audio branches of the same

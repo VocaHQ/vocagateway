@@ -53,7 +53,7 @@ def test_token_reads_env_override(
     assert capsys.readouterr().out == secret + "\n"
 
 
-def test_token_blank_token_file_env_falls_b_9c6c2(
+def test_token_blank_token_file_env_falls_b_aa(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     home = _isolate_home(monkeypatch, tmp_path)
