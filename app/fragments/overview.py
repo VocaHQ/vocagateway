@@ -504,13 +504,13 @@ def _stacked_bars_svg(
 def _sparkline_card(
     title: str,
     subtitle: str,
-    values: list[float | None] | list[float],
+    samples: list[float | None] | list[float],
     *,
     empty: str,
     unit_suffix: str = "",
 ) -> dict[str, object]:
-    numeric = [float(entry_value) for entry_value in values if entry_value is not None]
-    chart = _sparkline_svg(values)
+    numeric = [float(entry_value) for entry_value in samples if entry_value is not None]
+    chart = _sparkline_svg(samples)
     if len(numeric) >= 2:
         latest = numeric[-1]
         if unit_suffix == "ms":
@@ -528,7 +528,7 @@ def _sparkline_card(
 
 
 def _sparkline_svg(
-    values: list[float | None] | list[float],
+    samples: list[float | None] | list[float],
     *,
     width: int = 220,
     height: int = 48,
@@ -537,7 +537,7 @@ def _sparkline_svg(
     coords: list[tuple[float, float]] = []
     numeric = [
         (index, float(entry_value))
-        for index, entry_value in enumerate(values)
+        for index, entry_value in enumerate(samples)
         if entry_value is not None
     ]
     if len(numeric) < 2:
@@ -554,9 +554,9 @@ def _sparkline_svg(
         y_max = y_min + 1.0
     pad = 3.0
     usable_h = height - pad * 2
-    count = len(values)
+    count = len(samples)
     span = max(1, count - 1)
-    for index, raw in enumerate(values):
+    for index, raw in enumerate(samples):
         if raw is None:
             continue
         coordinate_x = (index / span) * width
