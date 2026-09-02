@@ -8,6 +8,11 @@ from pathlib import Path
 DEFAULT_HANDY_FALLBACK_MODEL = "handy-computer/whisper-base-gguf/whisper-base-Q8_0.gguf"
 WILDCARD_BIND_HOSTS = frozenset({"0.0.0.0", "::"})
 APP_DIR_NAME = "vocagateway"
+DEFAULT_MAXIMUM_UPLOAD_BYTES = 26_214_400
+MINIMUM_TOKEN_LENGTH = 32
+CONFIGURATION_DIRECTORY_MODE = 0o700
+TOKEN_FILE_MODE = 0o600
+TOKEN_SECRET_BYTES = 48
 
 
 def format_host_port(host: str, port: int) -> str:
@@ -83,7 +88,7 @@ class Settings:
     token_file: Path = Path("~/.config/vocagateway/token")
     bind_host: str = "0.0.0.0"
     port: int = 8765
-    maximum_upload_bytes: int = 25 * 1024 * 1024
+    maximum_upload_bytes: int = DEFAULT_MAXIMUM_UPLOAD_BYTES
     maximum_duration_seconds: int = 120
     retention_hours: int = 24
     delete_successful_audio: bool = True
@@ -105,7 +110,7 @@ class Settings:
             token = token_file.read_text(encoding="utf-8").strip()
         if not token:
             token = _generate_token(token_file)
-        if len(token) < 32:
+        if len(token) < MINIMUM_TOKEN_LENGTH:
             raise RuntimeError(
                 "Set VOCAGATEWAY_TOKEN to at least 32 characters or create "
                 f"{_display_path(token_file)} with mode 600."
@@ -158,15 +163,15 @@ class Settings:
 
 def _write_token_file(token_file: Path, token: str) -> None:
     token_file.parent.mkdir(parents=True, exist_ok=True)
-    token_file.parent.chmod(0o700)
-    descriptor = os.open(token_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    token_file.parent.chmod(CONFIGURATION_DIRECTORY_MODE)
+    descriptor = os.open(token_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, TOKEN_FILE_MODE)
     with os.fdopen(descriptor, "w", encoding="utf-8") as token_handle:
         token_handle.write(token + "\n")
 
 
 def _generate_token(token_file: Path) -> str:
     """First-run friendly default: create a private token automatically."""
-    token = secrets.token_urlsafe(48)
+    token = secrets.token_urlsafe(TOKEN_SECRET_BYTES)
     try:
         _write_token_file(token_file, token)
     except OSError:
