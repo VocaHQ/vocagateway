@@ -7,6 +7,11 @@ from pytest import MonkeyPatch
 
 from app.config import Settings, format_host_port, local_webui_url
 
+TEST_TOKEN_PADDING_LENGTH = 48
+DEFAULT_GATEWAY_PORT = 8765
+MINIMUM_TOKEN_LENGTH = 32
+CUSTOM_GATEWAY_PORT = 9000
+
 
 def _isolate_home(monkeypatch: MonkeyPatch, tmp_path: Path) -> Path:
     home = tmp_path / "home"
@@ -21,7 +26,7 @@ def _isolate_home(monkeypatch: MonkeyPatch, tmp_path: Path) -> Path:
 
 
 def test_environment_defaults_to_all_interf_b6e88(monkeypatch: MonkeyPatch) -> None:
-    monkeypatch.setenv("VOCAGATEWAY_TOKEN", "test-" + ("x" * 48))
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN", "test-" + ("x" * TEST_TOKEN_PADDING_LENGTH))
     monkeypatch.delenv("VOCAGATEWAY_BIND_HOST", raising=False)
 
     settings = Settings.from_env()
@@ -32,8 +37,8 @@ def test_environment_defaults_to_all_interf_b6e88(monkeypatch: MonkeyPatch) -> N
 
 
 def test_ipv6_listener_and_local_url_are_br_aa() -> None:
-    assert format_host_port("::", 8765) == "[::]:8765"
-    assert local_webui_url("::", 8765) == "http://[::1]:8765/"
+    assert format_host_port("::", DEFAULT_GATEWAY_PORT) == "[::]:8765"
+    assert local_webui_url("::", DEFAULT_GATEWAY_PORT) == "http://[::1]:8765/"
 
 
 def test_fresh_install_mints_token_to_xdg_config(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
@@ -42,7 +47,7 @@ def test_fresh_install_mints_token_to_xdg_config(tmp_path: Path, monkeypatch: Mo
     settings = Settings.from_env()
 
     token_file = home / ".config" / "vocagateway" / "token"
-    assert len(settings.token) >= 32
+    assert len(settings.token) >= MINIMUM_TOKEN_LENGTH
     assert token_file.read_text(encoding="utf-8").strip() == settings.token
 
 
@@ -52,7 +57,7 @@ def test_honours_xdg_config_and_data_dirs(tmp_path: Path, monkeypatch: MonkeyPat
     data_home = tmp_path / "xdg-data"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
     monkeypatch.setenv("XDG_DATA_HOME", str(data_home))
-    monkeypatch.setenv("VOCAGATEWAY_TOKEN", "test-" + ("x" * 48))
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN", "test-" + ("x" * TEST_TOKEN_PADDING_LENGTH))
 
     settings = Settings.from_env()
 
@@ -106,14 +111,14 @@ def test_cli_token_from_env_strips_whitespace(monkeypatch: MonkeyPatch) -> None:
 
 
 def test_env_overrides_bind_host_and_port(monkeypatch: MonkeyPatch) -> None:
-    monkeypatch.setenv("VOCAGATEWAY_TOKEN", "test-" + ("x" * 48))
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN", "test-" + ("x" * TEST_TOKEN_PADDING_LENGTH))
     monkeypatch.setenv("VOCAGATEWAY_BIND_HOST", "127.0.0.1")
-    monkeypatch.setenv("VOCAGATEWAY_PORT", "9000")
+    monkeypatch.setenv("VOCAGATEWAY_PORT", str(CUSTOM_GATEWAY_PORT))
 
     settings = Settings.from_env()
 
     assert settings.bind_host == "127.0.0.1"
-    assert settings.port == 9000
+    assert settings.port == CUSTOM_GATEWAY_PORT
 
 
 def test_custom_token_file_env(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
