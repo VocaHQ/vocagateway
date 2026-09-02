@@ -9,6 +9,13 @@ from app.models.base import TranscriptionOptions
 from app.models.whisper_cpp import WhisperCppEngine
 
 EXECUTABLE_FILE_MODE = 0o700
+WHISPER_BINARY_NAME = "whisper-cli"
+MODEL_FILE_NAME = "model.bin"
+MODEL_BYTES = b"model"
+AUDIO_FILE_NAME = "audio.wav"
+AUDIO_BYTES = b"audio"
+RAW_STYLE = "raw"
+AUTO_LANGUAGE = "auto"
 
 
 def _write_binary(path: Path, script: str) -> None:
@@ -17,8 +24,8 @@ def _write_binary(path: Path, script: str) -> None:
 
 
 async def test_health_requires_both_the_binary_an_aa(tmp_path: Path) -> None:
-    binary = tmp_path / "whisper-cli"
-    model = tmp_path / "model.bin"
+    binary = tmp_path / WHISPER_BINARY_NAME
+    model = tmp_path / MODEL_FILE_NAME
 
     engine = WhisperCppEngine(binary, model)
     assert (await engine.health()).ready is False
@@ -26,7 +33,7 @@ async def test_health_requires_both_the_binary_an_aa(tmp_path: Path) -> None:
     _write_binary(binary, "#!/bin/sh\nexit 0\n")
     assert (await engine.health()).ready is False
 
-    model.write_bytes(b"model")
+    model.write_bytes(MODEL_BYTES)
     health = await engine.health()
     assert health.ready is True
     assert health.name == f"whisper.cpp:{model.name}"
@@ -35,7 +42,7 @@ async def test_health_requires_both_the_binary_an_aa(tmp_path: Path) -> None:
 async def test_transcribe_writes_the_output_stem_aaa(
     tmp_path: Path,
 ) -> None:
-    binary = tmp_path / "whisper-cli"
+    binary = tmp_path / WHISPER_BINARY_NAME
     _write_binary(
         binary,
         """#!/bin/sh
@@ -52,13 +59,13 @@ done
 printf '%s' "private local result" > "$of.txt"
 """,
     )
-    model = tmp_path / "model.bin"
-    model.write_bytes(b"model")
-    audio = tmp_path / "audio.wav"
-    audio.write_bytes(b"audio")
+    model = tmp_path / MODEL_FILE_NAME
+    model.write_bytes(MODEL_BYTES)
+    audio = tmp_path / AUDIO_FILE_NAME
+    audio.write_bytes(AUDIO_BYTES)
 
     engine = WhisperCppEngine(binary, model)
-    transcript = await engine.transcribe(audio, TranscriptionOptions("en", "raw"))
+    transcript = await engine.transcribe(audio, TranscriptionOptions("en", RAW_STYLE))
 
     assert transcript == "private local result"
     arguments = (tmp_path / "whisper-cli.args").read_text(encoding="utf-8").splitlines()
@@ -67,7 +74,7 @@ printf '%s' "private local result" > "$of.txt"
 
 
 async def test_transcribe_omits_the_language_flag_d8504(tmp_path: Path) -> None:
-    binary = tmp_path / "whisper-cli"
+    binary = tmp_path / WHISPER_BINARY_NAME
     _write_binary(
         binary,
         """#!/bin/sh
@@ -82,13 +89,13 @@ done
 printf '%s' "auto detected" > "$of.txt"
 """,
     )
-    model = tmp_path / "model.bin"
-    model.write_bytes(b"model")
-    audio = tmp_path / "audio.wav"
-    audio.write_bytes(b"audio")
+    model = tmp_path / MODEL_FILE_NAME
+    model.write_bytes(MODEL_BYTES)
+    audio = tmp_path / AUDIO_FILE_NAME
+    audio.write_bytes(AUDIO_BYTES)
 
     engine = WhisperCppEngine(binary, model)
-    transcript = await engine.transcribe(audio, TranscriptionOptions("auto", "raw"))
+    transcript = await engine.transcribe(audio, TranscriptionOptions(AUTO_LANGUAGE, RAW_STYLE))
 
     assert transcript == "auto detected"
     arguments = (tmp_path / "whisper-cli.args").read_text(encoding="utf-8").splitlines()
@@ -99,25 +106,27 @@ async def test_transcribe_raises_when_the_engine_aaaa(tmp_path: Path) -> None:
     engine = WhisperCppEngine(tmp_path / "missing-cli", tmp_path / "missing-model.bin")
 
     with pytest.raises(EngineUnavailableError):
-        await engine.transcribe(tmp_path / "audio.wav", TranscriptionOptions("auto", "raw"))
+        await engine.transcribe(
+            tmp_path / AUDIO_FILE_NAME, TranscriptionOptions(AUTO_LANGUAGE, RAW_STYLE)
+        )
 
 
 async def test_transcribe_raises_on_a_nonzero_exit_code(tmp_path: Path) -> None:
-    binary = tmp_path / "whisper-cli"
+    binary = tmp_path / WHISPER_BINARY_NAME
     _write_binary(binary, "#!/bin/sh\necho 'boom' 1>&2\nexit 1\n")
-    model = tmp_path / "model.bin"
-    model.write_bytes(b"model")
-    audio = tmp_path / "audio.wav"
-    audio.write_bytes(b"audio")
+    model = tmp_path / MODEL_FILE_NAME
+    model.write_bytes(MODEL_BYTES)
+    audio = tmp_path / AUDIO_FILE_NAME
+    audio.write_bytes(AUDIO_BYTES)
 
     engine = WhisperCppEngine(binary, model)
 
     with pytest.raises(TranscriptionProcessError, match="boom"):
-        await engine.transcribe(audio, TranscriptionOptions("auto", "raw"))
+        await engine.transcribe(audio, TranscriptionOptions(AUTO_LANGUAGE, RAW_STYLE))
 
 
 async def test_transcribe_raises_when_the_transcr_c5efb(tmp_path: Path) -> None:
-    binary = tmp_path / "whisper-cli"
+    binary = tmp_path / WHISPER_BINARY_NAME
     _write_binary(
         binary,
         """#!/bin/sh
@@ -131,21 +140,21 @@ done
 printf '' > "$of.txt"
 """,
     )
-    model = tmp_path / "model.bin"
-    model.write_bytes(b"model")
-    audio = tmp_path / "audio.wav"
-    audio.write_bytes(b"audio")
+    model = tmp_path / MODEL_FILE_NAME
+    model.write_bytes(MODEL_BYTES)
+    audio = tmp_path / AUDIO_FILE_NAME
+    audio.write_bytes(AUDIO_BYTES)
 
     engine = WhisperCppEngine(binary, model)
 
     with pytest.raises(TranscriptionProcessError, match="empty"):
-        await engine.transcribe(audio, TranscriptionOptions("auto", "raw"))
+        await engine.transcribe(audio, TranscriptionOptions(AUTO_LANGUAGE, RAW_STYLE))
 
 
 async def test_warmup_prefetches_the_model_when_ready(tmp_path: Path) -> None:
-    binary = tmp_path / "whisper-cli"
+    binary = tmp_path / WHISPER_BINARY_NAME
     _write_binary(binary, "#!/bin/sh\nexit 0\n")
-    model = tmp_path / "model.bin"
+    model = tmp_path / MODEL_FILE_NAME
     model.write_bytes(b"x" * 1024)
 
     engine = WhisperCppEngine(binary, model)
