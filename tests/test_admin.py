@@ -8,6 +8,14 @@ from pathlib import Path
 import httpx
 import pytest
 from conftest import TOKEN, FakeNormalizer
+from starlette.status import (
+    HTTP_200_OK,
+    HTTP_401_UNAUTHORIZED,
+    HTTP_404_NOT_FOUND,
+    HTTP_409_CONFLICT,
+    HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+    HTTP_422_UNPROCESSABLE_CONTENT,
+)
 
 from app import engine_state
 from app import engines as engines_module
@@ -18,13 +26,19 @@ from app.model_manager import ModelManager
 from app.runtime_config import RuntimeConfig
 
 MAC_ONLY = frozenset({"vocamac", "handy", "whisperkit", "mlx-audio"})
+TINY_MODEL_SIZE_BYTES = 11
+GATEWAY_PORT = 8765
+ASYNC_POLL_SECONDS = 0.02
+MAXIMUM_DOWNLOAD_POLL_ATTEMPTS = 200
+TEST_AUDIO_BYTES = b"x" * MAXIMUM_DOWNLOAD_POLL_ATTEMPTS
+MAXIMUM_FILTERED_MODEL_SIZE_BYTES = 800_000_000
 
 TINY = CatalogModel(
     id="whisper.cpp:ggml-tiny.bin",
     engine="whisper.cpp",
     key="ggml-tiny.bin",
     label="Test Tiny",
-    size_bytes=11,
+    size_bytes=TINY_MODEL_SIZE_BYTES,
     languages="Multilingual",
     quality="Fastest",
     minimum_ram_gb=4,
@@ -88,7 +102,7 @@ async def test_admin_endpoints_require_token(admin_client: httpx.AsyncClient) ->
         "/ui/partials/about",
     ):
         response = await admin_client.get(path)
-        assert response.status_code == 401, path
+        assert response.status_code == HTTP_401_UNAUTHORIZED, path
 
 
 @pytest.mark.parametrize(
@@ -140,7 +154,7 @@ async def test_tokens_list_starts_with_only_the_b_aa(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.get("/v1/admin/tokens", headers=auth)
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     entries = response.json()
     assert entries == [
         {
@@ -156,14 +170,14 @@ async def test_created_device_token_authenticates_a04c2(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     created = await admin_client.post("/v1/admin/tokens", headers=auth, json={"label": "Pixel 6a"})
-    assert created.status_code == 200
+    assert created.status_code == HTTP_200_OK
     payload = created.json()
     assert payload["label"] == "Pixel 6a"
     device_auth = {"Authorization": f"Bearer {payload['token']}"}
 
     # The new device token authenticates on its own, independent of the bootstrap token.
     status = await admin_client.get("/v1/admin/status", headers=device_auth)
-    assert status.status_code == 200
+    assert status.status_code == HTTP_200_OK
 
     listed = await admin_client.get("/v1/admin/tokens", headers=auth)
     ids = {entry["id"]: entry for entry in listed.json()}
@@ -171,21 +185,21 @@ async def test_created_device_token_authenticates_a04c2(
     assert ids[payload["id"]]["revocable"] is True
 
     revoked = await admin_client.delete(f"/v1/admin/tokens/{payload['id']}", headers=auth)
-    assert revoked.status_code == 200
+    assert revoked.status_code == HTTP_200_OK
     assert revoked.json() == {"revoked": True}
 
     # Revoking one device token never touches the bootstrap token or other clients.
     still_ok = await admin_client.get("/v1/admin/status", headers=auth)
-    assert still_ok.status_code == 200
+    assert still_ok.status_code == HTTP_200_OK
     now_rejected = await admin_client.get("/v1/admin/status", headers=device_auth)
-    assert now_rejected.status_code == 401
+    assert now_rejected.status_code == HTTP_401_UNAUTHORIZED
 
 
 async def test_revoking_unknown_token_returns_number(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.delete("/v1/admin/tokens/does-not-exist", headers=auth)
-    assert response.status_code == 404
+    assert response.status_code == HTTP_404_NOT_FOUND
     assert response.json() == {"revoked": False}
 
 
@@ -193,7 +207,7 @@ async def test_bootstrap_token_cannot_be_revoked(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.delete("/v1/admin/tokens/bootstrap", headers=auth)
-    assert response.status_code == 409
+    assert response.status_code == HTTP_409_CONFLICT
     assert response.json()["error"]["code"] == "bootstrap_token_not_revocable"
 
 
@@ -201,7 +215,7 @@ async def test_diagnostics_bundle_is_downloadable_aaaa(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.get("/v1/admin/diagnostics", headers=auth)
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     assert response.headers["content-disposition"].startswith(
         'attachment; filename="vocagateway-diagnostics-'
     )
@@ -216,7 +230,7 @@ async def test_status_reports_system_and_setup(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.get("/v1/admin/status", headers=auth)
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     payload = response.json()
     assert payload["engine"]["id"] == "auto"
     assert payload["system"]["arch"]
@@ -234,7 +248,7 @@ async def test_status_reports_system_and_setup(
     assert payload["setup"]["token_configured"] is True
     assert payload["setup"]["model_installed"] is False
     assert payload["bind_host"] == "0.0.0.0"
-    assert payload["port"] == 8765
+    assert payload["port"] == GATEWAY_PORT
     assert payload["metrics"] == {
         "uptime_seconds": payload["metrics"]["uptime_seconds"],
         "queue_depth": 0,
@@ -261,7 +275,7 @@ async def test_models_list_contains_catalog(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.get("/v1/admin/models", headers=auth)
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     entries = {entry["id"]: entry for entry in response.json()}
     assert "whisper.cpp:ggml-tiny.bin" in entries
     assert entries["whisper.cpp:ggml-tiny.bin"]["state"] == "not_installed"
@@ -277,26 +291,26 @@ async def test_download_select_and_delete_flow(
     model_id = "whisper.cpp:ggml-tiny.bin"
 
     missing = await admin_client.post(f"/v1/admin/models/{model_id}/select", headers=auth)
-    assert missing.status_code == 404
+    assert missing.status_code == HTTP_404_NOT_FOUND
 
     started = await admin_client.post(f"/v1/admin/models/{model_id}/download", headers=auth)
-    assert started.status_code == 200
+    assert started.status_code == HTTP_200_OK
 
     duplicate = await admin_client.post(f"/v1/admin/models/{model_id}/download", headers=auth)
-    assert duplicate.status_code == 409
+    assert duplicate.status_code == HTTP_409_CONFLICT
 
-    for _ in range(200):
+    for _ in range(MAXIMUM_DOWNLOAD_POLL_ATTEMPTS):
         entries = {
             entry["id"]: entry
             for entry in (await admin_client.get("/v1/admin/models", headers=auth)).json()
         }
         if entries[model_id]["state"] == "installed":
             break
-        await asyncio.sleep(0.02)
+        await asyncio.sleep(ASYNC_POLL_SECONDS)
     assert entries[model_id]["state"] == "installed"
 
     selected = await admin_client.post(f"/v1/admin/models/{model_id}/select", headers=auth)
-    assert selected.status_code == 200
+    assert selected.status_code == HTTP_200_OK
     assert selected.json()["engine"]["id"] == "whisper.cpp"
 
     saved = RuntimeConfig.load(admin_settings.config_path)
@@ -310,7 +324,7 @@ async def test_download_select_and_delete_flow(
     assert entries[model_id]["active"] is True
 
     deleted = await admin_client.delete(f"/v1/admin/models/{model_id}", headers=auth)
-    assert deleted.status_code == 200
+    assert deleted.status_code == HTTP_200_OK
     saved = RuntimeConfig.load(admin_settings.config_path)
     assert saved.whisper_model is None
 
@@ -323,13 +337,13 @@ async def test_models_list_installed_only_filter(
     before = await admin_client.get(
         "/v1/admin/models", params={"installed_only": "true"}, headers=auth
     )
-    assert before.status_code == 200
+    assert before.status_code == HTTP_200_OK
     assert model_id not in {entry["id"] for entry in before.json()}
 
     started = await admin_client.post(f"/v1/admin/models/{model_id}/download", headers=auth)
-    assert started.status_code == 200
+    assert started.status_code == HTTP_200_OK
 
-    for _ in range(200):
+    for _ in range(MAXIMUM_DOWNLOAD_POLL_ATTEMPTS):
         filtered = {
             entry["id"]: entry
             for entry in (
@@ -340,7 +354,7 @@ async def test_models_list_installed_only_filter(
         }
         if model_id in filtered:
             break
-        await asyncio.sleep(0.02)
+        await asyncio.sleep(ASYNC_POLL_SECONDS)
     assert filtered[model_id]["state"] == "installed"
     assert all(entry["state"] == "installed" for entry in filtered.values())
 
@@ -352,14 +366,14 @@ async def test_ui_select_preserves_installed_only_aaaaa(
 
     await admin_client.post(f"/v1/admin/models/{model_id}/download", headers=auth)
     entries: dict[str, dict[str, object]] = {}
-    for _ in range(200):
+    for _ in range(MAXIMUM_DOWNLOAD_POLL_ATTEMPTS):
         entries = {
             entry["id"]: entry
             for entry in (await admin_client.get("/v1/admin/models", headers=auth)).json()
         }
         if entries[model_id]["state"] == "installed":
             break
-        await asyncio.sleep(0.02)
+        await asyncio.sleep(ASYNC_POLL_SECONDS)
     assert entries[model_id]["state"] == "installed"
 
     selected = await admin_client.post(
@@ -367,7 +381,7 @@ async def test_ui_select_preserves_installed_only_aaaaa(
         headers=auth,
         data={"installed_only": "true"},
     )
-    assert selected.status_code == 200
+    assert selected.status_code == HTTP_200_OK
     assert 'class="model-card"' in selected.text
     assert "No models downloaded yet" not in selected.text
 
@@ -497,7 +511,7 @@ async def test_ui_actions_preserve_the_language_filter(
     listed = await admin_client.get(
         "/ui/partials/models-list", params={"language": "hi"}, headers=auth
     )
-    assert listed.status_code == 200
+    assert listed.status_code == HTTP_200_OK
 
     # The stub catalog's only model is multilingual Whisper, so it covers Hindi.
     assert 'class="model-card"' in listed.text
@@ -512,7 +526,7 @@ async def test_admin_models_api_accepts_the_langu_a(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.get("/v1/admin/models", params={"language": "hi"}, headers=auth)
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     assert all(
         "hi" in entry["language_codes"] or not entry["language_codes"] for entry in response.json()
     )
@@ -531,20 +545,20 @@ async def test_admin_models_api_accepts_multi_filters(
         ],
         headers=auth,
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     body = response.json()
     assert body
     for entry in body:
         codes = entry["language_codes"]
         assert not codes or "en" in codes or "hi" in codes
-        assert entry["size_bytes"] <= 800_000_000
+        assert entry["size_bytes"] <= MAXIMUM_FILTERED_MODEL_SIZE_BYTES
 
 
 async def test_models_ui_filter_panel_is_multi_select(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     page = await admin_client.get("/ui/partials/models", headers=auth)
-    assert page.status_code == 200
+    assert page.status_code == HTTP_200_OK
     assert 'id="models-filter-form"' in page.text
     assert 'id="models-layout"' in page.text
     assert 'class="models-filter"' in page.text or 'class="models-filter ' in page.text
@@ -562,7 +576,7 @@ async def test_models_list_accepts_cleared_filters(
 ) -> None:
     """Clear filters sends empty bools; must not 422."""
     cleared = await admin_client.get("/ui/partials/models-list", headers=auth)
-    assert cleared.status_code == 200
+    assert cleared.status_code == HTTP_200_OK
     assert 'class="family-tile"' in cleared.text or 'class="model-card"' in cleared.text
 
     empty_bools = await admin_client.get(
@@ -570,7 +584,7 @@ async def test_models_list_accepts_cleared_filters(
         params={"installed_only": "", "recommended_only": ""},
         headers=auth,
     )
-    assert empty_bools.status_code == 200
+    assert empty_bools.status_code == HTTP_200_OK
     assert 'class="family-tile"' in empty_bools.text or 'class="model-card"' in empty_bools.text
 
 
@@ -580,19 +594,19 @@ async def test_unknown_model_download_number(
     response = await admin_client.post(
         "/v1/admin/models/whisper.cpp:missing.bin/download", headers=auth
     )
-    assert response.status_code == 404
+    assert response.status_code == HTTP_404_NOT_FOUND
 
 
 async def test_config_update_persists_engine(
     admin_client: httpx.AsyncClient, auth: dict[str, str], admin_settings: Settings
 ) -> None:
     invalid = await admin_client.put("/v1/admin/config", headers=auth, json={"engine": "cloud"})
-    assert invalid.status_code == 422
+    assert invalid.status_code == HTTP_422_UNPROCESSABLE_CONTENT
 
     updated = await admin_client.put(
         "/v1/admin/config", headers=auth, json={"engine": "sherpa-onnx"}
     )
-    assert updated.status_code == 200
+    assert updated.status_code == HTTP_200_OK
     assert RuntimeConfig.load(admin_settings.config_path).engine == "sherpa-onnx"
 
 
@@ -612,7 +626,7 @@ async def test_mac_only_engines_are_hidden_and_re_aaa(
     assert set(config.json()["available_engines"]).isdisjoint(MAC_ONLY)
     assert "VocaMac app" not in settings_html
     assert "Handy app" not in settings_html
-    assert rejected.status_code == 422
+    assert rejected.status_code == HTTP_422_UNPROCESSABLE_CONTENT
     assert rejected.json()["error"]["code"] == "invalid_engine"
     assert "Apple silicon" in rejected.json()["error"]["message"]
     assert RuntimeConfig.load(admin_settings.config_path).engine != "vocamac"
@@ -638,7 +652,7 @@ async def test_ui_config_update_switches_engine_a_abe0c(
         headers=auth,
         data={"engine": "sherpa-onnx", "compute_device": "cpu", "cpu_threads": "2"},
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     assert "Engine preference saved." in response.text
     assert 'id="engine-pill"' in response.text
     assert RuntimeConfig.load(admin_settings.config_path).engine == "sherpa-onnx"
@@ -652,7 +666,7 @@ async def test_ui_config_update_rejects_an_invali_aaaaa(
         headers=auth,
         data={"engine": "cloud"},
     )
-    assert response.status_code == 422
+    assert response.status_code == HTTP_422_UNPROCESSABLE_CONTENT
     assert response.json()["error"]["code"] == "invalid_engine"
 
 
@@ -664,13 +678,13 @@ async def test_custom_download_rejects_bad_url(
         headers=auth,
         json={"url": "https://example.com/not-a-model.txt"},
     )
-    assert response.status_code == 422
+    assert response.status_code == HTTP_422_UNPROCESSABLE_CONTENT
     assert response.json()["error"]["code"] == "invalid_model_url"
 
 
 async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[str, str]) -> None:
     overview = await admin_client.get("/ui/partials/overview", headers=auth)
-    assert overview.status_code == 200
+    assert overview.status_code == HTTP_200_OK
     assert "Live operations" in overview.text
     assert 'hx-get="/ui/partials/operations"' in overview.text
     assert "Succeeded" in overview.text
@@ -701,28 +715,28 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     assert "Listening on every network interface" not in overview.text
 
     models = await admin_client.get("/ui/partials/models", headers=auth)
-    assert models.status_code == 200
+    assert models.status_code == HTTP_200_OK
     assert "Test Tiny" in models.text
     assert 'class="model-card"' in models.text
     assert 'hx-trigger="every 1500ms"' not in models.text
     assert 'hx-post="/ui/partials/models/whisper.cpp%3Aggml-tiny.bin/download"' in models.text
 
     settings = await admin_client.get("/ui/partials/settings", headers=auth)
-    assert settings.status_code == 200
+    assert settings.status_code == HTTP_200_OK
     assert "Speech engine" in settings.text
     assert "exposure-panel" not in settings.text
     assert "Device tokens" in settings.text
     assert "Bootstrap token (VOCAGATEWAY_TOKEN / token file)" in settings.text
 
     banner = await admin_client.get("/ui/partials/exposure-banner", headers=auth)
-    assert banner.status_code == 200
+    assert banner.status_code == HTTP_200_OK
     assert "exposure-banner" in banner.text
     assert "Listening on every network interface" in banner.text
     assert "Dismiss for 24 hours" in banner.text
     assert "&times;" in banner.text or "×" in banner.text
 
     pair = await admin_client.get("/ui/partials/test", headers=auth)
-    assert pair.status_code == 200
+    assert pair.status_code == HTTP_200_OK
     assert "exposure-panel" in pair.text
     assert "Listening on every network interface" in pair.text
     # Once, at page end — never stacked by pairing-card HTMX swaps.
@@ -732,36 +746,36 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
 
     # Token/url pairing partials must not re-emit the exposure panel.
     pairing_only = await admin_client.get("/ui/partials/pairing", headers=auth)
-    assert pairing_only.status_code == 200
+    assert pairing_only.status_code == HTTP_200_OK
     assert "exposure-panel" not in pairing_only.text
     assert "Listening on every network interface" not in pairing_only.text
 
     tokens = await admin_client.get("/ui/partials/tokens", headers=auth)
-    assert tokens.status_code == 200
+    assert tokens.status_code == HTTP_200_OK
     assert 'id="tokens-card"' in tokens.text
 
     created = await admin_client.post(
         "/ui/partials/tokens", headers=auth, data={"label": "Kanishk's iPhone"}
     )
-    assert created.status_code == 200
+    assert created.status_code == HTTP_200_OK
     assert "New secret for Kanishk&#39;s iPhone" in created.text
     assert 'id="new-token-value"' in created.text
     assert "Regenerate</button>" in created.text
 
     operations = await admin_client.get("/ui/partials/operations", headers=auth)
-    assert operations.status_code == 200
+    assert operations.status_code == HTTP_200_OK
     assert "0 queued" in operations.text
     assert "Latency" in operations.text
 
     pill = await admin_client.get("/ui/partials/engine-pill", headers=auth)
-    assert pill.status_code == 200
+    assert pill.status_code == HTTP_200_OK
     assert "engine-pill" in pill.text
     assert "engine-popover" in pill.text
     assert "0.0.0.0:8765" in pill.text
     assert "http://127.0.0.1:8765/" in pill.text
 
     about = await admin_client.get("/ui/partials/about", headers=auth)
-    assert about.status_code == 200
+    assert about.status_code == HTTP_200_OK
     _assert_about_surface(about.text)
 
 
@@ -839,7 +853,7 @@ def _assert_about_surface(html: str) -> None:
 
 async def test_webui_shell_is_public(admin_client: httpx.AsyncClient) -> None:
     response = await admin_client.get("/")
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     assert "htmx.min.js" in response.text
     assert 'data-tab="about"' in response.text
     assert 'hx-get="/ui/partials/about"' in response.text
@@ -861,7 +875,7 @@ async def test_private_responses_are_not_cached(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.get("/v1/admin/status", headers=auth)
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     assert response.headers["cache-control"] == "no-store"
 
 
@@ -869,7 +883,7 @@ async def test_recorder_ui_shows_limit_and_copy_action(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.get("/ui/partials/test", headers=auth)
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     assert 'data-maximum-seconds="120"' in response.text
     assert 'id="record-timer"' in response.text
     assert 'id="copy-transcript"' in response.text
@@ -982,7 +996,7 @@ async def test_test_transcription_endpoint(
         headers={**authorization, "Content-Type": "audio/wav"},
         content=audio_bytes,
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     payload = response.json()
     assert payload["transcript"] == "hello from the local model"
     assert payload["engine"] == "fake-local-model"
@@ -1007,9 +1021,9 @@ async def test_test_transcription_rejects_unsuppo_f97c8(
     response = await client.post(
         "/v1/admin/test-transcription",
         headers={**authorization, "Content-Type": "text/plain"},
-        content=b"x" * 200,
+        content=TEST_AUDIO_BYTES,
     )
-    assert response.status_code == 415
+    assert response.status_code == HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
 
 def test_a_filtered_list_warns_which_models_dfdf9() -> None:
