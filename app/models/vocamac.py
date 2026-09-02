@@ -20,6 +20,8 @@ DEFAULT_SUPPORT_DIR = Path("~/Library/Application Support/VocaMac")
 DEFAULT_PREFERENCES_FILE = Path("~/Library/Preferences/com.vocamac.app.plist")
 SELECTED_MODEL_KEY = "vocamac.selectedModelSize"
 MODEL_REPOSITORY = "argmaxinc/whisperkit-coreml"
+FILE_PROBE_CHUNK_BYTES = 65_536
+MAXIMUM_HEADLESS_ERROR_LENGTH = 300
 
 # VocaMac stores a `ModelSize` raw value in its preferences but names the model
 # folder after the WhisperKit variant. This is `ModelManager.whisperKitModelName`
@@ -420,7 +422,7 @@ def _file_contains(path: Path, marker: bytes) -> bool:
     overlap = b""
     try:
         with path.open("rb") as binary_file:
-            while chunk := binary_file.read(64 * 1024):
+            while chunk := binary_file.read(FILE_PROBE_CHUNK_BYTES):
                 combined = overlap + chunk
                 if marker in combined:
                     return True
@@ -452,7 +454,7 @@ def _raise_headless_failure(stderr: bytes) -> None:
             message = raw_message
     except (json.JSONDecodeError, TypeError):
         if detail:
-            message = detail.splitlines()[-1][:300]
+            message = detail.splitlines()[-1][:MAXIMUM_HEADLESS_ERROR_LENGTH]
 
     if code in {"model_not_found", "model_not_downloaded", "model_unsupported"}:
         raise EngineUnavailableError(message)

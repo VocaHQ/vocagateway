@@ -10,6 +10,9 @@ from app.errors import EngineUnavailableError, TranscriptionProcessError
 from app.models.base import EngineHealth, TranscriptionOptions
 from app.models.warmup import prefetch_model_paths
 
+TRANSCRIPTION_TIMEOUT_SECONDS = 75
+MAXIMUM_ERROR_MESSAGE_LENGTH = 200
+
 
 class HandyEngine:
     """Adapter for Handy's headless file-transcription interface."""
@@ -83,14 +86,18 @@ class HandyEngine:
             stderr=asyncio.subprocess.PIPE,
         )
         try:
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=75)
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(), timeout=TRANSCRIPTION_TIMEOUT_SECONDS
+            )
         except TimeoutError as error:
             process.kill()
             await process.wait()
             raise TranscriptionProcessError("Handy transcription timed out.") from error
         if process.returncode != 0:
             message = stderr.decode("utf-8", errors="replace").strip().splitlines()
-            detail = message[-1][:200] if message else "unknown Handy error"
+            detail = (
+                message[-1][:MAXIMUM_ERROR_MESSAGE_LENGTH] if message else "unknown Handy error"
+            )
             raise TranscriptionProcessError(f"Handy exited unsuccessfully: {detail}")
         try:
             payload: dict[str, Any] = json.loads(stdout)
