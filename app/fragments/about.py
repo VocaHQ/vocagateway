@@ -107,7 +107,7 @@ def _build_fact(commit: CommitStatus) -> str:
 
 
 def _facts_html(version: str, commit: CommitStatus | None) -> str:
-    facts = (
+    facts: tuple[tuple[str, str], ...] = (
         (
             "<dt>License</dt>",
             f'<dd><a href="{_LICENSE_URL}" target="_blank" '

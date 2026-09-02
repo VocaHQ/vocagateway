@@ -129,7 +129,9 @@ def apply_pins(
                 sha256=record.get("sha256") or model.sha256,
                 download_url=pin_download_url(model.download_url, revision),
                 file_digests=(
-                    tuple(sorted((str(k), str(v)) for k, v in digests.items()))
+                    tuple(
+                        sorted((str(key), str(entry_value)) for key, entry_value in digests.items())
+                    )
                     if isinstance(digests, dict) and digests
                     else model.file_digests
                 ),

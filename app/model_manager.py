@@ -54,12 +54,12 @@ _RETRYABLE_NETWORK_ERRORS = (
 )
 
 
-def _call_with_retries[T](
-    action: Callable[[], T],
+def _call_with_retries[ActionResult](
+    action: Callable[[], ActionResult],
     *,
     on_retry: Callable[[], None] | None = None,
     attempts: int = _MAX_NETWORK_ATTEMPTS,
-) -> T:
+) -> ActionResult:
     """Call *action* up to *attempts* times, retrying transport failures.
 
     A dropped connection or a read timeout can just as easily be a Wi-Fi

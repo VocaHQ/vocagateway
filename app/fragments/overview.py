@@ -127,7 +127,9 @@ def _system_panel(
 
 def _dependencies_panel(dependencies: list[DependencyStatus]) -> str:
     """Installed CLIs and Python engines — same data as diagnostics, new Overview look."""
-    ordered = sorted(dependencies, key=lambda d: (not d.available, d.name.lower()))
+    ordered = sorted(
+        dependencies, key=lambda dependency: (not dependency.available, dependency.name.lower())
+    )
     installed = sum(1 for dependency in dependencies if dependency.available)
     return render(
         "overview/dependencies_panel.html",
@@ -233,16 +235,16 @@ def _short_gpu_label(name: str) -> str:
 
 def _hw_vendor(text: str) -> str | None:
     """Best-effort vendor from a chip/GPU string for brand mark icons."""
-    u = (text or "").upper()
-    if any(k in u for k in ("NVIDIA", "GEFORCE", "RTX ", "GTX ", "QUADRO", "TESLA")):
+    url = (text or "").upper()
+    if any(key in url for key in ("NVIDIA", "GEFORCE", "RTX ", "GTX ", "QUADRO", "TESLA")):
         return "nvidia"
-    if any(k in u for k in ("AMD", "RADEON", "RYZEN", "EPYC", "THREADRIPPER")):
+    if any(key in url for key in ("AMD", "RADEON", "RYZEN", "EPYC", "THREADRIPPER")):
         return "amd"
-    if any(k in u for k in ("INTEL", "XEON", "CORE(TM)", " ARC ", " UHD ")):
+    if any(key in url for key in ("INTEL", "XEON", "CORE(TM)", " ARC ", " UHD ")):
         return "intel"
-    if re.search(r"\bI[3579]-", u) or re.search(r"\bI[3579]\s", u):
+    if re.search(r"\bI[3579]-", url) or re.search(r"\bI[3579]\s", url):
         return "intel"
-    if any(k in u for k in ("APPLE", "M1 ", "M2 ", "M3 ", "M4 ", "APPLE M")):
+    if any(key in url for key in ("APPLE", "M1 ", "M2 ", "M3 ", "M4 ", "APPLE M")):
         return "apple"
     return None
 
@@ -430,8 +432,8 @@ def _outcomes_chart(metrics: OperationalMetricsStatus) -> dict[str, object]:
     sub = f"{ok} succeeded · {bad} failed"
     bars = _outcome_deltas(metrics)
     chart = _stacked_bars_svg(bars)
-    recent_ok = sum(a for a, _ in bars)
-    recent_bad = sum(b for _, b in bars)
+    recent_ok = sum(first for first, _ in bars)
+    recent_bad = sum(second for _, second in bars)
     if recent_ok or recent_bad:
         footer = f"Window {recent_ok} ok · {recent_bad} failed"
     else:
@@ -465,36 +467,36 @@ def _stacked_bars_svg(
             f'<line class="sparkline-baseline" x1="0" y1="{height // 2}" '
             f'x2="{width}" y2="{height // 2}"/></svg>'
         )
-    n = len(bars)
+    count = len(bars)
     gap = 1.5
-    bar_w = max(1.0, (width - gap * (n - 1)) / n)
+    bar_w = max(1.0, (width - gap * (count - 1)) / count)
     peak = max(1, max(ok + bad for ok, bad in bars))
     pad_top = 2.0
     usable = height - pad_top
     parts: list[str] = []
-    for i, (ok, bad) in enumerate(bars):
-        x = i * (bar_w + gap)
+    for index, (ok, bad) in enumerate(bars):
+        coordinate_x = index * (bar_w + gap)
         total = ok + bad
         if total <= 0:
             continue
         total_h = usable * (total / peak)
         bad_h = usable * (bad / peak) if bad else 0.0
         ok_h = total_h - bad_h
-        y = height - total_h
+        coordinate_y = height - total_h
         if ok_h > 0:
             parts.append(
-                f'<rect class="ops-bar-ok" x="{x:.1f}" y="{y:.1f}" '
+                f'<rect class="ops-bar-ok" x="{coordinate_x:.1f}" y="{coordinate_y:.1f}" '
                 f'width="{bar_w:.1f}" height="{ok_h:.1f}" rx="1"/>'
             )
         if bad_h > 0:
             parts.append(
-                f'<rect class="ops-bar-bad" x="{x:.1f}" y="{height - bad_h:.1f}" '
+                f'<rect class="ops-bar-bad" x="{coordinate_x:.1f}" y="{height - bad_h:.1f}" '
                 f'width="{bar_w:.1f}" height="{bad_h:.1f}" rx="1"/>'
             )
     return Markup(
         f'<svg class="sparkline ops-bars" viewBox="0 0 {width} {height}" width="100%" '
         f'height="{height}" preserveAspectRatio="none" role="img" '
-        f'aria-label="Outcomes over {n} samples">'
+        f'aria-label="Outcomes over {count} samples">'
         f"{''.join(parts)}</svg>"
     )
 
@@ -507,7 +509,7 @@ def _sparkline_card(
     empty: str,
     unit_suffix: str = "",
 ) -> dict[str, object]:
-    numeric = [float(v) for v in values if v is not None]
+    numeric = [float(entry_value) for entry_value in values if entry_value is not None]
     chart = _sparkline_svg(values)
     if len(numeric) >= 2:
         latest = numeric[-1]
@@ -533,7 +535,11 @@ def _sparkline_svg(
 ) -> Markup:
     """Minimal SVG polyline; empty state is a flat baseline."""
     coords: list[tuple[float, float]] = []
-    numeric = [(i, float(v)) for i, v in enumerate(values) if v is not None]
+    numeric = [
+        (index, float(entry_value))
+        for index, entry_value in enumerate(values)
+        if entry_value is not None
+    ]
     if len(numeric) < 2:
         return Markup(
             f'<svg class="sparkline sparkline-empty" viewBox="0 0 {width} {height}" '
@@ -541,25 +547,29 @@ def _sparkline_svg(
             f'<line class="sparkline-baseline" x1="0" y1="{height // 2}" '
             f'x2="{width}" y2="{height // 2}"/></svg>'
         )
-    ys = [y for _, y in numeric]
+    ys = [coordinate_y for _, coordinate_y in numeric]
     y_min = min(ys)
     y_max = max(ys)
     if y_max <= y_min:
         y_max = y_min + 1.0
     pad = 3.0
     usable_h = height - pad * 2
-    n = len(values)
-    span = max(1, n - 1)
-    for i, raw in enumerate(values):
+    count = len(values)
+    span = max(1, count - 1)
+    for index, raw in enumerate(values):
         if raw is None:
             continue
-        x = (i / span) * width
-        y = pad + (1.0 - (float(raw) - y_min) / (y_max - y_min)) * usable_h
-        coords.append((x, y))
-    points = " ".join(f"{x:.1f},{y:.1f}" for x, y in coords)
+        coordinate_x = (index / span) * width
+        coordinate_y = pad + (1.0 - (float(raw) - y_min) / (y_max - y_min)) * usable_h
+        coords.append((coordinate_x, coordinate_y))
+    points = " ".join(
+        f"{coordinate_x:.1f},{coordinate_y:.1f}" for coordinate_x, coordinate_y in coords
+    )
     area = (
         f"M{coords[0][0]:.1f},{height} "
-        + " ".join(f"L{x:.1f},{y:.1f}" for x, y in coords)
+        + " ".join(
+            f"L{coordinate_x:.1f},{coordinate_y:.1f}" for coordinate_x, coordinate_y in coords
+        )
         + f" L{coords[-1][0]:.1f},{height} Z"
     )
     return Markup(
