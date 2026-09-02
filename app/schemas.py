@@ -6,12 +6,19 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+MAXIMUM_LANGUAGE_TAG_LENGTH = 20
+MINIMUM_CUSTOM_MODEL_URL_LENGTH = 12
+MAXIMUM_CUSTOM_MODEL_URL_LENGTH = 2_000
+MAXIMUM_CPU_THREADS = 256
+
 
 class CreateSessionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     client_session_id: UUID
-    language: str = Field(default="auto", max_length=20, pattern=r"^[A-Za-z-]+$|^auto$")
+    language: str = Field(
+        default="auto", max_length=MAXIMUM_LANGUAGE_TAG_LENGTH, pattern=r"^[A-Za-z-]+$|^auto$"
+    )
     style: Literal[
         "raw",
         "clean",
@@ -204,7 +211,10 @@ class AdminModelEntry(BaseModel):
 class CustomDownloadRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    url: str = Field(min_length=12, max_length=2000)
+    url: str = Field(
+        min_length=MINIMUM_CUSTOM_MODEL_URL_LENGTH,
+        max_length=MAXIMUM_CUSTOM_MODEL_URL_LENGTH,
+    )
     # Optional: a model card's published SHA-256. When given, the download is
     # discarded unless it matches, which is the only integrity guarantee
     # available for a URL the catalog does not vouch for.
@@ -271,7 +281,7 @@ class ConfigUpdateRequest(BaseModel):
     ]
     compute_device: Literal["auto", "cpu", "cuda"] = "auto"
     compute_type: Literal["auto", "int8", "int8_float16", "float16", "float32"] = "auto"
-    cpu_threads: int = Field(default=0, ge=0, le=256)
+    cpu_threads: int = Field(default=0, ge=0, le=MAXIMUM_CPU_THREADS)
 
 
 class SelectModelResponse(BaseModel):
