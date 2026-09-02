@@ -9,6 +9,14 @@ from pathlib import Path
 
 from app.errors import InvalidAudioError, SilentAudioError
 
+MONO_CHANNEL_COUNT = 1
+PCM_SAMPLE_WIDTH_BYTES = 2
+NORMALIZED_SAMPLE_RATE_HZ = 16_000
+MINIMUM_RECORDING_SECONDS = 0.15
+DURATION_LIMIT_TOLERANCE_SECONDS = 0.25
+SILENCE_RMS_THRESHOLD = 20
+MAXIMUM_FFMPEG_ERROR_LENGTH = 160
+
 ALLOWED_AUDIO_TYPES = {
     "audio/mp4": ".m4a",
     "audio/m4a": ".m4a",
@@ -38,9 +46,9 @@ class FFmpegNormalizer:
             "-t",
             str(maximum_seconds + 1),
             "-ac",
-            "1",
+            str(MONO_CHANNEL_COUNT),
             "-ar",
-            "16000",
+            str(NORMALIZED_SAMPLE_RATE_HZ),
             "-c:a",
             "pcm_s16le",
             "-y",
@@ -66,12 +74,16 @@ class FFmpegNormalizer:
                 frames = recording.getnframes()
                 rate = recording.getframerate()
                 width = recording.getsampwidth()
-                if width != 2 or recording.getnchannels() != 1 or rate != 16000:
+                if (
+                    width != PCM_SAMPLE_WIDTH_BYTES
+                    or recording.getnchannels() != MONO_CHANNEL_COUNT
+                    or rate != NORMALIZED_SAMPLE_RATE_HZ
+                ):
                     raise InvalidAudioError("Normalized audio has an unexpected format.")
                 duration = frames / rate if rate else 0
-                if duration <= 0.15:
+                if duration <= MINIMUM_RECORDING_SECONDS:
                     raise InvalidAudioError("Recording is empty or too short.")
-                if duration > maximum_seconds + 0.25:
+                if duration > maximum_seconds + DURATION_LIMIT_TOLERANCE_SECONDS:
                     raise InvalidAudioError("Recording exceeds the duration limit.")
                 samples = array("h", recording.readframes(frames))
         except (wave.Error, EOFError) as error:
@@ -79,7 +91,7 @@ class FFmpegNormalizer:
         if not samples:
             raise InvalidAudioError("Recording contains no audio frames.")
         rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
-        if rms < 20:
+        if rms < SILENCE_RMS_THRESHOLD:
             raise SilentAudioError("Recording appears to be silent.")
 
 
@@ -98,4 +110,4 @@ def _safe_ffmpeg_message(stderr: bytes | None) -> str:
     if not stderr:
         return "FFmpeg could not decode the recording."
     last_line = stderr.decode("utf-8", errors="replace").strip().splitlines()[-1]
-    return f"FFmpeg rejected the recording: {last_line[:160]}"
+    return f"FFmpeg rejected the recording: {last_line[:MAXIMUM_FFMPEG_ERROR_LENGTH]}"

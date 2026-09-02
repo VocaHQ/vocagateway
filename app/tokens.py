@@ -36,6 +36,9 @@ class DeviceToken:
     created_at: datetime
 
 
+TOKEN_SECRET_BYTES = 32
+
+
 def _hash_token(token_text: str) -> str:
     return hashlib.sha256(token_text.encode("utf-8")).hexdigest()
 
@@ -110,7 +113,7 @@ class TokenStore:
         return list(self._tokens)
 
     def create(self, label: str) -> tuple[DeviceToken, str]:
-        plaintext = secrets.token_urlsafe(32)
+        plaintext = secrets.token_urlsafe(TOKEN_SECRET_BYTES)
         record = DeviceToken(
             id=secrets.token_hex(8),
             label=label.strip() or "Unnamed device",
@@ -135,7 +138,7 @@ class TokenStore:
         for index, token in enumerate(self._tokens):
             if token.id != token_id:
                 continue
-            plaintext = secrets.token_urlsafe(32)
+            plaintext = secrets.token_urlsafe(TOKEN_SECRET_BYTES)
             updated = DeviceToken(
                 id=token.id,
                 label=token.label,

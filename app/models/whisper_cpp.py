@@ -8,6 +8,9 @@ from app.errors import EngineUnavailableError, TranscriptionProcessError
 from app.models.base import EngineHealth, TranscriptionOptions
 from app.models.warmup import prefetch_model_paths
 
+TRANSCRIPTION_TIMEOUT_SECONDS = 75
+MAXIMUM_ERROR_MESSAGE_LENGTH = 200
+
 
 class WhisperCppEngine:
     def __init__(self, binary: Path, model: Path) -> None:
@@ -49,7 +52,9 @@ class WhisperCppEngine:
                 stderr=asyncio.subprocess.PIPE,
             )
             try:
-                _, stderr = await asyncio.wait_for(process.communicate(), timeout=75)
+                _, stderr = await asyncio.wait_for(
+                    process.communicate(), timeout=TRANSCRIPTION_TIMEOUT_SECONDS
+                )
             except TimeoutError as error:
                 process.kill()
                 await process.wait()
@@ -57,7 +62,7 @@ class WhisperCppEngine:
             if process.returncode != 0:
                 message = (stderr or b"").decode("utf-8", errors="replace").strip()
                 raise TranscriptionProcessError(
-                    f"whisper.cpp exited unsuccessfully: {message[-200:]}"
+                    f"whisper.cpp exited unsuccessfully: {message[-MAXIMUM_ERROR_MESSAGE_LENGTH:]}"
                 )
             output = output_stem.with_suffix(".txt")
             if not output.is_file():
