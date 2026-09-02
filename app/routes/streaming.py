@@ -18,6 +18,14 @@ from app.text_styles import apply_writing_style
 
 router = APIRouter()
 
+WEBSOCKET_UNAUTHORIZED_CODE = 4401
+WEBSOCKET_UNSUPPORTED_ENGINE_CODE = 4409
+WEBSOCKET_ENGINE_UNAVAILABLE_CODE = 4410
+WEBSOCKET_INTERNAL_ERROR_CODE = 1011
+MINIMUM_SAMPLE_RATE_HZ = 8_000
+MAXIMUM_SAMPLE_RATE_HZ = 96_000
+MAXIMUM_STREAM_ERROR_LENGTH = 200
+
 
 @router.websocket("/v1/stream")
 async def stream_transcription(websocket: WebSocket) -> None:
@@ -30,7 +38,7 @@ async def stream_transcription(websocket: WebSocket) -> None:
     """
     ctx: GatewayContext = websocket.app.state.ctx
     if not ctx.token_is_valid(websocket.headers.get("authorization")):
-        await websocket.close(code=4401, reason="Unauthorized")
+        await websocket.close(code=WEBSOCKET_UNAUTHORIZED_CODE, reason="Unauthorized")
         return
     selected_engine = ctx.engine_provider.current()
     if not isinstance(selected_engine, StreamingEngine) or not selected_engine.supports_streaming:
@@ -43,7 +51,10 @@ async def stream_transcription(websocket: WebSocket) -> None:
                 "engine": selected_health.name,
             }
         )
-        await websocket.close(code=4409, reason="Active engine does not support streaming")
+        await websocket.close(
+            code=WEBSOCKET_UNSUPPORTED_ENGINE_CODE,
+            reason="Active engine does not support streaming",
+        )
         return
     selected_health = await selected_engine.health()
     if not selected_health.ready:
@@ -55,7 +66,10 @@ async def stream_transcription(websocket: WebSocket) -> None:
                 "engine": selected_health.name,
             }
         )
-        await websocket.close(code=4410, reason="Streaming engine is not ready")
+        await websocket.close(
+            code=WEBSOCKET_ENGINE_UNAVAILABLE_CODE,
+            reason="Streaming engine is not ready",
+        )
         return
     await websocket.accept()
     stream: Any | None = None
@@ -70,7 +84,7 @@ async def stream_transcription(websocket: WebSocket) -> None:
         if start.get("type") != "start":
             raise ValueError("The first stream message must be start.")
         sample_rate = int(start.get("sample_rate", 0))
-        if not 8_000 <= sample_rate <= 96_000:
+        if not MINIMUM_SAMPLE_RATE_HZ <= sample_rate <= MAXIMUM_SAMPLE_RATE_HZ:
             raise ValueError("Sample rate must be between 8000 and 96000 Hz.")
         language = str(start.get("language", "auto"))
         style = str(start.get("style", "casual"))
@@ -140,9 +154,12 @@ async def stream_transcription(websocket: WebSocket) -> None:
     except Exception as error:  # noqa: BLE001 - sanitized protocol error
         with suppress(RuntimeError):
             await websocket.send_json(
-                {"type": "error", "message": str(error)[-200:] or "Streaming failed."}
+                {
+                    "type": "error",
+                    "message": str(error)[-MAXIMUM_STREAM_ERROR_LENGTH:] or "Streaming failed.",
+                }
             )
-            await websocket.close(code=1011)
+            await websocket.close(code=WEBSOCKET_INTERNAL_ERROR_CODE)
     finally:
         if stream is not None:
             with suppress(Exception):
