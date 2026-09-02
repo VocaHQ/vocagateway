@@ -13,7 +13,14 @@ from app.config import Settings
 from app.main import create_app
 from app.models.base import EngineHealth, TranscriptionOptions
 
-TOKEN = "test-" + ("x" * 48)
+TEST_TOKEN_PADDING_LENGTH = 48
+TEST_MAXIMUM_UPLOAD_BYTES = 20_000
+TEST_AUDIO_AMPLITUDE = 3_000
+TEST_TONE_FREQUENCY_HZ = 440
+TEST_SAMPLE_RATE_HZ = 16_000
+TEST_SAMPLE_COUNT = 8_000
+
+TOKEN = "test-" + ("x" * TEST_TOKEN_PADDING_LENGTH)
 
 
 class FakeEngine:
@@ -49,7 +56,7 @@ def settings(tmp_path: Path) -> Settings:
         data_dir=tmp_path,
         whisper_binary=tmp_path / "whisper-cli",
         whisper_model=tmp_path / "model.bin",
-        maximum_upload_bytes=20_000,
+        maximum_upload_bytes=TEST_MAXIMUM_UPLOAD_BYTES,
     )
 
 
@@ -78,11 +85,17 @@ def audio_bytes(tmp_path: Path) -> bytes:
     path = tmp_path / "speech.wav"
     samples = array(
         "h",
-        (int(3000 * math.sin(2 * math.pi * 440 * index / 16000)) for index in range(8000)),
+        (
+            int(
+                TEST_AUDIO_AMPLITUDE
+                * math.sin(2 * math.pi * TEST_TONE_FREQUENCY_HZ * index / TEST_SAMPLE_RATE_HZ)
+            )
+            for index in range(TEST_SAMPLE_COUNT)
+        ),
     )
     with wave.open(str(path), "wb") as output:
         output.setnchannels(1)
         output.setsampwidth(2)
-        output.setframerate(16000)
+        output.setframerate(TEST_SAMPLE_RATE_HZ)
         output.writeframes(samples.tobytes())
     return path.read_bytes()
