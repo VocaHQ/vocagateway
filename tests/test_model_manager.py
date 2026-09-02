@@ -22,12 +22,25 @@ from app.model_manager import (
     normalize_sha256,
 )
 
+TINY_FILE_SIZE_BYTES = 11
+TINY_FOLDER_SIZE_BYTES = 30
+MOONSHINE_TEST_MODEL_SIZE_BYTES = 65_000_000
+UNRELATED_REPOSITORY_FILE_SIZE_BYTES = 999
+REQUIRED_REPOSITORY_FILE_SIZE_BYTES = 15
+DOWNLOAD_POLL_INTERVAL_SECONDS = 0.01
+SHA256_DIGEST_LENGTH = 64
+SHA256_TOO_SHORT_LENGTH = 63
+SHA256_TOO_LONG_LENGTH = 65
+TAMPERED_WEIGHTS_SIZE_BYTES = 14
+PINNED_CONFIG_SIZE_BYTES = 16
+MINIMUM_PIN_COVERAGE = 35
+
 TINY_FILE = CatalogModel(
     id="whisper.cpp:ggml-tiny.bin",
     engine="whisper.cpp",
     key="ggml-tiny.bin",
     label="Test Tiny",
-    size_bytes=11,
+    size_bytes=TINY_FILE_SIZE_BYTES,
     languages="Multilingual",
     quality="Fastest",
     minimum_ram_gb=4,
@@ -39,7 +52,7 @@ TINY_FOLDER = CatalogModel(
     engine="whisperkit",
     key="openai_whisper-tiny",
     label="Test WhisperKit Tiny",
-    size_bytes=30,
+    size_bytes=TINY_FOLDER_SIZE_BYTES,
     languages="Multilingual",
     quality="Fastest",
     minimum_ram_gb=4,
@@ -52,7 +65,7 @@ TINY_CTRANSLATE = CatalogModel(
     engine="faster-whisper",
     key="tiny.en",
     label="Test faster-whisper Tiny EN",
-    size_bytes=30,
+    size_bytes=TINY_FOLDER_SIZE_BYTES,
     languages="English only",
     quality="Fastest",
     minimum_ram_gb=2,
@@ -66,7 +79,7 @@ MOONSHINE_SPANISH = CatalogModel(
     engine="moonshine",
     key="es",
     label="Moonshine Spanish",
-    size_bytes=65_000_000,
+    size_bytes=MOONSHINE_TEST_MODEL_SIZE_BYTES,
     languages="Spanish only",
     quality="Fast",
     minimum_ram_gb=2,
@@ -80,7 +93,7 @@ SHERPA_TEST = CatalogModel(
     engine="sherpa-onnx",
     key="test-int8",
     label="Test sherpa model",
-    size_bytes=30,
+    size_bytes=TINY_FOLDER_SIZE_BYTES,
     languages="English only",
     quality="Fast",
     minimum_ram_gb=2,
@@ -316,7 +329,7 @@ async def test_download_installs_single_file(manager: ModelManager) -> None:
     await asyncio.wait_for(_wait_finished(manager, "whisper.cpp:ggml-tiny.bin"), timeout=5)
 
     assert state.status == "completed"
-    assert state.downloaded_bytes == 11
+    assert state.downloaded_bytes == TINY_FILE_SIZE_BYTES
     installed = manager.installed_path("whisper.cpp:ggml-tiny.bin")
     assert installed is not None
     assert installed.read_bytes() == b"hello model"
@@ -470,7 +483,7 @@ async def test_sherpa_huggingface_download_fetche_e896d(
         lambda repo, name, revision="main": [
             RepoFile("model.int8.onnx", 10),
             RepoFile("tokens.txt", 5),
-            RepoFile("README.md", 999),
+            RepoFile("README.md", UNRELATED_REPOSITORY_FILE_SIZE_BYTES),
         ],
     )
 
@@ -478,7 +491,7 @@ async def test_sherpa_huggingface_download_fetche_e896d(
     await asyncio.wait_for(_wait_finished(manager, catalog_model.id), timeout=5)
 
     assert state.status == "completed"
-    assert state.total_bytes == 15  # only required_files counted, not README.md
+    assert state.total_bytes == REQUIRED_REPOSITORY_FILE_SIZE_BYTES
     installed = manager.installed_path(catalog_model.id)
     assert installed is not None
     assert (installed / "model.int8.onnx").read_bytes() == b"onnx-bytes"
@@ -540,7 +553,7 @@ async def _wait_finished(manager: ModelManager, model_id: str) -> None:
         assert state is not None
         if state.status != "downloading":
             return
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(DOWNLOAD_POLL_INTERVAL_SECONDS)
 
 
 # --------------------------------------------------------------- integrity
@@ -560,7 +573,17 @@ def test_normalize_sha256_accepts_prefixed_c1c74() -> None:
     assert normalize_sha256(f"  SHA256:{digest.upper()}  ") == digest
 
 
-@pytest.mark.parametrize("configured_value", ["", "nope", "abc123", "g" * 64, "a" * 63, "a" * 65])
+@pytest.mark.parametrize(
+    "configured_value",
+    [
+        "",
+        "nope",
+        "abc123",
+        "g" * SHA256_DIGEST_LENGTH,
+        "a" * SHA256_TOO_SHORT_LENGTH,
+        "a" * SHA256_TOO_LONG_LENGTH,
+    ],
+)
 def test_normalize_sha256_rejects_malformed(configured_value) -> None:
     with pytest.raises(ValueError):
         normalize_sha256(configured_value)
@@ -616,7 +639,11 @@ async def test_folder_download_rejects_a_tampered_file(
         "_list_repo_folder",
         lambda repo, name, revision="main": [
             RepoFile("config.json", 2, _sha256(b"{}")),
-            RepoFile("weights.bin", 14, _sha256(b"the-bytes-we-expected")),
+            RepoFile(
+                "weights.bin",
+                TAMPERED_WEIGHTS_SIZE_BYTES,
+                _sha256(b"the-bytes-we-expected"),
+            ),
         ],
     )
     manager = ModelManager(tmp_path / "models", catalog=(TINY_FOLDER,))
@@ -648,7 +675,7 @@ async def test_catalog_digest_overrides_the_listi_cdadb(
         "_list_repo_folder",
         # The listing vouches for the swapped bytes; the catalog does not.
         lambda repo, name, revision="main": [
-            RepoFile("config.json", 16, _sha256(b"upstream-swapped"))
+            RepoFile("config.json", PINNED_CONFIG_SIZE_BYTES, _sha256(b"upstream-swapped"))
         ],
     )
     model = dataclasses.replace(
@@ -755,7 +782,7 @@ def test_shipped_pin_file_is_well_formed() -> None:
     # A missing or emptied pin file degrades verification to a no-op without
     # any runtime error, so the floor is asserted here instead: losing pins in
     # packaging or a bad regeneration has to fail CI, not ship quietly.
-    assert len(pins) >= 35, f"pin coverage collapsed to {len(pins)} models"
+    assert len(pins) >= MINIMUM_PIN_COVERAGE, f"pin coverage collapsed to {len(pins)} models"
     catalog_ids = {model.id for model in DEFAULT_CATALOG}
     for model_id, record in pins.items():
         assert model_id in catalog_ids, f"pin for unknown model {model_id}"
