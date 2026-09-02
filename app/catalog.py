@@ -25,6 +25,9 @@ WHISPERKIT_REPO = "argmaxinc/whisperkit-coreml"
 
 MB = 1_000_000
 GB = 1_000_000_000
+HIGH_MEMORY_RAM_GB = 12
+VERY_HIGH_MEMORY_RAM_GB = 16
+DEFAULT_RECOMMENDATION_RAM_GB = 8.0
 
 
 def _megabytes(size_text: str) -> int:
@@ -994,7 +997,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         _megabytes("1608"),
         "11 languages",
         "Most accurate multilingual · punctuation",
-        12,
+        HIGH_MEMORY_RAM_GB,
         repository="mlx-community/Qwen3-ASR-1.7B-4bit",
         family="Qwen3-ASR / MLX",
         description=(
@@ -1010,7 +1013,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         _megabytes("2377"),
         "English only",
         "Most accurate English",
-        12,
+        HIGH_MEMORY_RAM_GB,
         repository="mlx-community/granite-speech-4.1-2b-nar-mlx-5bit",
         family="Granite Speech / MLX",
         description=(
@@ -1134,7 +1137,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         _megabytes("626"),
         "Multilingual",
         "Most accurate",
-        12,
+        HIGH_MEMORY_RAM_GB,
     ),
     _whisperkit(
         "openai_whisper-large-v3-v20240930_turbo",
@@ -1142,7 +1145,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         _megabytes("1610"),
         "Multilingual",
         "Most accurate",
-        16,
+        VERY_HIGH_MEMORY_RAM_GB,
     ),
     _whisper_cpp(
         "ggml-tiny.en.bin", "whisper.cpp Tiny EN", _megabytes("75"), "English only", "Fastest", 4
@@ -1171,10 +1174,15 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         _megabytes("1500"),
         "English only",
         "Accurate",
-        12,
+        HIGH_MEMORY_RAM_GB,
     ),
     _whisper_cpp(
-        "ggml-medium.bin", "whisper.cpp Medium", _megabytes("1500"), "Multilingual", "Accurate", 12
+        "ggml-medium.bin",
+        "whisper.cpp Medium",
+        _megabytes("1500"),
+        "Multilingual",
+        "Accurate",
+        HIGH_MEMORY_RAM_GB,
     ),
     _whisper_cpp(
         "whisper-medium-q4_1.bin",
@@ -1198,7 +1206,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         _megabytes("1620"),
         "Multilingual",
         "Most accurate",
-        16,
+        VERY_HIGH_MEMORY_RAM_GB,
     ),
     _whisper_cpp(
         "ggml-large-v3-q5_0.bin",
@@ -1206,7 +1214,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         _megabytes("1081"),
         "Multilingual",
         "Most accurate · compact",
-        16,
+        VERY_HIGH_MEMORY_RAM_GB,
         download_url="https://blob.handy.computer/ggml-large-v3-q5_0.bin",
         description=(
             "Quantized Whisper Large v3 (Q5) from Handy's model catalog. Larger and more accurate "
@@ -1220,7 +1228,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         _megabytes("1081"),
         "Taiwanese Mandarin + English",
         "Specialized",
-        16,
+        VERY_HIGH_MEMORY_RAM_GB,
         download_url="https://blob.handy.computer/breeze-asr-q5_k.bin",
         family="Breeze ASR",
         description=(
@@ -1252,8 +1260,8 @@ def catalog_by_id(catalog: tuple[CatalogModel, ...] = DEFAULT_CATALOG) -> dict[s
 def recommended_ids(system: SystemInfo) -> set[str]:
     """Pick the models that best fit this machine."""
     preferred_engine = ENGINE_WHISPERKIT if system.is_apple_silicon else ENGINE_FASTER_WHISPER
-    ram = system.ram_gb or 8.0
-    if ram >= 16:
+    ram = system.ram_gb or DEFAULT_RECOMMENDATION_RAM_GB
+    if ram >= VERY_HIGH_MEMORY_RAM_GB:
         if preferred_engine == ENGINE_WHISPERKIT:
             return {
                 f"{ENGINE_WHISPERKIT}:openai_whisper-large-v3-v20240930_626MB",
