@@ -1,0 +1,18 @@
+{# Persistent network callout for Pair & test - not dismissible.
+   Mounted once at the end of the Pair & test page shell (not inside
+   #pairing-card), so HTMX swaps of the pairing card never duplicate it. #}
+<div id="pairing-exposure-panel" class="exposure-panel" role="note">
+  <div class="exposure-panel-head">
+    <span class="exposure-banner-mark" aria-hidden="true">!</span>
+    <strong>Listening on every network interface</strong>
+  </div>
+  <p>Any device that can reach this host can open the gateway port.
+     Transcription and admin still need the bearer token.</p>
+  <ul class="exposure-panel-list">
+    <li>{{ firewall }}</li>
+    <li>Prefer Tailscale (or a similar mesh) for remote access</li>
+    <li>Do not publish this port on the public internet</li>
+  </ul>
+  <p class="muted small">Bind to a single address with
+     <code>VOCAGATEWAY_BIND_HOST</code> if you want to stop listening on every interface.</p>
+</div>

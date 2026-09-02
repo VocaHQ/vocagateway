@@ -434,15 +434,15 @@ def test_language_filter_offers_only_languages_some_model_covers() -> None:
     from app.fragments.models import _language_filter_options
 
     options = _language_filter_options()
-    # Multi-select checkboxes (not a single <select>).
-    assert 'name="language"' in options
-    assert 'value="hi"' in options and "Hindi" in options
-    assert 'value="ta"' in options and "Tamil" in options
+    codes = {code for code, _ in options}
+    names = {name for _, name in options}
+    assert "hi" in codes and "Hindi" in names
+    assert "ta" in codes and "Tamil" in names
     # Odia is Dolphin-only, which is still a model, so it belongs here even
     # though the phone clients deliberately do not offer it.
-    assert 'value="or"' in options and "Odia" in options
+    assert "or" in codes and "Odia" in names
     # A language no catalog model covers must not appear as a dead option.
-    assert 'value="xx"' not in options
+    assert "xx" not in codes
 
 
 def test_multi_select_filters_combine_with_and_or() -> None:
@@ -742,7 +742,7 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
         "/ui/partials/tokens", headers=auth, data={"label": "Kanishk's iPhone"}
     )
     assert created.status_code == 200
-    assert "New secret for Kanishk&#x27;s iPhone" in created.text
+    assert "New secret for Kanishk&#39;s iPhone" in created.text
     assert 'id="new-token-value"' in created.text
     assert "Regenerate</button>" in created.text
 
@@ -882,29 +882,30 @@ def test_model_cards_name_their_languages() -> None:
     the point is that shipped entries carry usable language metadata.
     """
     from app.catalog import DEFAULT_CATALOG, language_names
-    from app.fragments.models import _model_card
+    from app.fragments.models import models_list_fragment
     from app.schemas import AdminModelEntry
 
     def card(model_id: str) -> str:
         model = next(m for m in DEFAULT_CATALOG if m.id == model_id)
-        return _model_card(
-            AdminModelEntry(
-                id=model.id,
-                engine=model.engine,
-                label=model.label,
-                size_bytes=model.size_bytes,
-                languages=model.languages,
-                quality=model.quality,
-                family=model.family,
-                description=model.description,
-                source=model.source,
-                state="not_installed",
-                active=False,
-                recommended=False,
-                detects_language_automatically=model.detects_language_automatically,
-                language_names=language_names(model.language_codes),
-            )
+        entry = AdminModelEntry(
+            id=model.id,
+            engine=model.engine,
+            label=model.label,
+            size_bytes=model.size_bytes,
+            languages=model.languages,
+            quality=model.quality,
+            family=model.family,
+            description=model.description,
+            source=model.source,
+            state="not_installed",
+            active=False,
+            recommended=False,
+            detects_language_automatically=model.detects_language_automatically,
+            language_names=language_names(model.language_codes),
         )
+        # Render through the real list pipeline (single-entry family) so this
+        # exercises the same path production uses, not a private helper.
+        return models_list_fragment([entry])
 
     parakeet = card("sherpa-onnx:parakeet-tdt-0.6b-v3-int8")
     parakeet_summary = parakeet.split("</summary>")[0]

@@ -969,11 +969,18 @@ def _entry(**overrides: object) -> object:
     return AdminModelEntry(**base)  # type: ignore[arg-type]
 
 
+def _disclosure_html(entry: object) -> str:
+    """Render the language-disclosure block through the real list pipeline
+    (single-entry family) so these tests exercise the same path production
+    uses, not a private helper."""
+    from app.fragments.models import models_list_fragment
+
+    return models_list_fragment([entry])  # type: ignore[list-item]
+
+
 def test_language_preview_names_the_first_few_on_the_closed_card() -> None:
     """The point of the change: answerable without opening every card."""
-    from app.fragments.models import _language_disclosure
-
-    html = _language_disclosure(
+    html = _disclosure_html(
         _entry(language_names=["Bulgarian", "Croatian", "Czech", "Danish", "Dutch", "English"])
     )
     summary = html.split("</summary>")[0]
@@ -985,9 +992,7 @@ def test_language_preview_names_the_first_few_on_the_closed_card() -> None:
 
 
 def test_short_language_lists_are_shown_without_a_toggle() -> None:
-    from app.fragments.models import _language_disclosure
-
-    html = _language_disclosure(_entry(language_names=["English", "French", "German"]))
+    html = _disclosure_html(_entry(language_names=["English", "French", "German"]))
     assert "<details" not in html
     for name in ("English", "French", "German"):
         assert name in html
@@ -995,32 +1000,23 @@ def test_short_language_lists_are_shown_without_a_toggle() -> None:
 
 def test_a_single_hidden_language_is_shown_rather_than_collapsed() -> None:
     """Five languages should not cost a click to reveal the fifth."""
-    from app.fragments.models import _language_disclosure
-
-    html = _language_disclosure(_entry(language_names=["a", "b", "c", "d", "e"]))
+    html = _disclosure_html(_entry(language_names=["a", "b", "c", "d", "e"]))
     assert "<details" not in html
     assert "more" not in html
 
 
 def test_single_language_models_render_no_language_block() -> None:
-    from app.fragments.models import _language_disclosure
-
-    assert _language_disclosure(_entry(language_names=["English"])) == ""
+    html = _disclosure_html(_entry(language_names=["English"]))
+    assert "model-languages" not in html
 
 
 def test_auto_language_note_survives_both_layouts() -> None:
-    from app.fragments.models import _language_disclosure
-
     for names in (["a", "b"], ["a", "b", "c", "d", "e", "f", "g"]):
-        html = _language_disclosure(
-            _entry(language_names=names, detects_language_automatically=True)
-        )
+        html = _disclosure_html(_entry(language_names=names, detects_language_automatically=True))
         assert "picks the language itself" in html
 
 
 def test_language_names_are_escaped() -> None:
-    from app.fragments.models import _language_disclosure
-
-    html = _language_disclosure(_entry(language_names=["<script>", "b", "c", "d", "e", "f"]))
+    html = _disclosure_html(_entry(language_names=["<script>", "b", "c", "d", "e", "f"]))
     assert "<script>" not in html
     assert "&lt;script&gt;" in html

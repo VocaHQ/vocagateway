@@ -1,0 +1,44 @@
+{% from "macros/icons.html" import active_label, chevron_down %}
+{% from "models/model_card.html" import model_card %}
+
+{# Tile + models are *siblings* in the family-grid so the open models panel
+   can take grid-column: 1 / -1 on the next row while the tile stays put.
+   (Nested <details> + display:contents is unreliable across browsers.) #}
+{% macro family_tile(family) %}
+<div class="family-tile"{% if family.is_active %} data-active="1"{% endif %} data-family="{{ family.name }}">
+  <button type="button" class="family-summary"
+          aria-expanded="false" aria-controls="{{ family.dom_id }}">
+    <span class="family-summary-body">
+      <span class="family-summary-main">
+        <span class="family-name" title="{{ family.name }}">{{ family.name }}</span>
+        <span class="family-tags">
+          {% if family.is_active %}
+          {{ active_label() }}
+          {% elif family.is_recommended %}
+          <span class="badge recommended">recommended</span>
+          {% endif %}
+        </span>
+      </span>
+      <span class="family-meta">
+        <span>{{ family.count_label }}</span>
+        <span aria-hidden="true">&middot;</span>
+        <span>{{ family.installed_label }}</span>
+        <span class="family-engines" title="Engines in this family">{{ family.engine_note }}</span>
+      </span>
+    </span>
+    {{ chevron_down() }}
+  </button>
+</div>
+<div class="family-models" id="{{ family.dom_id }}" role="list"
+     data-family="{{ family.name }}" hidden>
+  <div class="family-models-head">
+    <span class="family-models-label">{{ family.name }}</span>
+    <span class="family-models-count muted small">{{ family.count_label }}</span>
+  </div>
+  <div class="family-models-grid">
+    {% for card in family.cards %}
+    {{ model_card(card) }}
+    {% endfor %}
+  </div>
+</div>
+{% endmacro %}

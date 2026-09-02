@@ -163,7 +163,7 @@ async def test_pairing_offers_to_rotate_a_stale_device_token(
         partial = await second_client.get(
             "/ui/partials/pairing", headers=auth, params={"token_id": device_id}
         )
-        assert "Kanishk&#x27;s Iphone (paired; no live QR)" in partial.text
+        assert "Kanishk&#39;s Iphone (paired; no live QR)" in partial.text
         assert "is still paired and working normally" in partial.text
         assert f'hx-post="/ui/partials/pairing/tokens/{device_id}/rotate"' in partial.text
         assert '<option value="bootstrap" selected>Bootstrap token</option>' in partial.text
@@ -174,9 +174,7 @@ async def test_pairing_offers_to_rotate_a_stale_device_token(
             data={"url": "http://192.168.1.75:8765"},
         )
         assert rotated.status_code == 200
-        assert (
-            f'<option value="{device_id}" selected>Kanishk&#x27;s Iphone</option>' in rotated.text
-        )
+        assert f'<option value="{device_id}" selected>Kanishk&#39;s Iphone</option>' in rotated.text
         assert "still paired and working normally" not in rotated.text
 
 

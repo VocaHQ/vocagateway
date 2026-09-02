@@ -1,0 +1,43 @@
+{% from "macros/vendor_icons.html" import spec_chip, labeled_hw %}
+{# Capability hero: glance-first hardware for local speech, details on expand. #}
+<div class="card system-card">
+  <div class="sys-hero">
+    <div class="sys-hero-copy">
+      <p class="sys-hero-kicker">This {{ machine_label }}</p>
+      <h2 class="sys-hero-headline">{{ headline }}</h2>
+      <p class="sys-hero-specs">
+        {% for text, vendor, kind in specs %}
+        {% if not loop.first %}<span class="sys-spec-sep" aria-hidden="true">&middot;</span>{% endif %}
+        {{ spec_chip(text, vendor, kind) }}
+        {% endfor %}
+      </p>
+      <p class="sys-hero-meta">{{ meta_line }}</p>
+    </div>
+  </div>
+  <details class="sys-details">
+    <summary>Hardware details</summary>
+    <dl class="facts sys-details-facts">
+      <dt>Processor</dt><dd>{{ labeled_hw(chip, cpu_vendor) }}</dd>
+      <dt>CPUs</dt><dd>{{ cpu_detail }}</dd>
+      <dt>Memory</dt><dd>{{ ram_label }}</dd>
+      <dt>GPU</dt>
+      <dd>
+        {% if has_gpu %}
+        {{ labeled_hw(primary_gpu_label, primary_gpu_vendor) }}
+        {% for short, vendor in secondary_gpus %}
+        <span class="sys-detail-extra">{{ labeled_hw(short, vendor) }}</span>
+        {% endfor %}
+        {% else %}
+        None detected
+        {% endif %}
+      </dd>
+      <dt>CPU features</dt><dd>{{ feature_line }}</dd>
+      <dt>OS</dt><dd>{{ os_arch }}</dd>
+      <dt>Runtime</dt><dd>{{ runtime }}</dd>
+      <dt>Gateway</dt><dd>{{ version }}</dd>
+      {% if commit %}
+      <dt>Build</dt><dd><span title="{{ commit.sha }}">{{ commit.text }}</span></dd>
+      {% endif %}
+    </dl>
+  </details>
+</div>

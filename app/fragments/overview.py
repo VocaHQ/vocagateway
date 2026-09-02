@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from html import escape
 
+from markupsafe import Markup
+
 from app.fragments.shared import _format_bytes, _format_latency, _format_uptime
 from app.schemas import (
     AdminStatusResponse,
@@ -12,6 +14,7 @@ from app.schemas import (
     ReadinessStatus,
     SystemStatus,
 )
+from app.templating import render
 
 
 def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> str:
@@ -31,28 +34,23 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
         and status.setup.ffmpeg_available
         and status.setup.engine_ready
     )
-    onboarding = _onboarding_steps(status, machine_label, ffmpeg_hint, engine_hint, ready)
     # Network exposure warning lives in the top app banner + Settings panel.
     hero_copy = (
         "Pair a phone or run a quick test when you want."
         if ready
         else "Finish the steps below, then pair your phone."
     )
-    return f"""
-      <section class="status-hero">
-        <div class="headline">
-          <span class="dot {"ok" if ready else "warn"}" aria-hidden="true"></span>
-          <div>
-            <h2>{"Ready for dictation" if ready else "Setup still needed"}</h2>
-            <p>{hero_copy}</p>
-          </div>
-        </div>
-      </section>
-      {operations_fragment(status.metrics, status.readiness)}
-      {_system_panel(status.system, status.version, machine_label, status.commit)}
-      {_dependencies_panel(status.dependencies)}
-      {onboarding}
-    """
+    return render(
+        "overview/page.html",
+        ready=ready,
+        hero_copy=hero_copy,
+        operations_html=operations_fragment(status.metrics, status.readiness),
+        system_panel_html=_system_panel(
+            status.system, status.version, machine_label, status.commit
+        ),
+        dependencies_html=_dependencies_panel(status.dependencies),
+        onboarding_html=_onboarding_steps(status, machine_label, ffmpeg_hint, engine_hint, ready),
+    )
 
 
 def _system_panel(
@@ -63,8 +61,6 @@ def _system_panel(
 ) -> str:
     """Capability hero: glance-first hardware for local speech, details on expand."""
     gpus = [item for item in system.accelerators if item != "CPU"]
-    primary_gpu = _short_gpu_label(gpus[0]) if gpus else None
-    secondary_gpus = [_short_gpu_label(name) for name in gpus[1:]]
     runtime = "Container" if system.containerized else "Host"
     chip = _short_chip_label(system.chip)
     features = system.cpu_features or []
@@ -72,13 +68,7 @@ def _system_panel(
     os_summary = _os_summary(system.os)
 
     headline = _capability_headline(system, gpus)
-    spec_parts: list[str] = []
-    if primary_gpu:
-        # Use original accelerator string for vendor detect (short label may drop AMD/NVIDIA).
-        gpu_vendor = _hw_vendor(gpus[0] if gpus else primary_gpu)
-        spec_parts.append(_spec_chip(_hero_gpu_bit(primary_gpu), vendor=gpu_vendor, kind="gpu"))
-    if system.ram_gb:
-        spec_parts.append(_spec_chip(f"{system.ram_gb:g} GB RAM", vendor=None, kind="ram"))
+    cpu_vendor = _hw_vendor(system.chip)
     cores = system.effective_cpus if system.effective_cpus else system.logical_cpus
     core_label = ""
     if cores:
@@ -86,7 +76,6 @@ def _system_panel(
             f"{cores:g}" if isinstance(cores, float) and cores != int(cores) else f"{int(cores)}"
         )
     cpu_name = _hero_cpu_bit(chip)
-    cpu_vendor = _hw_vendor(system.chip)
     if cpu_name and core_label:
         cpu_text = f"{cpu_name} · {core_label} cores"
     elif cpu_name:
@@ -95,85 +84,64 @@ def _system_panel(
         cpu_text = f"{core_label} CPU"
     else:
         cpu_text = chip or "CPU only"
-    spec_parts.append(_spec_chip(cpu_text, vendor=cpu_vendor, kind="cpu"))
-    specs_html = '<span class="sys-spec-sep" aria-hidden="true">·</span>'.join(spec_parts)
-    meta_line = f"{runtime} · {os_summary} · gateway {escape(version)}"
+    meta_line = f"{runtime} · {os_summary} · gateway {version}"
     if commit is not None:
-        meta_line += f" · build {escape(commit.short_sha)}"
+        meta_line += f" · build {commit.short_sha}"
 
+    specs: list[tuple[str, str | None, str]] = []
+    primary_gpu_label = None
+    primary_gpu_vendor = None
     if gpus:
-        gpu_detail = _labeled_hw(_short_gpu_label(gpus[0]), gpus[0])
-        if secondary_gpus:
-            gpu_detail += "".join(
-                f'<span class="sys-detail-extra">{_labeled_hw(short, orig)}</span>'
-                for short, orig in zip(secondary_gpus, gpus[1:], strict=False)
-            )
-    else:
-        gpu_detail = "None detected"
-    cpu_detail = f"{system.effective_cpus:g} effective · {system.logical_cpus} logical"
-    details_rows = [
-        ("Processor", _labeled_hw(chip, system.chip)),
-        ("CPUs", escape(cpu_detail)),
-        ("Memory", escape(f"{system.ram_gb:g} GB")),
-        ("GPU", gpu_detail),
-        ("CPU features", escape(feature_line)),
-        ("OS", escape(f"{system.os} ({system.arch})")),
-        ("Runtime", escape(runtime)),
-        ("Gateway", escape(version)),
-    ]
-    if commit is not None:
-        details_rows.append(("Build", _commit_detail(commit)))
-    facts = "".join(f"<dt>{escape(label)}</dt><dd>{value}</dd>" for label, value in details_rows)
-    return f"""
-      <div class="card system-card">
-        <div class="sys-hero">
-          <div class="sys-hero-copy">
-            <p class="sys-hero-kicker">This {escape(machine_label)}</p>
-            <h2 class="sys-hero-headline">{escape(headline)}</h2>
-            <p class="sys-hero-specs">{specs_html}</p>
-            <p class="sys-hero-meta">{meta_line}</p>
-          </div>
-        </div>
-        <details class="sys-details">
-          <summary>Hardware details</summary>
-          <dl class="facts sys-details-facts">{facts}</dl>
-        </details>
-      </div>
-    """
+        primary_gpu_label = _short_gpu_label(gpus[0])
+        # Use the original accelerator string for vendor detection (the short
+        # label may drop the AMD/NVIDIA prefix it was detected from).
+        primary_gpu_vendor = _hw_vendor(gpus[0])
+        specs.append((_hero_gpu_bit(primary_gpu_label), primary_gpu_vendor, "gpu"))
+    if system.ram_gb:
+        specs.append((f"{system.ram_gb:g} GB RAM", None, "ram"))
+    specs.append((cpu_text, cpu_vendor, "cpu"))
+
+    secondary_gpus = [(_short_gpu_label(name), _hw_vendor(name)) for name in gpus[1:]]
+
+    return render(
+        "overview/system_panel.html",
+        machine_label=machine_label,
+        headline=headline,
+        specs=specs,
+        meta_line=meta_line,
+        chip=chip,
+        cpu_vendor=cpu_vendor,
+        cpu_detail=f"{system.effective_cpus:g} effective · {system.logical_cpus} logical",
+        ram_label=f"{system.ram_gb:g} GB",
+        has_gpu=bool(gpus),
+        primary_gpu_label=primary_gpu_label,
+        primary_gpu_vendor=primary_gpu_vendor,
+        secondary_gpus=secondary_gpus,
+        feature_line=feature_line,
+        os_arch=f"{system.os} ({system.arch})",
+        runtime=runtime,
+        version=version,
+        commit=_commit_context(commit) if commit is not None else None,
+    )
 
 
 def _dependencies_panel(dependencies: list[DependencyStatus]) -> str:
     """Installed CLIs and Python engines — same data as diagnostics, new Overview look."""
     ordered = sorted(dependencies, key=lambda d: (not d.available, d.name.lower()))
     installed = sum(1 for dependency in dependencies if dependency.available)
-    total = len(dependencies)
-    tiles = "".join(_dependency_tile(dependency) for dependency in ordered)
-    return f"""
-      <div class="card libraries-card">
-        <div class="lib-hero">
-          <p class="lib-kicker">Libraries &amp; tools</p>
-          <h2 class="lib-headline">{installed} of {total} available</h2>
-          <p class="lib-meta">Speech engines, FFmpeg, and companion apps this host can see.</p>
-        </div>
-        <div class="lib-grid" role="list">{tiles}</div>
-      </div>
-    """
-
-
-def _dependency_tile(dependency: DependencyStatus) -> str:
-    status = "available" if dependency.available else "missing"
-    label = "Installed" if dependency.available else "Missing"
-    detail = dependency.path or dependency.install_hint or "—"
-    return f"""
-      <article class="lib-tile is-{status}" role="listitem">
-        <div class="lib-tile-top">
-          <span class="dot {"ok" if dependency.available else "bad"}" aria-hidden="true"></span>
-          <span class="lib-tile-name">{escape(dependency.name)}</span>
-          <span class="lib-tile-status">{label}</span>
-        </div>
-        <p class="lib-tile-detail" title="{escape(detail, quote=True)}">{escape(detail)}</p>
-      </article>
-    """
+    return render(
+        "overview/dependencies_panel.html",
+        installed=installed,
+        total=len(dependencies),
+        tiles=[
+            {
+                "name": dependency.name,
+                "available": dependency.available,
+                "detail": dependency.path or dependency.install_hint or "—",
+            }
+            for dependency in ordered
+        ],
+    )
 
 
 def _capability_headline(system: SystemStatus, gpus: list[str]) -> str:
@@ -195,13 +163,13 @@ def _os_summary(os_line: str) -> str:
     return text.split()[0]
 
 
-def _commit_detail(commit: CommitStatus) -> str:
+def _commit_context(commit: CommitStatus) -> dict[str, str]:
     """'0979263 · Merge pull request #10…', with the full sha on hover."""
     subject = _ellipsize(commit.subject, 64)
     text = f"{commit.short_sha} · {subject}" if subject else commit.short_sha
     if commit.committed_at is not None:
         text += f" ({commit.committed_at:%Y-%m-%d})"
-    return f'<span title="{escape(commit.sha)}">{escape(text)}</span>'
+    return {"text": text, "sha": commit.sha}
 
 
 def _ellipsize(text: str, limit: int) -> str:
@@ -279,110 +247,6 @@ def _hw_vendor(text: str) -> str | None:
     return None
 
 
-# Filled brand marks — colored via CSS currentColor (no circular badge).
-# NVIDIA / Intel icons: vectorlogo.zone. AMD arrow: file-icons/icons AMD.svg (ISC).
-# https://www.vectorlogo.zone/logos/nvidia/nvidia-icon.svg
-# https://www.vectorlogo.zone/logos/intel/intel-icon.svg
-# https://github.com/file-icons/icons/blob/master/svg/AMD.svg
-_VENDOR_MARKS: dict[str, tuple[str, tuple[str, ...]]] = {
-    # viewBox, path d's (fill=currentColor so theme CSS sets brand color)
-    "nvidia": (
-        "0 0 64 64",
-        (
-            "M23.862 23.46v-3.816l1.13-.047c10.46-.33 17.313 8.998 17.313 8.998s-7.396 "
-            "10.27-15.335 10.27a9.73 9.73 0 0 1-3.086-.495v-11.59c4.075.495 4.9 2.285 "
-            "7.326 6.36l5.44-4.57s-3.98-5.206-10.67-5.206c-.707-.024-1.413.024-2.12.094"
-            "m0-12.626v5.7l1.13-.07c14.534-.495 24.026 11.92 24.026 11.92S38.136 41.622 "
-            "26.806 41.622c-.99 0-1.955-.094-2.92-.26v3.533c.8.094 1.625.165 2.426.165 "
-            "10.553 0 18.185-5.394 25.58-11.754 1.225.99 6.242 3.368 7.28 4.405-7.02 "
-            "5.89-23.39 10.623-32.67 10.623a23.24 23.24 0 0 1-2.591-.141v4.97H64v-42.33"
-            "zm0 27.536v3.015C14.1 39.644 11.4 29.49 11.4 29.49s4.688-5.182 12.46-6.03"
-            "v3.298h-.024c-4.075-.495-7.28 3.32-7.28 3.32s1.814 6.43 7.302 8.29M6.548 "
-            "29.067s5.77-8.527 17.337-9.422v-3.11C11.07 17.572 0 28.408 0 28.408s6.266 "
-            "18.138 23.862 19.787v-3.298c-12.908-1.602-17.313-15.83-17.313-15.83z",
-        ),
-    ),
-    "amd": (
-        "0 0 512 512",
-        (
-            "M512,512L369.6281433,369.7356873V142.2643127H142.0852051L0,0h512V512z "
-            "M142.0852051,369.7356873V165.0039978L0,307.2261963V512h204.6510773"
-            "l142.219223-142.2643127H142.0852051z",
-        ),
-    ),
-    "intel": (
-        "0 0 64 64",
-        (
-            "M63.72 22.866C60.703 8.17 32.275 7.23 13.95 18.427v1.246c18.303-9.447 "
-            "44.26-9.403 46.644 4.133.787 4.483-1.706 9.14-6.2 11.83v3.52c5.4-2 "
-            "10.934-8.42 9.337-16.29M30.394 48.583C17.755 49.764 4.57 47.905 2.732 "
-            "38c-.918-4.876 1.312-10.06 4.264-13.296v-1.728C1.682 27.655-1.204 33.56"
-            ".48 40.514 2.6 49.457 13.906 54.53 31.16 52.847c6.845-.656 15.788-2.865 "
-            "21.977-6.298v-4.876c-5.642 3.39-14.957 6.19-22.742 6.9z",
-            "M52.13 20.723h-3.324V35.55c0 1.75.83 3.258 3.324 3.5M12.638 26.147H9.336"
-            "v9.687c0 1.75.83 3.258 3.324 3.5m-3.324-18.15h3.324v3.15H9.336zm23.18 "
-            "17.997c-2.7 0-3.827-1.88-3.827-3.717v-12.88h3.28v3.564h2.493v2.668H31.97"
-            "v6.43c0 .765.372 1.18 1.137 1.18h1.334v2.755h-1.924m8.703-10.52c-1.115 "
-            "0-2 .6-2.34 1.378-.22.48-.284.83-.328 1.42h5.073c-.066-1.443-.722-2.8"
-            "-2.405-2.8m-2.668 5.03c0 1.684 1.05 2.93 2.908 2.93 1.465 0 2.187-.415 "
-            "3.018-1.246l2.034 1.946c-1.312 1.3-2.668 2.077-5.073 2.077-3.15 0-6.167"
-            "-1.728-6.167-6.757 0-4.286 2.624-6.713 6.08-6.713 3.5 0 5.5 2.843 5.5 "
-            "6.582v1.18h-8.3m-16.98-4.873c.962 0 1.356.48 1.356 1.246v9.12h3.28v-9.12"
-            "c0-1.86-.984-3.914-3.87-3.914h-6.78V39.2h3.28V28.814",
-        ),
-    ),
-}
-
-
-def _vendor_icon(vendor: str | None) -> str:
-    """Bare brand mark next to hardware text (no circular badge chrome)."""
-    if not vendor:
-        return ""
-    title = {"nvidia": "NVIDIA", "amd": "AMD", "intel": "Intel", "apple": "Apple"}.get(
-        vendor, vendor
-    )
-    mark = _VENDOR_MARKS.get(vendor)
-    if mark:
-        view_box, paths = mark
-        glyph = "".join(f'<path fill="currentColor" d="{d}"/>' for d in paths)
-        svg_attrs = f'viewBox="{view_box}" width="18" height="18" aria-hidden="true"'
-    elif vendor == "apple":
-        # Simple outline bite-apple silhouette, monoline.
-        glyph = (
-            '<path fill="none" stroke="currentColor" stroke-width="1.5" '
-            'stroke-linecap="round" stroke-linejoin="round" '
-            'd="M14.5 6.5c-.8-1.2-2-2-3.3-2"/>'
-            '<path fill="none" stroke="currentColor" stroke-width="1.5" '
-            'stroke-linecap="round" stroke-linejoin="round" '
-            'd="M12 8.2c-2.8 0-5 2.4-5 5.6 0 3.4 2.2 6.2 5 6.2s5-2.8 5-6.2'
-            'c0-3.2-2.2-5.6-5-5.6z"/>'
-        )
-        svg_attrs = 'viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"'
-    else:
-        return ""
-    return (
-        f'<span class="sys-vendor sys-vendor-{escape(vendor)}" title="{escape(title)}" '
-        f'aria-label="{escape(title)}">'
-        f"<svg {svg_attrs}>{glyph}</svg></span>"
-    )
-
-
-def _spec_chip(text: str, *, vendor: str | None, kind: str) -> str:
-    icon = _vendor_icon(vendor)
-    return (
-        f'<span class="sys-spec sys-spec-{escape(kind)}">'
-        f'{icon}<span class="sys-spec-text">{escape(text)}</span></span>'
-    )
-
-
-def _labeled_hw(display: str, source_for_vendor: str) -> str:
-    """Detail-row value with optional vendor monogram."""
-    icon = _vendor_icon(_hw_vendor(source_for_vendor))
-    if not icon:
-        return escape(display)
-    return f'{icon}<span class="sys-detail-text">{escape(display)}</span>'
-
-
 def _onboarding_steps(
     status: AdminStatusResponse,
     machine_label: str,
@@ -392,56 +256,17 @@ def _onboarding_steps(
 ) -> str:
     """Short path for first-time operators; collapses once the gateway is ready."""
     if ready:
-        return """
-      <div class="onboarding-ready card">
-        <div class="onboarding-ready-copy">
-          <h2>You&rsquo;re set</h2>
-          <p class="muted">Pair a phone if you have not yet, or test from this browser.
-             Switch models anytime from the header.</p>
-        </div>
-        <div class="onboarding-actions">
-          <button type="button" class="primary" data-open-tab="pair">Pair &amp; test</button>
-          <button type="button" class="ghost" data-open-tab="models">Browse models</button>
-        </div>
-      </div>
-        """
-
-    steps: list[str] = []
-    if not status.setup.ffmpeg_available:
-        steps.append(f"<li><strong>Install FFmpeg</strong>: {escape(ffmpeg_hint)}.</li>")
-    if not status.setup.engine_binary_available:
-        steps.append(f"<li><strong>Install a speech engine</strong>: {escape(engine_hint)}.</li>")
-    if not status.setup.model_installed:
-        steps.append(
-            f"<li><strong>Download a model</strong> for this {escape(machine_label)}. "
-            'Open <button type="button" class="text-link" data-open-tab="models">Models</button> '
-            "and pick a recommended one.</li>"
-        )
-    elif not status.setup.engine_ready:
-        steps.append(
-            "<li><strong>Select a model</strong> you already have. "
-            'Open <button type="button" class="text-link" data-open-tab="models">Models</button> '
-            "and activate one.</li>"
-        )
-    steps.append(
-        "<li><strong>Pair your phone</strong>: "
-        'scan the QR under <button type="button" class="text-link" data-open-tab="pair">'
-        "Pair &amp; test</button> once.</li>"
+        return render("overview/onboarding_ready.html")
+    return render(
+        "overview/onboarding_steps.html",
+        show_ffmpeg_step=not status.setup.ffmpeg_available,
+        ffmpeg_hint=ffmpeg_hint,
+        show_engine_step=not status.setup.engine_binary_available,
+        engine_hint=engine_hint,
+        show_download_step=not status.setup.model_installed,
+        show_select_step=status.setup.model_installed and not status.setup.engine_ready,
+        machine_label=machine_label,
     )
-    steps.append(
-        "<li><strong>Record a short test</strong> on that same tab to confirm audio works.</li>"
-    )
-    return f"""
-      <div class="card onboarding">
-        <h2>Get started</h2>
-        <p class="muted">Quick path to first dictation. You only scan the pairing QR once.</p>
-        <ol class="steps onboarding-steps">{"".join(steps)}</ol>
-        <div class="onboarding-actions">
-          <button type="button" class="primary" data-open-tab="models">Choose a model</button>
-          <button type="button" class="ghost" data-open-tab="pair">Pair &amp; test</button>
-        </div>
-      </div>
-    """
 
 
 def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessStatus) -> str:
@@ -490,80 +315,82 @@ def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessS
     active = metrics.active_transcriptions
     limit = max(1, metrics.concurrency_limit)
     queued = metrics.queue_depth
-    # Capacity strip visualizes the same active/queue numbers as Workload.
-    cards = "".join(
-        [
-            _metric_card("Uptime", _format_uptime(metrics.uptime_seconds), "This process"),
-            _metric_card("Succeeded", str(ok), "Completed transcriptions", "success"),
-            _metric_card(
-                "Failed",
-                str(bad),
-                failed_detail,
-                "failure" if bad else "",
-            ),
-            _metric_card(
-                "Avg latency",
-                average_latency if metrics.average_latency_ms is not None else "—",
-                latency_detail,
-            ),
-            _metric_card("Last inference", inference_value, inference_detail),
-            _metric_card("Real-time factor", rtf_value, rtf_detail),
-            _metric_card("Model cache", warmup_label, warmup_detail, readiness.warmup_state),
-            _metric_card(
-                "Workload",
-                f"{queued} queued",
-                f"{active} of {limit} active",
-            ),
-        ]
-    )
+    metric_cards = [
+        {
+            "label": "Uptime",
+            "value": _format_uptime(metrics.uptime_seconds),
+            "detail": "This process",
+            "css": "",
+        },
+        {
+            "label": "Succeeded",
+            "value": str(ok),
+            "detail": "Completed transcriptions",
+            "css": "success",
+        },
+        {
+            "label": "Failed",
+            "value": str(bad),
+            "detail": failed_detail,
+            "css": "failure" if bad else "",
+        },
+        {
+            "label": "Avg latency",
+            "value": average_latency if metrics.average_latency_ms is not None else "—",
+            "detail": latency_detail,
+            "css": "",
+        },
+        {
+            "label": "Last inference",
+            "value": inference_value,
+            "detail": inference_detail,
+            "css": "",
+        },
+        {"label": "Real-time factor", "value": rtf_value, "detail": rtf_detail, "css": ""},
+        {
+            "label": "Model cache",
+            "value": warmup_label,
+            "detail": warmup_detail,
+            "css": readiness.warmup_state,
+        },
+        {
+            "label": "Workload",
+            "value": f"{queued} queued",
+            "detail": f"{active} of {limit} active",
+            "css": "",
+        },
+    ]
     history = metrics.history
     sample_note = (
         f"{len(history)} sample" + ("" if len(history) == 1 else "s")
         if history
         else "Collecting samples"
     )
-    return f"""
-      <section id="operations" class="operations"
-               hx-get="/ui/partials/operations" hx-trigger="every 5s"
-               hx-swap="outerHTML" aria-label="Gateway operations">
-        <div class="section-heading">
-          <h2>Live operations <span class="muted">&middot; since start</span></h2>
-          <span class="probe-age">Engine checked {readiness.probe_age_seconds:.1f}s ago ·
-            {escape(sample_note)}</span>
-        </div>
-        <div class="operations-grid operations-grid-kpis">
-          {cards}
-        </div>
-        {_capacity_strip(active, limit, queued)}
-        <div class="ops-charts ops-charts-inline" aria-label="Recent activity">
-          <div class="ops-charts-grid ops-charts-grid-3">
-            {_latency_chart(metrics)}
-            {_outcomes_chart(metrics)}
-            {_pipeline_chart(metrics, rtf_value, rtf_detail)}
-          </div>
-        </div>
-      </section>
-    """
+    return render(
+        "overview/operations.html",
+        probe_age=f"{readiness.probe_age_seconds:.1f}",
+        sample_note=sample_note,
+        metric_cards=metric_cards,
+        capacity=_capacity_context(active, limit, queued),
+        latency_chart=_latency_chart(metrics),
+        outcomes_chart=_outcomes_chart(metrics),
+        pipeline_chart=_pipeline_chart(metrics, rtf_value, rtf_detail),
+    )
 
 
-def _capacity_strip(active: int, limit: int, queued: int) -> str:
+def _capacity_context(active: int, limit: int, queued: int) -> dict[str, object]:
     active_c = min(active, limit)
     active_pct = 100.0 * active_c / limit
     queue_pct = min(100.0 - active_pct, 100.0 * queued / limit) if queued else 0.0
     free_pct = max(0.0, 100.0 - active_pct - queue_pct)
-    return f"""
-      <div class="ops-capacity" aria-label="{active_c} of {limit} active, {queued} queued">
-        <div class="ops-capacity-meta">
-          <span>Capacity</span>
-          <span class="muted">{active_c} of {limit} active · {queued} queued</span>
-        </div>
-        <div class="ops-bar ops-bar-thin" role="presentation">
-          <span class="ops-bar-seg ops-bar-active" style="width:{active_pct:.2f}%"></span>
-          <span class="ops-bar-seg ops-bar-queue" style="width:{queue_pct:.2f}%"></span>
-          <span class="ops-bar-seg ops-bar-free" style="width:{free_pct:.2f}%"></span>
-        </div>
-      </div>
-    """
+    return {
+        "active": active_c,
+        "limit": limit,
+        "queued": queued,
+        "active_pct": f"{active_pct:.2f}",
+        "queue_pct": f"{queue_pct:.2f}",
+        "free_pct": f"{free_pct:.2f}",
+    }
 
 
 def _history_series(metrics: OperationalMetricsStatus) -> tuple[list[float | None], list[float]]:
@@ -583,7 +410,7 @@ def _history_series(metrics: OperationalMetricsStatus) -> tuple[list[float | Non
     return latency_series, throughput_series
 
 
-def _latency_chart(metrics: OperationalMetricsStatus) -> str:
+def _latency_chart(metrics: OperationalMetricsStatus) -> dict[str, object]:
     series, _ = _history_series(metrics)
     avg = _format_latency(metrics.average_latency_ms)
     last = _format_latency(metrics.last_latency_ms)
@@ -596,7 +423,7 @@ def _latency_chart(metrics: OperationalMetricsStatus) -> str:
     return _sparkline_card("Latency", sub, series, empty=empty, unit_suffix="ms")
 
 
-def _outcomes_chart(metrics: OperationalMetricsStatus) -> str:
+def _outcomes_chart(metrics: OperationalMetricsStatus) -> dict[str, object]:
     """Succeeded vs failed over the recent sample window (stacked bars)."""
     ok = metrics.successful_transcriptions
     bad = metrics.failed_transcriptions
@@ -609,16 +436,7 @@ def _outcomes_chart(metrics: OperationalMetricsStatus) -> str:
         footer = f"Window {recent_ok} ok · {recent_bad} failed"
     else:
         footer = "Idle — no completed jobs in this window."
-    return f"""
-      <article class="ops-chart">
-        <header class="ops-chart-head">
-          <span class="ops-chart-title">Outcomes</span>
-          <span class="ops-chart-sub">{escape(sub)}</span>
-        </header>
-        <div class="ops-chart-body">{chart}</div>
-        <p class="ops-chart-footer">{escape(footer)}</p>
-      </article>
-    """
+    return {"title": "Outcomes", "sub": sub, "body": chart, "footer": footer, "bar_body": False}
 
 
 def _outcome_deltas(metrics: OperationalMetricsStatus) -> list[tuple[int, int]]:
@@ -639,9 +457,9 @@ def _stacked_bars_svg(
     *,
     width: int = 220,
     height: int = 48,
-) -> str:
+) -> Markup:
     if not bars or not any(ok or bad for ok, bad in bars):
-        return (
+        return Markup(
             f'<svg class="sparkline sparkline-empty" viewBox="0 0 {width} {height}" '
             f'width="100%" height="{height}" preserveAspectRatio="none" aria-hidden="true">'
             f'<line class="sparkline-baseline" x1="0" y1="{height // 2}" '
@@ -673,7 +491,7 @@ def _stacked_bars_svg(
                 f'<rect class="ops-bar-bad" x="{x:.1f}" y="{height - bad_h:.1f}" '
                 f'width="{bar_w:.1f}" height="{bad_h:.1f}" rx="1"/>'
             )
-    return (
+    return Markup(
         f'<svg class="sparkline ops-bars" viewBox="0 0 {width} {height}" width="100%" '
         f'height="{height}" preserveAspectRatio="none" role="img" '
         f'aria-label="Outcomes over {n} samples">'
@@ -688,7 +506,7 @@ def _sparkline_card(
     *,
     empty: str,
     unit_suffix: str = "",
-) -> str:
+) -> dict[str, object]:
     numeric = [float(v) for v in values if v is not None]
     chart = _sparkline_svg(values)
     if len(numeric) >= 2:
@@ -701,19 +519,10 @@ def _sparkline_card(
             latest_label = f"{latest:.2f}"
         peak = max(numeric)
         peak_label = _format_latency(int(round(peak))) if unit_suffix == "ms" else f"{peak:g}"
-        footer = f"Now {escape(latest_label)} · peak {escape(peak_label)}"
+        footer = f"Now {latest_label} · peak {peak_label}"
     else:
-        footer = escape(empty)
-    return f"""
-      <article class="ops-chart">
-        <header class="ops-chart-head">
-          <span class="ops-chart-title">{escape(title)}</span>
-          <span class="ops-chart-sub">{escape(subtitle)}</span>
-        </header>
-        <div class="ops-chart-body">{chart}</div>
-        <p class="ops-chart-footer">{footer}</p>
-      </article>
-    """
+        footer = empty
+    return {"title": title, "sub": subtitle, "body": chart, "footer": footer, "bar_body": False}
 
 
 def _sparkline_svg(
@@ -721,12 +530,12 @@ def _sparkline_svg(
     *,
     width: int = 220,
     height: int = 48,
-) -> str:
+) -> Markup:
     """Minimal SVG polyline; empty state is a flat baseline."""
     coords: list[tuple[float, float]] = []
     numeric = [(i, float(v)) for i, v in enumerate(values) if v is not None]
     if len(numeric) < 2:
-        return (
+        return Markup(
             f'<svg class="sparkline sparkline-empty" viewBox="0 0 {width} {height}" '
             f'width="100%" height="{height}" preserveAspectRatio="none" aria-hidden="true">'
             f'<line class="sparkline-baseline" x1="0" y1="{height // 2}" '
@@ -753,7 +562,7 @@ def _sparkline_svg(
         + " ".join(f"L{x:.1f},{y:.1f}" for x, y in coords)
         + f" L{coords[-1][0]:.1f},{height} Z"
     )
-    return (
+    return Markup(
         f'<svg class="sparkline" viewBox="0 0 {width} {height}" width="100%" '
         f'height="{height}" preserveAspectRatio="none" role="img" '
         f'aria-label="Sparkline with {len(coords)} points">'
@@ -763,7 +572,9 @@ def _sparkline_svg(
     )
 
 
-def _pipeline_chart(metrics: OperationalMetricsStatus, rtf_value: str, rtf_detail: str) -> str:
+def _pipeline_chart(
+    metrics: OperationalMetricsStatus, rtf_value: str, rtf_detail: str
+) -> dict[str, object]:
     stages = [
         ("Normalize", metrics.normalization_ms or 0, "ops-bar-normalize"),
         ("Load", metrics.model_load_ms or 0, "ops-bar-load"),
@@ -771,7 +582,7 @@ def _pipeline_chart(metrics: OperationalMetricsStatus, rtf_value: str, rtf_detai
     ]
     total = sum(ms for _, ms, _ in stages)
     if total <= 0:
-        bar = '<div class="ops-bar ops-bar-empty" aria-hidden="true"></div>'
+        bar = Markup('<div class="ops-bar ops-bar-empty" aria-hidden="true"></div>')
         footer = "Run a test to measure stages"
         sub = "Normalize · load · infer"
     else:
@@ -781,29 +592,11 @@ def _pipeline_chart(metrics: OperationalMetricsStatus, rtf_value: str, rtf_detai
             for label, ms, css in stages
             if ms > 0
         )
-        bar = (
+        bar = Markup(
             f'<div class="ops-bar" role="img" '
             f'aria-label="Last pipeline {_format_latency(total)}">'
             f"{segs}</div>"
         )
         footer = " · ".join(f"{label} {_format_latency(ms)}" for label, ms, _ in stages if ms > 0)
         sub = f"RTF {rtf_value}" + (f" · {rtf_detail}" if rtf_detail else "")
-    return f"""
-      <article class="ops-chart">
-        <header class="ops-chart-head">
-          <span class="ops-chart-title">Last job stages</span>
-          <span class="ops-chart-sub">{escape(sub)}</span>
-        </header>
-        <div class="ops-chart-body ops-chart-body-bar">{bar}</div>
-        <p class="ops-chart-footer">{escape(footer)}</p>
-      </article>
-    """
-
-
-def _metric_card(label: str, value: str, detail: str, css: str = "") -> str:
-    class_name = f"metric-card {css}".strip()
-    return (
-        f'<article class="{class_name}"><span class="metric-label">{escape(label)}</span>'
-        f'<strong class="metric-value">{escape(value)}</strong>'
-        f'<span class="metric-detail">{escape(detail)}</span></article>'
-    )
+    return {"title": "Last job stages", "sub": sub, "body": bar, "footer": footer, "bar_body": True}

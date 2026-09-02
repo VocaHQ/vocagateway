@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link type="text/css" rel="stylesheet" href="/assets/swagger/swagger-ui.css">
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<title>{{ title }} - API docs</title>
+</head>
+<body>
+<div id="swagger-ui"></div>
+{# Swagger UI's init call is loaded from an external, same-origin script
+   rather than inlined, because the CSP sends script-src 'self' with no
+   'unsafe-inline'. #}
+<script src="/assets/swagger/swagger-ui-bundle.js"></script>
+<script src="/assets/swagger/docs-init.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{% from "models/family_tile.html" import family_tile %}
+{% if language_hint %}
+{{ language_hint }}
+{% endif %}
+{% if families %}
+<div class="family-grid">
+  {% for family in families %}
+  {{ family_tile(family) }}
+  {% endfor %}
+</div>
+{% elif empty_message %}
+<p class="empty-state">No models match {{ empty_message }}. Clear or widen the filters to see more.</p>
+{% else %}
+<p class="empty-state">No models available.</p>
+{% endif %}

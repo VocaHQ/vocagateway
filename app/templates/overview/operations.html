@@ -1,0 +1,54 @@
+{% macro metric_card(card) %}
+<article class="{{ ("metric-card " ~ card.css) | trim }}">
+  <span class="metric-label">{{ card.label }}</span>
+  <strong class="metric-value">{{ card.value }}</strong>
+  <span class="metric-detail">{{ card.detail }}</span>
+</article>
+{% endmacro %}
+
+{# Latency / Outcomes / Last job stages share this card shell; `chart.body` is
+   pre-rendered SVG or bar markup (geometry lives in Python, not here). #}
+{% macro ops_chart(chart) %}
+<article class="ops-chart">
+  <header class="ops-chart-head">
+    <span class="ops-chart-title">{{ chart.title }}</span>
+    <span class="ops-chart-sub">{{ chart.sub }}</span>
+  </header>
+  <div class="ops-chart-body{% if chart.bar_body %} ops-chart-body-bar{% endif %}">{{ chart.body }}</div>
+  <p class="ops-chart-footer">{{ chart.footer }}</p>
+</article>
+{% endmacro %}
+
+<section id="operations" class="operations"
+         hx-get="/ui/partials/operations" hx-trigger="every 5s"
+         hx-swap="outerHTML" aria-label="Gateway operations">
+  <div class="section-heading">
+    <h2>Live operations <span class="muted">&middot; since start</span></h2>
+    <span class="probe-age">Engine checked {{ probe_age }}s ago &middot;
+      {{ sample_note }}</span>
+  </div>
+  <div class="operations-grid operations-grid-kpis">
+    {% for card in metric_cards %}
+    {{ metric_card(card) }}
+    {% endfor %}
+  </div>
+  {# Capacity strip visualizes the same active/queue numbers as Workload. #}
+  <div class="ops-capacity" aria-label="{{ capacity.active }} of {{ capacity.limit }} active, {{ capacity.queued }} queued">
+    <div class="ops-capacity-meta">
+      <span>Capacity</span>
+      <span class="muted">{{ capacity.active }} of {{ capacity.limit }} active &middot; {{ capacity.queued }} queued</span>
+    </div>
+    <div class="ops-bar ops-bar-thin" role="presentation">
+      <span class="ops-bar-seg ops-bar-active" style="width:{{ capacity.active_pct }}%"></span>
+      <span class="ops-bar-seg ops-bar-queue" style="width:{{ capacity.queue_pct }}%"></span>
+      <span class="ops-bar-seg ops-bar-free" style="width:{{ capacity.free_pct }}%"></span>
+    </div>
+  </div>
+  <div class="ops-charts ops-charts-inline" aria-label="Recent activity">
+    <div class="ops-charts-grid ops-charts-grid-3">
+      {{ ops_chart(latency_chart) }}
+      {{ ops_chart(outcomes_chart) }}
+      {{ ops_chart(pipeline_chart) }}
+    </div>
+  </div>
+</section>

@@ -12,7 +12,7 @@ from conftest import FakeEngine, FakeNormalizer
 from app import build_info
 from app.build_info import DATE_ENV, SHA_ENV, SUBJECT_ENV, CommitInfo, current_commit
 from app.config import Settings
-from app.fragments.overview import _commit_detail
+from app.fragments.overview import _commit_context
 from app.main import create_app
 from app.schemas import CommitStatus
 
@@ -91,7 +91,7 @@ def test_git_failure_is_not_fatal(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
 
 def test_commit_detail_shortens_the_subject() -> None:
-    detail = _commit_detail(
+    detail = _commit_context(
         CommitStatus(
             sha=SHA,
             short_sha="0979263",
@@ -99,10 +99,10 @@ def test_commit_detail_shortens_the_subject() -> None:
             committed_at="2026-08-11T15:51:01+05:30",
         )
     )
-    assert f'title="{SHA}"' in detail
-    assert "0979263" in detail
-    assert "…" in detail
-    assert "2026-08-11" in detail
+    assert detail["sha"] == SHA
+    assert "0979263" in detail["text"]
+    assert "…" in detail["text"]
+    assert "2026-08-11" in detail["text"]
 
 
 async def test_status_and_diagnostics_carry_the_commit(

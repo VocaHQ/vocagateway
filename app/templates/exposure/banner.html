@@ -1,0 +1,25 @@
+{# Full-width one-line top strip when the gateway binds every interface.
+   Client JS may hide this for 24h after the x is clicked; Pair & test keeps
+   a permanent network panel (exposure/panel.html) regardless. #}
+{% if show %}
+<div id="exposure-banner" class="exposure-banner" role="status"
+     data-dismiss-key="vocagateway.exposure-dismiss-until">
+  <div class="exposure-banner-inner">
+    <span class="exposure-banner-mark" aria-hidden="true">!</span>
+    <p class="exposure-banner-copy">
+      <strong>Listening on every network interface.</strong>
+      The API still needs the bearer token. {{ firewall }}, prefer Tailscale
+      for remote access, and do not publish this port on the public internet.
+    </p>
+    <button type="button" class="exposure-banner-dismiss"
+            data-dismiss-exposure
+            title="Dismiss for 24 hours"
+            aria-label="Dismiss for 24 hours">
+      <span aria-hidden="true">&times;</span>
+    </button>
+  </div>
+</div>
+{% else %}
+<div id="exposure-banner" class="exposure-banner" hidden
+     data-empty="1" aria-hidden="true"></div>
+{% endif %}
