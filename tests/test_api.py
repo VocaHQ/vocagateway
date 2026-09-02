@@ -6,11 +6,25 @@ from uuid import uuid4
 import httpx
 import pytest
 from conftest import TOKEN, FakeEngine, FakeNormalizer
+from starlette.status import (
+    HTTP_200_OK,
+    HTTP_401_UNAUTHORIZED,
+    HTTP_404_NOT_FOUND,
+    HTTP_413_CONTENT_TOO_LARGE,
+    HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+    HTTP_422_UNPROCESSABLE_CONTENT,
+    HTTP_503_SERVICE_UNAVAILABLE,
+)
 
 from app.config import Settings
 from app.errors import LanguageUnsupportedError
 from app.main import create_app
 from app.models.base import EngineHealth, TranscriptionOptions
+
+TEST_AUDIO_SIZE = 200
+TEST_AUDIO_BYTES = b"x" * TEST_AUDIO_SIZE
+OVERSIZED_AUDIO_SIZE = 20_001
+OVERSIZED_AUDIO_BYTES = b"x" * OVERSIZED_AUDIO_SIZE
 
 
 class UnreadyEngine:
@@ -54,7 +68,7 @@ async def test_unsupported_language_is_reported_a_d68a4(
         )
         finished = await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
 
-        assert finished.status_code == 422
+        assert finished.status_code == HTTP_422_UNPROCESSABLE_CONTENT
         error = finished.json()["error"]
         assert error["code"] == "language_unsupported"
         assert error["recoverable"] is False
@@ -68,7 +82,7 @@ async def test_health_is_public_and_separates_eng_aa(
     client: httpx.AsyncClient, fake_engine: FakeEngine
 ) -> None:
     response = await client.get("/health")
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     assert response.json() == {
         "status": "ok",
         "engine_ready": True,
@@ -84,19 +98,19 @@ async def test_health_is_public_and_separates_eng_aa(
     readiness = await client.get("/health/ready")
     repeated = await client.get("/health")
 
-    assert liveness.status_code == 200
+    assert liveness.status_code == HTTP_200_OK
     assert liveness.json()["status"] == "ok"
     assert liveness.json()["uptime_seconds"] >= 0
-    assert readiness.status_code == 200
+    assert readiness.status_code == HTTP_200_OK
     assert readiness.json()["status"] == "ready"
     assert readiness.json()["engine"] == "fake-local-model"
-    assert repeated.status_code == 200
+    assert repeated.status_code == HTTP_200_OK
     assert fake_engine.health_calls == 1
 
 
 async def test_private_endpoints_require_bearer_token(client: httpx.AsyncClient) -> None:
     response = await client.get("/v1/models")
-    assert response.status_code == 401
+    assert response.status_code == HTTP_401_UNAUTHORIZED
     assert response.json()["error"]["code"] == "unauthorized"
     assert TOKEN not in response.text
 
@@ -115,8 +129,8 @@ async def test_readiness_can_fail_without_failing_ca0a7(tmp_path) -> None:
         liveness = await test_client.get("/health/live")
         readiness = await test_client.get("/health/ready")
 
-    assert liveness.status_code == 200
-    assert readiness.status_code == 503
+    assert liveness.status_code == HTTP_200_OK
+    assert readiness.status_code == HTTP_503_SERVICE_UNAVAILABLE
     assert readiness.json()["status"] == "not_ready"
     assert readiness.json()["engine"] == "missing-model"
 
@@ -134,7 +148,7 @@ async def test_complete_flow_is_idempotent_and_de_aaa(
     }
     created = await client.post("/v1/sessions", headers=authorization, json=payload)
     repeated = await client.post("/v1/sessions", headers=authorization, json=payload)
-    assert created.status_code == 200
+    assert created.status_code == HTTP_200_OK
     assert repeated.json()["job_id"] == created.json()["job_id"]
 
     uploaded = await client.put(
@@ -142,12 +156,12 @@ async def test_complete_flow_is_idempotent_and_de_aaa(
         headers={**authorization, "Content-Type": "audio/wav"},
         content=audio_bytes,
     )
-    assert uploaded.status_code == 200
+    assert uploaded.status_code == HTTP_200_OK
     assert uploaded.json()["state"] == "uploaded"
 
     finished = await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
     finished_again = await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
-    assert finished.status_code == 200
+    assert finished.status_code == HTTP_200_OK
     assert finished.json()["transcript"] == "hello from the local model"
     assert finished_again.json()["transcript"] == finished.json()["transcript"]
     assert finished_again.json()["job_id"] == finished.json()["job_id"]
@@ -163,7 +177,7 @@ async def test_session_accepts_writing_styles_and_aaaa(
             headers=authorization,
             json={"client_session_id": str(uuid4()), "style": style},
         )
-        assert response.status_code == 200
+        assert response.status_code == HTTP_200_OK
         assert response.json()["style"] == style
 
     invalid = await client.post(
@@ -171,7 +185,7 @@ async def test_session_accepts_writing_styles_and_aaaa(
         headers=authorization,
         json={"client_session_id": str(uuid4()), "style": "pirate"},
     )
-    assert invalid.status_code == 422
+    assert invalid.status_code == HTTP_422_UNPROCESSABLE_CONTENT
 
 
 async def test_writing_style_is_applied_to_the_lo_aaaaa(
@@ -193,7 +207,7 @@ async def test_writing_style_is_applied_to_the_lo_aaaaa(
 
     finished = await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
 
-    assert finished.status_code == 200
+    assert finished.status_code == HTTP_200_OK
     assert finished.json()["transcript"] == "Hello from the local model."
 
 
@@ -213,7 +227,7 @@ async def test_upload_rejects_unsupported_empty_a_f2c1d(
     unsupported = await client.put(
         f"/v1/sessions/{await create()}/audio",
         headers={**authorization, "Content-Type": "text/plain"},
-        content=b"x" * 200,
+        content=TEST_AUDIO_BYTES,
     )
     empty = await client.put(
         f"/v1/sessions/{await create()}/audio",
@@ -223,11 +237,11 @@ async def test_upload_rejects_unsupported_empty_a_f2c1d(
     oversized = await client.put(
         f"/v1/sessions/{await create()}/audio",
         headers={**authorization, "Content-Type": "audio/wav"},
-        content=b"x" * 20_001,
+        content=OVERSIZED_AUDIO_BYTES,
     )
-    assert unsupported.status_code == 415
-    assert empty.status_code == 422
-    assert oversized.status_code == 413
+    assert unsupported.status_code == HTTP_415_UNSUPPORTED_MEDIA_TYPE
+    assert empty.status_code == HTTP_422_UNPROCESSABLE_CONTENT
+    assert oversized.status_code == HTTP_413_CONTENT_TOO_LARGE
 
 
 async def test_delete_is_idempotent(
@@ -242,9 +256,9 @@ async def test_delete_is_idempotent(
     )
     first = await client.delete(f"/v1/sessions/{session_id}", headers=authorization)
     second = await client.delete(f"/v1/sessions/{session_id}", headers=authorization)
-    assert first.status_code == 200
+    assert first.status_code == HTTP_200_OK
     assert first.json() == {"deleted": True}
-    assert second.status_code == 404
+    assert second.status_code == HTTP_404_NOT_FOUND
     assert second.json() == {"deleted": False}
 
 
