@@ -10,6 +10,9 @@ from typing import Any
 from app.errors import EngineUnavailableError, TranscriptionProcessError
 from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
 
+TRANSCRIPTION_TIMEOUT_SECONDS = 180
+MAXIMUM_ERROR_MESSAGE_LENGTH = 240
+
 
 class FasterWhisperEngine:
     """Persistent CTranslate2-backed Whisper engine optimized for server use."""
@@ -61,7 +64,7 @@ class FasterWhisperEngine:
             try:
                 transcript = await asyncio.wait_for(
                     asyncio.to_thread(self._transcribe_sync, model, audio_path, options),
-                    timeout=180,
+                    timeout=TRANSCRIPTION_TIMEOUT_SECONDS,
                 )
             except TimeoutError as error:
                 raise TranscriptionProcessError(
@@ -69,7 +72,7 @@ class FasterWhisperEngine:
                 ) from error
             except Exception as error:
                 raise TranscriptionProcessError(
-                    f"faster-whisper failed: {str(error)[-240:]}"
+                    f"faster-whisper failed: {str(error)[-MAXIMUM_ERROR_MESSAGE_LENGTH:]}"
                 ) from error
             inference_ms = _elapsed_ms(inference_started)
             if not transcript:
