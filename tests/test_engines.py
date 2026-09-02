@@ -15,6 +15,15 @@ from app.models.sherpa_onnx import SherpaOnnxEngine
 from app.runtime_config import RuntimeConfig
 from app.system import engine_requirement, engine_runs_on
 
+MODELS_DIRECTORY = "models"
+TEST_TOKEN = "test-token-with-at-least-thirty-two-characters"
+WHISPER_BINARY_NAME = "whisper-cli"
+WHISPER_MODEL_NAME = "whisper.bin"
+MISSING_HANDY_BINARY_NAME = "no-handy"
+MISSING_VOCAMAC_APP_NAME = "no-vocamac"
+VOCAMAC_ENGINE = "vocamac"
+AUTO_ENGINE = "auto"
+
 
 @pytest.mark.parametrize(
     ("catalog_model", "expected_type", "config_field"),
@@ -60,19 +69,19 @@ def test_model_selection_builds_new_engine_aa(
     expected_type: type[SherpaOnnxEngine] | type[MLXAudioEngine],
     config_field: str,
 ) -> None:
-    manager = ModelManager(tmp_path / "models", catalog=(catalog_model,))
+    manager = ModelManager(tmp_path / MODELS_DIRECTORY, catalog=(catalog_model,))
     root = manager.model_path(catalog_model)
     root.mkdir(parents=True)
     if catalog_model.marker_file:
         (root / catalog_model.marker_file).write_bytes(b"model")
     runtime = RuntimeConfig()
     settings = Settings(
-        token="test-token-with-at-least-thirty-two-characters",
+        token=TEST_TOKEN,
         data_dir=tmp_path,
-        whisper_binary=tmp_path / "whisper-cli",
-        whisper_model=tmp_path / "whisper.bin",
-        handy_binary=tmp_path / "no-handy",
-        vocamac_app=tmp_path / "no-vocamac",
+        whisper_binary=tmp_path / WHISPER_BINARY_NAME,
+        whisper_model=tmp_path / WHISPER_MODEL_NAME,
+        handy_binary=tmp_path / MISSING_HANDY_BINARY_NAME,
+        vocamac_app=tmp_path / MISSING_VOCAMAC_APP_NAME,
     )
     config_path = tmp_path / "config.json"
     engines = EngineManager(settings, runtime, config_path, manager)
@@ -88,13 +97,13 @@ def test_model_selection_builds_new_engine_aa(
 @pytest.mark.parametrize(
     ("engine", "linux", "intel_mac", "apple_silicon"),
     [
-        ("vocamac", False, False, True),
+        (VOCAMAC_ENGINE, False, False, True),
         ("handy", False, True, True),
         ("whisperkit", False, True, True),
         ("mlx-audio", False, False, True),
         ("sherpa-onnx", True, True, True),
         ("whisper.cpp", True, True, True),
-        ("auto", True, True, True),
+        (AUTO_ENGINE, True, True, True),
     ],
 )
 def test_desktop_and_apple_engines_only_run_aaa(
@@ -107,23 +116,25 @@ def test_desktop_and_apple_engines_only_run_aaa(
 
 def test_configure_rejects_an_engine_the_ho_db78a(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     settings = Settings(
-        token="test-token-with-at-least-thirty-two-characters",
+        token=TEST_TOKEN,
         data_dir=tmp_path,
-        whisper_binary=tmp_path / "whisper-cli",
-        whisper_model=tmp_path / "whisper.bin",
-        handy_binary=tmp_path / "no-handy",
-        vocamac_app=tmp_path / "no-vocamac",
+        whisper_binary=tmp_path / WHISPER_BINARY_NAME,
+        whisper_model=tmp_path / WHISPER_MODEL_NAME,
+        handy_binary=tmp_path / MISSING_HANDY_BINARY_NAME,
+        vocamac_app=tmp_path / MISSING_VOCAMAC_APP_NAME,
     )
     runtime = RuntimeConfig()
     config_path = tmp_path / "config.json"
-    engines = EngineManager(settings, runtime, config_path, ModelManager(tmp_path / "models"))
-    monkeypatch.setattr(engines_module, "engine_runs_here", lambda engine: engine != "vocamac")
+    engines = EngineManager(
+        settings, runtime, config_path, ModelManager(tmp_path / MODELS_DIRECTORY)
+    )
+    monkeypatch.setattr(engines_module, "engine_runs_here", lambda engine: engine != VOCAMAC_ENGINE)
 
     with pytest.raises(ValueError, match="runs only on Apple silicon"):
-        engines.set_engine("vocamac")
+        engines.set_engine(VOCAMAC_ENGINE)
 
-    assert runtime.engine == "auto"
-    assert engine_requirement("vocamac") == "Apple silicon"
+    assert runtime.engine == AUTO_ENGINE
+    assert engine_requirement(VOCAMAC_ENGINE) == "Apple silicon"
 
 
 def test_build_engine_honours_forced_settin_aaaa(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
@@ -132,16 +143,16 @@ def test_build_engine_honours_forced_settin_aaaa(tmp_path: Path, monkeypatch: Mo
     from app.models.whisper_cpp import WhisperCppEngine
 
     settings = Settings(
-        token="test-token-with-at-least-thirty-two-characters",
+        token=TEST_TOKEN,
         data_dir=tmp_path,
         engine="whisper.cpp",
-        whisper_binary=tmp_path / "whisper-cli",
-        whisper_model=tmp_path / "whisper.bin",
-        handy_binary=tmp_path / "no-handy",
-        vocamac_app=tmp_path / "no-vocamac",
+        whisper_binary=tmp_path / WHISPER_BINARY_NAME,
+        whisper_model=tmp_path / WHISPER_MODEL_NAME,
+        handy_binary=tmp_path / MISSING_HANDY_BINARY_NAME,
+        vocamac_app=tmp_path / MISSING_VOCAMAC_APP_NAME,
     )
-    runtime = RuntimeConfig(engine="auto")
-    manager = ModelManager(tmp_path / "models")
+    runtime = RuntimeConfig(engine=AUTO_ENGINE)
+    manager = ModelManager(tmp_path / MODELS_DIRECTORY)
 
     engine = build_engine(settings, runtime, manager)
 
@@ -150,7 +161,7 @@ def test_build_engine_honours_forced_settin_aaaa(tmp_path: Path, monkeypatch: Mo
 
 def test_forget_if_active_clears_moonshine_aaaaa(tmp_path: Path) -> None:
     """Reproduces the reported bug: deleting the active Moonshine model reset
-    `runtime_config.engine` back to "auto" but left `moonshine_model` pointing at
+    `runtime_config.engine` back to AUTO_ENGINE but left `moonshine_model` pointing at
     the now-deleted id — unlike the sherpa-onnx and mlx-audio branches of the same
     method, which null out both fields together."""
     catalog_model = CatalogModel(
@@ -165,18 +176,18 @@ def test_forget_if_active_clears_moonshine_aaaaa(tmp_path: Path) -> None:
         marker_file=".vocagateway-model.json",
         language_code="en",
     )
-    manager = ModelManager(tmp_path / "models", catalog=(catalog_model,))
+    manager = ModelManager(tmp_path / MODELS_DIRECTORY, catalog=(catalog_model,))
     root = manager.model_path(catalog_model)
     root.mkdir(parents=True)
     (root / catalog_model.marker_file).write_bytes(b"model")
     runtime = RuntimeConfig()
     settings = Settings(
-        token="test-token-with-at-least-thirty-two-characters",
+        token=TEST_TOKEN,
         data_dir=tmp_path,
-        whisper_binary=tmp_path / "whisper-cli",
-        whisper_model=tmp_path / "whisper.bin",
-        handy_binary=tmp_path / "no-handy",
-        vocamac_app=tmp_path / "no-vocamac",
+        whisper_binary=tmp_path / WHISPER_BINARY_NAME,
+        whisper_model=tmp_path / WHISPER_MODEL_NAME,
+        handy_binary=tmp_path / MISSING_HANDY_BINARY_NAME,
+        vocamac_app=tmp_path / MISSING_VOCAMAC_APP_NAME,
     )
     config_path = tmp_path / "config.json"
     engines = EngineManager(settings, runtime, config_path, manager)
@@ -187,7 +198,7 @@ def test_forget_if_active_clears_moonshine_aaaaa(tmp_path: Path) -> None:
 
     engines.forget_if_active(catalog_model.id)
 
-    assert runtime.engine == "auto"
+    assert runtime.engine == AUTO_ENGINE
     # moonshine_model is typed `str`, not `str | None` (unlike sherpa_model and
     # mlx_audio_model): moonshine:en is a permanent catalog entry kept exactly as
     # this fallback, so the deleted id must not linger as a dangling reference,
@@ -201,13 +212,13 @@ def test_select_engine_accepts_sherpa_and_mlx(tmp_path: Path) -> None:
 
     for name in ("sherpa-onnx", "mlx-audio", "moonshine", "faster-whisper"):
         settings = Settings(
-            token="test-token-with-at-least-thirty-two-characters",
+            token=TEST_TOKEN,
             data_dir=tmp_path,
             engine=name,
-            whisper_binary=tmp_path / "whisper-cli",
-            whisper_model=tmp_path / "whisper.bin",
-            handy_binary=tmp_path / "no-handy",
-            vocamac_app=tmp_path / "no-vocamac",
+            whisper_binary=tmp_path / WHISPER_BINARY_NAME,
+            whisper_model=tmp_path / WHISPER_MODEL_NAME,
+            handy_binary=tmp_path / MISSING_HANDY_BINARY_NAME,
+            vocamac_app=tmp_path / MISSING_VOCAMAC_APP_NAME,
         )
         # Resolution may fail later if models are missing, but the engine id
         # itself must not be rejected up front the way the old allow-list did.
