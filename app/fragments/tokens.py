@@ -25,5 +25,5 @@ def _token_row_context(entry: DeviceTokenEntry) -> dict[str, object]:
     }
 
 
-def _format_created(value: datetime | None) -> str:
-    return "—" if value is None else value.strftime("%Y-%m-%d %H:%M UTC")
+def _format_created(timestamp: datetime | None) -> str:
+    return "—" if timestamp is None else timestamp.strftime("%Y-%m-%d %H:%M UTC")

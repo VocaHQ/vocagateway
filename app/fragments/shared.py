@@ -1,19 +1,26 @@
 from __future__ import annotations
 
+BYTES_PER_GIGABYTE = 1_000_000_000
+BYTES_PER_MEGABYTE = 1_000_000
+BYTES_PER_KILOBYTE = 1_000
+SECONDS_PER_DAY = 86_400
+SECONDS_PER_HOUR = 3_600
+MILLISECONDS_PER_SECOND = 1_000
+
 
 def _format_bytes(size: int) -> str:
-    if size >= 1_000_000_000:
-        return f"{size / 1_000_000_000:.1f} GB"
-    if size >= 1_000_000:
-        return f"{size / 1_000_000:.0f} MB"
-    if size >= 1_000:
-        return f"{size / 1_000:.0f} KB"
+    if size >= BYTES_PER_GIGABYTE:
+        return f"{format(size / BYTES_PER_GIGABYTE, '.1f')} GB"
+    if size >= BYTES_PER_MEGABYTE:
+        return f"{format(size / BYTES_PER_MEGABYTE, '.0f')} MB"
+    if size >= BYTES_PER_KILOBYTE:
+        return f"{format(size / BYTES_PER_KILOBYTE, '.0f')} KB"
     return f"{size} B"
 
 
 def _format_uptime(seconds: int) -> str:
-    days, remainder = divmod(max(0, seconds), 86_400)
-    hours, remainder = divmod(remainder, 3_600)
+    days, remainder = divmod(max(0, seconds), SECONDS_PER_DAY)
+    hours, remainder = divmod(remainder, SECONDS_PER_HOUR)
     minutes, remaining_seconds = divmod(remainder, 60)
     if days:
         return f"{days}d {hours}h"
@@ -27,6 +34,6 @@ def _format_uptime(seconds: int) -> str:
 def _format_latency(milliseconds: int | None) -> str:
     if milliseconds is None:
         return "—"
-    if milliseconds >= 1_000:
-        return f"{milliseconds / 1_000:.1f}s"
+    if milliseconds >= MILLISECONDS_PER_SECOND:
+        return f"{format(milliseconds / MILLISECONDS_PER_SECOND, '.1f')}s"
     return f"{milliseconds}ms"

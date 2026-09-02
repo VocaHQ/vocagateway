@@ -16,7 +16,9 @@ def settings_fragment(
     return render(
         "settings/page.html",
         config=config,
-        engine_options=[(value, _engine_option_label(value)) for value in config.available_engines],
+        engine_options=[
+            (engine_id, _engine_option_label(engine_id)) for engine_id in config.available_engines
+        ],
         engine_hint=ENGINE_HINTS.get(config.engine, ""),
         paths=paths,
         listener=format_host_port(bind_host, port),
