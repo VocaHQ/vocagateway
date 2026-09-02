@@ -16,6 +16,8 @@ from app.schemas import (
 )
 from app.templating import render
 
+MAXIMUM_COMMIT_SUBJECT_LENGTH = 64
+
 
 def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> str:
     # pairing_html is ignored: pairing lives under Pair & test so Overview stays
@@ -167,7 +169,7 @@ def _os_summary(os_line: str) -> str:
 
 def _commit_context(commit: CommitStatus) -> dict[str, str]:
     """'0979263 · Merge pull request #10…', with the full sha on hover."""
-    subject = _ellipsize(commit.subject, 64)
+    subject = _ellipsize(commit.subject, MAXIMUM_COMMIT_SUBJECT_LENGTH)
     text = f"{commit.short_sha} · {subject}" if subject else commit.short_sha
     if commit.committed_at is not None:
         text += f" ({commit.committed_at:%Y-%m-%d})"

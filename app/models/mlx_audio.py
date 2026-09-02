@@ -16,6 +16,9 @@ from app.errors import (
 )
 from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
 
+TRANSCRIPTION_TIMEOUT_SECONDS = 180
+MAXIMUM_ERROR_MESSAGE_LENGTH = 240
+
 
 class MLXAudioEngine:
     """Persistent Apple-silicon STT engine backed by MLX Audio."""
@@ -62,12 +65,14 @@ class MLXAudioEngine:
             try:
                 text = await asyncio.wait_for(
                     asyncio.to_thread(_generate_text, model, audio_path, options.language),
-                    timeout=180,
+                    timeout=TRANSCRIPTION_TIMEOUT_SECONDS,
                 )
             except TimeoutError as error:
                 raise TranscriptionProcessError("MLX Audio transcription timed out.") from error
             except Exception as error:
-                raise TranscriptionProcessError(f"MLX Audio failed: {str(error)[-240:]}") from error
+                raise TranscriptionProcessError(
+                    f"MLX Audio failed: {str(error)[-MAXIMUM_ERROR_MESSAGE_LENGTH:]}"
+                ) from error
             if not text:
                 raise TranscriptionProcessError("MLX Audio returned an empty transcript.")
             return EngineTranscription(

@@ -18,6 +18,7 @@ VALID_ENGINES = (
     "sherpa-onnx",
     "mlx-audio",
 )
+MAXIMUM_CPU_THREADS = 256
 
 
 @dataclass(slots=True)
@@ -85,7 +86,9 @@ class RuntimeConfig:
                 else "auto"
             ),
             cpu_threads=(
-                cpu_threads if isinstance(cpu_threads, int) and 0 <= cpu_threads <= 256 else 0
+                cpu_threads
+                if isinstance(cpu_threads, int) and 0 <= cpu_threads <= MAXIMUM_CPU_THREADS
+                else 0
             ),
             pairing_url=pairing_url if isinstance(pairing_url, str) else None,
             pairing_urls=(

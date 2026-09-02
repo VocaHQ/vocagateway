@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.security.utils import get_authorization_scheme_param
+from starlette.status import HTTP_401_UNAUTHORIZED
 
 from app.config import Settings
 from app.engines import EngineManager, EngineProvider
@@ -88,4 +89,4 @@ def require_token(
     # credentials is None when the header is absent, empty, or carries a
     # non-bearer scheme; all three are the same 401 as a wrong token.
     if not ctx.token_matches(credentials.credentials if credentials else ""):
-        raise APIProblem(401, "unauthorized", "A valid bearer token is required.")
+        raise APIProblem(HTTP_401_UNAUTHORIZED, "unauthorized", "A valid bearer token is required.")

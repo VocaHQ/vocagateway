@@ -26,6 +26,8 @@ from app.models.whisperkit import WhisperKitEngine
 from app.runtime_config import VALID_ENGINES, RuntimeConfig
 from app.system import engine_requirement, engine_runs_here
 
+MAXIMUM_CPU_THREADS = 256
+
 
 class EngineProvider(Protocol):
     def current(self) -> TranscriptionEngine: ...
@@ -165,7 +167,7 @@ class EngineManager:
             raise ValueError("Invalid compute device.")
         if compute_type not in {"auto", "int8", "int8_float16", "float16", "float32"}:
             raise ValueError("Invalid compute type.")
-        if not 0 <= cpu_threads <= 256:
+        if not 0 <= cpu_threads <= MAXIMUM_CPU_THREADS:
             raise ValueError("CPU threads must be between 0 and 256.")
         self.runtime_config.engine = engine
         self.runtime_config.compute_device = device

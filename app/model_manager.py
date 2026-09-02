@@ -28,6 +28,7 @@ from app.catalog import (
 )
 
 CHUNK_SIZE = 1024 * 1024
+MAXIMUM_DOWNLOAD_ERROR_LENGTH = 600
 USER_AGENT = "vocagateway-gateway/0.2"
 HF_BASE_URL = "https://huggingface.co"
 DEFAULT_HF_REVISION = "main"
@@ -310,7 +311,7 @@ class ModelManager:
             # Long enough that a SHA-256 mismatch message (which embeds two
             # 64-character hex digests plus a nested WhisperKit-style path)
             # isn't clipped before the reader can see what to compare.
-            download_handle.state.error = str(error)[:600]
+            download_handle.state.error = str(error)[:MAXIMUM_DOWNLOAD_ERROR_LENGTH]
 
     async def _run_catalog_download(
         self, model: CatalogModel, download_handle: _DownloadHandle

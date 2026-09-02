@@ -5,7 +5,7 @@ import os
 from collections.abc import Iterable
 from pathlib import Path
 
-DEFAULT_WARMUP_BYTES = 256 * 1024 * 1024
+DEFAULT_WARMUP_BYTES = 268_435_456
 
 
 def prefetch_model_paths(paths: Iterable[Path], maximum_bytes: int = DEFAULT_WARMUP_BYTES) -> int:
