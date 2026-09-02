@@ -50,16 +50,16 @@ def decode_pairing_payload(raw: str) -> PairingPayload:
     if not text:
         raise ValueError("Pairing code is empty.")
     try:
-        data: Any = json.loads(text)
+        payload_data: Any = json.loads(text)
     except json.JSONDecodeError as error:
         raise ValueError("Pairing code is not valid JSON.") from error
-    if not isinstance(data, dict):
+    if not isinstance(payload_data, dict):
         raise ValueError("Pairing code must be a JSON object.")
-    version = data.get("v", data.get("version"))
+    version = payload_data.get("v", payload_data.get("version"))
     if version != PAIRING_VERSION:
         raise ValueError(f"Unsupported pairing version: {version!r}")
-    url = data.get("url")
-    token = data.get("token")
+    url = payload_data.get("url")
+    token = payload_data.get("token")
     if not isinstance(url, str) or not url.strip():
         raise ValueError("Pairing code is missing a gateway URL.")
     if not isinstance(token, str) or not token.strip():
@@ -140,10 +140,10 @@ def discover_gateway_base_urls(port: int) -> list[str]:
     """
     overrides: list[str] = []
     for key in ("VOCAGATEWAY_PUBLIC_URL", "VOCAGATEWAY_PAIRING_URL"):
-        value = os.environ.get(key, "").strip()
-        if value:
+        configured_url = os.environ.get(key, "").strip()
+        if configured_url:
             try:
-                overrides.append(normalize_gateway_url(value))
+                overrides.append(normalize_gateway_url(configured_url))
             except ValueError:
                 continue
 
@@ -184,8 +184,8 @@ def _local_ipv4_addresses() -> list[str]:
     found: set[str] = set()
     try:
         hostname = socket.gethostname()
-        for info in socket.getaddrinfo(hostname, None, socket.AF_INET, socket.SOCK_STREAM):
-            sockaddr = info[4]
+        for address_info in socket.getaddrinfo(hostname, None, socket.AF_INET, socket.SOCK_STREAM):
+            sockaddr = address_info[4]
             address = sockaddr[0]
             if isinstance(address, str) and _is_phone_reachable_ipv4(address):
                 found.add(address)
@@ -205,15 +205,15 @@ def _local_ipv4_addresses() -> list[str]:
 
     # Prefer iproute on Linux when available (reliable multi-NIC listing).
     try:
-        result = subprocess.run(
+        command_result = subprocess.run(
             ["ip", "-4", "-o", "addr", "show", "scope", "global"],
             capture_output=True,
             text=True,
             timeout=2,
             check=False,
         )
-        if result.returncode == 0:
-            for line in result.stdout.splitlines():
+        if command_result.returncode == 0:
+            for line in command_result.stdout.splitlines():
                 parts = line.split()
                 if "inet" in parts:
                     idx = parts.index("inet")
@@ -230,15 +230,15 @@ def _local_ipv4_addresses() -> list[str]:
     # Tailscale IP is actually in `discovered` and doesn't get pruned as
     # stale by forget_stale_lan_addresses() on the next page load.
     try:
-        result = subprocess.run(
+        command_result = subprocess.run(
             ["ifconfig"],
             capture_output=True,
             text=True,
             timeout=2,
             check=False,
         )
-        if result.returncode == 0:
-            found.update(_parse_ifconfig_ipv4_addresses(result.stdout))
+        if command_result.returncode == 0:
+            found.update(_parse_ifconfig_ipv4_addresses(command_result.stdout))
     except (OSError, subprocess.TimeoutExpired):
         pass
 
