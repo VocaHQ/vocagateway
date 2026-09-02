@@ -8,6 +8,7 @@ from pathlib import Path
 import httpx
 import pytest
 from conftest import FakeEngine, FakeNormalizer
+from starlette.status import HTTP_200_OK
 
 from app import build_info
 from app.build_info import DATE_ENV, SHA_ENV, SUBJECT_ENV, CommitInfo, current_commit
@@ -17,6 +18,7 @@ from app.main import create_app
 from app.schemas import CommitStatus
 
 SHA = "0979263b31465a19a6c5fa375ccdd0f2af250ca5"
+FULL_GIT_SHA_LENGTH = 40
 
 
 @pytest.fixture(autouse=True)
@@ -72,7 +74,7 @@ def test_reads_the_latest_commit_from_git(tmp_path: Path, monkeypatch: pytest.Mo
     commit = current_commit()
     assert commit is not None
     assert commit.subject == "feat: add commit info"
-    assert len(commit.sha) == 40
+    assert len(commit.sha) == FULL_GIT_SHA_LENGTH
     assert commit.short_sha == commit.sha[:7]
     assert commit.committed_at is not None
 
@@ -112,7 +114,7 @@ async def test_status_and_diagnostics_carry_the_commit(
     monkeypatch.setenv(SUBJECT_ENV, "Merge pull request #10")
     current_commit.cache_clear()
     status = await debug_client.get("/v1/admin/status", headers=authorization)
-    assert status.status_code == 200
+    assert status.status_code == HTTP_200_OK
     assert status.json()["commit"] == {
         "sha": SHA,
         "short_sha": "0979263",
@@ -120,16 +122,16 @@ async def test_status_and_diagnostics_carry_the_commit(
         "committed_at": None,
     }
     diagnostics = await debug_client.get("/v1/admin/diagnostics", headers=authorization)
-    assert diagnostics.status_code == 200
+    assert diagnostics.status_code == HTTP_200_OK
     assert diagnostics.json()["commit"]["sha"] == SHA
 
     overview = await debug_client.get("/ui/partials/overview", headers=authorization)
-    assert overview.status_code == 200
+    assert overview.status_code == HTTP_200_OK
     assert "build 0979263" in overview.text
     assert "<dt>Build</dt>" in overview.text
 
     about = await debug_client.get("/ui/partials/about", headers=authorization)
-    assert about.status_code == 200
+    assert about.status_code == HTTP_200_OK
     assert "<dt>Build</dt>" in about.text
     assert "0979263" in about.text
     assert "Merge pull request #10" not in about.text
@@ -143,15 +145,15 @@ async def test_commit_is_hidden_without_debug(
     monkeypatch.setenv(SUBJECT_ENV, "Merge pull request #10")
     current_commit.cache_clear()
     status = await client.get("/v1/admin/status", headers=authorization)
-    assert status.status_code == 200
+    assert status.status_code == HTTP_200_OK
     assert status.json()["commit"] is None
 
     diagnostics = await client.get("/v1/admin/diagnostics", headers=authorization)
-    assert diagnostics.status_code == 200
+    assert diagnostics.status_code == HTTP_200_OK
     assert diagnostics.json()["commit"] is None
 
     overview = await client.get("/ui/partials/overview", headers=authorization)
-    assert overview.status_code == 200
+    assert overview.status_code == HTTP_200_OK
     # Neither the hero meta line nor a "Build" row in the hardware details, and
     # no stray sha anywhere in the markup.
     assert "build 0979263" not in overview.text
@@ -159,7 +161,7 @@ async def test_commit_is_hidden_without_debug(
     assert SHA not in overview.text
 
     about = await client.get("/ui/partials/about", headers=authorization)
-    assert about.status_code == 200
+    assert about.status_code == HTTP_200_OK
     assert "<dt>Build</dt>" not in about.text
     assert "0979263" not in about.text
     assert SHA not in about.text
