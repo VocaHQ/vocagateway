@@ -343,12 +343,14 @@ class _SherpaOnnxStreamAdapter:
             self._listener(_StreamEvent(line))
 
 
-def _language_code(value: str) -> str:
-    return value.lower().split("-", maxsplit=1)[0]
+def _language_code(language_tag: str) -> str:
+    return language_tag.lower().split("-", maxsplit=1)[0]
 
 
 def _directory_size(path: Path) -> int:
-    return sum(file.stat().st_size for file in path.rglob("*") if file.is_file())
+    return sum(
+        nested_path.stat().st_size for nested_path in path.rglob("*") if nested_path.is_file()
+    )
 
 
 def _elapsed_ms(started: float) -> int:

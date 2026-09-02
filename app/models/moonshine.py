@@ -164,7 +164,9 @@ def _start_stream(transcriber: Any) -> Any:
 
 
 def _directory_size(path: Path) -> int:
-    return sum(file.stat().st_size for file in path.rglob("*") if file.is_file())
+    return sum(
+        nested_path.stat().st_size for nested_path in path.rglob("*") if nested_path.is_file()
+    )
 
 
 def _elapsed_ms(started: float) -> int:

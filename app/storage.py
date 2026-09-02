@@ -67,10 +67,10 @@ class SessionRepository:
                     now.isoformat(),
                 ),
             )
-        result = self.get(session_id)
-        if result is None:
+        created_session = self.get(session_id)
+        if created_session is None:
             raise RuntimeError("Session creation failed")
-        return result
+        return created_session
 
     def get(self, session_id: UUID) -> StoredSession | None:
         with self._connect() as connection:
@@ -112,10 +112,10 @@ class SessionRepository:
                     str(session_id),
                 ),
             )
-        result = self.get(session_id)
-        if result is None:
+        updated_session = self.get(session_id)
+        if updated_session is None:
             raise RuntimeError("Session update failed")
-        return result
+        return updated_session
 
     def delete(self, session_id: UUID) -> StoredSession | None:
         current = self.get(session_id)

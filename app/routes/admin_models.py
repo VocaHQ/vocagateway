@@ -24,21 +24,21 @@ from app.schemas import (
 router = APIRouter(dependencies=[Depends(require_token)])
 
 
-def _loose_bool(value: object) -> bool:
+def _loose_bool(form_value: object) -> bool:
     """Treat missing/empty query/form values as false (Clear filters sends "")."""
-    if value is None or value is False or value == "":
+    if form_value is None or form_value is False or form_value == "":
         return False
-    if value is True:
+    if form_value is True:
         return True
-    if isinstance(value, (int, float)):
-        return value != 0
-    if isinstance(value, str):
-        lowered = value.strip().lower()
+    if isinstance(form_value, (int, float)):
+        return form_value != 0
+    if isinstance(form_value, str):
+        lowered = form_value.strip().lower()
         if lowered in ("", "0", "false", "no", "off"):
             return False
         if lowered in ("1", "true", "yes", "on"):
             return True
-    return bool(value)
+    return bool(form_value)
 
 
 # Repeated keys: family=Whisper&family=Parakeet (and the same for language/engine).

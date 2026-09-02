@@ -270,12 +270,12 @@ class AdhocTranscription:
 
 
 def _engine_outcome(
-    result: str | EngineTranscription,
+    engine_result: str | EngineTranscription,
     inference_started: float,
 ) -> EngineTranscription:
-    if isinstance(result, EngineTranscription):
-        return result
-    return EngineTranscription(text=result, inference_ms=_elapsed_ms(inference_started))
+    if isinstance(engine_result, EngineTranscription):
+        return engine_result
+    return EngineTranscription(text=engine_result, inference_ms=_elapsed_ms(inference_started))
 
 
 def _wav_duration_ms(path: Path) -> int:

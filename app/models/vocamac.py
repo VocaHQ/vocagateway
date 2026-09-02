@@ -359,8 +359,8 @@ class VocaMacEngine:
         if self.model:
             return self.model, MODEL_VARIANTS.get(self.model, self.model)
         try:
-            with self.preferences_file.open("rb") as handle:
-                payload = plistlib.load(handle)
+            with self.preferences_file.open("rb") as preference_file:
+                payload = plistlib.load(preference_file)
             selected = payload[SELECTED_MODEL_KEY]
         except (OSError, plistlib.InvalidFileException, KeyError, TypeError):
             return None, None
@@ -419,8 +419,8 @@ def _file_contains(path: Path, marker: bytes) -> bool:
     """
     overlap = b""
     try:
-        with path.open("rb") as handle:
-            while chunk := handle.read(64 * 1024):
+        with path.open("rb") as binary_file:
+            while chunk := binary_file.read(64 * 1024):
                 combined = overlap + chunk
                 if marker in combined:
                     return True

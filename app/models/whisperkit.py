@@ -299,10 +299,11 @@ def _multipart_body(
     audio_path: Path,
 ) -> bytes:
     chunks: list[bytes] = []
-    for name, value in fields:
+    for name, field_value in fields:
         chunks.append(
             (
-                f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'
+                f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n'
+                f"\r\n{field_value}\r\n"
             ).encode()
         )
     safe_name = audio_path.name.replace('"', "")
@@ -336,7 +337,9 @@ def _extract_transcript(output: str) -> str:
 
 
 def _directory_size(path: Path) -> int:
-    return sum(file.stat().st_size for file in path.rglob("*") if file.is_file())
+    return sum(
+        nested_path.stat().st_size for nested_path in path.rglob("*") if nested_path.is_file()
+    )
 
 
 def _elapsed_ms(started: float) -> int:

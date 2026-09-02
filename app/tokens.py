@@ -36,8 +36,8 @@ class DeviceToken:
     created_at: datetime
 
 
-def _hash_token(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+def _hash_token(token_text: str) -> str:
+    return hashlib.sha256(token_text.encode("utf-8")).hexdigest()
 
 
 class TokenStore:
@@ -98,9 +98,9 @@ class TokenStore:
             dir=self._path.parent, prefix=".device-tokens-", suffix=".tmp"
         )
         try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                json.dump(payload, handle, indent=2)
-                handle.write("\n")
+            with os.fdopen(descriptor, "w", encoding="utf-8") as token_file:
+                json.dump(payload, token_file, indent=2)
+                token_file.write("\n")
             os.replace(temporary_name, self._path)
         except BaseException:
             Path(temporary_name).unlink(missing_ok=True)

@@ -84,19 +84,19 @@ async def test_transcription(
         temporary.unlink(missing_ok=True)
         raise
     try:
-        result = await ctx.service.transcribe_adhoc(final, language)
+        transcription = await ctx.service.transcribe_adhoc(final, language)
     finally:
         final.unlink(missing_ok=True)
     return TestTranscriptionResponse(
-        transcript=result.transcript,
-        engine=result.engine,
-        duration_ms=result.timing.total_ms,
-        normalization_ms=result.timing.normalization_ms,
-        model_load_ms=result.timing.model_load_ms,
-        inference_ms=result.timing.inference_ms,
-        audio_duration_ms=result.timing.audio_duration_ms,
-        real_time_factor=result.timing.real_time_factor,
-        peak_memory_mb=result.timing.peak_memory_mb,
+        transcript=transcription.transcript,
+        engine=transcription.engine,
+        duration_ms=transcription.timing.total_ms,
+        normalization_ms=transcription.timing.normalization_ms,
+        model_load_ms=transcription.timing.model_load_ms,
+        inference_ms=transcription.timing.inference_ms,
+        audio_duration_ms=transcription.timing.audio_duration_ms,
+        real_time_factor=transcription.timing.real_time_factor,
+        peak_memory_mb=transcription.timing.peak_memory_mb,
     )
 
 

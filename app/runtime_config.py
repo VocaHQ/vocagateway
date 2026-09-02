@@ -116,9 +116,9 @@ class RuntimeConfig:
             dir=path.parent, prefix=".config-", suffix=".tmp"
         )
         try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                json.dump(payload, handle, indent=2)
-                handle.write("\n")
+            with os.fdopen(descriptor, "w", encoding="utf-8") as config_file:
+                json.dump(payload, config_file, indent=2)
+                config_file.write("\n")
             os.replace(temporary_name, path)
         except BaseException:
             Path(temporary_name).unlink(missing_ok=True)
