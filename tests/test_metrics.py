@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from app.metrics import HISTORY_MAX, RuntimeMetrics
 
+SUCCESSFUL_TRANSCRIPTION_LATENCY_MS = 120
+FAILED_TRANSCRIPTION_LATENCY_MS = 280
+AVERAGE_TRANSCRIPTION_LATENCY_MS = 200
+METRICS_SAMPLE_INTERVAL_SECONDS = 5.0
+
 
 def test_runtime_metrics_track_work_and_outcomes() -> None:
     metrics = RuntimeMetrics(concurrency_limit=2)
@@ -10,12 +15,12 @@ def test_runtime_metrics_track_work_and_outcomes() -> None:
     assert metrics.snapshot().queue_depth == 1
 
     metrics.started()
-    metrics.succeeded(120)
+    metrics.succeeded(SUCCESSFUL_TRANSCRIPTION_LATENCY_MS)
     metrics.finished()
 
     metrics.queued()
     metrics.started()
-    metrics.failed(280)
+    metrics.failed(FAILED_TRANSCRIPTION_LATENCY_MS)
     metrics.finished()
 
     metrics.queued()
@@ -30,8 +35,8 @@ def test_runtime_metrics_track_work_and_outcomes() -> None:
     assert snapshot.successful_transcriptions == 1
     assert snapshot.failed_transcriptions == 1
     assert snapshot.rejected_transcriptions == 1
-    assert snapshot.average_latency_ms == 200
-    assert snapshot.last_latency_ms == 280
+    assert snapshot.average_latency_ms == AVERAGE_TRANSCRIPTION_LATENCY_MS
+    assert snapshot.last_latency_ms == FAILED_TRANSCRIPTION_LATENCY_MS
     assert snapshot.history == ()
 
 
@@ -54,13 +59,13 @@ def test_runtime_metrics_history_samples_wh_aa(monkeypatch) -> None:
     assert len(second.history) == 1
 
     metrics.queued()
-    clock["t"] += 5.0
+    clock["t"] += METRICS_SAMPLE_INTERVAL_SECONDS
     third = metrics.snapshot(sample=True)
     assert len(third.history) == 2
     assert third.history[-1].queue_depth == 1
 
     # Cap the ring buffer.
     for _ in range(HISTORY_MAX + 5):
-        clock["t"] += 5.0
+        clock["t"] += METRICS_SAMPLE_INTERVAL_SECONDS
         metrics.snapshot(sample=True)
     assert len(metrics.snapshot().history) == HISTORY_MAX
