@@ -27,6 +27,16 @@ MB = 1_000_000
 GB = 1_000_000_000
 
 
+def _megabytes(size_text: str) -> int:
+    """Express catalog download sizes as readable decimal megabytes."""
+    return int(size_text) * MB
+
+
+def _gigabytes(size_text: str) -> int:
+    """Express catalog download sizes as readable decimal gigabytes."""
+    return int(size_text) * GB
+
+
 @dataclass(frozen=True, slots=True)
 class CatalogModel:
     """A downloadable speech-to-text model."""
@@ -641,7 +651,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _sherpa_onnx(
         "sensevoice-small-int8",
         "SenseVoice Small INT8",
-        240 * MB,
+        _megabytes("240"),
         "Mandarin, Cantonese, English, Japanese, Korean",
         "Fastest multilingual · punctuation",
         2,
@@ -664,7 +674,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _sherpa_onnx(
         "parakeet-tdt-0.6b-v3-int8",
         "Parakeet TDT 0.6B v3 INT8",
-        672 * MB,
+        _megabytes("672"),
         "25 European languages",
         "Accurate multilingual · punctuation",
         4,
@@ -717,7 +727,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _sherpa_onnx(
         "parakeet-tdt-0.6b-v2-int8",
         "Parakeet TDT 0.6B v2 INT8",
-        661 * MB,
+        _megabytes("661"),
         "English only",
         "Most accurate English · punctuation",
         4,
@@ -740,7 +750,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _sherpa_onnx(
         "gigaam-v3-ctc-russian-int8",
         "GigaAM v3 CTC Russian INT8",
-        225 * MB,
+        _megabytes("225"),
         "Russian only",
         "Fastest Russian ASR",
         2,
@@ -757,7 +767,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _sherpa_onnx(
         "gigaam-v3-rnnt-russian-int8",
         "GigaAM v3 RNNT Russian",
-        230 * MB,
+        _megabytes("230"),
         "Russian only",
         "Most accurate Russian ASR",
         2,
@@ -776,7 +786,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _sherpa_onnx(
         "canary-180m-flash-en-int8",
         "Canary 180M Flash English INT8",
-        210 * MB,
+        _megabytes("210"),
         "English only in this build",
         "Compact multilingual model, English transcription",
         2,
@@ -796,7 +806,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _sherpa_onnx(
         "streaming-zipformer-en-20m-int8",
         "Streaming Zipformer English 20M INT8",
-        44 * MB,
+        _megabytes("44"),
         "English only",
         "Fastest live streaming",
         1,
@@ -820,7 +830,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _sherpa_onnx(
         "dolphin-small-ctc-int8",
         "Dolphin Small CTC INT8",
-        250 * MB,
+        _megabytes("250"),
         "40 Eastern languages",
         "Accurate · South, East and Southeast Asian",
         2,
@@ -843,7 +853,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _sherpa_onnx(
         "dolphin-base-ctc-int8",
         "Dolphin Base CTC INT8",
-        104 * MB,
+        _megabytes("104"),
         "40 Eastern languages",
         "Fast · South, East and Southeast Asian",
         1,
@@ -864,7 +874,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _sherpa_onnx(
         "qwen3-asr-0.6b-int8",
         "Qwen3-ASR 0.6B INT8",
-        987 * MB,
+        _megabytes("987"),
         "11 languages",
         "Accurate multilingual · punctuation",
         6,
@@ -893,7 +903,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _mlx_audio(
         "whisper-large-v3-turbo-4bit",
         "MLX Whisper Large v3 Turbo 4-bit",
-        469 * MB,
+        _megabytes("469"),
         "Multilingual",
         "Most accurate · compact",
         8,
@@ -908,7 +918,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _mlx_audio(
         "parakeet-tdt-0.6b-v3",
         "MLX Parakeet TDT 0.6B v3",
-        2510 * MB,
+        _megabytes("2510"),
         "25 European languages",
         "Fast and accurate · punctuation",
         8,
@@ -949,7 +959,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _mlx_audio(
         "parakeet-tdt-0.6b-v2",
         "MLX Parakeet TDT 0.6B v2",
-        2472 * MB,
+        _megabytes("2472"),
         "English only",
         "Most accurate English · punctuation",
         8,
@@ -965,7 +975,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _mlx_audio(
         "qwen3-asr-0.6b-4bit",
         "MLX Qwen3-ASR 0.6B 4-bit",
-        713 * MB,
+        _megabytes("713"),
         "11 languages",
         "Accurate multilingual · punctuation",
         8,
@@ -981,7 +991,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _mlx_audio(
         "qwen3-asr-1.7b-4bit",
         "MLX Qwen3-ASR 1.7B 4-bit",
-        1608 * MB,
+        _megabytes("1608"),
         "11 languages",
         "Most accurate multilingual · punctuation",
         12,
@@ -997,7 +1007,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _mlx_audio(
         "granite-speech-4.1-2b-nar",
         "MLX Granite Speech 4.1 2B",
-        2377 * MB,
+        _megabytes("2377"),
         "English only",
         "Most accurate English",
         12,
@@ -1019,7 +1029,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "Medium Streaming",
         5,
         "Moonshine English Medium Streaming",
-        304 * MB,
+        _megabytes("304"),
         "Most accurate · cached streaming",
         supports_streaming=True,
         minimum_ram_gb=4,
@@ -1030,7 +1040,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "Small Streaming",
         4,
         "Moonshine English Small Streaming",
-        165 * MB,
+        _megabytes("165"),
         "Balanced · cached streaming",
         supports_streaming=True,
     ),
@@ -1040,30 +1050,44 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "Tiny Streaming",
         2,
         "Moonshine English Tiny Streaming",
-        52 * MB,
+        _megabytes("52"),
         "Fastest · cached streaming",
         supports_streaming=True,
     ),
-    _moonshine("en-base", "en", "Base", 1, "Moonshine English Base", 141 * MB, "Accurate · batch"),
-    _moonshine("en-tiny", "en", "Tiny", 0, "Moonshine English Tiny", 44 * MB, "Smallest · batch"),
-    _moonshine("es", "es", "Base", 1, "Moonshine Spanish", 65 * MB, "Fast · batch"),
-    _moonshine("ar", "ar", "Base", 1, "Moonshine Arabic", 141 * MB, "Fast · batch"),
-    _moonshine("ja", "ja", "Base", 1, "Moonshine Japanese Base", 141 * MB, "Fast · batch"),
-    _moonshine("ja-tiny", "ja", "Tiny", 0, "Moonshine Japanese Tiny", 72 * MB, "Fastest · batch"),
-    _moonshine("ko", "ko", "Tiny", 0, "Moonshine Korean", 72 * MB, "Fastest · batch"),
-    _moonshine("zh", "zh", "Base", 1, "Moonshine Mandarin", 141 * MB, "Fast · batch"),
-    _moonshine("uk", "uk", "Base", 1, "Moonshine Ukrainian", 141 * MB, "Fast · batch"),
-    _moonshine("vi", "vi", "Base", 1, "Moonshine Vietnamese", 141 * MB, "Fast · batch"),
-    _faster_whisper("tiny.en", "faster-whisper Tiny EN", 75 * MB, "English only", "Fastest", 2),
-    _faster_whisper("tiny", "faster-whisper Tiny", 75 * MB, "Multilingual", "Fastest", 2),
-    _faster_whisper("base.en", "faster-whisper Base EN", 145 * MB, "English only", "Fast", 3),
-    _faster_whisper("base", "faster-whisper Base", 145 * MB, "Multilingual", "Fast", 3),
-    _faster_whisper("small.en", "faster-whisper Small EN", 484 * MB, "English only", "Balanced", 6),
-    _faster_whisper("small", "faster-whisper Small", 484 * MB, "Multilingual", "Balanced", 6),
+    _moonshine(
+        "en-base", "en", "Base", 1, "Moonshine English Base", _megabytes("141"), "Accurate · batch"
+    ),
+    _moonshine(
+        "en-tiny", "en", "Tiny", 0, "Moonshine English Tiny", _megabytes("44"), "Smallest · batch"
+    ),
+    _moonshine("es", "es", "Base", 1, "Moonshine Spanish", _megabytes("65"), "Fast · batch"),
+    _moonshine("ar", "ar", "Base", 1, "Moonshine Arabic", _megabytes("141"), "Fast · batch"),
+    _moonshine("ja", "ja", "Base", 1, "Moonshine Japanese Base", _megabytes("141"), "Fast · batch"),
+    _moonshine(
+        "ja-tiny", "ja", "Tiny", 0, "Moonshine Japanese Tiny", _megabytes("72"), "Fastest · batch"
+    ),
+    _moonshine("ko", "ko", "Tiny", 0, "Moonshine Korean", _megabytes("72"), "Fastest · batch"),
+    _moonshine("zh", "zh", "Base", 1, "Moonshine Mandarin", _megabytes("141"), "Fast · batch"),
+    _moonshine("uk", "uk", "Base", 1, "Moonshine Ukrainian", _megabytes("141"), "Fast · batch"),
+    _moonshine("vi", "vi", "Base", 1, "Moonshine Vietnamese", _megabytes("141"), "Fast · batch"),
+    _faster_whisper(
+        "tiny.en", "faster-whisper Tiny EN", _megabytes("75"), "English only", "Fastest", 2
+    ),
+    _faster_whisper("tiny", "faster-whisper Tiny", _megabytes("75"), "Multilingual", "Fastest", 2),
+    _faster_whisper(
+        "base.en", "faster-whisper Base EN", _megabytes("145"), "English only", "Fast", 3
+    ),
+    _faster_whisper("base", "faster-whisper Base", _megabytes("145"), "Multilingual", "Fast", 3),
+    _faster_whisper(
+        "small.en", "faster-whisper Small EN", _megabytes("484"), "English only", "Balanced", 6
+    ),
+    _faster_whisper(
+        "small", "faster-whisper Small", _megabytes("484"), "Multilingual", "Balanced", 6
+    ),
     _faster_whisper(
         "distil-small.en",
         "Distil-Whisper Small EN",
-        332 * MB,
+        _megabytes("332"),
         "English only",
         "Fast · distilled",
         5,
@@ -1071,34 +1095,43 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _faster_whisper(
         "distil-medium.en",
         "Distil-Whisper Medium EN",
-        789 * MB,
+        _megabytes("789"),
         "English only",
         "Accurate · distilled",
         8,
     ),
-    _whisperkit("openai_whisper-tiny", "WhisperKit Tiny", 66 * MB, "Multilingual", "Fastest", 4),
     _whisperkit(
-        "openai_whisper-tiny.en", "WhisperKit Tiny EN", 66 * MB, "English only", "Fastest", 4
+        "openai_whisper-tiny", "WhisperKit Tiny", _megabytes("66"), "Multilingual", "Fastest", 4
     ),
-    _whisperkit("openai_whisper-base", "WhisperKit Base", 145 * MB, "Multilingual", "Fast", 4),
     _whisperkit(
-        "openai_whisper-base.en", "WhisperKit Base EN", 145 * MB, "English only", "Fast", 4
+        "openai_whisper-tiny.en",
+        "WhisperKit Tiny EN",
+        _megabytes("66"),
+        "English only",
+        "Fastest",
+        4,
+    ),
+    _whisperkit(
+        "openai_whisper-base", "WhisperKit Base", _megabytes("145"), "Multilingual", "Fast", 4
+    ),
+    _whisperkit(
+        "openai_whisper-base.en", "WhisperKit Base EN", _megabytes("145"), "English only", "Fast", 4
     ),
     _whisperkit(
         "openai_whisper-small_216MB",
         "WhisperKit Small (compressed)",
-        216 * MB,
+        _megabytes("216"),
         "Multilingual",
         "Balanced",
         8,
     ),
     _whisperkit(
-        "openai_whisper-small", "WhisperKit Small", 484 * MB, "Multilingual", "Balanced", 8
+        "openai_whisper-small", "WhisperKit Small", _megabytes("484"), "Multilingual", "Balanced", 8
     ),
     _whisperkit(
         "openai_whisper-large-v3-v20240930_626MB",
         "WhisperKit Large v3 Turbo (compressed)",
-        626 * MB,
+        _megabytes("626"),
         "Multilingual",
         "Most accurate",
         12,
@@ -1106,29 +1139,47 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _whisperkit(
         "openai_whisper-large-v3-v20240930_turbo",
         "WhisperKit Large v3 Turbo",
-        1610 * MB,
+        _megabytes("1610"),
         "Multilingual",
         "Most accurate",
         16,
     ),
-    _whisper_cpp("ggml-tiny.en.bin", "whisper.cpp Tiny EN", 75 * MB, "English only", "Fastest", 4),
-    _whisper_cpp("ggml-tiny.bin", "whisper.cpp Tiny", 75 * MB, "Multilingual", "Fastest", 4),
-    _whisper_cpp("ggml-base.en.bin", "whisper.cpp Base EN", 142 * MB, "English only", "Fast", 4),
-    _whisper_cpp("ggml-base.bin", "whisper.cpp Base", 142 * MB, "Multilingual", "Fast", 4),
     _whisper_cpp(
-        "ggml-small.en.bin", "whisper.cpp Small EN", 466 * MB, "English only", "Balanced", 8
-    ),
-    _whisper_cpp("ggml-small.bin", "whisper.cpp Small", 466 * MB, "Multilingual", "Balanced", 8),
-    _whisper_cpp(
-        "ggml-medium.en.bin", "whisper.cpp Medium EN", 1500 * MB, "English only", "Accurate", 12
+        "ggml-tiny.en.bin", "whisper.cpp Tiny EN", _megabytes("75"), "English only", "Fastest", 4
     ),
     _whisper_cpp(
-        "ggml-medium.bin", "whisper.cpp Medium", 1500 * MB, "Multilingual", "Accurate", 12
+        "ggml-tiny.bin", "whisper.cpp Tiny", _megabytes("75"), "Multilingual", "Fastest", 4
+    ),
+    _whisper_cpp(
+        "ggml-base.en.bin", "whisper.cpp Base EN", _megabytes("142"), "English only", "Fast", 4
+    ),
+    _whisper_cpp("ggml-base.bin", "whisper.cpp Base", _megabytes("142"), "Multilingual", "Fast", 4),
+    _whisper_cpp(
+        "ggml-small.en.bin",
+        "whisper.cpp Small EN",
+        _megabytes("466"),
+        "English only",
+        "Balanced",
+        8,
+    ),
+    _whisper_cpp(
+        "ggml-small.bin", "whisper.cpp Small", _megabytes("466"), "Multilingual", "Balanced", 8
+    ),
+    _whisper_cpp(
+        "ggml-medium.en.bin",
+        "whisper.cpp Medium EN",
+        _megabytes("1500"),
+        "English only",
+        "Accurate",
+        12,
+    ),
+    _whisper_cpp(
+        "ggml-medium.bin", "whisper.cpp Medium", _megabytes("1500"), "Multilingual", "Accurate", 12
     ),
     _whisper_cpp(
         "whisper-medium-q4_1.bin",
         "Whisper Medium Q4",
-        492 * MB,
+        _megabytes("492"),
         "Multilingual",
         "Accurate · compact",
         8,
@@ -1144,7 +1195,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _whisper_cpp(
         "ggml-large-v3-turbo.bin",
         "whisper.cpp Large v3 Turbo",
-        1620 * MB,
+        _megabytes("1620"),
         "Multilingual",
         "Most accurate",
         16,
@@ -1152,7 +1203,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _whisper_cpp(
         "ggml-large-v3-q5_0.bin",
         "Whisper Large v3 Q5",
-        1081 * MB,
+        _megabytes("1081"),
         "Multilingual",
         "Most accurate · compact",
         16,
@@ -1166,7 +1217,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     _whisper_cpp(
         "breeze-asr-q5_k.bin",
         "Breeze ASR Q5",
-        1081 * MB,
+        _megabytes("1081"),
         "Taiwanese Mandarin + English",
         "Specialized",
         16,
@@ -1182,7 +1233,12 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         license_name="Apache 2.0",
     ),
     _whisper_cpp(
-        "ggml-large-v3.bin", "whisper.cpp Large v3", 3 * GB, "Multilingual", "Most accurate", 24
+        "ggml-large-v3.bin",
+        "whisper.cpp Large v3",
+        _gigabytes("3"),
+        "Multilingual",
+        "Most accurate",
+        24,
     ),
 )
 
