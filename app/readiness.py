@@ -9,6 +9,7 @@ from app.engines import EngineProvider
 from app.models.base import EngineHealth, TranscriptionEngine
 
 WarmupState = Literal["pending", "warming", "complete", "unsupported", "unavailable", "failed"]
+INITIAL_CHECK_TIMESTAMP = -1.0
 
 
 @runtime_checkable
@@ -33,7 +34,7 @@ class ReadinessMonitor:
         self._lock = asyncio.Lock()
         self._engine: TranscriptionEngine | None = None
         self._health: EngineHealth | None = None
-        self._checked_at = 0.0
+        self._checked_at = INITIAL_CHECK_TIMESTAMP
         self._warmup_state: WarmupState = "pending"
         self._warmed_bytes = 0
 
@@ -85,7 +86,7 @@ class ReadinessMonitor:
 
     async def details(self) -> ReadinessDetails:
         health = await self.probe()
-        age = max(0.0, time.monotonic() - self._checked_at)
+        age = max(0, time.monotonic() - self._checked_at)
         return ReadinessDetails(
             health=health,
             checked_age_seconds=age,
@@ -96,6 +97,6 @@ class ReadinessMonitor:
     def _reset_for_engine(self, engine: TranscriptionEngine) -> None:
         self._engine = engine
         self._health = None
-        self._checked_at = 0.0
+        self._checked_at = INITIAL_CHECK_TIMESTAMP
         self._warmup_state = "pending"
         self._warmed_bytes = 0
