@@ -95,7 +95,7 @@ def test_authenticated_moonshine_stream_ret_df9ab(tmp_path: Path, monkeypatch: M
     assert stream.closed is True
 
 
-def test_health_advertises_ready_moonshine__dbde8(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+def test_health_advertises_ready_moonshine_dbde8(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     settings = Settings(
         token=TOKEN,
         data_dir=tmp_path,

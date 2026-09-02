@@ -92,7 +92,7 @@ SHERPA_TEST = CatalogModel(
 )
 
 
-def test_catalog_includes_standalone_handy__a94aa() -> None:
+def test_catalog_includes_standalone_handy_a94aa() -> None:
     entries = {model.key: model for model in DEFAULT_CATALOG}
 
     assert entries["whisper-medium-q4_1.bin"].engine == "whisper.cpp"
@@ -200,7 +200,7 @@ def test_catalog_includes_gigaam_and_canary_aaaaa() -> None:
     assert streaming.license_name == "Apache 2.0"
 
 
-def test_catalog_includes_the_newer_sherpa__cff8b() -> None:
+def test_catalog_includes_the_newer_sherpa_cff8b() -> None:
     entries = {model.id: model for model in DEFAULT_CATALOG}
 
     dolphin = entries["sherpa-onnx:dolphin-small-ctc-int8"]
@@ -555,7 +555,7 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def test_normalize_sha256_accepts_prefixed__c1c74() -> None:
+def test_normalize_sha256_accepts_prefixed_c1c74() -> None:
     digest = _sha256(b"hello model")
     assert normalize_sha256(f"  SHA256:{digest.upper()}  ") == digest
 
@@ -695,7 +695,7 @@ async def test_custom_download_accepts_matching_u_a(
     assert state is not None and state.status == "completed"
 
 
-def test_custom_download_rejects_malformed__b52d7(tmp_path: Path) -> None:
+def test_custom_download_rejects_malformed_b52d7(tmp_path: Path) -> None:
     manager = ModelManager(tmp_path / "models", catalog=())
     with pytest.raises(ValueError):
         manager.start_custom_download("https://example.com/model.gguf", "not-a-digest")
@@ -837,7 +837,7 @@ def test_download_file_retries_transient_ne_aaaa(
     assert state.downloaded_bytes == len(payload)
 
 
-def test_download_file_does_not_retry_hash__b4fa3(tmp_path: Path) -> None:
+def test_download_file_does_not_retry_hash_b4fa3(tmp_path: Path) -> None:
     """A mismatch fails immediately -- it is not assumed to be transient."""
     import threading
 
@@ -883,7 +883,7 @@ def test_ordinary_listing_paths_are_accepted(relative: str) -> None:
     assert model_manager.is_safe_relative_path(relative)
 
 
-async def test_folder_download_refuses_a_listing__aaaaa(
+async def test_folder_download_refuses_a_listing_aaaaa(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A repo listing must not be able to place files outside the model dir."""
@@ -998,7 +998,7 @@ def test_short_language_lists_are_shown_wit_aa() -> None:
         assert name in html
 
 
-def test_a_single_hidden_language_is_shown__aaa() -> None:
+def test_a_single_hidden_language_is_shown_aaa() -> None:
     """Five languages should not cost a click to reveal the fifth."""
     html = _disclosure_html(_entry(language_names=["a", "b", "c", "d", "e"]))
     assert "<details" not in html

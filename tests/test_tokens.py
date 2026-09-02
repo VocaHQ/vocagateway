@@ -5,7 +5,7 @@ from pathlib import Path
 from app.tokens import TokenStore
 
 
-def test_create_returns_plaintext_once_and__f107e(tmp_path: Path) -> None:
+def test_create_returns_plaintext_once_and_f107e(tmp_path: Path) -> None:
     store = TokenStore(tmp_path / "device_tokens.json")
     record, plaintext = store.create("Kanishk's iPhone")
     assert record.label == "Kanishk's iPhone"

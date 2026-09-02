@@ -30,7 +30,7 @@ async def test_health_requires_both_the_binary_an_aa(tmp_path: Path) -> None:
     assert health.name == f"whisper.cpp:{model.name}"
 
 
-async def test_transcribe_writes_the_output_stem__aaa(
+async def test_transcribe_writes_the_output_stem_aaa(
     tmp_path: Path,
 ) -> None:
     binary = tmp_path / "whisper-cli"
@@ -93,7 +93,7 @@ printf '%s' "auto detected" > "$of.txt"
     assert "-l" not in arguments
 
 
-async def test_transcribe_raises_when_the_engine__aaaa(tmp_path: Path) -> None:
+async def test_transcribe_raises_when_the_engine_aaaa(tmp_path: Path) -> None:
     engine = WhisperCppEngine(tmp_path / "missing-cli", tmp_path / "missing-model.bin")
 
     with pytest.raises(EngineUnavailableError):

@@ -319,7 +319,7 @@ async def test_vocamac_does_not_replace_an_unknow_aaaaa(
     assert health.name == "vocamac:future-vocamac-engine-model"
 
 
-async def test_vocamac_prefers_the_largest_model__a(tmp_path: Path) -> None:
+async def test_vocamac_prefers_the_largest_model_a(tmp_path: Path) -> None:
     engine, models_dir = _build_engine(tmp_path)
     _write_model(models_dir, "openai_whisper-tiny", weight_bytes=16)
     largest = _write_model(models_dir, "openai_whisper-small", weight_bytes=512)
@@ -327,7 +327,7 @@ async def test_vocamac_prefers_the_largest_model__a(tmp_path: Path) -> None:
     assert (await engine.health()).name == f"vocamac:{largest.name}"
 
 
-async def test_vocamac_honours_an_explicit_model__aa(tmp_path: Path) -> None:
+async def test_vocamac_honours_an_explicit_model_aa(tmp_path: Path) -> None:
     engine, models_dir = _build_engine(tmp_path, model="tiny")
     pinned = _write_model(models_dir, "openai_whisper-tiny")
     _write_model(models_dir, "openai_whisper-small", weight_bytes=512)

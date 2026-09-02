@@ -101,7 +101,7 @@ def test_excited_exclaims_every_statement_a_aaa() -> None:
 
 
 @pytest.mark.parametrize("style", sorted(SUPPORTED_WRITING_STYLES))
-def test_an_ellipsis_is_never_mistaken_for__aaaa(style: str) -> None:
+def test_an_ellipsis_is_never_mistaken_for_aaaa(style: str) -> None:
     styled = apply_writing_style("Wait... I am not sure.", style)
     assert "..." in styled
 
@@ -206,7 +206,7 @@ def test_scripts_with_their_own_sentence_marks() -> None:
     assert apply_writing_style("مان ٺيڪ آهيان", "clean", "sd").endswith("۔")
 
 
-def test_no_style_ever_erases_a_transcript__aaa() -> None:
+def test_no_style_ever_erases_a_transcript_aaa() -> None:
     """The broad invariant behind the per-language tables: whatever the language,
     styling is presentation only and can never leave the user with nothing."""
     samples = ["hello", "मैं ठीक हूँ", "私は元気です", "ผมสบายดี", "مان ٺيڪ آهيان", "hi।", "ok..."]

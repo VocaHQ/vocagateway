@@ -61,7 +61,7 @@ def test_decode_rejects_garbage() -> None:
         decode_pairing_payload('{"v":1,"url":"http://192.168.1.1:8765","token":""}')
 
 
-def test_encode_rejects_public_credentials__aaaa() -> None:
+def test_encode_rejects_public_credentials_aaaa() -> None:
     with pytest.raises(ValueError, match="credentials"):
         encode_pairing_payload(
             "http://user:pass@192.168.1.1:8765",
@@ -103,7 +103,7 @@ def test_primary_gateway_base_url_prefers_o_aaaaa(monkeypatch: pytest.MonkeyPatc
     assert primary_gateway_base_url(8765) == "http://homelab.example:8765"
 
 
-def test_default_pairing_url_prefers_saved__a(
+def test_default_pairing_url_prefers_saved_a(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("VOCAGATEWAY_PUBLIC_URL", "http://192.168.1.20:8765")

@@ -69,7 +69,7 @@ async def test_pairing_defaults_to_bootstrap_toke_dd6ed(
 
 
 @pytest.mark.asyncio
-async def test_pairing_can_select_a_device_token__aa(
+async def test_pairing_can_select_a_device_token_aa(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,

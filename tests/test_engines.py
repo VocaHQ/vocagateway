@@ -54,7 +54,7 @@ from app.system import engine_requirement, engine_runs_on
         ),
     ],
 )
-def test_model_selection_builds_new_engine__aa(
+def test_model_selection_builds_new_engine_aa(
     tmp_path: Path,
     catalog_model: CatalogModel,
     expected_type: type[SherpaOnnxEngine] | type[MLXAudioEngine],
@@ -148,7 +148,7 @@ def test_build_engine_honours_forced_settin_aaaa(tmp_path: Path, monkeypatch: Mo
     assert isinstance(engine, WhisperCppEngine)
 
 
-def test_forget_if_active_clears_moonshine__aaaaa(tmp_path: Path) -> None:
+def test_forget_if_active_clears_moonshine_aaaaa(tmp_path: Path) -> None:
     """Reproduces the reported bug: deleting the active Moonshine model reset
     `runtime_config.engine` back to "auto" but left `moonshine_model` pointing at
     the now-deleted id — unlike the sherpa-onnx and mlx-audio branches of the same

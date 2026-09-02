@@ -32,7 +32,7 @@ def test_set_anchor_is_stable_for_the_same_codes() -> None:
     assert module.set_anchor(codes) == module.set_anchor(codes)
 
 
-def test_rendered_language_set_anchors_are__be2db() -> None:
+def test_rendered_language_set_anchors_are_be2db() -> None:
     """Guards the live catalog too: every `<a id="language-set-...">` emitted by
     render() must be distinct, and every link must point at an anchor that exists."""
     module = _load_module()
