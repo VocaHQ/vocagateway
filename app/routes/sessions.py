@@ -3,6 +3,12 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request, Response
+from starlette.status import (
+    HTTP_409_CONFLICT,
+    HTTP_413_CONTENT_TOO_LARGE,
+    HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+    HTTP_422_UNPROCESSABLE_CONTENT,
+)
 
 from app.audio import ALLOWED_AUDIO_TYPES, atomic_upload_path, complete_atomic_upload
 from app.context import GatewayContext, get_context, require_token
@@ -11,6 +17,8 @@ from app.schemas import CreateSessionRequest, DeleteResponse, ModelResponse, Ses
 from app.serializers import session_response
 
 router = APIRouter(dependencies=[Depends(require_token)])
+
+MINIMUM_AUDIO_UPLOAD_BYTES = 128
 
 
 @router.get("/v1/models", response_model=list[ModelResponse])
@@ -48,10 +56,18 @@ async def upload_audio(
     normalized_type = (content_type or "").split(";", maxsplit=1)[0].lower()
     suffix = ALLOWED_AUDIO_TYPES.get(normalized_type)
     if suffix is None:
-        raise APIProblem(415, "unsupported_audio_type", "This audio type is not supported.")
+        raise APIProblem(
+            HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            "unsupported_audio_type",
+            "This audio type is not supported.",
+        )
     maximum_upload_bytes = ctx.settings.maximum_upload_bytes
     if content_length is not None and content_length > maximum_upload_bytes:
-        raise APIProblem(413, "audio_too_large", "The recording exceeds the upload limit.")
+        raise APIProblem(
+            HTTP_413_CONTENT_TOO_LARGE,
+            "audio_too_large",
+            "The recording exceeds the upload limit.",
+        )
 
     temporary, final = atomic_upload_path(ctx.service.upload_dir, str(session_id).lower(), suffix)
     received = 0
@@ -61,11 +77,15 @@ async def upload_audio(
                 received += len(chunk)
                 if received > maximum_upload_bytes:
                     raise APIProblem(
-                        413, "audio_too_large", "The recording exceeds the upload limit."
+                        HTTP_413_CONTENT_TOO_LARGE,
+                        "audio_too_large",
+                        "The recording exceeds the upload limit.",
                     )
                 output.write(chunk)
-        if received < 128:
-            raise APIProblem(422, "audio_empty", "The recording is empty.")
+        if received < MINIMUM_AUDIO_UPLOAD_BYTES:
+            raise APIProblem(
+                HTTP_422_UNPROCESSABLE_CONTENT, "audio_empty", "The recording is empty."
+            )
         complete_atomic_upload(temporary, final)
     except Exception:
         temporary.unlink(missing_ok=True)
@@ -90,7 +110,9 @@ async def finish(session_id: UUID, ctx: GatewayContext = Depends(get_context)) -
 async def retry(session_id: UUID, ctx: GatewayContext = Depends(get_context)) -> SessionResponse:
     stored = ctx.service.require(session_id)
     if stored.state not in {"failed", "uploaded", "completed"}:
-        raise APIProblem(409, "session_not_retryable", "This session cannot be retried.")
+        raise APIProblem(
+            HTTP_409_CONFLICT, "session_not_retryable", "This session cannot be retried."
+        )
     return session_response(await ctx.service.finish(session_id))
 
 

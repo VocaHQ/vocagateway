@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Response
 from fastapi.responses import HTMLResponse
+from starlette.status import HTTP_404_NOT_FOUND, HTTP_409_CONFLICT
 
 from app.admin_queries import token_entries
 from app.context import BOOTSTRAP_TOKEN_ID, GatewayContext, get_context, require_token
@@ -44,13 +45,13 @@ async def revoke_admin_token(
 ) -> DeviceTokenRevokeResponse:
     if token_id == BOOTSTRAP_TOKEN_ID:
         raise APIProblem(
-            409,
+            HTTP_409_CONFLICT,
             "bootstrap_token_not_revocable",
             "Rotate VOCAGATEWAY_TOKEN or its token file instead of revoking it here.",
         )
     revoked = ctx.token_store.revoke(token_id)
     if not revoked:
-        response.status_code = 404
+        response.status_code = HTTP_404_NOT_FOUND
     return DeviceTokenRevokeResponse(revoked=revoked)
 
 
@@ -60,13 +61,15 @@ async def rotate_admin_token(
 ) -> DeviceTokenCreateResponse:
     if token_id == BOOTSTRAP_TOKEN_ID:
         raise APIProblem(
-            409,
+            HTTP_409_CONFLICT,
             "bootstrap_token_not_rotatable",
             "Rotate VOCAGATEWAY_TOKEN or its token file instead of rotating it here.",
         )
     rotated = ctx.token_store.rotate(token_id)
     if rotated is None:
-        raise APIProblem(404, "token_not_found", "This device token no longer exists.")
+        raise APIProblem(
+            HTTP_404_NOT_FOUND, "token_not_found", "This device token no longer exists."
+        )
     record, plaintext = rotated
     return DeviceTokenCreateResponse(
         id=record.id, label=record.label, token=plaintext, created_at=record.created_at
@@ -93,7 +96,7 @@ async def ui_revoke_token(
 ) -> HTMLResponse:
     if token_id == BOOTSTRAP_TOKEN_ID:
         raise APIProblem(
-            409,
+            HTTP_409_CONFLICT,
             "bootstrap_token_not_revocable",
             "Rotate VOCAGATEWAY_TOKEN or its token file instead of revoking it here.",
         )
@@ -107,12 +110,14 @@ async def ui_rotate_token(
 ) -> HTMLResponse:
     if token_id == BOOTSTRAP_TOKEN_ID:
         raise APIProblem(
-            409,
+            HTTP_409_CONFLICT,
             "bootstrap_token_not_rotatable",
             "Rotate VOCAGATEWAY_TOKEN or its token file instead of rotating it here.",
         )
     rotated = ctx.token_store.rotate(token_id)
     if rotated is None:
-        raise APIProblem(404, "token_not_found", "This device token no longer exists.")
+        raise APIProblem(
+            HTTP_404_NOT_FOUND, "token_not_found", "This device token no longer exists."
+        )
     record, plaintext = rotated
     return HTMLResponse(tokens_fragment_str(ctx, new_token=(record.label, plaintext)))
