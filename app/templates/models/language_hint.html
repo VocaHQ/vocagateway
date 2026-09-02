@@ -1,0 +1,14 @@
+{# Warn when a filtered list mixes pinnable and auto-detecting models.
+
+   Testing showed every auto-detecting model returns the wrong writing system
+   on a short phrase - "ठीक है" came back as Chinese from both Dolphin and
+   Qwen3-ASR. Pinning the language fixes it outright, so someone filtering
+   for their language needs to know which half of the list to trust for
+   dictation, which is mostly short phrases. #}
+<div class="callout warning models-language-hint">
+  <strong>Picking a model for {{ language_name }}</strong>
+  <span>Models tagged <em>auto language</em> pick the language themselves.
+    They do well on full sentences but often guess the wrong script on short
+    phrases (most of dictation). Prefer one of the other
+    {{ pinnable_count }} models here, which are forced to use {{ language_name }}.</span>
+</div>

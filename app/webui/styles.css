@@ -1402,6 +1402,18 @@ button.text-link:hover { color: var(--accent-hover); }
   margin-bottom: 26px;
   align-items: start;
 }
+/* Every model action (download/select/cancel/delete) re-renders #models-list
+   from scratch, then JS re-opens whichever family panels were open before the
+   swap (see restoreOpenFamilies in app.js). That collapse-then-reopen dance
+   happens within one tick, but Chrome's scroll-anchoring heuristic still
+   picks an anchor node inside the subtree being torn down and rebuilt, and
+   overcompensates once the panel reappears — the page jumps hundreds of
+   pixels for no visible reason. Anchoring is opt-out per element; since we
+   already manage this panel's open/closed state ourselves, let it opt out. */
+#models-list,
+.family-models {
+  overflow-anchor: none;
+}
 .family-tile {
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -1494,9 +1506,19 @@ button.family-summary:focus-visible {
   min-width: 0;
   overflow: hidden;
 }
+/* Flex children shrink below their content width by default, and plain text
+   wraps when it runs out of room — "20 models" was breaking into "20" over
+   "models" on narrower tiles. Only .family-engines should ever give up space
+   (it already ellipsizes); the count and installed-label stay one line. */
+.family-meta > span {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .family-engines {
+  flex: 1 1 auto;
   overflow: hidden;
   max-width: 100%;
+  min-width: 0;
   color: var(--muted);
   text-overflow: ellipsis;
   white-space: nowrap;

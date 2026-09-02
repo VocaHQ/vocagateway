@@ -45,6 +45,9 @@ format:
 lint:
     uv run python -m ruff check --exit-non-zero-on-fix
     uv run python -m ruff format --check --diff
+    # WPS is adopted incrementally: this new template boundary starts clean
+    # while the existing application baseline is remediated separately.
+    uv run flake8 --select=WPS,E999 app/templating.py
 
 # Run all checks
 [group('dev')]

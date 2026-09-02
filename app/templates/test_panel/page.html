@@ -1,0 +1,13 @@
+{# Onboarding path: pair the phone once, then verify dictation from this browser.
+   Network exposure panel is last and outside #pairing-card so token/QR HTMX
+   swaps cannot stack duplicates. #}
+<div class="page-head">
+  <div>
+    <h2>Pair &amp; test</h2>
+    <p>Connect the phone app with a QR, then record a short clip here to
+       verify the same path the phone uses.</p>
+  </div>
+</div>
+{{ pairing_html }}
+{{ test_card_html }}
+{{ network_html }}

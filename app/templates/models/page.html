@@ -1,0 +1,145 @@
+{% from "macros/icons.html" import filter as filter_icon, expand as expand_icon, collapse as collapse_icon, refresh as refresh_icon, collapse_left %}
+<div class="page-head">
+  <div>
+    <h2>Models</h2>
+    <p>{{ installed }} of {{ total }} downloaded across {{ families }} families,
+       all stored on this machine. Families start collapsed; open one to pick a model.</p>
+  </div>
+  <div class="models-toolbar-actions">
+    <button type="button" class="ghost filter-trigger" id="filter-rail-toggle"
+            aria-controls="models-filter" aria-expanded="true"
+            title="Hide filters">
+      {{ filter_icon() }}
+      <span class="filter-trigger-label">Filters</span>
+      <span id="filter-active-count" class="filter-count hidden" aria-live="polite"></span>
+    </button>
+    <button type="button" class="ghost icon-btn families-expand-toggle"
+            id="families-expand-toggle"
+            data-expanded="false"
+            aria-controls="models-list"
+            aria-expanded="false"
+            aria-label="Expand all families"
+            title="Expand all families">
+      {{ expand_icon() }}{{ collapse_icon() }}
+    </button>
+    <button type="button" class="ghost icon-btn models-refresh"
+            aria-label="Refresh models"
+            title="Refresh models"
+            hx-get="/ui/partials/models-list" hx-include="#models-filter-form"
+            hx-target="#models-list" hx-swap="innerHTML">{{ refresh_icon() }}</button>
+  </div>
+</div>
+<div class="models-layout" id="models-layout">
+  <aside class="models-filter" id="models-filter" aria-label="Model filters">
+    <div class="filter-side-head">
+      <h3 class="filter-side-title">Filters</h3>
+      <button type="button" class="ghost icon-btn filter-side-collapse"
+              id="filter-side-collapse"
+              aria-controls="models-filter"
+              aria-expanded="true"
+              aria-label="Collapse filters"
+              title="Collapse filters">
+        {{ collapse_left() }}
+      </button>
+    </div>
+    <form id="models-filter-form" class="filter-panel" role="group"
+          aria-label="Model filter options"
+          hx-get="/ui/partials/models-list"
+          hx-trigger="change from:input[name], change from:select[name]"
+          hx-target="#models-list" hx-swap="innerHTML"
+          hx-include="this">
+      <fieldset class="filter-field">
+        <legend>Family</legend>
+        <div class="filter-check-list" id="family-filter-list">
+          {% for value, label in family_options %}
+          <label class="filter-check">
+            <input type="checkbox" name="family" value="{{ value }}" /><span>{{ label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <fieldset class="filter-field">
+        <legend>Language</legend>
+        <input type="search" class="filter-search" data-filter-search="language-filter-list"
+               placeholder="Search languages" autocomplete="off" spellcheck="false"
+               aria-label="Search languages" />
+        <div class="filter-check-list filter-check-list-tall" id="language-filter-list">
+          {% for value, label in language_options %}
+          <label class="filter-check">
+            <input type="checkbox" name="language" value="{{ value }}" /><span>{{ label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <fieldset class="filter-field">
+        <legend>Engine</legend>
+        <div class="filter-check-list filter-check-list-engines" id="engine-filter-list">
+          {% for value, label in engine_options %}
+          <label class="filter-check">
+            <input type="checkbox" name="engine" value="{{ value }}" /><span>{{ label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <label class="filter-field">
+        <span>Max download size</span>
+        <select id="max-size-filter" name="max_size" class="max-size-filter">
+          {% for value, label in size_options %}
+          <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="filter-toggles">
+        <label class="filter-toggle" for="installed-only-toggle">
+          <input type="checkbox" id="installed-only-toggle" name="installed_only"
+                 value="true" class="sr-only" />
+          Installed only
+        </label>
+        <label class="filter-toggle" for="recommended-only-toggle"
+               title="Models picked for this machine (RAM and platform)">
+          <input type="checkbox" id="recommended-only-toggle" name="recommended_only"
+                 value="true" class="sr-only" />
+          Fits this machine
+        </label>
+      </div>
+      <button type="button" class="ghost small filter-clear" id="filter-clear">
+        Clear filters
+      </button>
+    </form>
+  </aside>
+  <div class="models-main">
+    <div id="models-list" aria-live="polite">
+      {{ list_html }}
+    </div>
+    <div class="card">
+      <h2>Bring your own Whisper model</h2>
+      <p class="muted">Paste a direct HTTPS link to a <code>.bin</code> or
+         <code>.gguf</code> file. It runs through the standalone engine.
+         Use a <code>/resolve/</code> URL on Hugging Face, not the repo home page.</p>
+      <form hx-post="/ui/partials/models/custom" hx-include="#models-filter-form"
+            hx-target="#models-list" hx-swap="innerHTML">
+        <div class="row">
+          <input name="url" type="url" required
+                 placeholder="https://huggingface.co/&hellip;/resolve/main/model.gguf" />
+          <button type="submit" class="primary">Download</button>
+        </div>
+        <div class="row">
+          <input name="sha256" type="text" spellcheck="false"
+                 pattern="\s*(?:[Ss][Hh][Aa]256:)?[0-9a-fA-F]{64}\s*"
+                 title="64 hexadecimal characters, optionally prefixed with sha256:"
+                 placeholder="Optional SHA-256 from the model card (verified on download)" />
+        </div>
+      </form>
+      <p class="muted small">Catalog models are verified automatically. For
+         your own URL, paste the digest the model card publishes and the
+         download is discarded unless it matches.</p>
+      <p class="muted small model-custom-links">
+        <a href="https://huggingface.co/models?pipeline_tag=automatic-speech-recognition&amp;library=gguf&amp;sort=trending"
+           target="_blank" rel="noopener noreferrer">Browse GGUF speech models</a>
+        <span aria-hidden="true">&middot;</span>
+        <a href="{{ request_model_issue_url }}" target="_blank"
+           rel="noopener noreferrer">Request a catalog model</a>
+      </p>
+    </div>
+  </div>
+</div>

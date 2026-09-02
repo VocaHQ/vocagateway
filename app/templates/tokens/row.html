@@ -1,0 +1,20 @@
+{% macro token_row(entry) %}
+<tr>
+  <td>{{ entry.label }}</td>
+  <td>{{ entry.created }}</td>
+  <td class="align-right token-actions">
+    {% if entry.revocable %}
+    <button type="button" class="ghost small"
+            hx-post="/ui/partials/tokens/{{ entry.id | urlpath }}/rotate"
+            hx-target="#tokens-card" hx-swap="outerHTML"
+            hx-confirm="Give {{ entry.label }} a new secret? Its previous token stops working immediately.">Regenerate</button>
+    <button type="button" class="ghost small danger"
+            hx-delete="/ui/partials/tokens/{{ entry.id | urlpath }}"
+            hx-target="#tokens-card" hx-swap="outerHTML"
+            hx-confirm="Revoke {{ entry.label }}? Any device using only this token loses access immediately.">Revoke</button>
+    {% else %}
+    <span class="muted small">Bootstrap · not revocable here</span>
+    {% endif %}
+  </td>
+</tr>
+{% endmacro %}

@@ -1,0 +1,30 @@
+{# Short path for first-time operators; collapses to onboarding_ready.html
+   once the gateway is ready. #}
+<div class="card onboarding">
+  <h2>Get started</h2>
+  <p class="muted">Quick path to first dictation. You only scan the pairing QR once.</p>
+  <ol class="steps onboarding-steps">
+    {% if show_ffmpeg_step %}
+    <li><strong>Install FFmpeg</strong>: {{ ffmpeg_hint }}.</li>
+    {% endif %}
+    {% if show_engine_step %}
+    <li><strong>Install a speech engine</strong>: {{ engine_hint }}.</li>
+    {% endif %}
+    {% if show_download_step %}
+    <li><strong>Download a model</strong> for this {{ machine_label }}.
+      Open <button type="button" class="text-link" data-open-tab="models">Models</button>
+      and pick a recommended one.</li>
+    {% elif show_select_step %}
+    <li><strong>Select a model</strong> you already have.
+      Open <button type="button" class="text-link" data-open-tab="models">Models</button>
+      and activate one.</li>
+    {% endif %}
+    <li><strong>Pair your phone</strong>:
+      scan the QR under <button type="button" class="text-link" data-open-tab="pair">Pair &amp; test</button> once.</li>
+    <li><strong>Record a short test</strong> on that same tab to confirm audio works.</li>
+  </ol>
+  <div class="onboarding-actions">
+    <button type="button" class="primary" data-open-tab="models">Choose a model</button>
+    <button type="button" class="ghost" data-open-tab="pair">Pair &amp; test</button>
+  </div>
+</div>

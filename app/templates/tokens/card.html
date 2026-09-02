@@ -1,0 +1,52 @@
+{% from "tokens/row.html" import token_row %}
+<div class="card" id="tokens-card">
+  <div class="section-heading">
+    <h2>Device tokens</h2>
+  </div>
+  <p class="muted">One token per phone so a lost device only needs that token
+     revoked. Phones on the bootstrap token keep working until you re-pair them.
+     You can also create tokens while pairing.</p>
+  {% if new_token %}
+  <div class="callout success">
+    <strong>New secret for {{ new_token.label }}</strong>
+    <span>Copy this token now. It will not be shown again. Paste it with
+      the gateway address into that device&rsquo;s manual gateway fields.</span>
+    <div class="row">
+      <code id="new-token-value">{{ new_token.plaintext }}</code>
+      <button type="button" class="ghost small" id="copy-new-token">Copy</button>
+    </div>
+  </div>
+  {% endif %}
+  {% if entries %}
+  <div class="table-scroll">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Label</th>
+          <th>Created</th>
+          <th class="align-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in entries %}
+        {{ token_row(entry) }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-state tokens-empty">No tokens listed yet.</p>
+  {% endif %}
+  <form class="tokens-create" hx-post="/ui/partials/tokens"
+        hx-target="#tokens-card" hx-swap="outerHTML">
+    <label class="settings-field">
+      <span>New device</span>
+      <span class="field-hint">Shown in the pairing QR picker and this list</span>
+      <div class="row">
+        <input name="label" type="text" required maxlength="100"
+               placeholder="e.g. Kanishk&#39;s iPhone" autocomplete="off" />
+        <button type="submit" class="primary">Create token</button>
+      </div>
+    </label>
+  </form>
+</div>

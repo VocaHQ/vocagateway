@@ -6,6 +6,9 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.116,<1",
+  # WebUI templates (app/templates) — keeps markup out of the Python
+  # fragment modules, which only prepare data and pick a template.
+  "jinja2>=3.1,<4",
   # Multilingual sentence boundaries with per-language abbreviation lists, so
   # transcript styling does not carry a hand-written English word list.
   "pysbd>=0.3.4,<0.4",
@@ -55,6 +58,9 @@ dev = [
   # `just unit` runs the suite across cores.
   "pytest-xdist>=3.8,<4",
   "ruff>=0.12,<1",
+  # WPS provides stricter complexity/readability checks. Its optional MCP
+  # server explains unfamiliar violations locally to coding agents.
+  "wemake-python-styleguide[mcp]>=1.8,<2",
 ]
 
 [tool.pytest.ini_options]

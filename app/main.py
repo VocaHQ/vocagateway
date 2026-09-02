@@ -38,6 +38,7 @@ from app.runtime_config import RuntimeConfig
 from app.schemas import ErrorDetail, ErrorEnvelope
 from app.service import TranscriptionService
 from app.storage import SessionRepository
+from app.templating import render
 from app.tokens import TokenStore
 
 WEBUI_DIR = Path(__file__).parent / "webui"
@@ -162,24 +163,7 @@ def create_app(
 
         @app.get("/docs", include_in_schema=False)
         async def api_docs() -> HTMLResponse:
-            # Swagger UI's init call is loaded from an external, same-origin
-            # script rather than inlined, because the CSP above sends
-            # `script-src 'self'` with no `'unsafe-inline'`.
-            return HTMLResponse(f"""<!doctype html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link type="text/css" rel="stylesheet" href="/assets/swagger/swagger-ui.css">
-<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
-<title>{app.title} - API docs</title>
-</head>
-<body>
-<div id="swagger-ui"></div>
-<script src="/assets/swagger/swagger-ui-bundle.js"></script>
-<script src="/assets/swagger/docs-init.js"></script>
-</body>
-</html>
-""")
+            return HTMLResponse(render("docs/swagger.html", title=app.title))
 
     app.include_router(health.router)
     app.include_router(sessions.router)

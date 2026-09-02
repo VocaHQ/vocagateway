@@ -1,0 +1,124 @@
+{% from "macros/icons.html" import active_label, info as info_icon %}
+
+{% macro language_chips(names) %}{% for name in names %}<span class="model-language-chip">{{ name }}</span>{% endfor %}{% endmacro %}
+
+{# Language names behind a summary like "25 European languages": the first
+   few show on the closed card so "does this speak my language?" is
+   answerable without opening every model; the rest sit behind a toggle. #}
+{% macro language_disclosure(ld) %}
+{% if ld %}
+{% if ld.show_all %}
+<div class="model-languages">
+  {% if ld.auto %}
+  <p class="model-language-note muted small">This model picks the language itself; these are
+     languages it handles well, not options you can force.</p>
+  {% endif %}
+  <div class="model-language-list">{{ language_chips(ld.names) }}</div>
+</div>
+{% else %}
+<details class="model-languages">
+  <summary>
+    <span class="model-language-preview">{{ language_chips(ld.preview) }}</span>
+    <span class="model-language-more">+{{ ld.remaining_count }} more</span>
+    <span class="model-language-less">Show fewer</span>
+  </summary>
+  {% if ld.auto %}
+  <p class="model-language-note muted small">This model picks the language itself; these are
+     languages it handles well, not options you can force.</p>
+  {% endif %}
+  <div class="model-language-list">{{ language_chips(ld.names) }}</div>
+</details>
+{% endif %}
+{% endif %}
+{% endmacro %}
+
+{# Info icon (left) + actions (right). Hover/focus shows a popover - no
+   in-card accordion that stretches tile height. #}
+{% macro model_card(card) %}
+{% set entry = card.entry %}
+<article class="model-card" role="listitem"
+         data-model-id="{{ entry.id }}"
+         data-state="{{ entry.state }}"{% if entry.active %} data-active="1"{% endif %}>
+  <div class="model-main">
+    <div class="model-title">
+      <h4 title="{{ entry.label }}">{{ card.display_label }}</h4>
+      <span class="model-tags">
+        {% if entry.active %}
+        {{ active_label() }}
+        {% elif entry.recommended and not card.suppress_recommended %}
+        <span class="badge recommended">recommended</span>
+        {% endif %}
+        {% if entry.detects_language_automatically %}
+        <span class="badge auto-language" title="This model decides the language itself.
+              The language chosen in the app does not constrain it.">auto language</span>
+        {% endif %}
+      </span>
+    </div>
+    <p class="model-meta">{{ card.size_label }} &middot; {{ entry.languages }} &middot; {{ entry.quality }}</p>
+    <p class="model-blurb" title="{{ entry.description }}">
+      {{ entry.description }}
+    </p>
+  </div>
+  <div class="model-toolbar">
+    <div class="model-toolbar-start">
+      <div class="model-info">
+        <button type="button" class="model-info-btn" aria-label="More model details"
+                aria-describedby="{{ card.info_id }}" title="Source, license, languages">
+          {{ info_icon() }}
+        </button>
+        <div class="model-info-pop" id="{{ card.info_id }}" role="tooltip">
+          <p class="model-detail-meta">
+            {% set sep = joiner(" · ") -%}
+            {{ sep() }}{% if entry.source_url %}<a class="model-source-link" href="{{ entry.source_url }}"
+               target="_blank" rel="noopener noreferrer">{{ entry.source }}</a>{% else %}{{ entry.source }}{% endif %}
+            {%- if card.license_name %}{{ sep() }}{{ card.license_name }}{% endif %}
+            {%- if entry.supports_streaming %}{{ sep() }}streams live{% endif %}
+            {%- if card.personal_use_only %}{{ sep() }}personal use only{% endif %}
+          </p>
+          {{ language_disclosure(card.language_disclosure) }}
+        </div>
+      </div>
+      {% if entry.family %}
+      <span class="model-family-pill" title="Family">{{ entry.family }}</span>
+      {% endif %}
+    </div>
+    <div class="model-actions">
+      {% if entry.state == "downloading" %}
+      <div class="model-download-status">
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+             aria-valuenow="{{ card.download.percent }}">
+          <div class="bar" style="width:{{ card.download.percent }}%"></div>
+        </div>
+        <div class="model-download-meta">
+          <span class="muted small progress-copy">{{ card.download.percent }}%
+            &middot; {{ card.download.downloaded }} / {{ card.download.total }}</span>
+          <button class="ghost small" hx-post="/ui/partials/models/{{ card.encoded_id }}/cancel"
+                  hx-include="#models-filter-form"
+                  hx-target="#models-list" hx-swap="innerHTML">Cancel</button>
+        </div>
+      </div>
+      {% elif entry.state == "installed" %}
+      {% if not entry.active %}
+      <button class="primary small"
+              hx-post="/ui/partials/models/{{ card.encoded_id }}/select"
+              hx-include="#models-filter-form"
+              hx-target="#models-list" hx-swap="innerHTML">Select</button>
+      {% endif %}
+      <button class="ghost small danger"
+              hx-delete="/ui/partials/models/{{ card.encoded_id }}"
+              hx-include="#models-filter-form"
+              hx-confirm="Delete {{ entry.label }} from this server?"
+              hx-target="#models-list" hx-swap="innerHTML">Delete</button>
+      {% else %}
+      {% if entry.error %}
+      <p class="error small model-action-error">Download failed: {{ entry.error }}</p>
+      {% endif %}
+      <button class="ghost small"
+              hx-post="/ui/partials/models/{{ card.encoded_id }}/download"
+              hx-include="#models-filter-form"
+              hx-target="#models-list" hx-swap="innerHTML">Download</button>
+      {% endif %}
+    </div>
+  </div>
+</article>
+{% endmacro %}

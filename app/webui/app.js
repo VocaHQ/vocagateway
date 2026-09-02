@@ -266,6 +266,14 @@
     // Download / Select / Cancel / poll refresh replace #models-list; keep open families.
     if (target && target.id === "models-list") {
       window.__openModelFamilies = openFamilyNames();
+      // Every swap here collapses all families back to the default and then
+      // reopens the ones that were open (below), so the page briefly grows and
+      // shrinks within one tick. Browsers disagree on what to do with the
+      // viewport while that happens: Chrome's scroll anchoring can pick the
+      // wrong anchor inside the subtree being replaced, and Safari has no
+      // anchoring at all and jumps to wherever the newly-revealed panel lands.
+      // Restoring the scroll position by hand sidesteps both.
+      window.__modelsScrollY = window.scrollY;
     }
   });
 
@@ -283,6 +291,18 @@
       const open = window.__openModelFamilies || [];
       window.__openModelFamilies = null;
       restoreOpenFamilies(open);
+      const scrollY = window.__modelsScrollY;
+      window.__modelsScrollY = null;
+      if (scrollY != null) {
+        // Two frames: some browsers apply their own scroll correction only
+        // after layout settles on the frame following ours, which would
+        // otherwise undo a single restore.
+        const restore = () => window.scrollTo(0, scrollY);
+        requestAnimationFrame(() => {
+          restore();
+          requestAnimationFrame(restore);
+        });
+      }
     }
   });
 

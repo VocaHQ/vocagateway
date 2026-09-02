@@ -1,0 +1,20 @@
+{# Installed CLIs and Python engines - same data as diagnostics, Overview look. #}
+<div class="card libraries-card">
+  <div class="lib-hero">
+    <p class="lib-kicker">Libraries &amp; tools</p>
+    <h2 class="lib-headline">{{ installed }} of {{ total }} available</h2>
+    <p class="lib-meta">Speech engines, FFmpeg, and companion apps this host can see.</p>
+  </div>
+  <div class="lib-grid" role="list">
+    {% for tile in tiles %}
+    <article class="lib-tile is-{{ "available" if tile.available else "missing" }}" role="listitem">
+      <div class="lib-tile-top">
+        <span class="dot {{ "ok" if tile.available else "bad" }}" aria-hidden="true"></span>
+        <span class="lib-tile-name">{{ tile.name }}</span>
+        <span class="lib-tile-status">{{ "Installed" if tile.available else "Missing" }}</span>
+      </div>
+      <p class="lib-tile-detail" title="{{ tile.detail }}">{{ tile.detail }}</p>
+    </article>
+    {% endfor %}
+  </div>
+</div>

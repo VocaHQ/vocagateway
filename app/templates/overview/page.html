@@ -1,0 +1,13 @@
+<section class="status-hero">
+  <div class="headline">
+    <span class="dot {{ "ok" if ready else "warn" }}" aria-hidden="true"></span>
+    <div>
+      <h2>{{ "Ready for dictation" if ready else "Setup still needed" }}</h2>
+      <p>{{ hero_copy }}</p>
+    </div>
+  </div>
+</section>
+{{ operations_html }}
+{{ system_panel_html }}
+{{ dependencies_html }}
+{{ onboarding_html }}

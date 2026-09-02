@@ -1,23 +1,5 @@
 from __future__ import annotations
 
-from html import escape
-
-
-def error_fragment(message: str) -> str:
-    return f'<p class="error">{escape(message)}</p>'
-
-
-def _facts(items: list[tuple[str, str]]) -> str:
-    return "".join(f"<dt>{escape(label)}</dt><dd>{escape(value)}</dd>" for label, value in items)
-
-
-def _select_options(items: list[tuple[str, str]], selected: str) -> str:
-    return "".join(
-        f'<option value="{escape(value)}"{" selected" if value == selected else ""}>'
-        f"{escape(label)}</option>"
-        for value, label in items
-    )
-
 
 def _format_bytes(size: int) -> str:
     if size >= 1_000_000_000:
