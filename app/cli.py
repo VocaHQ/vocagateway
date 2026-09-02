@@ -137,11 +137,11 @@ def status() -> None:
     try:
         health_url = f"{local_webui_url(settings.bind_host, settings.port)}health"
         with urllib.request.urlopen(health_url, timeout=2) as response:
-            data = json.load(response)
+            status_payload = json.load(response)
     except Exception as error:
         print(f"gateway unreachable: {error}", file=sys.stderr)
         raise SystemExit(1) from error
-    print(json.dumps(data, indent=2))
+    print(json.dumps(status_payload, indent=2))
 
 
 def diagnostics() -> None:
@@ -150,11 +150,11 @@ def diagnostics() -> None:
     request = urllib.request.Request(url, headers={"Authorization": f"Bearer {settings.token}"})
     try:
         with urllib.request.urlopen(request, timeout=5) as response:
-            data = json.load(response)
+            diagnostics_payload = json.load(response)
     except Exception as error:
         print(f"gateway unreachable or unauthorized: {error}", file=sys.stderr)
         raise SystemExit(1) from error
-    print(json.dumps(data, indent=2))
+    print(json.dumps(diagnostics_payload, indent=2))
 
 
 def cleanup() -> None:
