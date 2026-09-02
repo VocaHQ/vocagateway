@@ -60,7 +60,7 @@ def _system_panel(
     commit: CommitStatus | None = None,
 ) -> str:
     """Capability hero: glance-first hardware for local speech, details on expand."""
-    gpus = [item for item in system.accelerators if item != "CPU"]
+    gpus = [accelerator for accelerator in system.accelerators if accelerator != "CPU"]
     runtime = "Container" if system.containerized else "Host"
     chip = _short_chip_label(system.chip)
     features = system.cpu_features or []
