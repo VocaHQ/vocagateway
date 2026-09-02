@@ -106,17 +106,18 @@ def models_list_fragment(
         groups.setdefault(name, []).append(entry)
 
     def family_sort_key(
-        item: tuple[str, list[AdminModelEntry]],
+        family_entries: tuple[str, list[AdminModelEntry]],
     ) -> tuple[bool, bool, int, str]:
-        name, items = item
-        has_active = any(entry.active for entry in items)
-        has_recommended = any(entry.recommended for entry in items)
-        installed_count = sum(entry.state == "installed" for entry in items)
+        name, family_models = family_entries
+        has_active = any(entry.active for entry in family_models)
+        has_recommended = any(entry.recommended for entry in family_models)
+        installed_count = sum(entry.state == "installed" for entry in family_models)
         # Active family first, then recommended, then most installed, then name.
         return (not has_active, not has_recommended, -installed_count, name.lower())
 
     family_contexts = [
-        _family_context(name, items) for name, items in sorted(groups.items(), key=family_sort_key)
+        _family_context(name, family_models)
+        for name, family_models in sorted(groups.items(), key=family_sort_key)
     ]
     return render(
         "models/list.html",
@@ -135,12 +136,12 @@ def models_list_fragment(
     )
 
 
-def _as_list(value: str | list[str] | None) -> list[str]:
-    if value is None:
+def _as_list(selected_values: str | list[str] | None) -> list[str]:
+    if selected_values is None:
         return []
-    if isinstance(value, str):
-        return [value] if value else []
-    return [item for item in value if item]
+    if isinstance(selected_values, str):
+        return [selected_values] if selected_values else []
+    return [entry for entry in selected_values if entry]
 
 
 def _empty_filter_message(
@@ -175,12 +176,12 @@ def _family_dom_id(family: str) -> str:
     return f"family-models-{slug}"
 
 
-def _family_context(family: str, items: list[AdminModelEntry]) -> dict[str, object]:
-    installed = sum(entry.state == "installed" for entry in items)
-    active = next((entry for entry in items if entry.active), None)
-    recommended = next((entry for entry in items if entry.recommended), None)
-    engines = sorted({ENGINE_LABELS.get(entry.engine, entry.engine) for entry in items})
-    count = f"{len(items)} model" + ("" if len(items) == 1 else "s")
+def _family_context(family: str, models: list[AdminModelEntry]) -> dict[str, object]:
+    installed = sum(entry.state == "installed" for entry in models)
+    active = next((entry for entry in models if entry.active), None)
+    recommended = next((entry for entry in models if entry.recommended), None)
+    engines = sorted({ENGINE_LABELS.get(entry.engine, entry.engine) for entry in models})
+    count = f"{len(models)} model" + ("" if len(models) == 1 else "s")
     return {
         "name": family,
         "dom_id": _family_dom_id(family),
@@ -193,11 +194,11 @@ def _family_context(family: str, items: list[AdminModelEntry]) -> dict[str, obje
         "is_recommended": recommended is not None,
         "cards": [
             _model_card_context(
-                item,
+                model,
                 nested_in_family=True,
                 suppress_recommended=recommended is not None,
             )
-            for item in items
+            for model in models
         ],
     }
 
