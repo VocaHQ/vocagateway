@@ -38,10 +38,10 @@ def _env(name: str, default: str = "") -> str:
 
 
 def _env_path(name: str, default: Path) -> Path:
-    value = _env(name)
-    if not value:
+    configured_path = _env(name)
+    if not configured_path:
         return default
-    return Path(value).expanduser()
+    return Path(configured_path).expanduser()
 
 
 def _default_token_file() -> Path:
@@ -160,8 +160,8 @@ def _write_token_file(token_file: Path, token: str) -> None:
     token_file.parent.mkdir(parents=True, exist_ok=True)
     token_file.parent.chmod(0o700)
     descriptor = os.open(token_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-        handle.write(token + "\n")
+    with os.fdopen(descriptor, "w", encoding="utf-8") as token_handle:
+        token_handle.write(token + "\n")
 
 
 def _generate_token(token_file: Path) -> str:
