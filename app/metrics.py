@@ -8,6 +8,8 @@ from dataclasses import dataclass
 # ~5 minutes of history when the WebUI polls Live operations every 5s.
 HISTORY_MAX = 60
 SAMPLE_MIN_INTERVAL_S = 4.0
+# A deliberately old value guarantees the first requested sample is retained.
+INITIAL_SAMPLE_TIMESTAMP = -SAMPLE_MIN_INTERVAL_S
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,7 +67,7 @@ class RuntimeMetrics:
         self._last_latency_ms: int | None = None
         self._last_pipeline: PipelineTiming | None = None
         self._history: deque[MetricsSample] = deque(maxlen=HISTORY_MAX)
-        self._last_sample_at = 0.0
+        self._last_sample_at = INITIAL_SAMPLE_TIMESTAMP
 
     def queued(self) -> None:
         with self._lock:
