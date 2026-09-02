@@ -15,6 +15,13 @@ from app.schemas import (
     SystemStatus,
 )
 
+TEST_RAM_GB = 16.0
+TEST_LOGICAL_CPU_COUNT = 8
+TEST_EFFECTIVE_CPU_COUNT = 8.0
+TEST_GATEWAY_PORT = 8765
+TEST_UPTIME_SECONDS = 42
+TEST_LATENCY_MS = 500
+
 
 def _status(paths: PathStatus) -> AdminStatusResponse:
     return AdminStatusResponse(
@@ -24,10 +31,10 @@ def _status(paths: PathStatus) -> AdminStatusResponse:
             os="Darwin",
             arch="arm64",
             chip="Apple M2",
-            ram_gb=16.0,
+            ram_gb=TEST_RAM_GB,
             is_apple_silicon=True,
-            logical_cpus=8,
-            effective_cpus=8.0,
+            logical_cpus=TEST_LOGICAL_CPU_COUNT,
+            effective_cpus=TEST_EFFECTIVE_CPU_COUNT,
             containerized=False,
             accelerators=["CPU", "Metal/Core ML"],
             cpu_features=[],
@@ -35,7 +42,7 @@ def _status(paths: PathStatus) -> AdminStatusResponse:
         dependencies=[DependencyStatus(name="FFmpeg", available=True, path="/usr/bin/ffmpeg")],
         paths=paths,
         bind_host="0.0.0.0",
-        port=8765,
+        port=TEST_GATEWAY_PORT,
         setup=SetupChecklist(
             token_configured=True,
             ffmpeg_available=True,
@@ -44,15 +51,15 @@ def _status(paths: PathStatus) -> AdminStatusResponse:
             engine_ready=True,
         ),
         metrics=OperationalMetricsStatus(
-            uptime_seconds=42,
+            uptime_seconds=TEST_UPTIME_SECONDS,
             queue_depth=0,
             active_transcriptions=0,
             concurrency_limit=1,
             successful_transcriptions=3,
             failed_transcriptions=0,
             rejected_transcriptions=0,
-            average_latency_ms=500,
-            last_latency_ms=500,
+            average_latency_ms=TEST_LATENCY_MS,
+            last_latency_ms=TEST_LATENCY_MS,
         ),
         readiness=ReadinessStatus(probe_age_seconds=1.0, warmup_state="complete", warmed_bytes=0),
     )
