@@ -14,6 +14,8 @@ from app.errors import EngineUnavailableError, LanguageUnsupportedError
 from app.models.base import EngineTranscription, TranscriptionOptions
 from app.models.sherpa_onnx import SherpaOnnxEngine, _SherpaOnnxStreamAdapter
 
+NORMALIZED_SAMPLE_RATE_HZ = 16_000
+
 
 def _catalog(
     model_type: str = "sense_voice", required_files: tuple[str, ...] | None = None
@@ -57,7 +59,7 @@ def _wave(path: Path) -> None:
     with wave.open(str(path), "wb") as output:
         output.setnchannels(1)
         output.setsampwidth(2)
-        output.setframerate(16_000)
+        output.setframerate(NORMALIZED_SAMPLE_RATE_HZ)
         output.writeframes(array("h", [0, 100, -100]).tobytes())
 
 
@@ -75,7 +77,7 @@ async def test_sherpa_keeps_one_recognizer_loaded(
 
     class Stream:
         def accept_waveform(self, sample_rate: int, samples: list[float]) -> None:
-            assert sample_rate == 16_000
+            assert sample_rate == NORMALIZED_SAMPLE_RATE_HZ
             assert len(samples) == 3
 
     Stream.result = TranscriptionResult()
@@ -490,7 +492,7 @@ def test_stream_adapter_reports_partial_the_aaaa() -> None:
 
     recognizer.ready_remaining = 1
     recognizer.text = "hello"
-    adapter.add_audio([0.1, 0.2], 16_000)
+    adapter.add_audio([0.1, 0.2], NORMALIZED_SAMPLE_RATE_HZ)
     assert len(events) == 1
     assert events[0].line.text == "hello"
     assert events[0].line.line_id == 0
@@ -498,7 +500,7 @@ def test_stream_adapter_reports_partial_the_aaaa() -> None:
     recognizer.ready_remaining = 1
     recognizer.text = "hello world"
     recognizer.endpoint = True
-    adapter.add_audio([0.3, 0.4], 16_000)
+    adapter.add_audio([0.3, 0.4], NORMALIZED_SAMPLE_RATE_HZ)
     assert len(events) == 2
     assert events[1].line.text == "hello world"
     assert events[1].line.line_id == 0
@@ -517,12 +519,12 @@ def test_stream_adapter_starts_a_new_line_a_aaaaa() -> None:
     recognizer.ready_remaining = 1
     recognizer.text = "first segment"
     recognizer.endpoint = True
-    adapter.add_audio([0.1], 16_000)
+    adapter.add_audio([0.1], NORMALIZED_SAMPLE_RATE_HZ)
 
     recognizer.ready_remaining = 1
     recognizer.text = "second segment"
     recognizer.endpoint = True
-    adapter.add_audio([0.2], 16_000)
+    adapter.add_audio([0.2], NORMALIZED_SAMPLE_RATE_HZ)
 
     operation_result = adapter.stop()
     assert [(line.line_id, line.text) for line in operation_result.lines] == [
@@ -540,9 +542,9 @@ def test_stream_adapter_does_not_repeat_ide_a() -> None:
 
     recognizer.ready_remaining = 1
     recognizer.text = "hello"
-    adapter.add_audio([0.1], 16_000)
+    adapter.add_audio([0.1], NORMALIZED_SAMPLE_RATE_HZ)
     recognizer.ready_remaining = 1
     recognizer.text = "hello"  # unchanged
-    adapter.add_audio([0.2], 16_000)
+    adapter.add_audio([0.2], NORMALIZED_SAMPLE_RATE_HZ)
 
     assert len(events) == 1
