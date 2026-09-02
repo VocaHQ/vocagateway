@@ -6,6 +6,8 @@ from pathlib import Path
 from app.models.base import TranscriptionOptions
 from app.models.handy import HandyEngine
 
+EXECUTABLE_FILE_MODE = 0o700
+
 
 def _write_selected_model(settings_file: Path, model: str) -> None:
     settings_file.write_text(
@@ -31,7 +33,7 @@ async def test_handy_adapter_uses_downloaded_mode_aa(
         "#!/bin/sh\nprintf '%s\\n' '{\"text\":\"private local result\"}'\n",
         encoding="utf-8",
     )
-    binary.chmod(0o700)
+    binary.chmod(EXECUTABLE_FILE_MODE)
     model_path = (
         tmp_path / "cache" / "models--owner--repository" / "snapshots" / "revision" / "model.gguf"
     )
@@ -57,7 +59,7 @@ async def test_handy_health_is_false_when_model_i_f7f57(
 ) -> None:
     binary = tmp_path / "handy"
     binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    binary.chmod(0o700)
+    binary.chmod(EXECUTABLE_FILE_MODE)
     engine = HandyEngine(
         binary,
         "owner/repository/missing.gguf",
@@ -72,7 +74,7 @@ async def test_handy_reports_an_unavailable_model_e479e(tmp_path: Path) -> None:
     _write_selected_model(settings_file, selected)
     binary = tmp_path / "handy"
     binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    binary.chmod(0o700)
+    binary.chmod(EXECUTABLE_FILE_MODE)
 
     engine = HandyEngine(
         binary,
@@ -99,7 +101,7 @@ async def test_handy_retries_empty_primary_result_e08a0(
         "esac\n",
         encoding="utf-8",
     )
-    binary.chmod(0o700)
+    binary.chmod(EXECUTABLE_FILE_MODE)
     for model in (primary, fallback):
         owner, repository, filename = model.split("/")
         model_path = (
@@ -141,7 +143,7 @@ async def test_handy_follows_the_model_selected_i_aaa(
         '#!/bin/sh\nprintf \'%s\\n\' "$*" > "$0.args"\nprintf \'%s\\n\' \'{"text":"result"}\'\n',
         encoding="utf-8",
     )
-    binary.chmod(0o700)
+    binary.chmod(EXECUTABLE_FILE_MODE)
     for model in (first, second):
         _write_downloaded_model(tmp_path / "cache", model)
     _write_selected_model(settings_file, first)
@@ -173,7 +175,7 @@ async def test_handy_explicit_model_override_does_c5495(
     settings_file = tmp_path / "settings_store.json"
     binary = tmp_path / "handy"
     binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    binary.chmod(0o700)
+    binary.chmod(EXECUTABLE_FILE_MODE)
     for model in (configured, selected):
         _write_downloaded_model(tmp_path / "cache", model)
     _write_selected_model(settings_file, selected)
