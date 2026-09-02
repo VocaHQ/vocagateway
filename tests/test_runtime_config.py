@@ -6,7 +6,7 @@ from pathlib import Path
 from app.runtime_config import RuntimeConfig
 
 
-def test_legacy_moonshine_language_migrates_to_model_id(tmp_path: Path) -> None:
+def test_legacy_moonshine_language_migrates(tmp_path: Path) -> None:
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"engine": "moonshine", "moonshine_language": "es"}))
 
@@ -16,7 +16,7 @@ def test_legacy_moonshine_language_migrates_to_model_id(tmp_path: Path) -> None:
     assert config.moonshine_model == "moonshine:es"
 
 
-def test_moonshine_variant_round_trips_independently_of_language(tmp_path: Path) -> None:
+def test_moonshine_variant_round_trips(tmp_path: Path) -> None:
     path = tmp_path / "config.json"
     original = RuntimeConfig(
         engine="moonshine",
