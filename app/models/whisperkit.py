@@ -17,6 +17,12 @@ from typing import Any
 from app.errors import EngineUnavailableError, TranscriptionProcessError
 from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
 
+TRANSCRIPTION_TIMEOUT_SECONDS = 180
+HTTP_SUCCESS_STATUS = 200
+MAXIMUM_CLI_ERROR_LENGTH = 200
+SERVER_TOKEN_BYTES = 12
+MAXIMUM_SERVER_ERROR_LENGTH = 240
+
 
 @dataclass(slots=True)
 class _WhisperKitServer:
@@ -96,7 +102,7 @@ class WhisperKitEngine:
                             audio_path,
                             options.language,
                         ),
-                        timeout=180,
+                        timeout=TRANSCRIPTION_TIMEOUT_SECONDS,
                     )
                 except TimeoutError as error:
                     raise TranscriptionProcessError(
@@ -167,14 +173,18 @@ class WhisperKitEngine:
             stderr=asyncio.subprocess.PIPE,
         )
         try:
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=180)
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(), timeout=TRANSCRIPTION_TIMEOUT_SECONDS
+            )
         except TimeoutError as error:
             process.kill()
             await process.wait()
             raise TranscriptionProcessError("WhisperKit transcription timed out.") from error
         if process.returncode != 0:
             message = stderr.decode("utf-8", errors="replace").strip().splitlines()
-            detail = message[-1][:200] if message else "unknown WhisperKit error"
+            detail = (
+                message[-1][:MAXIMUM_CLI_ERROR_LENGTH] if message else "unknown WhisperKit error"
+            )
             raise TranscriptionProcessError(f"WhisperKit exited unsuccessfully: {detail}")
         transcript = _extract_transcript(stdout.decode("utf-8", errors="replace"))
         if not transcript:
@@ -244,7 +254,7 @@ def _start_server(
             )
         try:
             with urllib.request.urlopen(_health_url(server), timeout=1) as response:
-                if response.status == 200:
+                if response.status == HTTP_SUCCESS_STATUS:
                     return server
         except (OSError, urllib.error.URLError):
             time.sleep(0.1)
@@ -264,7 +274,7 @@ def _server_transcription(
 ) -> str:
     if server.process.poll() is not None:
         raise _PersistentServerUnavailable("WhisperKit's local server stopped.")
-    boundary = f"vocaphone-{secrets.token_hex(12)}"
+    boundary = f"vocaphone-{secrets.token_hex(SERVER_TOKEN_BYTES)}"
     fields = [("model", model_path.name)]
     if language != "auto":
         fields.append(("language", language))
@@ -276,10 +286,10 @@ def _server_transcription(
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=180) as response:
+        with urllib.request.urlopen(request, timeout=TRANSCRIPTION_TIMEOUT_SECONDS) as response:
             payload: dict[str, Any] = json.load(response)
     except urllib.error.HTTPError as error:
-        detail = error.read().decode("utf-8", errors="replace")[-240:]
+        detail = error.read().decode("utf-8", errors="replace")[-MAXIMUM_SERVER_ERROR_LENGTH:]
         raise TranscriptionProcessError(
             f"WhisperKit server rejected the audio: {detail or error.reason}"
         ) from error
