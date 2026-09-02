@@ -6,6 +6,7 @@ from pathlib import Path
 import httpx
 import pytest
 from conftest import TOKEN, FakeEngine, FakeNormalizer
+from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED
 
 from app.config import Settings
 from app.main import create_app
@@ -13,11 +14,13 @@ from app.model_manager import ModelManager
 from app.pairing import decode_pairing_payload
 from app.runtime_config import RuntimeConfig
 
+MINIMUM_QR_SVG_BYTES = 200
+
 
 @pytest.mark.asyncio
 async def test_pairing_endpoints_require_auth(client: httpx.AsyncClient) -> None:
-    assert (await client.get("/v1/admin/pairing")).status_code == 401
-    assert (await client.get("/v1/admin/pairing/qr.svg")).status_code == 401
+    assert (await client.get("/v1/admin/pairing")).status_code == HTTP_401_UNAUTHORIZED
+    assert (await client.get("/v1/admin/pairing/qr.svg")).status_code == HTTP_401_UNAUTHORIZED
 
 
 @pytest.mark.asyncio
@@ -28,7 +31,7 @@ async def test_pairing_payload_and_qr(
 ) -> None:
     monkeypatch.setenv("VOCAGATEWAY_PUBLIC_URL", "http://192.168.1.75:8765")
     response = await client.get("/v1/admin/pairing", headers=authorization)
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     body = response.json()
     assert body["url"] == "http://192.168.1.75:8765"
     assert body["version"] == 1
@@ -44,13 +47,13 @@ async def test_pairing_payload_and_qr(
         headers=authorization,
         params={"url": "http://192.168.1.75:8765"},
     )
-    assert qr.status_code == 200
+    assert qr.status_code == HTTP_200_OK
     assert "svg" in qr.headers["content-type"]
     assert b"<svg" in qr.content.lower() or b"path" in qr.content.lower()
-    assert len(qr.content) > 200
+    assert len(qr.content) > MINIMUM_QR_SVG_BYTES
 
     partial = await client.get("/ui/partials/pairing", headers=authorization)
-    assert partial.status_code == 200
+    assert partial.status_code == HTTP_200_OK
     assert "pairing-qr" in partial.text
     assert "192.168.1.75" in partial.text
     # QR is inlined so the browser never needs an unauthenticated <img> fetch.
@@ -65,7 +68,7 @@ async def test_pairing_defaults_to_bootstrap_toke_dd6ed(
 ) -> None:
     monkeypatch.setenv("VOCAGATEWAY_PUBLIC_URL", "http://192.168.1.75:8765")
     partial = await client.get("/ui/partials/pairing", headers=authorization)
-    assert partial.status_code == 200
+    assert partial.status_code == HTTP_200_OK
     assert '<option value="bootstrap" selected>Bootstrap token</option>' in partial.text
     assert "Or pair a new device with its own token" in partial.text
 
@@ -80,7 +83,7 @@ async def test_pairing_can_select_a_device_token_aa(
     created = await client.post(
         "/v1/admin/tokens", headers=authorization, json={"label": "Pixel 6a"}
     )
-    assert created.status_code == 200
+    assert created.status_code == HTTP_200_OK
     device = created.json()
 
     api = await client.get(
@@ -88,7 +91,7 @@ async def test_pairing_can_select_a_device_token_aa(
         headers=authorization,
         params={"url": "http://192.168.1.75:8765", "token_id": device["id"]},
     )
-    assert api.status_code == 200
+    assert api.status_code == HTTP_200_OK
     decoded = decode_pairing_payload(api.json()["payload"])
     assert decoded.token == device["token"]
     assert decoded.token != TOKEN
@@ -98,7 +101,7 @@ async def test_pairing_can_select_a_device_token_aa(
         headers=authorization,
         params={"token_id": device["id"]},
     )
-    assert partial.status_code == 200
+    assert partial.status_code == HTTP_200_OK
     assert f'<option value="{device["id"]}" selected>Pixel 6a</option>' in partial.text
     assert "no longer available" not in partial.text
 
@@ -175,7 +178,7 @@ async def test_pairing_offers_to_rotate_a_stale_d_aaa(
             headers=auth,
             data={"url": "http://192.168.1.75:8765"},
         )
-        assert rotated.status_code == 200
+        assert rotated.status_code == HTTP_200_OK
         assert f'<option value="{device_id}" selected>Kanishk&#39;s Iphone</option>' in rotated.text
         assert "still paired and working normally" not in rotated.text
 
@@ -192,7 +195,7 @@ async def test_creating_a_pairing_token_shows_its_aaaa(
         headers=authorization,
         data={"label": "Work iPad", "url": "http://192.168.1.75:8765"},
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     assert '<option value="bootstrap">Bootstrap token</option>' in response.text
     assert "selected>Work iPad</option>" in response.text
 
@@ -229,7 +232,7 @@ async def test_switching_networks_forgets_the_old_a94f7(tmp_path: Path) -> None:
     ) as client:
         auth = {"Authorization": f"Bearer {TOKEN}"}
         partial = await client.get("/ui/partials/pairing", headers=auth)
-        assert partial.status_code == 200
+        assert partial.status_code == HTTP_200_OK
         assert f'value="{old_address}"' not in partial.text
         assert f'value="{hostname_address}"' in partial.text
 
@@ -252,7 +255,7 @@ async def test_pairing_accepts_bare_tailscale_address(
         headers=authorization,
         params={"url": "100.101.102.103"},
     )
-    assert partial.status_code == 200
+    assert partial.status_code == HTTP_200_OK
     assert "http://100.101.102.103:8765" in partial.text
 
     api = await client.get(
@@ -260,7 +263,7 @@ async def test_pairing_accepts_bare_tailscale_address(
         headers=authorization,
         params={"url": "100.101.102.103"},
     )
-    assert api.status_code == 200
+    assert api.status_code == HTTP_200_OK
     body = api.json()
     assert body["url"] == "http://100.101.102.103:8765"
     decoded = decode_pairing_payload(body["payload"])
@@ -286,10 +289,10 @@ async def test_refresh_keeps_a_saved_tailscale_ad_aaaaa(
     added = await client.get(
         "/ui/partials/pairing", headers=authorization, params={"url": tailscale_url}
     )
-    assert added.status_code == 200
+    assert added.status_code == HTTP_200_OK
     assert "100.89.197.121" in added.text
 
     # Simulate a plain page refresh: no `url` query param this time.
     refreshed = await client.get("/ui/partials/pairing", headers=authorization)
-    assert refreshed.status_code == 200
+    assert refreshed.status_code == HTTP_200_OK
     assert "100.89.197.121" in refreshed.text
