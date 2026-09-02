@@ -20,6 +20,9 @@ from app.models.base import EngineHealth, EngineTranscription, TranscriptionOpti
 
 MODEL_METADATA = ".vocagateway-model.json"
 STREAMING_MODEL_TYPE = "streaming_zipformer"
+TRANSCRIPTION_TIMEOUT_SECONDS = 180
+MAXIMUM_ERROR_MESSAGE_LENGTH = 240
+PCM_SAMPLE_SCALE = 32_768.0
 
 
 class SherpaOnnxEngine:
@@ -106,13 +109,13 @@ class SherpaOnnxEngine:
             try:
                 text = await asyncio.wait_for(
                     asyncio.to_thread(decode, recognizer, audio_path),
-                    timeout=180,
+                    timeout=TRANSCRIPTION_TIMEOUT_SECONDS,
                 )
             except TimeoutError as error:
                 raise TranscriptionProcessError("sherpa-onnx transcription timed out.") from error
             except Exception as error:
                 raise TranscriptionProcessError(
-                    f"sherpa-onnx failed: {str(error)[-240:]}"
+                    f"sherpa-onnx failed: {str(error)[-MAXIMUM_ERROR_MESSAGE_LENGTH:]}"
                 ) from error
             if not text:
                 # A model asked for a language it was never trained on returns
@@ -244,7 +247,7 @@ def _read_wave_samples(audio_path: Path) -> tuple[int, list[float]]:
     samples.frombytes(frames)
     if channels > 1:
         samples = array("h", samples[::channels])
-    return sample_rate, [sample / 32768.0 for sample in samples]
+    return sample_rate, [sample / PCM_SAMPLE_SCALE for sample in samples]
 
 
 def _decode_wave(recognizer: Any, audio_path: Path) -> str:

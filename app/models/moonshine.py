@@ -18,6 +18,10 @@ from app.models.base import EngineHealth, EngineTranscription, TranscriptionOpti
 
 MODEL_METADATA = ".vocagateway-model.json"
 STREAMING_ARCHITECTURES = {2, 3, 4, 5}
+TRANSCRIPTION_TIMEOUT_SECONDS = 120
+MAXIMUM_ERROR_MESSAGE_LENGTH = 240
+PCM_SAMPLE_SCALE = 32_768.0
+STREAM_UPDATE_INTERVAL_SECONDS = 0.35
 LANGUAGE_ALIASES = {
     "ar": {"ar", "ar-SA"},
     "en": {"en", "en-US", "en-GB"},
@@ -88,12 +92,14 @@ class MoonshineEngine:
             try:
                 text = await asyncio.wait_for(
                     asyncio.to_thread(_batch_transcribe, transcriber, audio_path),
-                    timeout=120,
+                    timeout=TRANSCRIPTION_TIMEOUT_SECONDS,
                 )
             except TimeoutError as error:
                 raise TranscriptionProcessError("Moonshine transcription timed out.") from error
             except Exception as error:
-                raise TranscriptionProcessError(f"Moonshine failed: {str(error)[-240:]}") from error
+                raise TranscriptionProcessError(
+                    f"Moonshine failed: {str(error)[-MAXIMUM_ERROR_MESSAGE_LENGTH:]}"
+                ) from error
             if not text:
                 raise TranscriptionProcessError("Moonshine returned an empty transcript.")
             return EngineTranscription(
@@ -152,13 +158,13 @@ def _batch_transcribe(transcriber: Any, audio_path: Path) -> str:
     samples.frombytes(frames)
     if channels > 1:
         samples = array("h", samples[::channels])
-    floats = [sample / 32768.0 for sample in samples]
+    floats = [sample / PCM_SAMPLE_SCALE for sample in samples]
     transcript = transcriber.transcribe_without_streaming(floats, sample_rate)
     return " ".join(line.text.strip() for line in transcript.lines if line.text.strip()).strip()
 
 
 def _start_stream(transcriber: Any) -> Any:
-    stream = transcriber.create_stream(update_interval=0.35)
+    stream = transcriber.create_stream(update_interval=STREAM_UPDATE_INTERVAL_SECONDS)
     stream.start()
     return stream
 
