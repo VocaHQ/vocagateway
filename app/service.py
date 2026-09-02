@@ -9,6 +9,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from starlette.status import (
+    HTTP_404_NOT_FOUND,
+    HTTP_409_CONFLICT,
+    HTTP_422_UNPROCESSABLE_CONTENT,
+    HTTP_500_INTERNAL_SERVER_ERROR,
+    HTTP_502_BAD_GATEWAY,
+    HTTP_503_SERVICE_UNAVAILABLE,
+)
+
 from app.config import Settings
 from app.engines import EngineProvider
 from app.errors import (
@@ -24,6 +33,8 @@ from app.models.base import AudioNormalizer, EngineTranscription, TranscriptionO
 from app.scripts import transcript_matches_language
 from app.storage import SessionRepository, StoredSession
 from app.text_styles import apply_writing_style
+
+TRANSCRIPTION_SLOT_TIMEOUT_SECONDS = 0.05
 
 
 class TranscriptionService:
@@ -48,10 +59,12 @@ class TranscriptionService:
         if stored.state == "completed":
             return stored
         if stored.audio_name is None:
-            raise APIProblem(409, "audio_missing", "Upload audio before finishing the session.")
+            raise APIProblem(
+                HTTP_409_CONFLICT, "audio_missing", "Upload audio before finishing the session."
+            )
         if stored.state == "transcribing":
             raise APIProblem(
-                409,
+                HTTP_409_CONFLICT,
                 "transcription_in_progress",
                 "Transcription is already in progress.",
             )
@@ -106,26 +119,32 @@ class TranscriptionService:
         except SilentAudioError as error:
             self.metrics.failed(_elapsed_ms(started))
             self.repository.update(session_id, state="failed", error_code="silent_audio")
-            raise APIProblem(422, "silent_audio", str(error)) from error
+            raise APIProblem(HTTP_422_UNPROCESSABLE_CONTENT, "silent_audio", str(error)) from error
         except InvalidAudioError as error:
             self.metrics.failed(_elapsed_ms(started))
             self.repository.update(session_id, state="failed", error_code="invalid_audio")
-            raise APIProblem(422, "invalid_audio", str(error)) from error
+            raise APIProblem(HTTP_422_UNPROCESSABLE_CONTENT, "invalid_audio", str(error)) from error
         except EngineUnavailableError as error:
             self.metrics.failed(_elapsed_ms(started))
             self.repository.update(session_id, state="failed", error_code="engine_unavailable")
-            raise APIProblem(503, "engine_unavailable", str(error), recoverable=True) from error
+            raise APIProblem(
+                HTTP_503_SERVICE_UNAVAILABLE, "engine_unavailable", str(error), recoverable=True
+            ) from error
         except LanguageUnsupportedError as error:
             # Before the general handler below: this is a `TranscriptionProcessError`,
             # but retrying replays the same language against the same model, so the
             # audio is discarded rather than kept for a Retry that cannot succeed.
             self.metrics.failed(_elapsed_ms(started))
             self.repository.update(session_id, state="failed", error_code="language_unsupported")
-            raise APIProblem(422, "language_unsupported", str(error)) from error
+            raise APIProblem(
+                HTTP_422_UNPROCESSABLE_CONTENT, "language_unsupported", str(error)
+            ) from error
         except TranscriptionProcessError as error:
             self.metrics.failed(_elapsed_ms(started))
             self.repository.update(session_id, state="failed", error_code="transcription_failed")
-            raise APIProblem(502, "transcription_failed", str(error), recoverable=True) from error
+            raise APIProblem(
+                HTTP_502_BAD_GATEWAY, "transcription_failed", str(error), recoverable=True
+            ) from error
         except Exception:
             # Leave the session retryable: stuck "transcribing" rejects finish
             # and is not in the retry allow-list (failed/uploaded/completed).
@@ -170,19 +189,25 @@ class TranscriptionService:
             return AdhocTranscription(outcome.text.strip(), name, timing)
         except SilentAudioError as error:
             self.metrics.failed(_elapsed_ms(started))
-            raise APIProblem(422, "silent_audio", str(error)) from error
+            raise APIProblem(HTTP_422_UNPROCESSABLE_CONTENT, "silent_audio", str(error)) from error
         except InvalidAudioError as error:
             self.metrics.failed(_elapsed_ms(started))
-            raise APIProblem(422, "invalid_audio", str(error)) from error
+            raise APIProblem(HTTP_422_UNPROCESSABLE_CONTENT, "invalid_audio", str(error)) from error
         except EngineUnavailableError as error:
             self.metrics.failed(_elapsed_ms(started))
-            raise APIProblem(503, "engine_unavailable", str(error), recoverable=True) from error
+            raise APIProblem(
+                HTTP_503_SERVICE_UNAVAILABLE, "engine_unavailable", str(error), recoverable=True
+            ) from error
         except LanguageUnsupportedError as error:
             self.metrics.failed(_elapsed_ms(started))
-            raise APIProblem(422, "language_unsupported", str(error)) from error
+            raise APIProblem(
+                HTTP_422_UNPROCESSABLE_CONTENT, "language_unsupported", str(error)
+            ) from error
         except TranscriptionProcessError as error:
             self.metrics.failed(_elapsed_ms(started))
-            raise APIProblem(502, "transcription_failed", str(error), recoverable=True) from error
+            raise APIProblem(
+                HTTP_502_BAD_GATEWAY, "transcription_failed", str(error), recoverable=True
+            ) from error
         except Exception:
             self.metrics.failed(_elapsed_ms(started))
             raise
@@ -194,7 +219,7 @@ class TranscriptionService:
     def require(self, session_id: UUID) -> StoredSession:
         session = self.repository.get(session_id)
         if session is None:
-            raise APIProblem(404, "session_not_found", "The session does not exist.")
+            raise APIProblem(HTTP_404_NOT_FOUND, "session_not_found", "The session does not exist.")
         return session
 
     def delete(self, session_id: UUID) -> bool:
@@ -215,11 +240,13 @@ class TranscriptionService:
     async def _acquire_transcription_slot(self) -> None:
         self.metrics.queued()
         try:
-            await asyncio.wait_for(self._transcription_slots.acquire(), timeout=0.05)
+            await asyncio.wait_for(
+                self._transcription_slots.acquire(), timeout=TRANSCRIPTION_SLOT_TIMEOUT_SECONDS
+            )
         except TimeoutError as error:
             self.metrics.rejected()
             raise APIProblem(
-                503,
+                HTTP_503_SERVICE_UNAVAILABLE,
                 "engine_overloaded",
                 "The local transcription engine is busy.",
                 recoverable=True,
@@ -231,7 +258,11 @@ class TranscriptionService:
 
     def _safe_audio_path(self, audio_name: str) -> Path:
         if Path(audio_name).name != audio_name:
-            raise APIProblem(500, "invalid_storage_reference", "Stored audio reference is invalid.")
+            raise APIProblem(
+                HTTP_500_INTERNAL_SERVER_ERROR,
+                "invalid_storage_reference",
+                "Stored audio reference is invalid.",
+            )
         return self.upload_dir / audio_name
 
 
