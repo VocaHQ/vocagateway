@@ -21,6 +21,7 @@ class FakeEngine:
         self.transcript = transcript
         self.calls = 0
         self.health_calls = 0
+        self.last_options: TranscriptionOptions | None = None
 
     async def health(self) -> EngineHealth:
         self.health_calls += 1
@@ -29,6 +30,7 @@ class FakeEngine:
     async def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> str:
         assert audio_path.is_file()
         self.calls += 1
+        self.last_options = options
         return self.transcript
 
 

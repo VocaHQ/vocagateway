@@ -101,6 +101,23 @@ Deprecated CLI console-script aliases (`vocaphone-server`, `vocaphone-token`,
 `vocaphone-status`, `vocaphone-diagnostics`, `vocaphone-cleanup`) still resolve to
 the same entry points as `vocagateway*` for one cycle; prefer the new names.
 
+## VocaLinux remote_api
+
+A shipped VocaLinux can POST dictation to this gateway over the OpenAI
+transcription path. Set the engine to `remote_api`, the server URL to the
+gateway origin, the API endpoint to `/v1/audio/transcriptions` (not
+`/inference`), and the API key to the gateway bearer token. The model field is
+ignored; the WebUI's loaded engine runs.
+
+The phone pairing contract is unchanged. This path does not create a session and
+does not stream. Audio still travels to the gateway host, so it is not on-device
+processing.
+
+VocaLinux Test Connection is unauthenticated `GET /`, so it can look green with
+a bad key. First dictation is the real check. The client timeout is 30 seconds.
+Default concurrency is 1 (busy returns 503). LAN HTTP is the gateway default;
+HTTPS needs a certificate the desktop OS trusts.
+
 ## Related docs
 
 - [README](../README.md) — quick starts and full configuration table
