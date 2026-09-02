@@ -25,8 +25,8 @@ DEPRECATED_ALIASES = {
 
 def _pyproject_scripts() -> dict[str, str]:
     root = Path(__file__).resolve().parents[1]
-    data = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
-    scripts = data["project"]["scripts"]
+    payload = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    scripts = payload["project"]["scripts"]
     assert isinstance(scripts, dict)
     return {str(name): str(target) for name, target in scripts.items()}
 

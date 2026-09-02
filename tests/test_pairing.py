@@ -36,10 +36,10 @@ def test_round_trip_encode_decode() -> None:
         "http://192.168.1.20:8765/",
         "test-token-with-at-least-thirty-two-characters",
     )
-    data = json.loads(raw)
-    assert data["v"] == PAIRING_VERSION
-    assert data["url"] == "http://192.168.1.20:8765"
-    assert data["token"] == "test-token-with-at-least-thirty-two-characters"
+    payload = json.loads(raw)
+    assert payload["v"] == PAIRING_VERSION
+    assert payload["url"] == "http://192.168.1.20:8765"
+    assert payload["token"] == "test-token-with-at-least-thirty-two-characters"
     decoded = decode_pairing_payload(raw)
     assert decoded.url == "http://192.168.1.20:8765"
     assert decoded.token == "test-token-with-at-least-thirty-two-characters"

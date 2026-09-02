@@ -34,8 +34,8 @@ def test_non_latin_model_uses_expanded_deco_c79b6(
     module = ModuleType("moonshine_voice")
 
     class ModelArch:
-        def __init__(self, value: int) -> None:
-            self.value = value
+        def __init__(self, specification) -> None:
+            self.specification = specification
 
     class Transcriber:
         def __init__(self, **kwargs: object) -> None:

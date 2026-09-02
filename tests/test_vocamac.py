@@ -43,8 +43,8 @@ def _write_partial_model(models_dir: Path, variant: str) -> Path:
 
 
 def _write_preferences(tmp_path: Path, selected: str) -> None:
-    with (tmp_path / "com.vocamac.app.plist").open("wb") as handle:
-        plistlib.dump({"vocamac.selectedModelSize": selected}, handle)
+    with (tmp_path / "com.vocamac.app.plist").open("wb") as file_handle:
+        plistlib.dump({"vocamac.selectedModelSize": selected}, file_handle)
 
 
 def _build_engine(tmp_path: Path, *, model: str | None = None) -> tuple[VocaMacEngine, Path]:
@@ -149,10 +149,10 @@ async def test_vocamac_headless_cli_uses_the_apps_aa(
 
     assert engine.is_available() is True
     assert (await engine.health()).name == "vocamac:parakeet-tdt-0.6b-v2"
-    result = await engine.transcribe(audio, TranscriptionOptions("en", "raw"))
+    operation_result = await engine.transcribe(audio, TranscriptionOptions("en", "raw"))
 
-    assert result.text == "private local result"
-    assert result.inference_ms == 125
+    assert operation_result.text == "private local result"
+    assert operation_result.inference_ms == 125
     arguments = Path(f"{executable}.args").read_text(encoding="utf-8").splitlines()
     assert arguments[:3] == ["--transcribe-file", str(audio), "--json"]
     assert arguments[arguments.index("--language") + 1] == "en"

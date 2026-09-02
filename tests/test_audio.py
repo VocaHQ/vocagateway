@@ -16,8 +16,8 @@ async def test_ffmpeg_normalizes_real_audio(
     source = tmp_path / "source.wav"
     destination = tmp_path / "normalized.wav"
     source.write_bytes(audio_bytes)
-    result = await FFmpegNormalizer().normalize(source, destination, 120)
-    with wave.open(str(result), "rb") as normalized:
+    operation_result = await FFmpegNormalizer().normalize(source, destination, 120)
+    with wave.open(str(operation_result), "rb") as normalized:
         assert normalized.getframerate() == 16000
         assert normalized.getnchannels() == 1
 

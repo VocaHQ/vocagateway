@@ -70,15 +70,15 @@ async def test_sherpa_keeps_one_recognizer_loaded(
     _wave(audio)
     constructions: list[dict[str, object]] = []
 
-    class Result:
+    class TranscriptionResult:
         text = " persistent sherpa result "
 
     class Stream:
-        result = Result()
-
         def accept_waveform(self, sample_rate: int, samples: list[float]) -> None:
             assert sample_rate == 16_000
             assert len(samples) == 3
+
+    Stream.result = TranscriptionResult()
 
     class Recognizer:
         @classmethod
@@ -504,8 +504,8 @@ def test_stream_adapter_reports_partial_the_aaaa() -> None:
     assert events[1].line.line_id == 0
     assert recognizer.reset_calls == 1
 
-    result = adapter.stop()
-    assert [(line.line_id, line.text) for line in result.lines] == [(0, "hello world")]
+    operation_result = adapter.stop()
+    assert [(line.line_id, line.text) for line in operation_result.lines] == [(0, "hello world")]
     assert stream.finished is True
 
 
@@ -524,8 +524,8 @@ def test_stream_adapter_starts_a_new_line_a_aaaaa() -> None:
     recognizer.endpoint = True
     adapter.add_audio([0.2], 16_000)
 
-    result = adapter.stop()
-    assert [(line.line_id, line.text) for line in result.lines] == [
+    operation_result = adapter.stop()
+    assert [(line.line_id, line.text) for line in operation_result.lines] == [
         (0, "first segment"),
         (1, "second segment"),
     ]

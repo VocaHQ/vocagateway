@@ -23,14 +23,14 @@ async def test_mlx_audio_keeps_one_model_loaded(
     audio.write_bytes(b"audio")
     constructions: list[Path] = []
 
-    class Result:
+    class TranscriptionResult:
         text = " persistent mlx result "
 
     class Model:
-        def generate(self, audio_path: str, *, language: str = "en") -> Result:
+        def generate(self, audio_path: str, *, language: str = "en") -> TranscriptionResult:
             assert audio_path == str(audio)
             assert language == "en"
-            return Result()
+            return TranscriptionResult()
 
     def load(path: Path) -> Model:
         constructions.append(path)

@@ -420,12 +420,12 @@ async def test_moonshine_download_uses_catalog_la_aa(
 
 async def test_archive_download_extracts_validate_aaa(tmp_path: Path) -> None:
     source = tmp_path / "model.tar.bz2"
-    content = tmp_path / "published-model"
-    content.mkdir()
-    (content / "model.int8.onnx").write_bytes(b"onnx")
-    (content / "tokens.txt").write_text("token")
+    response_body = tmp_path / "published-model"
+    response_body.mkdir()
+    (response_body / "model.int8.onnx").write_bytes(b"onnx")
+    (response_body / "tokens.txt").write_text("token")
     with tarfile.open(source, "w:bz2") as archive:
-        archive.add(content, arcname="published-model")
+        archive.add(response_body, arcname="published-model")
     catalog_model = dataclasses.replace(SHERPA_TEST, archive_url=source.as_uri())
     manager = ModelManager(tmp_path / "models", catalog=(catalog_model,))
 
@@ -549,10 +549,10 @@ HELLO_SHA256 = "3b96f0f0e0e34e6d1b8bfe4f8ac71bfad9d0f8dd15b4ae0b8b1e4f4c4a0ac0b1
 """Deliberately wrong digest for `b"hello model"`, used to force a rejection."""
 
 
-def _sha256(data: bytes) -> str:
+def _sha256(payload) -> str:
     import hashlib
 
-    return hashlib.sha256(data).hexdigest()
+    return hashlib.sha256(payload).hexdigest()
 
 
 def test_normalize_sha256_accepts_prefixed_c1c74() -> None:
@@ -560,10 +560,10 @@ def test_normalize_sha256_accepts_prefixed_c1c74() -> None:
     assert normalize_sha256(f"  SHA256:{digest.upper()}  ") == digest
 
 
-@pytest.mark.parametrize("value", ["", "nope", "abc123", "g" * 64, "a" * 63, "a" * 65])
-def test_normalize_sha256_rejects_malformed(value: str) -> None:
+@pytest.mark.parametrize("configured_value", ["", "nope", "abc123", "g" * 64, "a" * 63, "a" * 65])
+def test_normalize_sha256_rejects_malformed(configured_value) -> None:
     with pytest.raises(ValueError):
-        normalize_sha256(value)
+        normalize_sha256(configured_value)
 
 
 async def test_single_file_download_accepts_match_aaaa(
@@ -704,11 +704,11 @@ def test_custom_download_rejects_malformed_b52d7(tmp_path: Path) -> None:
 async def test_archive_download_rejects_wrong_arc_a7516(tmp_path: Path) -> None:
     archive = tmp_path / "model.tar.bz2"
     buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w:bz2") as handle:
+    with tarfile.open(fileobj=buffer, mode="w:bz2") as file_handle:
         payload = b"onnx"
-        info = tarfile.TarInfo("model-root/model.onnx")
-        info.size = len(payload)
-        handle.addfile(info, io.BytesIO(payload))
+        metadata = tarfile.TarInfo("model-root/model.onnx")
+        metadata.size = len(payload)
+        file_handle.addfile(metadata, io.BytesIO(payload))
     archive.write_bytes(buffer.getvalue())
     model = dataclasses.replace(
         SHERPA_TEST,
@@ -803,8 +803,8 @@ def test_download_file_retries_transient_ne_aaaa(
     attempts = {"count": 0}
 
     class FakeResponse:
-        def __init__(self, data: bytes) -> None:
-            self._buffer = io.BytesIO(data)
+        def __init__(self, payload) -> None:
+            self._buffer = io.BytesIO(payload)
             self.headers: dict[str, str] = {}
 
         def __enter__(self) -> FakeResponse:
@@ -934,14 +934,15 @@ def test_generated_model_docs_match_the_catalog() -> None:
     import subprocess
 
     root = Path(__file__).resolve().parent.parent
-    result = subprocess.run(
+    operation_result = subprocess.run(
         [sys.executable, str(root / "scripts" / "generate_model_docs.py"), "--check"],
         capture_output=True,
         text=True,
         cwd=root,
     )
-    assert result.returncode == 0, (
-        f"{result.stdout}{result.stderr}\nRun: uv run scripts/generate_model_docs.py"
+    assert operation_result.returncode == 0, (
+        f"{operation_result.stdout}{operation_result.stderr}\n"
+        "Run: uv run scripts/generate_model_docs.py"
     )
 
 
