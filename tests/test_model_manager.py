@@ -102,6 +102,16 @@ def _write_invalid_archive(archive: Path) -> None:
     archive.write_bytes(buffer.getvalue())
 
 
+def _assert_pins_match_catalog(pins: dict[str, dict[str, object]]) -> None:
+    catalog_ids = {model.id for model in DEFAULT_CATALOG}
+    for model_id, record in pins.items():
+        assert model_id in catalog_ids, f"pin for unknown model {model_id}"
+        if "sha256" in record:
+            assert normalize_sha256(record["sha256"]) == record["sha256"]
+        for name, digest in record.get("file_digests", {}).items():
+            assert normalize_sha256(digest) == digest, f"{model_id}:{name}"
+
+
 TINY_FILE = CatalogModel(
     id=WHISPER_CPP_TINY_ID,
     engine=WHISPER_CPP_ENGINE,
@@ -840,13 +850,7 @@ def test_shipped_pin_file_is_well_formed() -> None:
     # any runtime error, so the floor is asserted here instead: losing pins in
     # packaging or a bad regeneration has to fail CI, not ship quietly.
     assert len(pins) >= MINIMUM_PIN_COVERAGE, f"pin coverage collapsed to {len(pins)} models"
-    catalog_ids = {model.id for model in DEFAULT_CATALOG}
-    for model_id, record in pins.items():
-        assert model_id in catalog_ids, f"pin for unknown model {model_id}"
-        if "sha256" in record:
-            assert normalize_sha256(record["sha256"]) == record["sha256"]
-        for name, digest in record.get("file_digests", {}).items():
-            assert normalize_sha256(digest) == digest, f"{model_id}:{name}"
+    _assert_pins_match_catalog(pins)
 
 
 def test_download_file_raises_and_removes_t_aaa(tmp_path: Path) -> None:
