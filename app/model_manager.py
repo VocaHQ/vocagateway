@@ -84,7 +84,7 @@ def _call_with_retries[ActionResult](
 
 
 class DownloadCancelled(Exception):
-    pass
+    """A model download was cancelled by the caller."""
 
 
 class ModelIntegrityError(Exception):
@@ -107,11 +107,11 @@ def normalize_sha256(digest_text: str) -> str:
 
 
 class DownloadInProgressError(Exception):
-    pass
+    """A second download was requested while one is active."""
 
 
 class UnknownModelError(Exception):
-    pass
+    """The requested model is not in the catalog."""
 
 
 @dataclass(slots=True)
