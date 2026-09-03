@@ -61,9 +61,12 @@ async def test_unsupported_language_is_reported_a_d68a4(
     The clients decide whether to keep audio for Retry from this code, and no
     number of retries will make an English-only model transcribe Hindi.
     """
-    app = create_app(settings, engine=WrongLanguageEngine(), normalizer=FakeNormalizer())
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://gateway") as client:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(
+            app=create_app(settings, engine=WrongLanguageEngine(), normalizer=FakeNormalizer())
+        ),
+        base_url="http://gateway",
+    ) as client:
         session_id = uuid4()
         await client.post(
             SESSIONS_API_PATH,
