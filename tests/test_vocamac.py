@@ -66,6 +66,12 @@ def _write_preferences(tmp_path: Path, selected: str) -> None:
         plistlib.dump({"vocamac.selectedModelSize": selected}, file_handle)
 
 
+def _write_audio(tmp_path: Path) -> Path:
+    audio = tmp_path / AUDIO_FILE_NAME
+    audio.write_bytes(TEST_AUDIO_BYTES)
+    return audio
+
+
 def _build_engine(tmp_path: Path, *, model: str | None = None) -> tuple[VocaMacEngine, Path]:
     app_path = tmp_path / "VocaMac.app"
     app_path.mkdir(exist_ok=True)
@@ -170,8 +176,7 @@ async def test_vocamac_headless_cli_uses_the_apps_aa(
             _headless_model(PARAKEET_MODEL, selected=True),
         ],
     )
-    audio = tmp_path / AUDIO_FILE_NAME
-    audio.write_bytes(TEST_AUDIO_BYTES)
+    audio = _write_audio(tmp_path)
 
     assert engine.is_available() is True
     assert (await engine.health()).name == "vocamac:parakeet-tdt-0.6b-v2"
@@ -196,8 +201,7 @@ async def test_vocamac_headless_cli_honours_an_ex_aaa(
         ],
         model=WHISPER_SMALL_MODEL,
     )
-    audio = tmp_path / AUDIO_FILE_NAME
-    audio.write_bytes(TEST_AUDIO_BYTES)
+    audio = _write_audio(tmp_path)
 
     assert engine.is_available() is True
     assert (await engine.health()).name == "vocamac:small"
@@ -234,8 +238,7 @@ async def test_vocamac_headless_cli_surfaces_mode_aaaaa(
             "message": "Model is not downloaded: parakeet-tdt-0.6b-v2",
         },
     )
-    audio = tmp_path / AUDIO_FILE_NAME
-    audio.write_bytes(TEST_AUDIO_BYTES)
+    audio = _write_audio(tmp_path)
 
     with pytest.raises(EngineUnavailableError, match="Model is not downloaded"):
         await engine.transcribe(audio, TranscriptionOptions(AUTO_LANGUAGE, RAW_STYLE))
@@ -262,38 +265,34 @@ async def test_vocamac_without_headless_cli_keeps_aa(tmp_path: Path) -> None:
         encoding=UTF8_ENCODING,
     )
     executable.chmod(EXECUTABLE_FILE_MODE)
-    selected = _write_model(models_dir, WHISPER_SMALL_MODEL)
+    _write_model(models_dir, WHISPER_SMALL_MODEL)
     _write_preferences(tmp_path, SMALL_MODEL)
-    audio = tmp_path / AUDIO_FILE_NAME
-    audio.write_bytes(TEST_AUDIO_BYTES)
+    audio = _write_audio(tmp_path)
 
-    health = await engine.health()
     await engine.transcribe(audio, TranscriptionOptions(AUTO_LANGUAGE, RAW_STYLE))
 
-    assert health.ready is True
-    assert health.name == "vocamac:openai_whisper-small"
+    assert (await engine.health()).ready is True
+    assert (await engine.health()).name == "vocamac:openai_whisper-small"
     assert not Path(f"{executable}.args").exists()
     arguments = (tmp_path / "whisperkit-cli.args").read_text(encoding=UTF8_ENCODING).splitlines()
-    assert arguments[arguments.index("--model-path") + 1] == str(selected)
+    assert arguments[arguments.index("--model-path") + 1] == str(models_dir / WHISPER_SMALL_MODEL)
 
 
 async def test_vocamac_runs_the_model_selected_in_aaa(tmp_path: Path) -> None:
     engine, models_dir = _build_engine(tmp_path)
     _write_model(models_dir, WHISPER_TINY_MODEL, weight_bytes=LARGE_TEST_WEIGHT_BYTES)
-    selected = _write_model(models_dir, WHISPER_SMALL_MODEL)
+    _write_model(models_dir, WHISPER_SMALL_MODEL)
     _write_preferences(tmp_path, SMALL_MODEL)
-    audio = tmp_path / AUDIO_FILE_NAME
-    audio.write_bytes(TEST_AUDIO_BYTES)
+    audio = _write_audio(tmp_path)
 
-    health = await engine.health()
     transcript = await engine.transcribe(audio, TranscriptionOptions(AUTO_LANGUAGE, RAW_STYLE))
     arguments = (tmp_path / "whisperkit-cli.args").read_text(encoding=UTF8_ENCODING).splitlines()
 
-    assert health.ready is True
-    assert health.name == "vocamac:openai_whisper-small"
+    assert (await engine.health()).ready is True
+    assert (await engine.health()).name == "vocamac:openai_whisper-small"
     assert isinstance(transcript, EngineTranscription)
     assert transcript.text == "private local result"
-    assert arguments[arguments.index("--model-path") + 1] == str(selected)
+    assert arguments[arguments.index("--model-path") + 1] == str(models_dir / WHISPER_SMALL_MODEL)
     # VocaMac already downloaded the matching tokenizer, so reuse it.
     assert arguments[arguments.index("--download-tokenizer-path") + 1] == str(
         tmp_path / SUPPORT_DIRECTORY_NAME / MODELS_DIRECTORY_NAME
