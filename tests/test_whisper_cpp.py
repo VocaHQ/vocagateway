@@ -64,13 +64,14 @@ printf '%s' "private local result" > "$of.txt"
     audio = tmp_path / AUDIO_FILE_NAME
     audio.write_bytes(AUDIO_BYTES)
 
-    engine = WhisperCppEngine(binary, model)
-    transcript = await engine.transcribe(audio, TranscriptionOptions("en", RAW_STYLE))
+    transcript = await WhisperCppEngine(binary, model).transcribe(
+        audio, TranscriptionOptions("en", RAW_STYLE)
+    )
 
     assert transcript == "private local result"
-    arguments = (tmp_path / "whisper-cli.args").read_text(encoding="utf-8").splitlines()
-    assert arguments[arguments.index("-l") + 1] == "en"
-    assert arguments[arguments.index("-f") + 1] == str(audio)
+    recorded = (tmp_path / "whisper-cli.args").read_text(encoding="utf-8").splitlines()
+    assert recorded[recorded.index("-l") + 1] == "en"
+    assert recorded[recorded.index("-f") + 1] == str(audio)
 
 
 async def test_transcribe_omits_the_language_flag_d8504(tmp_path: Path) -> None:
@@ -98,8 +99,7 @@ printf '%s' "auto detected" > "$of.txt"
     transcript = await engine.transcribe(audio, TranscriptionOptions(AUTO_LANGUAGE, RAW_STYLE))
 
     assert transcript == "auto detected"
-    arguments = (tmp_path / "whisper-cli.args").read_text(encoding="utf-8").splitlines()
-    assert "-l" not in arguments
+    assert "-l" not in (tmp_path / "whisper-cli.args").read_text(encoding="utf-8").splitlines()
 
 
 async def test_transcribe_raises_when_the_engine_aaaa(tmp_path: Path) -> None:
