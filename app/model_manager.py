@@ -10,6 +10,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import partial
 from http import client as http_client
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
@@ -343,11 +344,11 @@ class ModelManager:
         if not model.archive_url or not model.archive_root or not model.required_files:
             raise UnknownModelError(f"Archive metadata is incomplete for {model.id}.")
         final_dir = self.model_path(model)
-        partial_dir = final_dir.with_name(final_dir.name + PARTIAL_DIRECTORY_SUFFIX)
-        extraction_dir = final_dir.with_name(final_dir.name + ".extracting")
-        archive_path = final_dir.with_name(final_dir.name + ".download")
-        shutil.rmtree(partial_dir, ignore_errors=True)
-        shutil.rmtree(extraction_dir, ignore_errors=True)
+        partial_dir = final_dir.with_name(f"{final_dir.name}{PARTIAL_DIRECTORY_SUFFIX}")
+        extraction_dir = final_dir.with_name(f"{final_dir.name}.extracting")
+        archive_path = final_dir.with_name(f"{final_dir.name}.download")
+        _clear_staging_directory(partial_dir)
+        _remove_tree(extraction_dir)
         archive_path.unlink(missing_ok=True)
         try:
             # Verified before extraction, not after: `_safe_extract_archive`
@@ -372,7 +373,7 @@ class ModelManager:
                 )
             missing = [name for name in model.required_files if not (extracted / name).is_file()]
             if missing:
-                raise RuntimeError(f"Downloaded model is missing: {', '.join(missing)}.")
+                raise RuntimeError(_missing_model_files_message(missing))
             # Redundant when `model.sha256` pinned the archive, since that one
             # check already covers everything inside it. It matters for an
             # archive with no pinned digest but pinned member digests.
@@ -385,19 +386,20 @@ class ModelManager:
                 "required_files": list(model.required_files),
             }
             (partial_dir / ".vocagateway-model.json").write_text(
-                json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
+                f"{json.dumps(metadata, indent=2)}\n", encoding="utf-8"
             )
             if download_handle.cancel.is_set():
                 raise DownloadCancelled
             final_dir.parent.mkdir(parents=True, exist_ok=True)
-            shutil.rmtree(final_dir, ignore_errors=True)
+            _remove_tree(final_dir)
             partial_dir.replace(final_dir)
             download_handle.state.status = COMPLETED_STATUS
-        finally:
             archive_path.unlink(missing_ok=True)
-            shutil.rmtree(extraction_dir, ignore_errors=True)
-            if download_handle.state.status != COMPLETED_STATUS:
-                shutil.rmtree(partial_dir, ignore_errors=True)
+        except BaseException:
+            archive_path.unlink(missing_ok=True)
+            _remove_tree(extraction_dir)
+            _remove_tree(partial_dir)
+            raise
 
     async def _run_sherpa_huggingface_download(
         self, model: CatalogModel, download_handle: _DownloadHandle
@@ -415,7 +417,7 @@ class ModelManager:
             raise UnknownModelError(f"Hugging Face metadata is incomplete for {model.id}.")
         final_dir = self.model_path(model)
         partial_dir = final_dir.with_name(final_dir.name + PARTIAL_DIRECTORY_SUFFIX)
-        shutil.rmtree(partial_dir, ignore_errors=True)
+        _remove_tree(partial_dir)
         partial_dir.mkdir(parents=True, exist_ok=True)
         try:
             listing = await asyncio.to_thread(
@@ -427,22 +429,17 @@ class ModelManager:
                 for name in model.required_files
                 if (entry := available.get(name)) is not None
             )
-            for name in model.required_files:
-                if download_handle.cancel.is_set():
-                    raise DownloadCancelled
-                listed = available.get(name)
-                await asyncio.to_thread(
-                    _download_file,
-                    _resolve_url(model, name),
-                    partial_dir / name,
-                    download_handle.state,
-                    download_handle.cancel,
-                    name,
-                    _expected_digest(model, name, listed.sha256 if listed else None),
+            await asyncio.gather(
+                *(
+                    self._download_required_file(
+                        model, partial_dir, download_handle, name, available
+                    )
+                    for name in model.required_files
                 )
+            )
             missing = [name for name in model.required_files if not (partial_dir / name).is_file()]
             if missing:
-                raise RuntimeError(f"Downloaded model is missing: {', '.join(missing)}.")
+                raise RuntimeError(_missing_model_files_message(missing))
             metadata = {
                 "model_id": model.id,
                 "model_type": model.model_type,
@@ -450,24 +447,24 @@ class ModelManager:
                 "required_files": list(model.required_files),
             }
             (partial_dir / ".vocagateway-model.json").write_text(
-                json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
+                f"{json.dumps(metadata, indent=2)}\n", encoding="utf-8"
             )
             if download_handle.cancel.is_set():
                 raise DownloadCancelled
             final_dir.parent.mkdir(parents=True, exist_ok=True)
-            shutil.rmtree(final_dir, ignore_errors=True)
+            _remove_tree(final_dir)
             partial_dir.replace(final_dir)
             download_handle.state.status = COMPLETED_STATUS
-        finally:
-            if download_handle.state.status != COMPLETED_STATUS:
-                shutil.rmtree(partial_dir, ignore_errors=True)
+        except BaseException:
+            _remove_tree(partial_dir)
+            raise
 
     async def _run_moonshine_download(
         self, model: CatalogModel, download_handle: _DownloadHandle
     ) -> None:
         final_dir = self.model_path(model)
-        partial_dir = final_dir.with_name(final_dir.name + PARTIAL_DIRECTORY_SUFFIX)
-        shutil.rmtree(partial_dir, ignore_errors=True)
+        partial_dir = final_dir.with_name(f"{final_dir.name}{PARTIAL_DIRECTORY_SUFFIX}")
+        _remove_tree(partial_dir)
         partial_dir.mkdir(parents=True, exist_ok=True)
         download_handle.state.total_bytes = model.size_bytes
         download_handle.state.current_file = "Moonshine model assets"
@@ -488,16 +485,16 @@ class ModelManager:
                 "model_arch": int(model_arch),
             }
             (partial_dir / ".vocagateway-model.json").write_text(
-                json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
+                f"{json.dumps(metadata, indent=2)}\n", encoding="utf-8"
             )
             download_handle.state.downloaded_bytes = _directory_size(partial_dir)
             final_dir.parent.mkdir(parents=True, exist_ok=True)
-            shutil.rmtree(final_dir, ignore_errors=True)
+            _remove_tree(final_dir)
             partial_dir.replace(final_dir)
             download_handle.state.status = COMPLETED_STATUS
-        finally:
-            if download_handle.state.status != COMPLETED_STATUS:
-                shutil.rmtree(partial_dir, ignore_errors=True)
+        except BaseException:
+            _remove_tree(partial_dir)
+            raise
 
     async def _run_single_file(
         self,
@@ -507,7 +504,7 @@ class ModelManager:
         expected_sha256: str | None = None,
     ) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
-        partial = destination.with_name(destination.name + PARTIAL_DIRECTORY_SUFFIX)
+        partial = destination.with_name(f"{destination.name}{PARTIAL_DIRECTORY_SUFFIX}")
         try:
             await asyncio.to_thread(
                 _download_file,
@@ -522,9 +519,9 @@ class ModelManager:
                 raise DownloadCancelled
             partial.replace(destination)
             download_handle.state.status = COMPLETED_STATUS
-        finally:
-            if download_handle.state.status != COMPLETED_STATUS:
-                partial.unlink(missing_ok=True)
+        except BaseException:
+            partial.unlink(missing_ok=True)
+            raise
 
     async def _run_huggingface_download(
         self, model: CatalogModel, download_handle: _DownloadHandle
@@ -538,34 +535,68 @@ class ModelManager:
             raise UnknownModelError(f"No model files found in {model.huggingface_repo}.")
         download_handle.state.total_bytes = sum(entry.size_bytes for entry in files)
         final_dir = self.model_path(model)
-        partial_dir = final_dir.with_name(final_dir.name + PARTIAL_DIRECTORY_SUFFIX)
-        shutil.rmtree(partial_dir, ignore_errors=True)
+        partial_dir = final_dir.with_name(f"{final_dir.name}{PARTIAL_DIRECTORY_SUFFIX}")
+        _remove_tree(partial_dir)
         partial_dir.mkdir(parents=True, exist_ok=True)
         try:
-            for entry in files:
-                if download_handle.cancel.is_set():
-                    raise DownloadCancelled
-                relative = entry.relative_path
-                if not is_safe_relative_path(relative):
-                    raise RuntimeError(f"Repository listing contains an unsafe path: {relative}")
-                await asyncio.to_thread(
-                    _download_file,
-                    _resolve_url(model, _repo_path(model.huggingface_folder, relative)),
-                    partial_dir / relative,
-                    download_handle.state,
-                    download_handle.cancel,
-                    relative,
-                    _expected_digest(model, relative, entry.sha256),
+            await asyncio.gather(
+                *(
+                    self._download_repo_file(model, partial_dir, download_handle, entry)
+                    for entry in files
                 )
+            )
             if download_handle.cancel.is_set():
                 raise DownloadCancelled
             final_dir.parent.mkdir(parents=True, exist_ok=True)
-            shutil.rmtree(final_dir, ignore_errors=True)
+            _remove_tree(final_dir)
             partial_dir.replace(final_dir)
             download_handle.state.status = COMPLETED_STATUS
-        finally:
-            if download_handle.state.status != COMPLETED_STATUS:
-                shutil.rmtree(partial_dir, ignore_errors=True)
+        except BaseException:
+            _remove_tree(partial_dir)
+            raise
+
+    async def _download_required_file(
+        self,
+        model: CatalogModel,
+        partial_dir: Path,
+        download_handle: _DownloadHandle,
+        name: str,
+        available: dict[str, RepoFile],
+    ) -> None:
+        if download_handle.cancel.is_set():
+            raise DownloadCancelled
+        listed = available.get(name)
+        await asyncio.to_thread(
+            _download_file,
+            _resolve_url(model, name),
+            partial_dir / name,
+            download_handle.state,
+            download_handle.cancel,
+            name,
+            _expected_digest(model, name, listed.sha256 if listed else None),
+        )
+
+    async def _download_repo_file(
+        self,
+        model: CatalogModel,
+        partial_dir: Path,
+        download_handle: _DownloadHandle,
+        entry: RepoFile,
+    ) -> None:
+        relative = entry.relative_path
+        if download_handle.cancel.is_set():
+            raise DownloadCancelled
+        if not is_safe_relative_path(relative):
+            raise RuntimeError(f"Repository listing contains an unsafe path: {relative}")
+        await asyncio.to_thread(
+            _download_file,
+            _resolve_url(model, _repo_path(model.huggingface_folder or "", relative)),
+            partial_dir / relative,
+            download_handle.state,
+            download_handle.cancel,
+            relative,
+            _expected_digest(model, relative, entry.sha256),
+        )
 
     def _by_key(self, key: str, engine: str) -> CatalogModel | None:
         for model in self.catalog:
@@ -633,6 +664,12 @@ def _same_origin(candidate: str, origin: str) -> bool:
     return bool(left.scheme) and (left.scheme, left.netloc) == (right.scheme, right.netloc)
 
 
+def _fetch_repo_page(page_url: str) -> tuple[list[dict[str, Any]], str]:
+    request = urllib_request.Request(page_url, headers={"User-Agent": USER_AGENT})
+    with urllib_request.urlopen(request, timeout=60) as response:
+        return json.load(response), response.headers.get("Link") or ""
+
+
 def _list_repo_folder(
     repo: str, folder: str, revision: str = DEFAULT_HF_REVISION
 ) -> list[RepoFile]:
@@ -643,13 +680,7 @@ def _list_repo_folder(
     prefix = f"{folder}/" if folder else ""
     seen: set[str] = set()
     while url:
-
-        def fetch_page(page_url: str = url) -> tuple[list[dict[str, Any]], str]:
-            request = urllib_request.Request(page_url, headers={"User-Agent": USER_AGENT})
-            with urllib_request.urlopen(request, timeout=60) as response:
-                return json.load(response), response.headers.get("Link") or ""
-
-        payload, link = _call_with_retries(fetch_page)
+        payload, link = _call_with_retries(partial(_fetch_repo_page, url))
         for entry in payload:
             if entry.get("type") != "file":
                 continue
@@ -719,8 +750,10 @@ def _expected_digest(model: CatalogModel, relative: str, listed: str | None) -> 
 def _sha256_path(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as file_stream:
-        for chunk in iter(lambda: file_stream.read(CHUNK_SIZE), b""):
+        chunk = file_stream.read(CHUNK_SIZE)
+        while chunk:
             digest.update(chunk)
+            chunk = file_stream.read(CHUNK_SIZE)
     return digest.hexdigest()
 
 
@@ -777,49 +810,83 @@ def _download_file(
     otherwise produce a truncated file that fails SHA-256 verification for a
     reason that has nothing to do with the source's integrity.
     """
-    bytes_this_attempt = 0
+    download = _DownloadAttempt(url, destination, state, cancel, display_name, expected_sha256)
+    return _call_with_retries(download.run, on_retry=download.rollback)
 
-    def attempt() -> str:
-        nonlocal bytes_this_attempt
-        bytes_this_attempt = 0
-        request = urllib_request.Request(url, headers={"User-Agent": USER_AGENT})
+
+@dataclass
+class _DownloadAttempt:
+    url: str
+    destination: Path
+    state: DownloadState
+    cancel: threading.Event
+    display_name: str
+    expected_sha256: str | None
+    bytes_this_attempt: int = 0
+
+    def run(self) -> str:
+        self.bytes_this_attempt = 0
+        request = urllib_request.Request(self.url, headers={"User-Agent": USER_AGENT})
         digest = hashlib.sha256()
         with urllib_request.urlopen(request, timeout=60) as response:
-            length = response.headers.get("Content-Length")
-            if state.total_bytes is None and length and length.isdigit():
-                state.total_bytes = int(length)
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            state.current_file = display_name or destination.name
-            with destination.open("wb") as output:
-                while True:
-                    if cancel.is_set():
-                        raise DownloadCancelled
-                    chunk = response.read(CHUNK_SIZE)
-                    if not chunk:
-                        break
-                    output.write(chunk)
-                    digest.update(chunk)
-                    bytes_this_attempt += len(chunk)
-                    state.downloaded_bytes += len(chunk)
+            self._set_total_bytes(response)
+            self.destination.parent.mkdir(parents=True, exist_ok=True)
+            self.state.current_file = self.display_name or self.destination.name
+            with self.destination.open("wb") as output:
+                self._write_response(response, output, digest)
         actual = digest.hexdigest()
-        if expected_sha256 is not None and actual != expected_sha256:
-            destination.unlink(missing_ok=True)
-            raise ModelIntegrityError(
-                f"{display_name or destination.name} failed SHA-256 verification: "
-                f"expected {expected_sha256}, got {actual}. The file was discarded."
-            )
+        self._verify_digest(actual)
         return actual
 
-    def rollback_progress() -> None:
-        state.downloaded_bytes -= bytes_this_attempt
+    def rollback(self) -> None:
+        self.state.downloaded_bytes -= self.bytes_this_attempt
 
-    return _call_with_retries(attempt, on_retry=rollback_progress)
+    def _set_total_bytes(self, response: Any) -> None:
+        length = response.headers.get("Content-Length")
+        if self.state.total_bytes is None and length and length.isdigit():
+            self.state.total_bytes = int(length)
+
+    def _write_response(self, response: Any, output: Any, digest: Any) -> None:
+        chunk = response.read(CHUNK_SIZE)
+        while chunk:
+            if self.cancel.is_set():
+                raise DownloadCancelled
+            output.write(chunk)
+            digest.update(chunk)
+            self.bytes_this_attempt += len(chunk)
+            self.state.downloaded_bytes += len(chunk)
+            chunk = response.read(CHUNK_SIZE)
+
+    def _verify_digest(self, actual: str) -> None:
+        if self.expected_sha256 is None or actual == self.expected_sha256:
+            return
+        self.destination.unlink(missing_ok=True)
+        filename = self.display_name or self.destination.name
+        raise ModelIntegrityError(_digest_mismatch_message(filename, self.expected_sha256, actual))
 
 
 def _directory_size(path: Path) -> int:
     return sum(
         nested_path.stat().st_size for nested_path in path.rglob("*") if nested_path.is_file()
     )
+
+
+def _remove_tree(path: Path) -> None:
+    shutil.rmtree(path, ignore_errors=True)
+
+
+def _clear_staging_directory(path: Path) -> None:
+    _remove_tree(path)
+
+
+def _missing_model_files_message(missing: list[str]) -> str:
+    names = ", ".join(missing)
+    return f"Downloaded model is missing: {names}."
+
+
+def _digest_mismatch_message(filename: str, expected: str, actual: str) -> str:
+    prefix = f"{filename} failed SHA-256 verification"
+    return f"{prefix}: expected {expected}, got {actual}. The file was discarded."
 
 
 def _download_moonshine_model(
@@ -836,7 +903,9 @@ def _download_moonshine_model(
         raise RuntimeError(
             "Moonshine support is not installed. Install vocagateway[engines]."
         ) from error
-    architecture = ModelArch(model_arch) if model_arch is not None else None
+    architecture = None
+    if model_arch is not None:
+        architecture = ModelArch(model_arch)
     return cast(
         tuple[str, Any],
         get_model_for_language(language, architecture, cache_root=cache_root),

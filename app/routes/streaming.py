@@ -6,6 +6,7 @@ import sys
 import threading
 from array import array
 from contextlib import suppress
+from typing import Any, cast
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -131,7 +132,7 @@ class _StreamPackets:
         limit = session._sample_rate * session._ctx.settings.maximum_duration_seconds
         if session._received_samples > limit:
             raise ValueError("The stream exceeds the recording duration limit.")
-        adder = getattr(session._stream, "add_audio")
+        adder = cast(Any, session._stream).add_audio
         await asyncio.to_thread(adder, samples.tolist(), session._sample_rate)
         with session._lines_lock:
             partial = serializers.joined_stream_lines(session._lines)
@@ -140,12 +141,12 @@ class _StreamPackets:
 
     async def finish(self) -> None:
         session = self.session
-        stream = session._stream
-        final_result = await asyncio.to_thread(getattr(stream, "stop"))
+        stream = cast(Any, session._stream)
+        final_result = await asyncio.to_thread(stream.stop)
         transcript = self._styled_transcript(final_result)
         if not transcript:
             raise ValueError("Moonshine returned an empty transcript.")
-        await asyncio.to_thread(getattr(stream, "close"))
+        await asyncio.to_thread(stream.close)
         session._stream = None
         await session._websocket.send_json({MESSAGE_TYPE_KEY: "complete", "transcript": transcript})
         await session._websocket.close(code=1000)
@@ -195,7 +196,7 @@ class _StreamSession:
             await self._listen()
 
     async def _listen(self) -> None:
-        listener = getattr(self._stream, "add_listener")
+        listener = cast(Any, self._stream).add_listener
         await asyncio.to_thread(listener, self._receive_event)
         engine_name = (await self._engine.health()).name.split(":", 1)[0]
         await self._websocket.send_json({MESSAGE_TYPE_KEY: "ready", "engine": engine_name})

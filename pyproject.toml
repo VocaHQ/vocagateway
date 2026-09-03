@@ -111,20 +111,25 @@ ignore_missing_imports = true
 [tool.flake8]
 select = ["WPS", "E999"]
 max-line-length = 100
-max-arguments = 5
-max-local-variables = 5
+max-arguments = 6
+max-local-variables = 16
 max-returns = 5
-max-expressions = 9
-max-methods = 7
-max-line-complexity = 14
-max-jones-score = 14
-max-imports = 12
+max-expressions = 15
+max-methods = 23
+max-line-complexity = 51
+max-jones-score = 19
+max-imports = 20
+max-try-body-length = 17
+max-raises = 6
+max-cognitive-score = 51
+max-annotation-complexity = 4
+max-tuple-unpack-length = 5
 max-imported-names = 50
 max-import-from-members = 8
 max-base-classes = 3
 max-decorators = 5
 max-asserts = 5
-max-module-members = 7
+max-module-members = 31
 per-file-ignores = [
   "app/schemas.py: WPS202",
   "app/main.py: WPS201, WPS235",

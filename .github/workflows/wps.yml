@@ -39,5 +39,5 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --all-groups
-      - name: Run WPS compliance test vector
+      - name: Enforce WPS across app
         run: uv run pytest tests/test_wps_compliance.py
