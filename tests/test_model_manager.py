@@ -12,7 +12,7 @@ from urllib import request as urllib_request
 import pytest
 
 from app import model_manager
-from app.catalog import DEFAULT_CATALOG, CatalogModel
+from app.catalog import DEFAULT_CATALOG, RETIRED_CATALOG, CatalogModel
 from app.model_manager import (
     DownloadInProgressError,
     ModelIntegrityError,
@@ -212,22 +212,42 @@ def test_catalog_includes_all_moonshine_lan_aaa() -> None:
 
     assert {entry.language_code for entry in entries.values() if entry.engine == "moonshine"} == {
         "ar",
+        "de",
         ENGLISH_LANGUAGE_CODE,
         SPANISH_LANGUAGE_CODE,
         "ja",
         "ko",
+        "tl",
         "uk",
         "vi",
         "zh",
     }
     assert entries["moonshine:en"].model_arch == 5
     assert entries["moonshine:en-tiny-streaming"].supports_streaming is True
-    assert entries[MOONSHINE_SPANISH_ID].supports_streaming is False
-    assert entries[MOONSHINE_SPANISH_ID].commercial_use is False
+    retired = {model.id: model for model in RETIRED_CATALOG}
+    assert retired[MOONSHINE_SPANISH_ID].supports_streaming is False
+    assert retired[MOONSHINE_SPANISH_ID].commercial_use is False
+    assert retired[MOONSHINE_SPANISH_ID].replacement_id == "moonshine:es-small-streaming"
     assert (
         entries["faster-whisper:distil-medium.en"].huggingface_repo
         == "Systran/faster-distil-whisper-medium.en"
     )
+    assert entries["faster-whisper:distil-large-v3"].license_name == "MIT"
+
+
+def test_retired_moonshine_installation_remains_manageable(tmp_path: Path) -> None:
+    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME)
+    retired_model = next(model for model in RETIRED_CATALOG if model.id == MOONSHINE_SPANISH_ID)
+    model_root = manager.model_path(retired_model)
+    model_root.mkdir(parents=True)
+    (model_root / MODEL_METADATA_NAME).write_text("{}", encoding="utf-8")
+
+    installed = {model.id: model for model in manager.installed()}
+    assert installed[MOONSHINE_SPANISH_ID].retired is True
+    assert installed[MOONSHINE_SPANISH_ID].replacement_id == "moonshine:es-small-streaming"
+    with pytest.raises(UnknownModelError, match="retired"):
+        manager.start_download(MOONSHINE_SPANISH_ID)
+    assert manager.delete(MOONSHINE_SPANISH_ID) is True
 
 
 def test_catalog_includes_portable_and_appl_aaaa() -> None:

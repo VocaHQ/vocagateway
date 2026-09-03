@@ -24,6 +24,7 @@ from app.catalog import (
     ENGINE_SHERPA_ONNX,
     ENGINE_WHISPER_CPP,
     ENGINE_WHISPERKIT,
+    RETIRED_CATALOG,
     CatalogModel,
     catalog_by_id,
 )
@@ -133,6 +134,8 @@ class InstalledModel:
     path: Path
     size_bytes: int
     custom: bool = False
+    retired: bool = False
+    replacement_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -149,10 +152,17 @@ class ModelManager:
         self,
         models_dir: Path,
         catalog: tuple[CatalogModel, ...] = DEFAULT_CATALOG,
+        retired_catalog: tuple[CatalogModel, ...] | None = None,
     ) -> None:
         self.models_dir = models_dir
         self.catalog = catalog
+        self.retired_catalog = (
+            RETIRED_CATALOG
+            if retired_catalog is None and catalog is DEFAULT_CATALOG
+            else retired_catalog or ()
+        )
         self._by_id = catalog_by_id(catalog)
+        self._retired_by_id = catalog_by_id(self.retired_catalog)
         self._downloads: dict[str, _DownloadHandle] = {}
 
     # ------------------------------------------------------------------ paths
@@ -170,7 +180,9 @@ class ModelManager:
     def installed(self) -> list[InstalledModel]:
         installed_models: list[InstalledModel] = []
         catalog_paths: set[Path] = set()
-        for model in self.catalog:
+        catalog_models = [(model, False) for model in self.catalog]
+        catalog_models.extend((model, True) for model in self.retired_catalog)
+        for model, retired in catalog_models:
             path = self.model_path(model)
             marker = path / model.marker_file if model.marker_file else path
             if marker.exists():
@@ -182,6 +194,8 @@ class ModelManager:
                         key=model.key,
                         path=path,
                         size_bytes=_directory_size(path) if path.is_dir() else path.stat().st_size,
+                        retired=retired,
+                        replacement_id=model.replacement_id,
                     )
                 )
         whisper_cpp_dir = self.models_dir / ENGINE_WHISPER_CPP
@@ -233,13 +247,15 @@ class ModelManager:
 
     def catalog_model(self, model_id: str) -> CatalogModel | None:
         """Return catalog metadata without exposing the manager's mutable index."""
-        return self._by_id.get(model_id)
+        return self._by_id.get(model_id) or self._retired_by_id.get(model_id)
 
     # ------------------------------------------------------------- downloads
 
     def start_download(self, model_id: str) -> DownloadState:
         model = self._by_id.get(model_id)
         if model is None:
+            if model_id in self._retired_by_id:
+                raise UnknownModelError(f"Model {model_id} is retired and cannot be downloaded.")
             raise UnknownModelError(model_id)
         return self._start(
             model_id,
@@ -477,7 +493,22 @@ class ModelManager:
             )
             if download_handle.cancel.is_set():
                 raise DownloadCancelled
-            relative_path = Path(model_path).resolve().relative_to(partial_dir.resolve())
+            resolved_model_path = Path(model_path).resolve()
+            staging_root = partial_dir.resolve()
+            if not resolved_model_path.is_relative_to(staging_root):
+                raise RuntimeError(
+                    "Moonshine downloader returned a path outside its staging directory."
+                )
+            relative_path = resolved_model_path.relative_to(staging_root)
+            if model.required_files:
+                missing = [
+                    name
+                    for name in model.required_files
+                    if not (resolved_model_path / name).is_file()
+                ]
+                if missing:
+                    raise RuntimeError(_missing_model_files_message(missing))
+            await asyncio.to_thread(_verify_extracted_files, model, resolved_model_path)
             metadata = {
                 "model_id": model.id,
                 "language": model.language_code or model.key,
@@ -599,13 +630,13 @@ class ModelManager:
         )
 
     def _by_key(self, key: str, engine: str) -> CatalogModel | None:
-        for model in self.catalog:
+        for model in (*self.catalog, *self.retired_catalog):
             if model.key == key and model.engine == engine:
                 return model
         return None
 
     def _path_for_id(self, model_id: str) -> Path | None:
-        model = self._by_id.get(model_id)
+        model = self.catalog_model(model_id)
         if model is not None:
             return self.model_path(model)
         if model_id.startswith("custom:"):

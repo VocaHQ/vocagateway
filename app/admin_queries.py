@@ -175,12 +175,20 @@ class _ModelEntryHelper:
         catalog_entries = [
             self.build_entry(model) for model in self.ctx.manager.catalog if self.is_visible(model)
         ]
+        catalog_ids = {entry.id for entry in catalog_entries}
+        retired_entries = [
+            self.build_entry(model)
+            for installed in self.ctx.manager.installed()
+            if installed.retired
+            and installed.id not in catalog_ids
+            and (model := self.ctx.manager.catalog_model(installed.id)) is not None
+        ]
         custom_entries = [
             self.build_custom_entry(custom)
             for custom in self.ctx.manager.installed()
             if custom.id.startswith("custom:")
         ]
-        return catalog_entries + custom_entries
+        return catalog_entries + retired_entries + custom_entries
 
     def is_visible(self, model: Any) -> bool:
         if self.system.is_apple_silicon:
@@ -216,6 +224,9 @@ class _ModelEntryHelper:
             downloaded_bytes=download.downloaded_bytes if download else None,
             total_bytes=download.total_bytes if download else None,
             error=resolution[2],
+            retired=model.retired,
+            replacement_id=model.replacement_id,
+            retirement_reason=model.retirement_reason,
         )
 
     def build_custom_entry(self, custom: Any) -> schemas.AdminModelEntry:

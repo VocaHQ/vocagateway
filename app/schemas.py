@@ -209,6 +209,9 @@ class AdminModelEntry(BaseModel):
     downloaded_bytes: int | None = None
     total_bytes: int | None = None
     error: str | None = None
+    retired: bool = False
+    replacement_id: str | None = None
+    retirement_reason: str | None = None
 
 
 class CustomDownloadRequest(BaseModel):

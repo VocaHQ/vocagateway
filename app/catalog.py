@@ -59,6 +59,8 @@ SWEDISH_LANGUAGE_CODE = "sv"
 UKRAINIAN_LANGUAGE_CODE = "uk"
 VIETNAMESE_LANGUAGE_CODE = "vi"
 CHINESE_LANGUAGE_CODE = "zh"
+HINDI_LANGUAGE_CODE = "hi"
+TAGALOG_LANGUAGE_CODE = "tl"
 MIT_LICENSE = "MIT"
 ENGLISH_ONLY = "English only"
 SHERPA_MODEL_FILE = "model.int8.onnx"
@@ -77,6 +79,74 @@ BASE_MODEL_SIZE_MB = "145"
 FAST_QUALITY = "Fast"
 BALANCED_QUALITY = "Balanced"
 MOST_ACCURATE_QUALITY = "Most accurate"
+MOONSHINE_REVISION_V015 = "moonshine-voice-0.1.5"
+MOONSHINE_015_REVISION = MOONSHINE_REVISION_V015  # noqa: WPS114
+MOONSHINE_STREAMING_SMALL_VARIANT = "Small Streaming"
+MOONSHINE_STREAMING_TINY_VARIANT = "Tiny Streaming"
+MOONSHINE_STREAMING_BALANCED_QUALITY = "Balanced · cached streaming"
+MOONSHINE_STREAMING_FASTEST_QUALITY = "Fastest · cached streaming"
+MOONSHINE_RETIREMENT_REASON = (
+    "Moonshine deprecated this Community batch model after publishing an MIT streaming replacement."
+)
+MOONSHINE_RETIREMENT_PLURAL_REASON = (
+    "Moonshine deprecated this Community batch model after publishing MIT streaming replacements."
+)
+NEMOTRON_SIZE_BYTES = 682_215_471
+BENGALI_ZIPFORMER_SIZE_BYTES = 94_119_939
+MOONSHINE_EN_MEDIUM_STREAMING_SIZE_BYTES = 269_141_623
+MOONSHINE_EN_SMALL_STREAMING_SIZE_BYTES = 142_300_974
+MOONSHINE_EN_TINY_STREAMING_SIZE_BYTES = 45_233_659
+MOONSHINE_EN_BASE_SIZE_BYTES = 141_001_190
+MOONSHINE_EN_TINY_SIZE_BYTES = 43_943_830
+MOONSHINE_AR_TINY_STREAMING_SIZE_BYTES = 32_349_411
+MOONSHINE_DE_SMALL_STREAMING_SIZE_BYTES = 121_800_823
+MOONSHINE_DE_TINY_STREAMING_SIZE_BYTES = 32_317_004
+MOONSHINE_ES_SMALL_STREAMING_SIZE_BYTES = 121_800_392
+MOONSHINE_ES_TINY_STREAMING_SIZE_BYTES = 32_316_573
+MOONSHINE_JA_SMALL_STREAMING_SIZE_BYTES = 121_803_780
+MOONSHINE_JA_TINY_STREAMING_SIZE_BYTES = 32_319_961
+MOONSHINE_ZH_TINY_STREAMING_SIZE_BYTES = 32_290_152
+MOONSHINE_TL_TINY_STREAMING_SIZE_BYTES = 32_309_481
+MOONSHINE_VI_TINY_STREAMING_SIZE_BYTES = 32_309_008
+MOONSHINE_KO_SIZE_BYTES = 71_815_486
+MOONSHINE_UK_SIZE_BYTES = 141_001_214
+DISTIL_LARGE_V3_SIZE_BYTES = 1_515_408_824
+
+# Qwen3-ASR's upstream card lists 30 languages plus Chinese dialects. The
+# dialects are represented by the model's Mandarin/`yue` capability rather
+# than exposed as separate gateway language selectors.
+_QWEN3_LANGUAGE_CODES: tuple[str, ...] = (
+    ENGLISH_LANGUAGE_CODE,
+    CHINESE_LANGUAGE_CODE,
+    "yue",
+    JAPANESE_LANGUAGE_CODE,
+    KOREAN_LANGUAGE_CODE,
+    SPANISH_LANGUAGE_CODE,
+    FRENCH_LANGUAGE_CODE,
+    GERMAN_LANGUAGE_CODE,
+    RUSSIAN_LANGUAGE_CODE,
+    ARABIC_LANGUAGE_CODE,
+    ITALIAN_LANGUAGE_CODE,
+    PORTUGUESE_LANGUAGE_CODE,
+    "id",
+    "th",
+    VIETNAMESE_LANGUAGE_CODE,
+    "tr",
+    HINDI_LANGUAGE_CODE,
+    "ms",
+    "nl",
+    "sv",
+    "da",
+    "fi",
+    "pl",
+    "cs",
+    "fil",
+    "fa",
+    "el",
+    "hu",
+    "mk",
+    "ro",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +183,9 @@ class CatalogModel:
     language_codes: tuple[str, ...] = ()
     apple_silicon_only: bool = False
     detects_language_automatically: bool = False
+    retired: bool = False
+    replacement_id: str | None = None
+    retirement_reason: str | None = None
 
 
 PinsMap = dict[str, dict[str, Any]]
@@ -208,7 +281,7 @@ class _WhisperModelBuilders:
             language_codes=tuple(
                 kwargs.get("language_codes") or cls.whisper_language_codes(cls._languages(args))
             ),
-            license_name=str(kwargs.get("license_name", "See model source")),
+            license_name=str(kwargs.get("license_name", "See model source")),  # noqa: WPS226
         )
 
     @classmethod
@@ -263,6 +336,8 @@ class _WhisperModelBuilders:
             source="faster-whisper",
             marker_file="model.bin",
             language_codes=cls.whisper_language_codes(cls._languages(args)),
+            license_name=str(kwargs.get("license_name", "See model source")),
+            commercial_use=bool(kwargs.get("commercial_use", True)),
         )
 
     @classmethod
@@ -340,10 +415,20 @@ class _SpecializedModelBuilders:
             language_codes=(language,),
             model_arch=int(args[1]),
             supports_streaming=bool(kwargs.get("supports_streaming", False)),
-            license_name=(
-                MIT_LICENSE if language == ENGLISH_LANGUAGE_CODE else "Moonshine Community License"
+            license_name=str(
+                kwargs.get(
+                    "license_name",
+                    MIT_LICENSE
+                    if language == ENGLISH_LANGUAGE_CODE
+                    else "Moonshine Community License",
+                )
             ),
-            commercial_use=language == ENGLISH_LANGUAGE_CODE,
+            commercial_use=bool(kwargs.get("commercial_use", language == ENGLISH_LANGUAGE_CODE)),
+            required_files=tuple(kwargs.get("required_files", ())),
+            revision=kwargs.get("revision"),
+            retired=bool(kwargs.get("retired", False)),
+            replacement_id=kwargs.get("replacement_id"),
+            retirement_reason=kwargs.get("retirement_reason"),
         )
 
     @classmethod
@@ -468,7 +553,7 @@ LANGUAGE_NAMES: MappingProxyType[str, str] = MappingProxyType(
         "ha": "Hausa",
         "haw": "Hawaiian",
         "he": "Hebrew",
-        "hi": "Hindi",
+        HINDI_LANGUAGE_CODE: "Hindi",
         CROATIAN_LANGUAGE_CODE: "Croatian",
         "ht": "Haitian Creole",
         HUNGARIAN_LANGUAGE_CODE: "Hungarian",
@@ -531,7 +616,7 @@ LANGUAGE_NAMES: MappingProxyType[str, str] = MappingProxyType(
         "tg": "Tajik",
         "th": "Thai",
         "tk": "Turkmen",
-        "tl": "Tagalog",
+        TAGALOG_LANGUAGE_CODE: "Tagalog",
         "tr": "Turkish",
         "tt": "Tatar",
         "ug": "Uyghur",
@@ -627,7 +712,7 @@ _DOLPHIN_LANGUAGE_CODES: tuple[str, ...] = (
     "id",
     VIETNAMESE_LANGUAGE_CODE,
     "ct",
-    "hi",
+    HINDI_LANGUAGE_CODE,
     "ur",
     "ms",
     "uz",
@@ -639,7 +724,7 @@ _DOLPHIN_LANGUAGE_CODES: tuple[str, ...] = (
     "ug",
     "gu",
     "my",
-    "tl",
+    TAGALOG_LANGUAGE_CODE,
     "kk",
     "or",
     "ne",
@@ -665,14 +750,33 @@ _DOLPHIN_LANGUAGE_CODES: tuple[str, ...] = (
 _MOONSHINE_LANGUAGE_NAMES = MappingProxyType(
     {
         ARABIC_LANGUAGE_CODE: "Arabic",
+        GERMAN_LANGUAGE_CODE: "German",
         ENGLISH_LANGUAGE_CODE: "English",
         SPANISH_LANGUAGE_CODE: "Spanish",
         JAPANESE_LANGUAGE_CODE: "Japanese",
         KOREAN_LANGUAGE_CODE: "Korean",
+        TAGALOG_LANGUAGE_CODE: "Tagalog",
         UKRAINIAN_LANGUAGE_CODE: "Ukrainian",
         VIETNAMESE_LANGUAGE_CODE: "Vietnamese",
         CHINESE_LANGUAGE_CODE: "Mandarin Chinese",
     }
+)
+
+_MOONSHINE_STREAMING_FILES: tuple[str, ...] = (
+    "adapter.ort",
+    "cross_kv.ort",
+    "decoder_kv.ort",
+    "encoder.ort",
+    "frontend.model.ort",
+    "frontend.weights.ort",
+    "streaming_config.json",
+    "tokenizer.bin",
+)
+
+_MOONSHINE_BATCH_FILES: tuple[str, ...] = (
+    "decoder_model_merged.ort",
+    "encoder_model.ort",
+    "tokenizer.bin",
 )
 
 
@@ -910,7 +1014,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "qwen3-asr-0.6b-int8",
         "Qwen3-ASR 0.6B INT8",
         _megabytes("987"),
-        "11 languages",
+        "30 languages + Chinese dialects",
         "Accurate multilingual · punctuation",
         6,
         huggingface_repo="csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25",
@@ -925,27 +1029,95 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
             "tokenizer/tokenizer_config.json",
         ),
         model_type="qwen3_asr",
-        language_codes=(
-            ENGLISH_LANGUAGE_CODE,
-            CHINESE_LANGUAGE_CODE,
-            JAPANESE_LANGUAGE_CODE,
-            KOREAN_LANGUAGE_CODE,
-            SPANISH_LANGUAGE_CODE,
-            FRENCH_LANGUAGE_CODE,
-            GERMAN_LANGUAGE_CODE,
-            RUSSIAN_LANGUAGE_CODE,
-            ARABIC_LANGUAGE_CODE,
-            ITALIAN_LANGUAGE_CODE,
-            PORTUGUESE_LANGUAGE_CODE,
-        ),
+        language_codes=_QWEN3_LANGUAGE_CODES,
         family="Qwen3-ASR",
         description=(
             "Alibaba's speech-aware Qwen3 converted to INT8 ONNX. An LLM decoder rather than a "
             "CTC or transducer head, so it punctuates well but decodes more slowly. It detects "
-            "the language itself and cannot be pinned to one."
+            "the language itself and cannot be pinned to one. The converted artifact is advertised "
+            "for the 30 languages in the Qwen3-ASR model card; Chinese dialect support is not "
+            "selectable as separate gateway language codes."
         ),
         license_name=APACHE_LICENSE,
         detects_language_automatically=True,
+    ),
+    _sherpa_onnx(
+        "nemotron-3.5-asr-streaming-0.6b-320ms-int8",
+        "Nemotron 3.5 ASR Streaming 0.6B INT8",
+        NEMOTRON_SIZE_BYTES,
+        "32 ready or broad-coverage locales",
+        "Multilingual streaming · punctuation",
+        8,
+        huggingface_repo=(
+            "csukuangfj2/sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-320ms-int8-2026-06-11"
+        ),
+        required_files=(
+            ENCODER_INT8_FILE,
+            DECODER_INT8_FILE,
+            "joiner.int8.onnx",
+            TOKENS_FILE,
+        ),
+        model_type="streaming_zipformer",
+        language_codes=(
+            ENGLISH_LANGUAGE_CODE,
+            SPANISH_LANGUAGE_CODE,
+            FRENCH_LANGUAGE_CODE,
+            ITALIAN_LANGUAGE_CODE,
+            PORTUGUESE_LANGUAGE_CODE,
+            DUTCH_LANGUAGE_CODE,
+            GERMAN_LANGUAGE_CODE,
+            "tr",
+            RUSSIAN_LANGUAGE_CODE,
+            ARABIC_LANGUAGE_CODE,
+            HINDI_LANGUAGE_CODE,
+            JAPANESE_LANGUAGE_CODE,
+            KOREAN_LANGUAGE_CODE,
+            VIETNAMESE_LANGUAGE_CODE,
+            UKRAINIAN_LANGUAGE_CODE,
+            "pl",
+            SWEDISH_LANGUAGE_CODE,
+            CZECH_LANGUAGE_CODE,
+            "no",
+            DANISH_LANGUAGE_CODE,
+            BULGARIAN_LANGUAGE_CODE,
+            FINNISH_LANGUAGE_CODE,
+            CROATIAN_LANGUAGE_CODE,
+            SLOVAK_LANGUAGE_CODE,
+            CHINESE_LANGUAGE_CODE,
+            HUNGARIAN_LANGUAGE_CODE,
+            ROMANIAN_LANGUAGE_CODE,
+            ESTONIAN_LANGUAGE_CODE,
+        ),
+        family="Nemotron 3.5 ASR",
+        description=(
+            "NVIDIA's cache-aware multilingual RNNT converted to INT8 ONNX for sherpa-onnx. "
+            "The 320 ms export supports explicit language prompts and Automatic mode, with "
+            "punctuation and capitalization. Greek, Lithuanian, Latvian, Maltese, Slovenian, "
+            "Hebrew, Thai, and Norwegian Nynorsk are adaptation-ready only and are not advertised."
+        ),
+        license_name="OpenMDW 1.1",
+        supports_streaming=True,
+        detects_language_automatically=True,
+    ),
+    _sherpa_onnx(
+        "streaming-zipformer-bn-vosk-2026-02-09",
+        "Bengali Streaming Zipformer",
+        BENGALI_ZIPFORMER_SIZE_BYTES,
+        "Bengali only",
+        "Compact Bengali streaming",
+        2,
+        huggingface_repo="csukuangfj2/sherpa-onnx-streaming-zipformer-bn-vosk-2026-02-09",
+        required_files=("encoder.onnx", "decoder.onnx", "joiner.onnx", TOKENS_FILE),
+        model_type="streaming_zipformer",
+        language_codes=("bn",),
+        family="Zipformer",
+        description=(
+            "Alpha Cephei's Bengali streaming Zipformer converted to sherpa-onnx. A small CPU "
+            "model for live Bengali dictation; punctuation and robustness are validated by the "
+            "gateway benchmark rather than inferred from the upstream card."
+        ),
+        license_name=APACHE_LICENSE,
+        supports_streaming=True,
     ),
     _mlx_audio(
         "whisper-large-v3-turbo-4bit",
@@ -1023,57 +1195,35 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "qwen3-asr-0.6b-4bit",
         "MLX Qwen3-ASR 0.6B 4-bit",
         _megabytes("713"),
-        "11 languages",
+        "30 languages + Chinese dialects",
         "Accurate multilingual · punctuation",
         8,
         repository="mlx-community/Qwen3-ASR-0.6B-4bit",
         family="Qwen3-ASR / MLX",
         description=(
-            "Quantized Qwen3-ASR running natively on Apple silicon through MLX. An LLM decoder, "
-            "so it punctuates well but decodes more slowly than Parakeet."
+            "Quantized Qwen3-ASR running natively on Apple silicon through MLX. The upstream "
+            "card covers 30 languages plus Chinese dialects; an LLM decoder punctuates well but "
+            "decodes more slowly than Parakeet."
         ),
         license_name=APACHE_LICENSE,
-        language_codes=(
-            ENGLISH_LANGUAGE_CODE,
-            CHINESE_LANGUAGE_CODE,
-            JAPANESE_LANGUAGE_CODE,
-            KOREAN_LANGUAGE_CODE,
-            SPANISH_LANGUAGE_CODE,
-            FRENCH_LANGUAGE_CODE,
-            GERMAN_LANGUAGE_CODE,
-            RUSSIAN_LANGUAGE_CODE,
-            ARABIC_LANGUAGE_CODE,
-            ITALIAN_LANGUAGE_CODE,
-            PORTUGUESE_LANGUAGE_CODE,
-        ),
+        language_codes=_QWEN3_LANGUAGE_CODES,
     ),
     _mlx_audio(
         "qwen3-asr-1.7b-4bit",
         "MLX Qwen3-ASR 1.7B 4-bit",
         _megabytes("1608"),
-        "11 languages",
+        "30 languages + Chinese dialects",
         "Most accurate multilingual · punctuation",
         HIGH_MEMORY_RAM_GB,
         repository="mlx-community/Qwen3-ASR-1.7B-4bit",
         family="Qwen3-ASR / MLX",
         description=(
-            "The larger Qwen3-ASR for Macs with memory to spare; the same 11 languages as the "
-            "0.6B entry, with better accuracy on accented and noisy speech."
+            "The larger Qwen3-ASR for Macs with memory to spare; the same 30-language coverage "
+            "and Chinese dialect support as the 0.6B entry, with better accuracy on accented "
+            "and noisy speech."
         ),
         license_name=APACHE_LICENSE,
-        language_codes=(
-            ENGLISH_LANGUAGE_CODE,
-            CHINESE_LANGUAGE_CODE,
-            JAPANESE_LANGUAGE_CODE,
-            KOREAN_LANGUAGE_CODE,
-            SPANISH_LANGUAGE_CODE,
-            FRENCH_LANGUAGE_CODE,
-            GERMAN_LANGUAGE_CODE,
-            RUSSIAN_LANGUAGE_CODE,
-            ARABIC_LANGUAGE_CODE,
-            ITALIAN_LANGUAGE_CODE,
-            PORTUGUESE_LANGUAGE_CODE,
-        ),
+        language_codes=_QWEN3_LANGUAGE_CODES,
     ),
     _mlx_audio(
         "granite-speech-4.1-2b-nar",
@@ -1100,30 +1250,36 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "Medium Streaming",
         5,
         "Moonshine English Medium Streaming",
-        _megabytes("304"),
-        "Most accurate · cached streaming",
+        MOONSHINE_EN_MEDIUM_STREAMING_SIZE_BYTES,
+        MOONSHINE_STREAMING_FASTEST_QUALITY,
         supports_streaming=True,
         minimum_ram_gb=4,
+        required_files=_MOONSHINE_STREAMING_FILES,
+        revision=MOONSHINE_REVISION_V015,
     ),
     _moonshine(
         "en-small-streaming",
         ENGLISH_LANGUAGE_CODE,
-        "Small Streaming",
+        MOONSHINE_STREAMING_SMALL_VARIANT,
         4,
         "Moonshine English Small Streaming",
-        _megabytes("165"),
-        "Balanced · cached streaming",
+        MOONSHINE_EN_SMALL_STREAMING_SIZE_BYTES,
+        MOONSHINE_STREAMING_BALANCED_QUALITY,
         supports_streaming=True,
+        required_files=_MOONSHINE_STREAMING_FILES,
+        revision=MOONSHINE_015_REVISION,
     ),
     _moonshine(
         "en-tiny-streaming",
         ENGLISH_LANGUAGE_CODE,
-        "Tiny Streaming",
+        MOONSHINE_STREAMING_TINY_VARIANT,
         2,
         "Moonshine English Tiny Streaming",
-        _megabytes("52"),
-        "Fastest · cached streaming",
+        MOONSHINE_EN_TINY_STREAMING_SIZE_BYTES,
+        MOONSHINE_STREAMING_FASTEST_QUALITY,
         supports_streaming=True,
+        required_files=_MOONSHINE_STREAMING_FILES,
+        revision=MOONSHINE_015_REVISION,
     ),
     _moonshine(
         "en-base",
@@ -1131,8 +1287,10 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         BASE_MODEL_VARIANT,
         1,
         "Moonshine English Base",
-        _megabytes(MOONSHINE_BASE_SIZE_MB),
+        MOONSHINE_EN_BASE_SIZE_BYTES,
         "Accurate · batch",
+        required_files=_MOONSHINE_BATCH_FILES,
+        revision=MOONSHINE_015_REVISION,
     ),
     _moonshine(
         "en-tiny",
@@ -1140,8 +1298,150 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "Tiny",
         0,
         "Moonshine English Tiny",
-        _megabytes("44"),
+        MOONSHINE_EN_TINY_SIZE_BYTES,
         "Smallest · batch",
+        required_files=_MOONSHINE_BATCH_FILES,
+        revision=MOONSHINE_015_REVISION,
+    ),
+    _moonshine(
+        "ar-tiny-streaming",
+        ARABIC_LANGUAGE_CODE,
+        MOONSHINE_STREAMING_TINY_VARIANT,
+        2,
+        "Moonshine Arabic Tiny Streaming",
+        MOONSHINE_AR_TINY_STREAMING_SIZE_BYTES,
+        MOONSHINE_STREAMING_FASTEST_QUALITY,
+        supports_streaming=True,
+        required_files=_MOONSHINE_STREAMING_FILES,
+        license_name=MIT_LICENSE,
+        commercial_use=True,
+        revision=MOONSHINE_015_REVISION,
+    ),
+    _moonshine(
+        "de-small-streaming",
+        GERMAN_LANGUAGE_CODE,
+        MOONSHINE_STREAMING_SMALL_VARIANT,
+        4,
+        "Moonshine German Small Streaming",
+        MOONSHINE_DE_SMALL_STREAMING_SIZE_BYTES,
+        MOONSHINE_STREAMING_BALANCED_QUALITY,
+        supports_streaming=True,
+        required_files=_MOONSHINE_STREAMING_FILES,
+        license_name=MIT_LICENSE,
+        commercial_use=True,
+        revision=MOONSHINE_015_REVISION,
+    ),
+    _moonshine(
+        "de-tiny-streaming",
+        GERMAN_LANGUAGE_CODE,
+        MOONSHINE_STREAMING_TINY_VARIANT,
+        2,
+        "Moonshine German Tiny Streaming",
+        MOONSHINE_DE_TINY_STREAMING_SIZE_BYTES,
+        MOONSHINE_STREAMING_FASTEST_QUALITY,
+        supports_streaming=True,
+        required_files=_MOONSHINE_STREAMING_FILES,
+        license_name=MIT_LICENSE,
+        commercial_use=True,
+        revision=MOONSHINE_015_REVISION,
+    ),
+    _moonshine(
+        "es-small-streaming",
+        SPANISH_LANGUAGE_CODE,
+        MOONSHINE_STREAMING_SMALL_VARIANT,
+        4,
+        "Moonshine Spanish Small Streaming",
+        MOONSHINE_ES_SMALL_STREAMING_SIZE_BYTES,
+        MOONSHINE_STREAMING_BALANCED_QUALITY,
+        supports_streaming=True,
+        required_files=_MOONSHINE_STREAMING_FILES,
+        license_name=MIT_LICENSE,
+        commercial_use=True,
+        revision=MOONSHINE_015_REVISION,
+    ),
+    _moonshine(
+        "es-tiny-streaming",
+        SPANISH_LANGUAGE_CODE,
+        MOONSHINE_STREAMING_TINY_VARIANT,
+        2,
+        "Moonshine Spanish Tiny Streaming",
+        MOONSHINE_ES_TINY_STREAMING_SIZE_BYTES,
+        MOONSHINE_STREAMING_FASTEST_QUALITY,
+        supports_streaming=True,
+        required_files=_MOONSHINE_STREAMING_FILES,
+        license_name=MIT_LICENSE,
+        commercial_use=True,
+        revision=MOONSHINE_015_REVISION,
+    ),
+    _moonshine(
+        "ja-small-streaming",
+        JAPANESE_LANGUAGE_CODE,
+        MOONSHINE_STREAMING_SMALL_VARIANT,
+        4,
+        "Moonshine Japanese Small Streaming",
+        MOONSHINE_JA_SMALL_STREAMING_SIZE_BYTES,
+        MOONSHINE_STREAMING_BALANCED_QUALITY,
+        supports_streaming=True,
+        required_files=_MOONSHINE_STREAMING_FILES,
+        license_name=MIT_LICENSE,
+        commercial_use=True,
+        revision=MOONSHINE_015_REVISION,
+    ),
+    _moonshine(
+        "ja-tiny-streaming",
+        JAPANESE_LANGUAGE_CODE,
+        MOONSHINE_STREAMING_TINY_VARIANT,
+        2,
+        "Moonshine Japanese Tiny Streaming",
+        MOONSHINE_JA_TINY_STREAMING_SIZE_BYTES,
+        MOONSHINE_STREAMING_FASTEST_QUALITY,
+        supports_streaming=True,
+        required_files=_MOONSHINE_STREAMING_FILES,
+        license_name=MIT_LICENSE,
+        commercial_use=True,
+        revision=MOONSHINE_015_REVISION,
+    ),
+    _moonshine(
+        "zh-tiny-streaming",
+        CHINESE_LANGUAGE_CODE,
+        MOONSHINE_STREAMING_TINY_VARIANT,
+        2,
+        "Moonshine Mandarin Tiny Streaming",
+        MOONSHINE_ZH_TINY_STREAMING_SIZE_BYTES,
+        MOONSHINE_STREAMING_FASTEST_QUALITY,
+        supports_streaming=True,
+        required_files=_MOONSHINE_STREAMING_FILES,
+        license_name=MIT_LICENSE,
+        commercial_use=True,
+        revision=MOONSHINE_015_REVISION,
+    ),
+    _moonshine(
+        "tl-tiny-streaming",
+        TAGALOG_LANGUAGE_CODE,
+        MOONSHINE_STREAMING_TINY_VARIANT,
+        2,
+        "Moonshine Tagalog Tiny Streaming",
+        MOONSHINE_TL_TINY_STREAMING_SIZE_BYTES,
+        MOONSHINE_STREAMING_FASTEST_QUALITY,
+        supports_streaming=True,
+        required_files=_MOONSHINE_STREAMING_FILES,
+        license_name=MIT_LICENSE,
+        commercial_use=True,
+        revision=MOONSHINE_015_REVISION,
+    ),
+    _moonshine(
+        "vi-tiny-streaming",
+        VIETNAMESE_LANGUAGE_CODE,
+        MOONSHINE_STREAMING_TINY_VARIANT,
+        2,
+        "Moonshine Vietnamese Tiny Streaming",
+        MOONSHINE_VI_TINY_STREAMING_SIZE_BYTES,
+        MOONSHINE_STREAMING_FASTEST_QUALITY,
+        supports_streaming=True,
+        required_files=_MOONSHINE_STREAMING_FILES,
+        license_name=MIT_LICENSE,
+        commercial_use=True,
+        revision=MOONSHINE_015_REVISION,
     ),
     _moonshine(
         SPANISH_LANGUAGE_CODE,
@@ -1151,6 +1451,9 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "Moonshine Spanish",
         _megabytes("65"),
         FAST_BATCH_QUALITY,
+        retired=True,
+        replacement_id="moonshine:es-small-streaming",
+        retirement_reason=MOONSHINE_RETIREMENT_PLURAL_REASON,
     ),
     _moonshine(
         ARABIC_LANGUAGE_CODE,
@@ -1160,6 +1463,9 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "Moonshine Arabic",
         _megabytes(MOONSHINE_BASE_SIZE_MB),
         FAST_BATCH_QUALITY,
+        retired=True,
+        replacement_id="moonshine:ar-tiny-streaming",
+        retirement_reason=MOONSHINE_RETIREMENT_REASON,
     ),
     _moonshine(
         JAPANESE_LANGUAGE_CODE,
@@ -1169,6 +1475,9 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "Moonshine Japanese Base",
         _megabytes(MOONSHINE_BASE_SIZE_MB),
         FAST_BATCH_QUALITY,
+        retired=True,
+        replacement_id="moonshine:ja-small-streaming",
+        retirement_reason=MOONSHINE_RETIREMENT_PLURAL_REASON,
     ),
     _moonshine(
         "ja-tiny",
@@ -1178,6 +1487,9 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "Moonshine Japanese Tiny",
         _megabytes("72"),
         "Fastest · batch",
+        retired=True,
+        replacement_id="moonshine:ja-tiny-streaming",
+        retirement_reason=MOONSHINE_RETIREMENT_REASON,
     ),
     _moonshine(
         KOREAN_LANGUAGE_CODE,
@@ -1185,8 +1497,10 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "Tiny",
         0,
         "Moonshine Korean",
-        _megabytes("72"),
+        MOONSHINE_KO_SIZE_BYTES,
         "Fastest · batch",
+        required_files=_MOONSHINE_BATCH_FILES,
+        revision=MOONSHINE_015_REVISION,
     ),
     _moonshine(
         CHINESE_LANGUAGE_CODE,
@@ -1196,6 +1510,9 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "Moonshine Mandarin",
         _megabytes(MOONSHINE_BASE_SIZE_MB),
         FAST_BATCH_QUALITY,
+        retired=True,
+        replacement_id="moonshine:zh-tiny-streaming",
+        retirement_reason=MOONSHINE_RETIREMENT_REASON,
     ),
     _moonshine(
         UKRAINIAN_LANGUAGE_CODE,
@@ -1203,8 +1520,10 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         BASE_MODEL_VARIANT,
         1,
         "Moonshine Ukrainian",
-        _megabytes(MOONSHINE_BASE_SIZE_MB),
+        MOONSHINE_UK_SIZE_BYTES,
         FAST_BATCH_QUALITY,
+        required_files=_MOONSHINE_BATCH_FILES,
+        revision=MOONSHINE_015_REVISION,
     ),
     _moonshine(
         VIETNAMESE_LANGUAGE_CODE,
@@ -1214,6 +1533,9 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "Moonshine Vietnamese",
         _megabytes(MOONSHINE_BASE_SIZE_MB),
         FAST_BATCH_QUALITY,
+        retired=True,
+        replacement_id="moonshine:vi-tiny-streaming",
+        retirement_reason=MOONSHINE_RETIREMENT_REASON,
     ),
     _faster_whisper(
         "tiny.en",
@@ -1263,6 +1585,15 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         ENGLISH_ONLY,
         "Accurate · distilled",
         8,
+    ),
+    _faster_whisper(
+        "distil-large-v3",
+        "Distil-Whisper Large v3",
+        DISTIL_LARGE_V3_SIZE_BYTES,
+        ENGLISH_ONLY,
+        "Most accurate · distilled",
+        VERY_HIGH_MEMORY_RAM_GB,
+        license_name=MIT_LICENSE,
     ),
     _whisperkit(
         "openai_whisper-tiny", "WhisperKit Tiny", _megabytes("66"), MULTILINGUAL, FASTEST_QUALITY, 4
@@ -1438,7 +1769,13 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
     ),
 )
 
-DEFAULT_CATALOG: tuple[CatalogModel, ...] = apply_pins(_BASE_CATALOG)
+_PINNED_CATALOG: tuple[CatalogModel, ...] = apply_pins(_BASE_CATALOG)
+DEFAULT_CATALOG: tuple[CatalogModel, ...] = tuple(
+    model for model in _PINNED_CATALOG if not model.retired
+)
+RETIRED_CATALOG: tuple[CatalogModel, ...] = tuple(
+    model for model in _PINNED_CATALOG if model.retired
+)
 
 
 def catalog_by_id(catalog: tuple[CatalogModel, ...] = DEFAULT_CATALOG) -> dict[str, CatalogModel]:

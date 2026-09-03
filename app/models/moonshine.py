@@ -20,10 +20,12 @@ PCM_SAMPLE_SCALE = 32_768.0
 STREAM_UPDATE_INTERVAL_SECONDS = 0.35
 LANGUAGE_ALIASES = (
     ("ar", frozenset(("ar", "ar-SA"))),
+    ("de", frozenset(("de", "de-DE"))),
     ("en", frozenset(("en", "en-US", "en-GB"))),
     ("es", frozenset(("es", "es-ES", "es-MX"))),
     ("ja", frozenset(("ja", "ja-JP"))),
     ("ko", frozenset(("ko", "ko-KR"))),
+    ("tl", frozenset(("tl", "tl-PH", "fil"))),
     ("uk", frozenset(("uk", "uk-UA"))),
     ("vi", frozenset(("vi", "vi-VN"))),
     ("zh", frozenset(("zh", "zh-CN", "zh-TW", "cmn"))),

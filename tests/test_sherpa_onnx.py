@@ -9,10 +9,15 @@ from pathlib import Path
 
 import pytest
 
-from app.catalog import CatalogModel
+from app.catalog import DEFAULT_CATALOG, CatalogModel
 from app.errors import EngineUnavailableError, LanguageUnsupportedError
 from app.models.base import EngineTranscription, TranscriptionOptions
-from app.models.sherpa_onnx import SherpaOnnxEngine, _SherpaOnnxStreamAdapter
+from app.models.sherpa_onnx import (
+    SherpaOnnxEngine,
+    _set_stream_language,
+    _SherpaOnnxStreamAdapter,
+    _SherpaRecognizerBuilder,
+)
 
 NORMALIZED_SAMPLE_RATE_HZ = 16_000
 SENSE_VOICE_MODEL_TYPE = "sense_voice"
@@ -75,6 +80,29 @@ def _wave(path: Path) -> None:
         output.setsampwidth(2)
         output.setframerate(NORMALIZED_SAMPLE_RATE_HZ)
         output.writeframes(array("h", [0, 100, -100]).tobytes())
+
+
+def test_nemotron_stream_language_keeps_locale_prompt() -> None:
+    model = next(
+        model
+        for model in DEFAULT_CATALOG
+        if model.id == "sherpa-onnx:nemotron-3.5-asr-streaming-0.6b-320ms-int8"
+    )
+    builder = _SherpaRecognizerBuilder(None, model, threads=1)
+
+    class Stream:
+        def __init__(self) -> None:
+            self.options: dict[str, str] = {}
+
+        def set_option(self, name: str, value: str) -> None:
+            self.options[name] = value
+
+    stream = Stream()
+    mapped = builder.stream_language("de-DE")
+    _set_stream_language(stream, mapped, preserve_locale=builder.uses_stream_language_locale())
+
+    assert mapped == "de-DE"
+    assert stream.options == {"language": "de-DE"}
 
 
 async def test_sherpa_keeps_one_recognizer_loaded(
@@ -427,6 +455,46 @@ def test_decode_wave_online_reads_result_fr_a(tmp_path: Path) -> None:
     assert recognizer.stream.waveform is not None
 
 
+def test_decode_wave_online_sets_optional_language_option(tmp_path: Path) -> None:
+    from app.models.sherpa_onnx import _decode_wave_online
+
+    audio = tmp_path / "audio.wav"
+    _wave(audio)
+
+    class FakeStream:
+        def __init__(self) -> None:
+            self.options: dict[str, str] = {}
+
+        def has_option(self, name: str) -> bool:
+            return name == "language"
+
+        def set_option(self, name: str, value: str) -> None:
+            self.options[name] = value
+
+        def accept_waveform(self, sample_rate: int, samples: list[float]) -> None:
+            pass
+
+        def input_finished(self) -> None:
+            pass
+
+    class FakeRecognizer:
+        def __init__(self) -> None:
+            self.stream = FakeStream()
+
+        def create_stream(self) -> FakeStream:
+            return self.stream
+
+        def is_ready(self, stream: FakeStream) -> bool:
+            return False
+
+        def get_result(self, stream: FakeStream) -> str:
+            return "text"
+
+    recognizer = FakeRecognizer()
+    assert _decode_wave_online(recognizer, audio, "de-DE") == "text"
+    assert recognizer.stream.options == {"language": "de"}
+
+
 def test_supports_streaming_only_for_the_st_aa(tmp_path: Path) -> None:
     streaming_model = _catalog(
         "streaming_zipformer",
@@ -522,6 +590,23 @@ def test_stream_adapter_reports_partial_the_aaaa() -> None:
     operation_result = adapter.stop()
     assert [(line.line_id, line.text) for line in operation_result.lines] == [(0, "hello world")]
     assert stream.finished is True
+
+
+def test_nemotron_stream_adapter_strips_language_tag() -> None:
+    recognizer = _FakeOnlineRecognizer()
+    stream = _FakeOnlineStream()
+    adapter = _SherpaOnnxStreamAdapter(recognizer, stream, language_mapper=lambda text: text)
+    events: list[object] = []
+    adapter.add_listener(events.append)
+
+    recognizer.text = "Hello world. <en-US>"
+    adapter.add_audio([0.1], NORMALIZED_SAMPLE_RATE_HZ)
+    result = adapter.stop()
+
+    assert events[0].line.text == "Hello world."
+    assert result.lines[0].text == "Hello world."
+    assert adapter.detected_language == "en-US"
+    assert result.detected_language == "en-US"
 
 
 def test_stream_adapter_starts_a_new_line_a_aaaaa() -> None:
