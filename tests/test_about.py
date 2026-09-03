@@ -7,7 +7,12 @@ from app.fragments.about import about_fragment
 from app.schemas import CommitStatus
 from tests.test_admin import _assert_about_surface
 
-BRAND = Path(__file__).resolve().parents[1] / "app" / "webui" / "brand"
+APPLICATION_DIRECTORY = "app"
+WEB_UI_DIRECTORY = "webui"
+UTF8_ENCODING = "utf-8"
+BRAND_ACCENT = "#0F6B57"
+ABOUT_STYLES_MARKER = "/* About reuses"
+BRAND = Path(__file__).resolve().parents[1] / APPLICATION_DIRECTORY / WEB_UI_DIRECTORY / "brand"
 SOCIAL = BRAND / "social"
 PLATFORM = BRAND / "platform"
 SHA = "0979263b31465a19a6c5fa375ccdd0f2af250ca5"
@@ -37,10 +42,10 @@ def test_about_fragment_shows_commit_when_given() -> None:
 
 
 def test_social_marks_are_the_official_files() -> None:
-    discord = (SOCIAL / "discord.svg").read_text(encoding="utf-8")
-    x_mark = (SOCIAL / "x.svg").read_text(encoding="utf-8")
-    github = (SOCIAL / "github.svg").read_text(encoding="utf-8")
-    mail = (SOCIAL / "mail.svg").read_text(encoding="utf-8")
+    discord = (SOCIAL / "discord.svg").read_text(encoding=UTF8_ENCODING)
+    x_mark = (SOCIAL / "x.svg").read_text(encoding=UTF8_ENCODING)
+    github = (SOCIAL / "github.svg").read_text(encoding=UTF8_ENCODING)
+    mail = (SOCIAL / "mail.svg").read_text(encoding=UTF8_ENCODING)
     for svg in (discord, x_mark, github, mail):
         assert 'viewBox="0 0 24 24"' in svg
         assert 'fill="currentColor"' in svg
@@ -53,16 +58,16 @@ def test_social_marks_are_the_official_files() -> None:
 
 
 def test_platform_marks_are_the_official_files() -> None:
-    linux = (PLATFORM / "linux.svg").read_text(encoding="utf-8")
-    apple = (PLATFORM / "apple.svg").read_text(encoding="utf-8")
-    windows = (PLATFORM / "windows.svg").read_text(encoding="utf-8")
-    android = (PLATFORM / "android.svg").read_text(encoding="utf-8")
+    linux = (PLATFORM / "linux.svg").read_text(encoding=UTF8_ENCODING)
+    apple = (PLATFORM / "apple.svg").read_text(encoding=UTF8_ENCODING)
+    windows = (PLATFORM / "windows.svg").read_text(encoding=UTF8_ENCODING)
+    android = (PLATFORM / "android.svg").read_text(encoding=UTF8_ENCODING)
     for svg in (linux, apple, windows, android):
         assert 'viewBox="0 0 24 24"' in svg
         assert 'fill="currentColor"' in svg
         assert "5865F2" not in svg
         assert "#000" not in svg
-        assert "#0F6B57" not in svg
+        assert BRAND_ACCENT not in svg
     assert "M12.504 0c-.155" in linux
     assert "M12.152 6.896" in apple
     assert "M0,0H11.377" in windows
@@ -70,11 +75,11 @@ def test_platform_marks_are_the_official_files() -> None:
 
 
 def test_family_marks_are_current_color() -> None:
-    hq = (BRAND / "vocahq" / "voca-mark.svg").read_text(encoding="utf-8")
-    gateway = (BRAND / "vocagateway" / "vocagateway-1u-mark.svg").read_text(encoding="utf-8")
+    hq = (BRAND / "vocahq" / "voca-mark.svg").read_text(encoding=UTF8_ENCODING)
+    gateway = (BRAND / "vocagateway" / "vocagateway-1u-mark.svg").read_text(encoding=UTF8_ENCODING)
     for svg in (hq, gateway):
         assert 'fill="currentColor"' in svg
-        assert "#0F6B57" not in svg
+        assert BRAND_ACCENT not in svg
         assert "#0B1A15" not in svg
         assert "#F2F6F2" not in svg
     assert "M 164 127 A 65 65" in hq
@@ -85,14 +90,14 @@ def test_family_marks_are_current_color() -> None:
 def test_official_numberu_mark_is_vendored() -> None:
     mark = (
         Path(__file__).resolve().parents[1]
-        / "app"
-        / "webui"
+        / APPLICATION_DIRECTORY
+        / WEB_UI_DIRECTORY
         / "brand"
         / "vocagateway"
         / "vocagateway-1u.svg"
-    ).read_text(encoding="utf-8")
+    ).read_text(encoding=UTF8_ENCODING)
     assert 'viewBox="0 0 1024 1024"' in mark
-    assert "#0F6B57" in mark
+    assert BRAND_ACCENT in mark
     assert "#F2F6F2" in mark
     assert 'aria-label="VocaGateway"' in mark
 
@@ -100,29 +105,34 @@ def test_official_numberu_mark_is_vendored() -> None:
 def test_official_tower_mark_is_vendored() -> None:
     mark = (
         Path(__file__).resolve().parents[1]
-        / "app"
-        / "webui"
+        / APPLICATION_DIRECTORY
+        / WEB_UI_DIRECTORY
         / "brand"
         / "vocagateway"
         / "vocagateway-tower.svg"
-    ).read_text(encoding="utf-8")
+    ).read_text(encoding=UTF8_ENCODING)
     assert 'viewBox="0 0 1024 1024"' in mark
-    assert "#0F6B57" in mark
+    assert BRAND_ACCENT in mark
     assert "#F2F6F2" in mark
     assert 'aria-label="VocaGateway"' in mark
     assert 'y="148" width="440" height="676"' in mark
 
 
 def test_about_styles_reuse_webui_chrome() -> None:
-    css = (Path(__file__).resolve().parents[1] / "app" / "webui" / "styles.css").read_text()
-    assert "text-transform: uppercase" not in css.split("/* About reuses")[1]
+    css = (
+        Path(__file__).resolve().parents[1]
+        / APPLICATION_DIRECTORY
+        / WEB_UI_DIRECTORY
+        / "styles.css"
+    ).read_text()
+    assert "text-transform: uppercase" not in css.split(ABOUT_STYLES_MARKER)[1]
     assert "about-kicker" not in css
     assert "about-card-kicker" not in css
     assert ".about-icon" in css
     assert ".about-info" in css
     assert ".about-host-mark" in css
     assert "about-family-links" not in css
-    assert "about-1u" not in css.split("/* About reuses")[1]
-    assert "5865F2" not in css.split("/* About reuses")[1]
-    about_css = css.split("/* About reuses")[1]
+    assert "about-1u" not in css.split(ABOUT_STYLES_MARKER)[1]
+    assert "5865F2" not in css.split(ABOUT_STYLES_MARKER)[1]
+    about_css = css.split(ABOUT_STYLES_MARKER)[1]
     assert "linear-gradient" not in about_css
