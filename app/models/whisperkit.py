@@ -62,7 +62,7 @@ class _ServerHttp:
         audio_path: Path,
         language: str,
     ) -> Request:
-        boundary = f"vocaphone-{secrets.token_hex(SERVER_TOKEN_BYTES)}"
+        boundary = f"vocagateway-{secrets.token_hex(SERVER_TOKEN_BYTES)}"
         fields = [("model", model_path.name)]
         if language != "auto":
             fields.append(("language", language))

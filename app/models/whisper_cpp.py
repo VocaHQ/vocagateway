@@ -29,7 +29,7 @@ class WhisperCppEngine:
 
     async def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> str:
         await self._require_ready()
-        with tempfile.TemporaryDirectory(prefix="vocaphone-transcript-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="vocagateway-transcript-") as temporary:
             output_stem = Path(temporary) / "result"
             arguments = _build_arguments(
                 self.binary, self.model, audio_path, output_stem, options.language
