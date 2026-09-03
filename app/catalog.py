@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, replace
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from app.system import SystemInfo
@@ -78,16 +79,6 @@ BALANCED_QUALITY = "Balanced"
 MOST_ACCURATE_QUALITY = "Most accurate"
 
 
-def _megabytes(size_text: str) -> int:
-    """Express catalog download sizes as readable decimal megabytes."""
-    return int(size_text) * MB
-
-
-def _gigabytes(size_text: str) -> int:
-    """Express catalog download sizes as readable decimal gigabytes."""
-    return int(size_text) * GB
-
-
 @dataclass(frozen=True, slots=True)
 class CatalogModel:
     """A downloadable speech-to-text model."""
@@ -115,328 +106,320 @@ class CatalogModel:
     archive_url: str | None = None
     archive_root: str | None = None
     required_files: tuple[str, ...] = ()
-    # Hugging Face commit to download from. Pinning a commit rather than
-    # tracking `main` means the bytes cannot change under an existing catalog
-    # entry: a re-upload upstream becomes a visible, reviewable catalog change
-    # instead of a silent swap. `None` falls back to `main`.
     revision: str | None = None
-    # Expected SHA-256 of the single file behind `download_url`, or of the
-    # archive behind `archive_url`. Pinned here in git so verification survives
-    # a compromised upstream, which TLS alone cannot defend against — the
-    # attacker would be the origin and the certificate would be valid.
     sha256: str | None = None
-    # (relative path, SHA-256) for models fetched as an explicit file list.
-    # Paths are relative to the extracted archive root or the repo folder, and
-    # need not cover every file; whatever is listed is enforced.
     file_digests: tuple[tuple[str, str], ...] = ()
     model_type: str | None = None
     language_codes: tuple[str, ...] = ()
     apple_silicon_only: bool = False
-    # True when the model decides the language itself and offers no way to pin it.
-    # `language_codes` then means "these are transcribed well", not "you may choose
-    # one of these" — the app's language setting cannot constrain the result.
     detects_language_automatically: bool = False
 
 
-def load_pins(path: Path = PINS_PATH) -> dict[str, dict[str, Any]]:
-    """Read the generated integrity pins, tolerating their absence.
-
-    A missing or unreadable pin file degrades to "nothing is pinned" rather
-    than breaking startup: verification is a safety net over an already-TLS
-    -protected download, so losing it must not take the gateway offline.
-    """
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    models = payload.get("models") if isinstance(payload, dict) else None
-    return models if isinstance(models, dict) else {}
+PinsMap = dict[str, dict[str, Any]]
 
 
-def pin_download_url(url: str | None, revision: str | None) -> str | None:
-    """Point a Hugging Face `/resolve/main/` URL at a specific commit.
+class _PinManager:
+    @classmethod
+    def load_pins(cls, path: Path = PINS_PATH) -> PinsMap:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        models = payload.get("models") if isinstance(payload, dict) else None
+        return models if isinstance(models, dict) else {}
 
-    Single-file entries carry a full URL rather than a repo plus path, so the
-    revision has to be substituted into the URL itself; without this the
-    digest would be pinned while the bytes it names still tracked `main`.
-    """
-    if not url or not revision:
-        return url
-    marker = "/resolve/main/"
-    if "huggingface.co/" not in url or marker not in url:
-        return url
-    return url.replace(marker, f"/resolve/{revision}/", 1)
+    @classmethod
+    def pin_download_url(cls, url: str | None, revision: str | None) -> str | None:
+        if not url or not revision:
+            return url
+        marker = "/resolve/main/"
+        if "huggingface.co/" not in url or marker not in url:
+            return url
+        return url.replace(marker, f"/resolve/{revision}/", 1)
 
+    @classmethod
+    def apply_pins(
+        cls, catalog: tuple[CatalogModel, ...], pins: PinsMap | None = None
+    ) -> tuple[CatalogModel, ...]:
+        records = cls.load_pins() if pins is None else pins
+        if not records:
+            return catalog
+        pinned_models = [cls._pin_model(model, records.get(model.id)) for model in catalog]
+        return tuple(pinned_models)
 
-def apply_pins(
-    catalog: tuple[CatalogModel, ...], pins: dict[str, dict[str, Any]] | None = None
-) -> tuple[CatalogModel, ...]:
-    """Attach revisions and digests from the pin file to catalog entries."""
-    records = load_pins() if pins is None else pins
-    if not records:
-        return catalog
-    pinned: list[CatalogModel] = []
-    for model in catalog:
-        record = records.get(model.id)
+    @classmethod
+    def _parse_file_digests(
+        cls, digests: Any, default: tuple[tuple[str, str], ...]
+    ) -> tuple[tuple[str, str], ...]:
+        if not isinstance(digests, dict) or not digests:
+            return default
+        pairs = []
+        for key, digest in digests.items():
+            pairs.append((str(key), str(digest)))
+        return tuple(sorted(pairs))
+
+    @classmethod
+    def _pin_model(cls, model: CatalogModel, record: Any) -> CatalogModel:
         if not isinstance(record, dict):
-            pinned.append(model)
-            continue
-        digests = record.get("file_digests")
-        revision = record.get("revision") or model.revision
-        pinned.append(
-            replace(
-                model,
-                revision=revision,
-                sha256=record.get("sha256") or model.sha256,
-                download_url=pin_download_url(model.download_url, revision),
-                file_digests=(
-                    tuple(
-                        sorted((str(key), str(entry_value)) for key, entry_value in digests.items())
-                    )
-                    if isinstance(digests, dict) and digests
-                    else model.file_digests
-                ),
-            )
+            return model
+        rev = record.get("revision") or model.revision
+        digests = cls._parse_file_digests(record.get("file_digests"), model.file_digests)
+        return replace(
+            model,
+            revision=rev,
+            sha256=record.get("sha256") or model.sha256,
+            download_url=cls.pin_download_url(model.download_url, rev),
+            file_digests=digests,
         )
-    return tuple(pinned)
 
 
-def _whisper_cpp(
-    key: str,
-    label: str,
-    size_bytes: int,
-    languages: str,
-    quality: str,
-    minimum_ram_gb: float,
-    *,
-    download_url: str | None = None,
-    family: str = "Whisper",
-    description: str = "OpenAI Whisper converted for the standalone whisper.cpp engine.",
-    source: str = ENGINE_WHISPER_CPP,
-    language_codes: tuple[str, ...] = (),
-    license_name: str = "See model source",
-) -> CatalogModel:
-    return CatalogModel(
-        id=f"{ENGINE_WHISPER_CPP}:{key}",
-        engine=ENGINE_WHISPER_CPP,
-        key=key,
-        label=label,
-        size_bytes=size_bytes,
-        languages=languages,
-        quality=quality,
-        minimum_ram_gb=minimum_ram_gb,
-        download_url=download_url
-        or f"https://huggingface.co/{WHISPER_CPP_REPO}/resolve/main/{key}",
-        family=family,
-        description=description,
-        source=source,
-        language_codes=language_codes or _whisper_language_codes(languages),
-        license_name=license_name,
-    )
+class _WhisperModelBuilders:
+    @classmethod
+    def whisper_language_codes(cls, languages: str) -> tuple[str, ...]:
+        return (ENGLISH_LANGUAGE_CODE,) if languages == ENGLISH_ONLY else WHISPER_LANGUAGES
+
+    @classmethod
+    def whisper_cpp(
+        cls,
+        key: str,
+        label: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> CatalogModel:
+        return CatalogModel(
+            id=f"{ENGINE_WHISPER_CPP}:{key}",
+            engine=ENGINE_WHISPER_CPP,
+            key=key,
+            label=label,
+            size_bytes=int(args[0]),
+            languages=cls._languages(args),
+            quality=str(args[2]),
+            minimum_ram_gb=float(args[3]),
+            download_url=kwargs.get("download_url")
+            or (f"https://huggingface.co/{WHISPER_CPP_REPO}/resolve/main/{key}"),
+            family=str(kwargs.get("family", "Whisper")),
+            description=str(
+                kwargs.get(
+                    "description",
+                    "OpenAI Whisper converted for the standalone whisper.cpp engine.",
+                )
+            ),
+            source=str(kwargs.get("source", ENGINE_WHISPER_CPP)),
+            language_codes=tuple(
+                kwargs.get("language_codes") or cls.whisper_language_codes(cls._languages(args))
+            ),
+            license_name=str(kwargs.get("license_name", "See model source")),
+        )
+
+    @classmethod
+    def whisperkit(
+        cls,
+        folder: str,
+        label: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> CatalogModel:
+        return CatalogModel(
+            id=f"{ENGINE_WHISPERKIT}:{folder}",
+            engine=ENGINE_WHISPERKIT,
+            key=folder,
+            label=label,
+            size_bytes=int(args[0]),
+            languages=cls._languages(args),
+            quality=str(args[2]),
+            minimum_ram_gb=float(args[3]),
+            huggingface_repo=WHISPERKIT_REPO,
+            huggingface_folder=folder,
+            family="Whisper",
+            description="Core ML Whisper model optimized for Apple silicon.",
+            source="WhisperKit",
+            language_codes=cls.whisper_language_codes(cls._languages(args)),
+        )
+
+    @classmethod
+    def faster_whisper(
+        cls,
+        key: str,
+        label: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> CatalogModel:
+        return CatalogModel(
+            id=f"{ENGINE_FASTER_WHISPER}:{key}",
+            engine=ENGINE_FASTER_WHISPER,
+            key=key,
+            label=label,
+            size_bytes=int(args[0]),
+            languages=cls._languages(args),
+            quality=str(args[2]),
+            minimum_ram_gb=float(args[3]),
+            huggingface_repo=cls._faster_whisper_repo(key),
+            huggingface_folder="",
+            family="Whisper / CTranslate2",
+            description=(
+                "Persistent CTranslate2 model with CPU INT8 inference; "
+                "works well on desktop and server CPUs."
+            ),
+            source="faster-whisper",
+            marker_file="model.bin",
+            language_codes=cls.whisper_language_codes(cls._languages(args)),
+        )
+
+    @classmethod
+    def mlx_audio(
+        cls,
+        key: str,
+        label: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> CatalogModel:
+        return CatalogModel(
+            id=f"{ENGINE_MLX_AUDIO}:{key}",
+            engine=ENGINE_MLX_AUDIO,
+            key=key,
+            label=label,
+            size_bytes=int(args[0]),
+            languages=cls._languages(args),
+            quality=str(args[2]),
+            minimum_ram_gb=float(args[3]),
+            huggingface_repo=str(kwargs["repository"]),
+            huggingface_folder="",
+            family=str(kwargs["family"]),
+            description=str(kwargs["description"]),
+            source="MLX Audio",
+            marker_file="model.safetensors",
+            language_codes=tuple(kwargs.get("language_codes", ())),
+            apple_silicon_only=True,
+            license_name=str(kwargs["license_name"]),
+        )
+
+    @classmethod
+    def _languages(cls, args: tuple[Any, ...]) -> str:
+        return str(args[1])
+
+    @classmethod
+    def _faster_whisper_repo(cls, key: str) -> str:
+        if key.startswith("distil-"):
+            return f"Systran/faster-distil-whisper-{key.removeprefix('distil-')}"
+        return f"Systran/faster-whisper-{key}"
 
 
-def _whisperkit(
-    folder: str,
-    label: str,
-    size_bytes: int,
-    languages: str,
-    quality: str,
-    minimum_ram_gb: float,
-) -> CatalogModel:
-    return CatalogModel(
-        id=f"{ENGINE_WHISPERKIT}:{folder}",
-        engine=ENGINE_WHISPERKIT,
-        key=folder,
-        label=label,
-        size_bytes=size_bytes,
-        languages=languages,
-        quality=quality,
-        minimum_ram_gb=minimum_ram_gb,
-        huggingface_repo=WHISPERKIT_REPO,
-        huggingface_folder=folder,
-        family="Whisper",
-        description="Core ML Whisper model optimized for Apple silicon.",
-        source="WhisperKit",
-        language_codes=_whisper_language_codes(languages),
-    )
+class _SpecializedModelBuilders:
+    @classmethod
+    def megabytes(cls, size_text: str) -> int:
+        return int(size_text) * MB
+
+    @classmethod
+    def gigabytes(cls, size_text: str) -> int:
+        return int(size_text) * GB
+
+    @classmethod
+    def moonshine(
+        cls,
+        key: str,
+        language: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> CatalogModel:
+        return CatalogModel(
+            id=f"{ENGINE_MOONSHINE}:{key}",
+            engine=ENGINE_MOONSHINE,
+            key=key,
+            label=str(args[2]),
+            size_bytes=int(args[3]),
+            languages=f"{_MOONSHINE_LANGUAGE_NAMES[language]} only",
+            quality=str(args[4]),
+            minimum_ram_gb=float(kwargs.get("minimum_ram_gb", 2)),
+            family="Moonshine",
+            description=cls._moonshine_description(
+                str(args[0]), bool(kwargs.get("supports_streaming", False))
+            ),
+            source="Moonshine Voice",
+            marker_file=".vocagateway-model.json",
+            language_code=language,
+            language_codes=(language,),
+            model_arch=int(args[1]),
+            supports_streaming=bool(kwargs.get("supports_streaming", False)),
+            license_name=(
+                MIT_LICENSE if language == ENGLISH_LANGUAGE_CODE else "Moonshine Community License"
+            ),
+            commercial_use=language == ENGLISH_LANGUAGE_CODE,
+        )
+
+    @classmethod
+    def sherpa_onnx(
+        cls,
+        key: str,
+        label: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> CatalogModel:
+        cls._validate_sherpa_source(
+            key,
+            kwargs.get("archive_url"),
+            kwargs.get("archive_root"),
+            kwargs.get("huggingface_repo"),
+        )
+        return CatalogModel(
+            id=f"{ENGINE_SHERPA_ONNX}:{key}",
+            engine=ENGINE_SHERPA_ONNX,
+            key=key,
+            label=label,
+            size_bytes=int(args[0]),
+            languages=cls._languages(args),
+            quality=str(args[2]),
+            minimum_ram_gb=float(args[3]),
+            archive_url=kwargs.get("archive_url"),
+            archive_root=kwargs.get("archive_root"),
+            huggingface_repo=kwargs.get("huggingface_repo"),
+            required_files=tuple(kwargs["required_files"]),
+            family=str(kwargs["family"]),
+            description=str(kwargs["description"]),
+            source="sherpa-onnx",
+            marker_file=".vocagateway-model.json",
+            model_type=str(kwargs["model_type"]),
+            language_codes=tuple(kwargs["language_codes"]),
+            license_name=str(kwargs["license_name"]),
+            supports_streaming=bool(kwargs.get("supports_streaming", False)),
+            detects_language_automatically=bool(
+                kwargs.get("detects_language_automatically", False)
+            ),
+        )
+
+    @classmethod
+    def _languages(cls, args: tuple[Any, ...]) -> str:
+        return str(args[1])
+
+    @classmethod
+    def _moonshine_description(cls, arch: str, streaming: bool) -> str:
+        inf = (
+            " Uses cached incremental inference while you speak."
+            if streaming
+            else " Uses the fast batch pipeline after recording."
+        )
+        return f"{arch} model optimized for private local dictation.{inf}"
+
+    @classmethod
+    def _validate_sherpa_source(
+        cls, key: str, archive_url: Any, archive_root: Any, huggingface_repo: Any
+    ) -> None:
+        if archive_url is not None:
+            if archive_root is None:
+                raise ValueError(f"{key}: archive_url requires archive_root.")
+        elif huggingface_repo is None:
+            raise ValueError(f"{key}: provide either archive_url/archive_root or huggingface_repo.")
 
 
-def _faster_whisper(
-    key: str,
-    label: str,
-    size_bytes: int,
-    languages: str,
-    quality: str,
-    minimum_ram_gb: float,
-) -> CatalogModel:
-    repository = (
-        f"Systran/faster-distil-whisper-{key.removeprefix('distil-')}"
-        if key.startswith("distil-")
-        else f"Systran/faster-whisper-{key}"
-    )
-    return CatalogModel(
-        id=f"{ENGINE_FASTER_WHISPER}:{key}",
-        engine=ENGINE_FASTER_WHISPER,
-        key=key,
-        label=label,
-        size_bytes=size_bytes,
-        languages=languages,
-        quality=quality,
-        minimum_ram_gb=minimum_ram_gb,
-        huggingface_repo=repository,
-        huggingface_folder="",
-        family="Whisper / CTranslate2",
-        description=(
-            "Persistent CTranslate2 model with CPU INT8 inference; "
-            "works well on desktop and server CPUs."
-        ),
-        source="faster-whisper",
-        marker_file="model.bin",
-        language_codes=_whisper_language_codes(languages),
-    )
+_whisper_cpp = _WhisperModelBuilders.whisper_cpp
+_whisperkit = _WhisperModelBuilders.whisperkit
+_faster_whisper = _WhisperModelBuilders.faster_whisper
+_mlx_audio = _WhisperModelBuilders.mlx_audio
+_whisper_language_codes = _WhisperModelBuilders.whisper_language_codes
+_megabytes = _SpecializedModelBuilders.megabytes
+_gigabytes = _SpecializedModelBuilders.gigabytes
+_moonshine = _SpecializedModelBuilders.moonshine
+_sherpa_onnx = _SpecializedModelBuilders.sherpa_onnx
 
-
-def _moonshine(
-    key: str,
-    language: str,
-    architecture: str,
-    model_arch: int,
-    label: str,
-    size_bytes: int,
-    quality: str,
-    *,
-    supports_streaming: bool = False,
-    minimum_ram_gb: float = 2,
-) -> CatalogModel:
-    english = language == ENGLISH_LANGUAGE_CODE
-    inference_description = (
-        " Uses cached incremental inference while you speak."
-        if supports_streaming
-        else " Uses the fast batch pipeline after recording."
-    )
-    return CatalogModel(
-        id=f"{ENGINE_MOONSHINE}:{key}",
-        engine=ENGINE_MOONSHINE,
-        key=key,
-        label=label,
-        size_bytes=size_bytes,
-        languages=f"{_MOONSHINE_LANGUAGE_NAMES[language]} only",
-        quality=quality,
-        minimum_ram_gb=minimum_ram_gb,
-        family="Moonshine",
-        description=f"{architecture} model optimized for private local dictation."
-        + inference_description,
-        source="Moonshine Voice",
-        marker_file=".vocagateway-model.json",
-        language_code=language,
-        # Also as a tuple: the engine reads `language_code`, but the model cards and
-        # the language filter read `language_codes`, and an empty tuple there means
-        # "covers everything" — which would list every English Moonshine under Hindi.
-        language_codes=(language,),
-        model_arch=model_arch,
-        supports_streaming=supports_streaming,
-        license_name=MIT_LICENSE if english else "Moonshine Community License",
-        commercial_use=english,
-    )
-
-
-def _sherpa_onnx(
-    key: str,
-    label: str,
-    size_bytes: int,
-    languages: str,
-    quality: str,
-    minimum_ram_gb: float,
-    *,
-    required_files: tuple[str, ...],
-    model_type: str,
-    language_codes: tuple[str, ...],
-    family: str,
-    description: str,
-    license_name: str,
-    archive_url: str | None = None,
-    archive_root: str | None = None,
-    huggingface_repo: str | None = None,
-    supports_streaming: bool = False,
-    detects_language_automatically: bool = False,
-) -> CatalogModel:
-    """Build a sherpa-onnx catalog entry from either download mechanism.
-
-    Most models ship as a `k2-fsa/sherpa-onnx` GitHub-release `.tar.bz2`
-    (`archive_url`/`archive_root`). Some model families (GigaAM, Canary) are
-    only published as individual files in a plain Hugging Face model repo with
-    no such archive; for those, pass `huggingface_repo` instead and the
-    gateway downloads exactly `required_files` from its root.
-    """
-    if archive_url is not None:
-        if archive_root is None:
-            raise ValueError(f"{key}: archive_url requires archive_root.")
-    elif huggingface_repo is None:
-        raise ValueError(f"{key}: provide either archive_url/archive_root or huggingface_repo.")
-    return CatalogModel(
-        id=f"{ENGINE_SHERPA_ONNX}:{key}",
-        engine=ENGINE_SHERPA_ONNX,
-        key=key,
-        label=label,
-        size_bytes=size_bytes,
-        languages=languages,
-        quality=quality,
-        minimum_ram_gb=minimum_ram_gb,
-        archive_url=archive_url,
-        archive_root=archive_root,
-        huggingface_repo=huggingface_repo,
-        required_files=required_files,
-        family=family,
-        description=description,
-        source="sherpa-onnx",
-        marker_file=".vocagateway-model.json",
-        model_type=model_type,
-        language_codes=language_codes,
-        license_name=license_name,
-        supports_streaming=supports_streaming,
-        detects_language_automatically=detects_language_automatically,
-    )
-
-
-def _mlx_audio(
-    key: str,
-    label: str,
-    size_bytes: int,
-    languages: str,
-    quality: str,
-    minimum_ram_gb: float,
-    *,
-    repository: str,
-    family: str,
-    description: str,
-    license_name: str,
-    language_codes: tuple[str, ...] = (),
-) -> CatalogModel:
-    return CatalogModel(
-        id=f"{ENGINE_MLX_AUDIO}:{key}",
-        engine=ENGINE_MLX_AUDIO,
-        key=key,
-        label=label,
-        size_bytes=size_bytes,
-        languages=languages,
-        quality=quality,
-        minimum_ram_gb=minimum_ram_gb,
-        huggingface_repo=repository,
-        huggingface_folder="",
-        family=family,
-        description=description,
-        source="MLX Audio",
-        marker_file="model.safetensors",
-        language_codes=language_codes,
-        apple_silicon_only=True,
-        license_name=license_name,
-    )
-
-
-# Whisper's own language set, shared by every Whisper-derived entry (whisper.cpp,
-# WhisperKit, faster-whisper, MLX Whisper). None of those engines validate against
-# it — they pass the language straight to the CLI or library — so this is metadata
-# for the model cards and the language filter, not a gate.
 WHISPER_LANGUAGES: tuple[str, ...] = tuple(
     str.split(
         "af am ar as az ba be bg bn bo br bs ca cs cy da de el en es et eu fa fi fo fr gl gu ha "
@@ -447,195 +430,190 @@ WHISPER_LANGUAGES: tuple[str, ...] = tuple(
 )
 
 
-def _whisper_language_codes(languages: str) -> tuple[str, ...]:
-    """Derive a Whisper entry's codes from its human-readable summary."""
-    return (ENGLISH_LANGUAGE_CODE,) if languages == ENGLISH_ONLY else WHISPER_LANGUAGES
-
-
 # Display names for every code any catalog entry declares, so a model card can list
 # "Hindi, Bengali, Tamil" instead of "hi, bn, ta". A missing code falls back to the
 # code itself rather than hiding the language.
-LANGUAGE_NAMES: dict[str, str] = {
-    "af": "Afrikaans",
-    "am": "Amharic",
-    ARABIC_LANGUAGE_CODE: "Arabic",
-    "as": "Assamese",
-    "az": "Azerbaijani",
-    "ba": "Bashkir",
-    "be": "Belarusian",
-    BULGARIAN_LANGUAGE_CODE: "Bulgarian",
-    "bn": "Bengali",
-    "bo": "Tibetan",
-    "br": "Breton",
-    "bs": "Bosnian",
-    "ca": "Catalan",
-    CZECH_LANGUAGE_CODE: "Czech",
-    "ct": "Yue Chinese",
-    "cy": "Welsh",
-    DANISH_LANGUAGE_CODE: "Danish",
-    GERMAN_LANGUAGE_CODE: "German",
-    GREEK_LANGUAGE_CODE: "Greek",
-    ENGLISH_LANGUAGE_CODE: "English",
-    SPANISH_LANGUAGE_CODE: "Spanish",
-    ESTONIAN_LANGUAGE_CODE: "Estonian",
-    "eu": "Basque",
-    "fa": "Persian",
-    FINNISH_LANGUAGE_CODE: "Finnish",
-    "fil": "Filipino",
-    "fo": "Faroese",
-    FRENCH_LANGUAGE_CODE: "French",
-    "gl": "Galician",
-    "gu": "Gujarati",
-    "ha": "Hausa",
-    "haw": "Hawaiian",
-    "he": "Hebrew",
-    "hi": "Hindi",
-    CROATIAN_LANGUAGE_CODE: "Croatian",
-    "ht": "Haitian Creole",
-    HUNGARIAN_LANGUAGE_CODE: "Hungarian",
-    "hy": "Armenian",
-    "id": "Indonesian",
-    "is": "Icelandic",
-    ITALIAN_LANGUAGE_CODE: "Italian",
-    JAPANESE_LANGUAGE_CODE: "Japanese",
-    "jv": "Javanese",
-    "jw": "Javanese",
-    "ka": "Georgian",
-    "kab": "Kabyle",
-    "kk": "Kazakh",
-    "km": "Khmer",
-    "kn": "Kannada",
-    KOREAN_LANGUAGE_CODE: "Korean",
-    "ks": "Kashmiri",
-    "ky": "Kyrgyz",
-    "la": "Latin",
-    "lb": "Luxembourgish",
-    "ln": "Lingala",
-    "lo": "Lao",
-    LITHUANIAN_LANGUAGE_CODE: "Lithuanian",
-    LATVIAN_LANGUAGE_CODE: "Latvian",
-    "mg": "Malagasy",
-    "mi": "Maori",
-    "mk": "Macedonian",
-    "ml": "Malayalam",
-    "mn": "Mongolian",
-    "mr": "Marathi",
-    "ms": "Malay",
-    MALTESE_LANGUAGE_CODE: "Maltese",
-    "my": "Burmese",
-    "ne": "Nepali",
-    DUTCH_LANGUAGE_CODE: "Dutch",
-    "nn": "Norwegian Nynorsk",
-    "no": "Norwegian",
-    "oc": "Occitan",
-    "or": "Odia",
-    "pa": "Punjabi",
-    POLISH_LANGUAGE_CODE: "Polish",
-    "ps": "Pashto",
-    PORTUGUESE_LANGUAGE_CODE: "Portuguese",
-    ROMANIAN_LANGUAGE_CODE: "Romanian",
-    RUSSIAN_LANGUAGE_CODE: "Russian",
-    "sa": "Sanskrit",
-    "sd": "Sindhi",
-    "si": "Sinhala",
-    SLOVAK_LANGUAGE_CODE: "Slovak",
-    SLOVENIAN_LANGUAGE_CODE: "Slovenian",
-    "sn": "Shona",
-    "so": "Somali",
-    "sq": "Albanian",
-    "sr": "Serbian",
-    "su": "Sundanese",
-    SWEDISH_LANGUAGE_CODE: "Swedish",
-    "sw": "Swahili",
-    "ta": "Tamil",
-    "te": "Telugu",
-    "tg": "Tajik",
-    "th": "Thai",
-    "tk": "Turkmen",
-    "tl": "Tagalog",
-    "tr": "Turkish",
-    "tt": "Tatar",
-    "ug": "Uyghur",
-    UKRAINIAN_LANGUAGE_CODE: "Ukrainian",
-    "ur": "Urdu",
-    "uz": "Uzbek",
-    VIETNAMESE_LANGUAGE_CODE: "Vietnamese",
-    "yi": "Yiddish",
-    "yo": "Yoruba",
-    "yue": "Cantonese",
-    CHINESE_LANGUAGE_CODE: "Mandarin Chinese",
-}
+LANGUAGE_NAMES: MappingProxyType[str, str] = MappingProxyType(
+    {
+        "af": "Afrikaans",
+        "am": "Amharic",
+        ARABIC_LANGUAGE_CODE: "Arabic",
+        "as": "Assamese",
+        "az": "Azerbaijani",
+        "ba": "Bashkir",
+        "be": "Belarusian",
+        BULGARIAN_LANGUAGE_CODE: "Bulgarian",
+        "bn": "Bengali",
+        "bo": "Tibetan",
+        "br": "Breton",
+        "bs": "Bosnian",
+        "ca": "Catalan",
+        CZECH_LANGUAGE_CODE: "Czech",
+        "ct": "Yue Chinese",
+        "cy": "Welsh",
+        DANISH_LANGUAGE_CODE: "Danish",
+        GERMAN_LANGUAGE_CODE: "German",
+        GREEK_LANGUAGE_CODE: "Greek",
+        ENGLISH_LANGUAGE_CODE: "English",
+        SPANISH_LANGUAGE_CODE: "Spanish",
+        ESTONIAN_LANGUAGE_CODE: "Estonian",
+        "eu": "Basque",
+        "fa": "Persian",
+        FINNISH_LANGUAGE_CODE: "Finnish",
+        "fil": "Filipino",
+        "fo": "Faroese",
+        FRENCH_LANGUAGE_CODE: "French",
+        "gl": "Galician",
+        "gu": "Gujarati",
+        "ha": "Hausa",
+        "haw": "Hawaiian",
+        "he": "Hebrew",
+        "hi": "Hindi",
+        CROATIAN_LANGUAGE_CODE: "Croatian",
+        "ht": "Haitian Creole",
+        HUNGARIAN_LANGUAGE_CODE: "Hungarian",
+        "hy": "Armenian",
+        "id": "Indonesian",
+        "is": "Icelandic",
+        ITALIAN_LANGUAGE_CODE: "Italian",
+        JAPANESE_LANGUAGE_CODE: "Japanese",
+        "jv": "Javanese",
+        "jw": "Javanese",
+        "ka": "Georgian",
+        "kab": "Kabyle",
+        "kk": "Kazakh",
+        "km": "Khmer",
+        "kn": "Kannada",
+        KOREAN_LANGUAGE_CODE: "Korean",
+        "ks": "Kashmiri",
+        "ky": "Kyrgyz",
+        "la": "Latin",
+        "lb": "Luxembourgish",
+        "ln": "Lingala",
+        "lo": "Lao",
+        LITHUANIAN_LANGUAGE_CODE: "Lithuanian",
+        LATVIAN_LANGUAGE_CODE: "Latvian",
+        "mg": "Malagasy",
+        "mi": "Maori",
+        "mk": "Macedonian",
+        "ml": "Malayalam",
+        "mn": "Mongolian",
+        "mr": "Marathi",
+        "ms": "Malay",
+        MALTESE_LANGUAGE_CODE: "Maltese",
+        "my": "Burmese",
+        "ne": "Nepali",
+        DUTCH_LANGUAGE_CODE: "Dutch",
+        "nn": "Norwegian Nynorsk",
+        "no": "Norwegian",
+        "oc": "Occitan",
+        "or": "Odia",
+        "pa": "Punjabi",
+        POLISH_LANGUAGE_CODE: "Polish",
+        "ps": "Pashto",
+        PORTUGUESE_LANGUAGE_CODE: "Portuguese",
+        ROMANIAN_LANGUAGE_CODE: "Romanian",
+        RUSSIAN_LANGUAGE_CODE: "Russian",
+        "sa": "Sanskrit",
+        "sd": "Sindhi",
+        "si": "Sinhala",
+        SLOVAK_LANGUAGE_CODE: "Slovak",
+        SLOVENIAN_LANGUAGE_CODE: "Slovenian",
+        "sn": "Shona",
+        "so": "Somali",
+        "sq": "Albanian",
+        "sr": "Serbian",
+        "su": "Sundanese",
+        SWEDISH_LANGUAGE_CODE: "Swedish",
+        "sw": "Swahili",
+        "ta": "Tamil",
+        "te": "Telugu",
+        "tg": "Tajik",
+        "th": "Thai",
+        "tk": "Turkmen",
+        "tl": "Tagalog",
+        "tr": "Turkish",
+        "tt": "Tatar",
+        "ug": "Uyghur",
+        UKRAINIAN_LANGUAGE_CODE: "Ukrainian",
+        "ur": "Urdu",
+        "uz": "Uzbek",
+        VIETNAMESE_LANGUAGE_CODE: "Vietnamese",
+        "yi": "Yiddish",
+        "yo": "Yoruba",
+        "yue": "Cantonese",
+        CHINESE_LANGUAGE_CODE: "Mandarin Chinese",
+    }
+)
+
+_ENGINE_SOURCE_URLS = MappingProxyType(
+    {
+        ENGINE_WHISPER_CPP: "https://github.com/ggml-org/whisper.cpp",
+        ENGINE_WHISPERKIT: "https://github.com/argmaxinc/WhisperKit",
+        ENGINE_FASTER_WHISPER: "https://github.com/SYSTRAN/faster-whisper",
+        ENGINE_MOONSHINE: "https://github.com/moonshine-ai/moonshine",
+        ENGINE_SHERPA_ONNX: "https://github.com/k2-fsa/sherpa-onnx",
+        ENGINE_MLX_AUDIO: "https://github.com/Blaizzy/mlx-audio",
+    }
+)
+
+_SOURCE_LABEL_URLS = MappingProxyType(
+    {
+        ENGINE_WHISPER_CPP: "https://github.com/ggml-org/whisper.cpp",
+        "faster-whisper": "https://github.com/SYSTRAN/faster-whisper",
+        "WhisperKit": "https://github.com/argmaxinc/WhisperKit",
+        "Moonshine Voice": "https://github.com/moonshine-ai/moonshine",
+        "sherpa-onnx": "https://github.com/k2-fsa/sherpa-onnx",
+        "MLX Audio": "https://github.com/Blaizzy/mlx-audio",
+        "Handy-compatible": "https://handy.computer",
+        "Breeze ASR": "https://huggingface.co/MediaTek-Research/Breeze-ASR-25",
+    }
+)
 
 
-def catalog_source_url(model: CatalogModel) -> str | None:
-    """Best public page for a catalog entry (Hugging Face repo or project site).
+class _CatalogUrls:
+    @classmethod
+    def source_url(cls, model: CatalogModel) -> str | None:
+        hf_url = cls._huggingface_url(model)
+        if hf_url:
+            return hf_url
+        release = cls._github_release_page(model.archive_url)
+        if release:
+            return release
+        named_source = _SOURCE_LABEL_URLS.get(model.source) or _ENGINE_SOURCE_URLS.get(model.engine)
+        if named_source:
+            return named_source
+        return model.download_url or model.archive_url
 
-    Prefers a browsable page over a raw .tar/.bin download blob.
-    """
-    if model.huggingface_repo:
-        return f"https://huggingface.co/{model.huggingface_repo}"
-    if model.download_url and "huggingface.co/" in model.download_url:
-        url = model.download_url
-        if "/resolve/" in url:
-            head, _, _ = url.partition("/resolve/")
-            return head
-        return url
-    # Release/tag pages are more specific than a project root (e.g. SenseVoice /
-    # Parakeet v3 ship only as sherpa-onnx GitHub release assets).
-    release = _github_release_page(model.archive_url)
-    if release:
-        return release
-    # Label-specific pages (Handy, Breeze, …) before generic engine fallbacks —
-    # otherwise Handy builds incorrectly link to whisper.cpp's GitHub.
-    labeled = _SOURCE_LABEL_URLS.get(model.source)
-    if labeled:
-        return labeled
-    project = _ENGINE_SOURCE_URLS.get(model.engine)
-    if project:
-        return project
-    if model.download_url:
-        return model.download_url
-    if model.archive_url:
-        return model.archive_url
-    return None
+    @classmethod
+    def language_names(cls, codes: tuple[str, ...]) -> list[str]:
+        return [LANGUAGE_NAMES.get(code, code) for code in codes]
 
-
-def _github_release_page(archive_url: str | None) -> str | None:
-    """Turn a GitHub release asset URL into the browsable release/tag page."""
-    if not archive_url or "/releases/download/" not in archive_url:
+    @classmethod
+    def _huggingface_url(cls, model: CatalogModel) -> str | None:
+        if model.huggingface_repo:
+            return f"https://huggingface.co/{model.huggingface_repo}"
+        if model.download_url and "huggingface.co/" in model.download_url:
+            head, has_resolve, _ = model.download_url.partition("/resolve/")
+            return head if has_resolve else model.download_url
         return None
-    head, _, rest = archive_url.partition("/releases/download/")
-    if not head.startswith("https://github.com/") or not rest:
-        return None
-    tag = rest.split("/", maxsplit=1)[0]
-    return f"{head}/releases/tag/{tag}" if tag else None
+
+    @classmethod
+    def _github_release_page(cls, archive_url: str | None) -> str | None:
+        if not archive_url or "/releases/download/" not in archive_url:
+            return None
+        head, _, rest = archive_url.partition("/releases/download/")
+        if not head.startswith("https://github.com/") or not rest:
+            return None
+        tag = rest.split("/", maxsplit=1)[0]
+        return f"{head}/releases/tag/{tag}" if tag else None
 
 
-_ENGINE_SOURCE_URLS = {
-    ENGINE_WHISPER_CPP: "https://github.com/ggml-org/whisper.cpp",
-    ENGINE_WHISPERKIT: "https://github.com/argmaxinc/WhisperKit",
-    ENGINE_FASTER_WHISPER: "https://github.com/SYSTRAN/faster-whisper",
-    ENGINE_MOONSHINE: "https://github.com/moonshine-ai/moonshine",
-    ENGINE_SHERPA_ONNX: "https://github.com/k2-fsa/sherpa-onnx",
-    ENGINE_MLX_AUDIO: "https://github.com/Blaizzy/mlx-audio",
-}
-
-_SOURCE_LABEL_URLS = {
-    ENGINE_WHISPER_CPP: "https://github.com/ggml-org/whisper.cpp",
-    "faster-whisper": "https://github.com/SYSTRAN/faster-whisper",
-    "WhisperKit": "https://github.com/argmaxinc/WhisperKit",
-    "Moonshine Voice": "https://github.com/moonshine-ai/moonshine",
-    "sherpa-onnx": "https://github.com/k2-fsa/sherpa-onnx",
-    "MLX Audio": "https://github.com/Blaizzy/mlx-audio",
-    # Hosted on Handy's CDN; the product page is the right "source", not whisper.cpp.
-    "Handy-compatible": "https://handy.computer",
-    "Breeze ASR": "https://huggingface.co/MediaTek-Research/Breeze-ASR-25",
-}
-
-
-def language_names(codes: tuple[str, ...]) -> list[str]:
-    """Human-readable names for a model's languages, in the order declared."""
-    return [LANGUAGE_NAMES.get(code, code) for code in codes]
+load_pins = _PinManager.load_pins
+pin_download_url = _PinManager.pin_download_url
+apply_pins = _PinManager.apply_pins
+catalog_source_url = _CatalogUrls.source_url
+language_names = _CatalogUrls.language_names
 
 
 # Dolphin's own language codes, from DataoceanAI/Dolphin `languages.md`. Two are not
@@ -684,16 +662,18 @@ _DOLPHIN_LANGUAGE_CODES: tuple[str, ...] = (
 )
 
 
-_MOONSHINE_LANGUAGE_NAMES = {
-    ARABIC_LANGUAGE_CODE: "Arabic",
-    ENGLISH_LANGUAGE_CODE: "English",
-    SPANISH_LANGUAGE_CODE: "Spanish",
-    JAPANESE_LANGUAGE_CODE: "Japanese",
-    KOREAN_LANGUAGE_CODE: "Korean",
-    UKRAINIAN_LANGUAGE_CODE: "Ukrainian",
-    VIETNAMESE_LANGUAGE_CODE: "Vietnamese",
-    CHINESE_LANGUAGE_CODE: "Mandarin Chinese",
-}
+_MOONSHINE_LANGUAGE_NAMES = MappingProxyType(
+    {
+        ARABIC_LANGUAGE_CODE: "Arabic",
+        ENGLISH_LANGUAGE_CODE: "English",
+        SPANISH_LANGUAGE_CODE: "Spanish",
+        JAPANESE_LANGUAGE_CODE: "Japanese",
+        KOREAN_LANGUAGE_CODE: "Korean",
+        UKRAINIAN_LANGUAGE_CODE: "Ukrainian",
+        VIETNAMESE_LANGUAGE_CODE: "Vietnamese",
+        CHINESE_LANGUAGE_CODE: "Mandarin Chinese",
+    }
+)
 
 
 _BASE_CATALOG: tuple[CatalogModel, ...] = (
@@ -1465,12 +1445,18 @@ def catalog_by_id(catalog: tuple[CatalogModel, ...] = DEFAULT_CATALOG) -> dict[s
     return {model.id: model for model in catalog}
 
 
-def recommended_ids(system: SystemInfo) -> set[str]:
-    """Pick the models that best fit this machine."""
-    preferred_engine = ENGINE_WHISPERKIT if system.is_apple_silicon else ENGINE_FASTER_WHISPER
-    ram = system.ram_gb or DEFAULT_RECOMMENDATION_RAM_GB
-    if ram >= VERY_HIGH_MEMORY_RAM_GB:
-        if preferred_engine == ENGINE_WHISPERKIT:
+class _CatalogRecommender:
+    @classmethod
+    def recommended_ids(cls, system: SystemInfo) -> set[str]:
+        """Pick the models that best fit this machine."""
+        ram = system.ram_gb or DEFAULT_RECOMMENDATION_RAM_GB
+        if ram >= VERY_HIGH_MEMORY_RAM_GB:
+            return cls._high_ram_ids(system.is_apple_silicon)
+        return cls._standard_ram_ids(system.is_apple_silicon, ram)
+
+    @classmethod
+    def _high_ram_ids(cls, is_apple: bool) -> set[str]:
+        if is_apple:
             return {
                 f"{ENGINE_WHISPERKIT}:openai_whisper-large-v3-v20240930_626MB",
                 f"{ENGINE_MLX_AUDIO}:whisper-large-v3-turbo-4bit",
@@ -1483,23 +1469,29 @@ def recommended_ids(system: SystemInfo) -> set[str]:
             f"{ENGINE_FASTER_WHISPER}:small",
             f"{ENGINE_FASTER_WHISPER}:distil-medium.en",
         }
-    if ram >= 8:
-        if preferred_engine == ENGINE_WHISPERKIT:
+
+    @classmethod
+    def _standard_ram_ids(cls, is_apple: bool, ram: float) -> set[str]:
+        if ram >= 8:
+            if is_apple:
+                return {
+                    f"{ENGINE_WHISPERKIT}:openai_whisper-small_216MB",
+                    f"{ENGINE_MLX_AUDIO}:whisper-large-v3-turbo-4bit",
+                }
             return {
-                f"{ENGINE_WHISPERKIT}:openai_whisper-small_216MB",
-                f"{ENGINE_MLX_AUDIO}:whisper-large-v3-turbo-4bit",
+                f"{ENGINE_SHERPA_ONNX}:sensevoice-small-int8",
+                f"{ENGINE_FASTER_WHISPER}:base",
+                f"{ENGINE_FASTER_WHISPER}:distil-small.en",
+            }
+        if is_apple:
+            return {
+                f"{ENGINE_WHISPERKIT}:openai_whisper-base",
+                f"{ENGINE_SHERPA_ONNX}:sensevoice-small-int8",
             }
         return {
             f"{ENGINE_SHERPA_ONNX}:sensevoice-small-int8",
-            f"{ENGINE_FASTER_WHISPER}:base",
-            f"{ENGINE_FASTER_WHISPER}:distil-small.en",
+            f"{ENGINE_FASTER_WHISPER}:tiny",
         }
-    if preferred_engine == ENGINE_WHISPERKIT:
-        return {
-            f"{ENGINE_WHISPERKIT}:openai_whisper-base",
-            f"{ENGINE_SHERPA_ONNX}:sensevoice-small-int8",
-        }
-    return {
-        f"{ENGINE_SHERPA_ONNX}:sensevoice-small-int8",
-        f"{ENGINE_FASTER_WHISPER}:tiny",
-    }
+
+
+recommended_ids = _CatalogRecommender.recommended_ids

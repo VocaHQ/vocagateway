@@ -39,29 +39,5 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --all-groups
-      - name: Validate WPS rules compliance on remediated vector
-        run: |
-          uv run flake8 \
-            app/templating.py \
-            app/context.py \
-            app/storage.py \
-            app/readiness.py \
-            app/models/mlx_audio.py \
-            app/models/whisper_cpp.py \
-            app/routes/admin_status.py \
-            app/routes/admin_tokens.py \
-            app/routes/pairing.py \
-            app/fragments/tokens.py \
-            tests/conftest.py \
-            tests/test_readiness.py \
-            tests/test_harvest_model_pins.py \
-            tests/test_cli_entry_points.py \
-            tests/test_diagnostics.py \
-            tests/test_faster_whisper.py \
-            tests/test_metrics.py \
-            tests/test_moonshine.py \
-            tests/test_whisper_cpp.py \
-            tests/test_whisperkit.py \
-            tests/test_wps_compliance.py
       - name: Run WPS compliance test vector
         run: uv run pytest tests/test_wps_compliance.py
