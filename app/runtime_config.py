@@ -59,6 +59,11 @@ class RuntimeConfig:
         cpu_threads = payload.get("cpu_threads")
         pairing_url = payload.get("pairing_url")
         pairing_urls = payload.get("pairing_urls")
+        default_moonshine_model = (
+            f"moonshine:{moonshine_language}"
+            if isinstance(moonshine_language, str)
+            else "moonshine:en"
+        )
         return cls(
             engine=engine if engine in VALID_ENGINES else AUTO_ENGINE,
             whisper_model=whisper_model if isinstance(whisper_model, str) else None,
@@ -67,13 +72,7 @@ class RuntimeConfig:
                 faster_whisper_model if isinstance(faster_whisper_model, str) else None
             ),
             moonshine_model=(
-                moonshine_model
-                if isinstance(moonshine_model, str)
-                else (
-                    f"moonshine:{moonshine_language}"
-                    if isinstance(moonshine_language, str)
-                    else "moonshine:en"
-                )
+                moonshine_model if isinstance(moonshine_model, str) else default_moonshine_model
             ),
             moonshine_language=(
                 moonshine_language if isinstance(moonshine_language, str) else "en"
