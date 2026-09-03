@@ -36,6 +36,14 @@ PUBLIC_PATHS = frozenset({"/health", "/health/live", "/health/ready"})
 MINIMUM_VALID_TOKEN_BYTES = 48
 ONE_BYTE_SHORT_TOKEN_BYTES = 47
 MINIMUM_PROTECTED_ROUTE_COUNT = 25
+
+
+async def _assert_unauthorized_route(client: httpx.AsyncClient, method: str, path: str) -> None:
+    response = await client.request(method.upper(), path)
+    assert response.status_code == HTTP_401_UNAUTHORIZED, f"{method.upper()} {path}"
+    assert response.json()["error"]["code"] == "unauthorized"
+
+
 WEBSOCKET_UNAUTHORIZED_CODE = 4401
 
 
@@ -150,12 +158,14 @@ async def test_no_documented_route_answers_withou_aaaa(
             continue
         # Path params are irrelevant: the security dependency is solved before
         # any path/query/body validation, so a placeholder still yields 401.
-        concrete = path.replace("{session_id}", "x").replace("{model_id}", "x")
-        concrete = concrete.replace("{token_id}", "x")
         for method in operations:
-            response = await auth_client.request(method.upper(), concrete)
-            assert response.status_code == HTTP_401_UNAUTHORIZED, f"{method.upper()} {path}"
-            assert response.json()["error"]["code"] == "unauthorized"
+            await _assert_unauthorized_route(
+                auth_client,
+                method,
+                path.replace("{session_id}", "x")
+                .replace("{model_id}", "x")
+                .replace("{token_id}", "x"),
+            )
             checked += 1
     assert checked > MINIMUM_PROTECTED_ROUTE_COUNT
 
