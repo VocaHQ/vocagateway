@@ -44,6 +44,10 @@ async def _assert_unauthorized_route(client: httpx.AsyncClient, method: str, pat
     assert response.json()["error"]["code"] == "unauthorized"
 
 
+def _auth_header(token: str) -> dict[str, str]:
+    return {AUTHORIZATION_HEADER: f"Bearer {token}"}
+
+
 WEBSOCKET_UNAUTHORIZED_CODE = 4401
 
 
@@ -260,25 +264,26 @@ def test_websocket_accepts_a_device_token_u_b7078(
 async def test_rotating_a_device_token_invalidate_a(
     auth_client: httpx.AsyncClient,
 ) -> None:
-    auth = {AUTHORIZATION_HEADER: f"Bearer {TOKEN}"}
-    created = await auth_client.post("/v1/admin/tokens", headers=auth, json={"label": "Old phone"})
+    created = await auth_client.post(
+        "/v1/admin/tokens", headers=_auth_header(TOKEN), json={"label": "Old phone"}
+    )
     original = created.json()["token"]
     token_id = created.json()["id"]
 
-    rotated = await auth_client.post(f"/v1/admin/tokens/{token_id}/rotate", headers=auth)
+    rotated = await auth_client.post(
+        f"/v1/admin/tokens/{token_id}/rotate", headers=_auth_header(TOKEN)
+    )
     assert rotated.status_code == HTTP_200_OK
     replacement = rotated.json()["token"]
     assert replacement != original
     assert rotated.json()["id"] == token_id
 
-    old = await auth_client.get(
-        ADMIN_STATUS_PATH, headers={AUTHORIZATION_HEADER: f"Bearer {original}"}
-    )
-    assert old.status_code == HTTP_401_UNAUTHORIZED
-    new = await auth_client.get(
-        ADMIN_STATUS_PATH, headers={AUTHORIZATION_HEADER: f"Bearer {replacement}"}
-    )
-    assert new.status_code == HTTP_200_OK
+    assert (
+        await auth_client.get(ADMIN_STATUS_PATH, headers=_auth_header(original))
+    ).status_code == HTTP_401_UNAUTHORIZED
+    assert (
+        await auth_client.get(ADMIN_STATUS_PATH, headers=_auth_header(replacement))
+    ).status_code == HTTP_200_OK
 
 
 async def test_bootstrap_token_cannot_be_rotated_aa(
