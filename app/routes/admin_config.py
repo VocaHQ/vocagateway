@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Header, Query, Request
 from fastapi.responses import HTMLResponse
@@ -13,7 +14,7 @@ from starlette.status import (
 
 from app.admin_queries import config_response
 from app.audio import ALLOWED_AUDIO_TYPES, atomic_upload_path, complete_atomic_upload
-from app.context import TOKEN_FILE_HINT, GatewayContext, get_context, require_token
+from app.context import TOKEN_FILE_HINT, GatewayContextDependency, require_token
 from app.errors import APIProblem
 from app.fragments.engine import engine_update_fragment
 from app.fragments.settings import settings_fragment
@@ -30,16 +31,23 @@ from app.schemas import (
 
 router = APIRouter(dependencies=[Depends(require_token)])
 MINIMUM_TEST_UPLOAD_BYTES = 128
+TestLanguageQuery = Annotated[str, Query(pattern=r"^[A-Za-z-]+$|^auto$")]
+ContentTypeHeader = Annotated[str | None, Header()]
+ContentLengthHeader = Annotated[int | None, Header()]
+EngineForm = Annotated[str, Form()]
+ComputeDeviceForm = Annotated[str, Form()]
+ComputeTypeForm = Annotated[str, Form()]
+CpuThreadsForm = Annotated[int, Form()]
 
 
 @router.get("/v1/admin/config", response_model=ConfigResponse)
-async def get_config(ctx: GatewayContext = Depends(get_context)) -> ConfigResponse:
+async def get_config(ctx: GatewayContextDependency) -> ConfigResponse:
     return config_response(ctx)
 
 
 @router.put("/v1/admin/config", response_model=SelectModelResponse)
 async def update_config(
-    body: ConfigUpdateRequest, ctx: GatewayContext = Depends(get_context)
+    body: ConfigUpdateRequest, ctx: GatewayContextDependency
 ) -> SelectModelResponse:
     engine_manager = ctx.engine_manager
     if engine_manager is None:
@@ -62,10 +70,10 @@ async def update_config(
 @router.post("/v1/admin/test-transcription", response_model=TestTranscriptionResponse)
 async def test_transcription(
     request: Request,
-    language: str = Query(default="auto", pattern=r"^[A-Za-z-]+$|^auto$"),
-    content_type: str | None = Header(default=None),
-    content_length: int | None = Header(default=None),
-    ctx: GatewayContext = Depends(get_context),
+    ctx: GatewayContextDependency,
+    language: TestLanguageQuery = "auto",
+    content_type: ContentTypeHeader = None,
+    content_length: ContentLengthHeader = None,
 ) -> TestTranscriptionResponse:
     normalized_type = (content_type or "").split(";", maxsplit=1)[0].lower()
     suffix = ALLOWED_AUDIO_TYPES.get(normalized_type)
@@ -122,7 +130,7 @@ async def test_transcription(
 
 
 @router.get("/ui/partials/settings", response_class=HTMLResponse)
-async def ui_settings(ctx: GatewayContext = Depends(get_context)) -> HTMLResponse:
+async def ui_settings(ctx: GatewayContextDependency) -> HTMLResponse:
     paths = [
         ("Data directory", str(ctx.settings.data_dir)),
         ("Models directory", str(ctx.manager.models_dir)),
@@ -142,11 +150,11 @@ async def ui_settings(ctx: GatewayContext = Depends(get_context)) -> HTMLRespons
 
 @router.put("/ui/partials/config", response_class=HTMLResponse)
 async def ui_update_config(
-    engine: str = Form(...),
-    compute_device: str = Form("auto"),
-    compute_type: str = Form("auto"),
-    cpu_threads: int = Form(0),
-    ctx: GatewayContext = Depends(get_context),
+    engine: EngineForm,
+    ctx: GatewayContextDependency,
+    compute_device: ComputeDeviceForm = "auto",
+    compute_type: ComputeTypeForm = "auto",
+    cpu_threads: CpuThreadsForm = 0,
 ) -> HTMLResponse:
     engine_manager = ctx.engine_manager
     if engine_manager is None:
@@ -170,7 +178,7 @@ async def ui_update_config(
 
 
 @router.get("/ui/partials/test", response_class=HTMLResponse)
-async def ui_test(ctx: GatewayContext = Depends(get_context)) -> HTMLResponse:
+async def ui_test(ctx: GatewayContextDependency) -> HTMLResponse:
     """Pair phone (once) and try the pipeline from this browser."""
     import platform
 
