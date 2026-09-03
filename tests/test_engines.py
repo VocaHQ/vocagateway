@@ -21,6 +21,34 @@ WHISPER_BINARY_NAME = "whisper-cli"
 WHISPER_MODEL_NAME = "whisper.bin"
 MISSING_HANDY_BINARY_NAME = "no-handy"
 MISSING_VOCAMAC_APP_NAME = "no-vocamac"
+
+
+def _settings(tmp_path: Path) -> Settings:
+    return Settings(
+        token=TEST_TOKEN,
+        data_dir=tmp_path,
+        whisper_binary=tmp_path / WHISPER_BINARY_NAME,
+        whisper_model=tmp_path / WHISPER_MODEL_NAME,
+        handy_binary=tmp_path / MISSING_HANDY_BINARY_NAME,
+        vocamac_app=tmp_path / MISSING_VOCAMAC_APP_NAME,
+    )
+
+
+def _moonshine_catalog() -> CatalogModel:
+    return CatalogModel(
+        id="moonshine:test",
+        engine="moonshine",
+        key="test",
+        label="Moonshine test",
+        size_bytes=1,
+        languages="English only",
+        quality="Fast",
+        minimum_ram_gb=1,
+        marker_file=".vocagateway-model.json",
+        language_code="en",
+    )
+
+
 VOCAMAC_ENGINE = "vocamac"
 AUTO_ENGINE = "auto"
 
@@ -70,19 +98,11 @@ def test_model_selection_builds_new_engine_aa(
     config_field: str,
 ) -> None:
     manager = ModelManager(tmp_path / MODELS_DIRECTORY, catalog=(catalog_model,))
-    root = manager.model_path(catalog_model)
-    root.mkdir(parents=True)
+    manager.model_path(catalog_model).mkdir(parents=True)
     if catalog_model.marker_file:
-        (root / catalog_model.marker_file).write_bytes(b"model")
+        (manager.model_path(catalog_model) / catalog_model.marker_file).write_bytes(b"model")
     runtime = RuntimeConfig()
-    settings = Settings(
-        token=TEST_TOKEN,
-        data_dir=tmp_path,
-        whisper_binary=tmp_path / WHISPER_BINARY_NAME,
-        whisper_model=tmp_path / WHISPER_MODEL_NAME,
-        handy_binary=tmp_path / MISSING_HANDY_BINARY_NAME,
-        vocamac_app=tmp_path / MISSING_VOCAMAC_APP_NAME,
-    )
+    settings = _settings(tmp_path)
     config_path = tmp_path / "config.json"
     engines = EngineManager(settings, runtime, config_path, manager)
 
@@ -164,39 +184,19 @@ def test_forget_if_active_clears_moonshine_aaaaa(tmp_path: Path) -> None:
     `runtime_config.engine` back to AUTO_ENGINE but left `moonshine_model` pointing at
     the now-deleted id — unlike the sherpa-onnx and mlx-audio branches of the same
     method, which null out both fields together."""
-    catalog_model = CatalogModel(
-        id="moonshine:test",
-        engine="moonshine",
-        key="test",
-        label="Moonshine test",
-        size_bytes=1,
-        languages="English only",
-        quality="Fast",
-        minimum_ram_gb=1,
-        marker_file=".vocagateway-model.json",
-        language_code="en",
-    )
-    manager = ModelManager(tmp_path / MODELS_DIRECTORY, catalog=(catalog_model,))
-    root = manager.model_path(catalog_model)
-    root.mkdir(parents=True)
-    (root / catalog_model.marker_file).write_bytes(b"model")
+    manager = ModelManager(tmp_path / MODELS_DIRECTORY, catalog=(_moonshine_catalog(),))
+    manager.model_path(_moonshine_catalog()).mkdir(parents=True)
+    (manager.model_path(_moonshine_catalog()) / ".vocagateway-model.json").write_bytes(b"model")
     runtime = RuntimeConfig()
-    settings = Settings(
-        token=TEST_TOKEN,
-        data_dir=tmp_path,
-        whisper_binary=tmp_path / WHISPER_BINARY_NAME,
-        whisper_model=tmp_path / WHISPER_MODEL_NAME,
-        handy_binary=tmp_path / MISSING_HANDY_BINARY_NAME,
-        vocamac_app=tmp_path / MISSING_VOCAMAC_APP_NAME,
-    )
+    settings = _settings(tmp_path)
     config_path = tmp_path / "config.json"
     engines = EngineManager(settings, runtime, config_path, manager)
 
-    engines.select_model(catalog_model.id)
+    engines.select_model("moonshine:test")
     assert runtime.engine == "moonshine"
-    assert runtime.moonshine_model == catalog_model.id
+    assert runtime.moonshine_model == "moonshine:test"
 
-    engines.forget_if_active(catalog_model.id)
+    engines.forget_if_active("moonshine:test")
 
     assert runtime.engine == AUTO_ENGINE
     # moonshine_model is typed `str`, not `str | None` (unlike sherpa_model and
