@@ -396,6 +396,17 @@ wheels = [
 ]
 
 [[package]]
+name = "flake8-pyproject"
+version = "1.2.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "flake8" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/85/6a/cdee9ff7f2b7c6ddc219fd95b7c70c0a3d9f0367a506e9793eedfc72e337/flake8_pyproject-1.2.4-py3-none-any.whl", hash = "sha256:ea34c057f9a9329c76d98723bb2bb498cc6ba8ff9872c4d19932d48c91249a77", size = 5694, upload-time = "2025-11-28T21:40:01.309Z" },
+]
+
+[[package]]
 name = "flatbuffers"
 version = "25.12.19"
 source = { registry = "https://pypi.org/simple" }
@@ -2000,6 +2011,7 @@ engines = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "flake8-pyproject" },
     { name = "httpx" },
     { name = "httpx2" },
     { name = "mypy" },
@@ -2029,6 +2041,7 @@ provides-extras = ["engines", "apple"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "flake8-pyproject", specifier = ">=1.2.4" },
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "httpx2", specifier = ">=2,<3" },
     { name = "mypy", specifier = ">=1.17,<2" },

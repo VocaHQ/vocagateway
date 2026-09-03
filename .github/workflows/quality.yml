@@ -48,9 +48,8 @@ jobs:
       - run: uv sync --locked --all-groups
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      # Keep the new template boundary WPS-clean while legacy modules are
-      # remediated incrementally rather than silenced with noqa.
-      - run: uv run flake8 --select=WPS,E999 app/templating.py
+      # Enforce WPS rules on remediated modules
+      - run: uv run flake8 app/templating.py app/context.py app/storage.py app/readiness.py app/models/mlx_audio.py app/models/whisper_cpp.py app/routes/admin_status.py app/routes/admin_tokens.py app/routes/pairing.py app/fragments/tokens.py tests/test_wps_compliance.py
       - run: uv run mypy app
       - run: uv run pytest
       - name: Validate Compose configuration

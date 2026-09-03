@@ -45,9 +45,8 @@ format:
 lint:
     uv run python -m ruff check --exit-non-zero-on-fix
     uv run python -m ruff format --check --diff
-    # WPS is adopted incrementally: this new template boundary starts clean
-    # while the existing application baseline is remediated separately.
-    uv run flake8 --select=WPS,E999 app/templating.py
+    # WPS is adopted incrementally: remediated modules comply with all WPS rules.
+    uv run flake8 app/templating.py app/context.py app/storage.py app/readiness.py app/models/mlx_audio.py app/models/whisper_cpp.py app/routes/admin_status.py app/routes/admin_tokens.py app/routes/pairing.py app/fragments/tokens.py tests/test_wps_compliance.py
 
 # Run all checks
 [group('dev')]

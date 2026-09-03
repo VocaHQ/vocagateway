@@ -1,0 +1,67 @@
+name: WPS Style Guide
+
+on:
+  push:
+    branches: [main, refactor/wps-remediation]
+    paths:
+      - 'app/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/wps.yml'
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'app/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/wps.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  wps:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked --all-groups
+      - name: Validate WPS rules compliance on remediated vector
+        run: |
+          uv run flake8 \
+            app/templating.py \
+            app/context.py \
+            app/storage.py \
+            app/readiness.py \
+            app/models/mlx_audio.py \
+            app/models/whisper_cpp.py \
+            app/routes/admin_status.py \
+            app/routes/admin_tokens.py \
+            app/routes/pairing.py \
+            app/fragments/tokens.py \
+            tests/conftest.py \
+            tests/test_readiness.py \
+            tests/test_harvest_model_pins.py \
+            tests/test_cli_entry_points.py \
+            tests/test_diagnostics.py \
+            tests/test_faster_whisper.py \
+            tests/test_metrics.py \
+            tests/test_moonshine.py \
+            tests/test_whisper_cpp.py \
+            tests/test_whisperkit.py \
+            tests/test_wps_compliance.py
+      - name: Run WPS compliance test vector
+        run: uv run pytest tests/test_wps_compliance.py
