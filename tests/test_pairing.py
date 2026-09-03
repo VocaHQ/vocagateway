@@ -19,10 +19,15 @@ from app.pairing import (
 
 DEFAULT_GATEWAY_PORT = 8765
 MINIMUM_QR_RENDER_LENGTH = 200
+LOCAL_GATEWAY_URL = "http://192.168.1.20:8765"
+PAIRING_TEST_TOKEN = "test-token-with-at-least-thirty-two-characters"
+PUBLIC_URL_ENVIRONMENT_VARIABLE = "VOCAGATEWAY_PUBLIC_URL"
+TOKEN_KEY = "token"
+VERSION_KEY = "v"
 
 
 def test_is_ambient_lan_address_matches_pri_aa() -> None:
-    assert is_ambient_lan_address("http://192.168.1.20:8765") is True
+    assert is_ambient_lan_address(LOCAL_GATEWAY_URL) is True
     assert is_ambient_lan_address("http://10.0.0.5:8765") is True
     assert is_ambient_lan_address("http://172.16.5.5:8765") is True
     assert is_ambient_lan_address("http://100.101.102.103:8765") is True  # Tailscale/CGNAT
@@ -37,15 +42,15 @@ def test_is_ambient_lan_address_leaves_host_aaa() -> None:
 def test_round_trip_encode_decode() -> None:
     raw = encode_pairing_payload(
         "http://192.168.1.20:8765/",
-        "test-token-with-at-least-thirty-two-characters",
+        PAIRING_TEST_TOKEN,
     )
     payload = json.loads(raw)
-    assert payload["v"] == PAIRING_VERSION
-    assert payload["url"] == "http://192.168.1.20:8765"
-    assert payload["token"] == "test-token-with-at-least-thirty-two-characters"
+    assert payload[VERSION_KEY] == PAIRING_VERSION
+    assert payload["url"] == LOCAL_GATEWAY_URL
+    assert payload[TOKEN_KEY] == PAIRING_TEST_TOKEN
     decoded = decode_pairing_payload(raw)
-    assert decoded.url == "http://192.168.1.20:8765"
-    assert decoded.token == "test-token-with-at-least-thirty-two-characters"
+    assert decoded.url == LOCAL_GATEWAY_URL
+    assert decoded.token == PAIRING_TEST_TOKEN
 
 
 def test_decode_rejects_garbage() -> None:
@@ -55,32 +60,35 @@ def test_decode_rejects_garbage() -> None:
         decode_pairing_payload("   ")
     with pytest.raises(ValueError, match="version"):
         decode_pairing_payload(
-            '{"v":99,"url":"http://192.168.1.1:8765",'
-            '"token":"test-token-with-at-least-thirty-two-characters"}'
+            json.dumps(
+                {VERSION_KEY: 99, "url": "http://192.168.1.1:8765", TOKEN_KEY: PAIRING_TEST_TOKEN}
+            )
         )
     with pytest.raises(ValueError, match="URL"):
-        decode_pairing_payload('{"v":1,"token":"test-token-with-at-least-thirty-two-characters"}')
-    with pytest.raises(ValueError, match="token"):
-        decode_pairing_payload('{"v":1,"url":"http://192.168.1.1:8765","token":""}')
+        decode_pairing_payload(json.dumps({VERSION_KEY: 1, TOKEN_KEY: PAIRING_TEST_TOKEN}))
+    with pytest.raises(ValueError, match=TOKEN_KEY):
+        decode_pairing_payload(
+            json.dumps({VERSION_KEY: 1, "url": "http://192.168.1.1:8765", TOKEN_KEY: ""})
+        )
 
 
 def test_encode_rejects_public_credentials_aaaa() -> None:
     with pytest.raises(ValueError, match="credentials"):
         encode_pairing_payload(
             "http://user:pass@192.168.1.1:8765",
-            "test-token-with-at-least-thirty-two-characters",
+            PAIRING_TEST_TOKEN,
         )
     with pytest.raises(ValueError, match="query"):
         encode_pairing_payload(
             "http://192.168.1.1:8765?x=1",
-            "test-token-with-at-least-thirty-two-characters",
+            PAIRING_TEST_TOKEN,
         )
 
 
 def test_qr_svg_contains_path_and_is_svg() -> None:
     payload = encode_pairing_payload(
         "http://192.168.1.75:8765",
-        "test-token-with-at-least-thirty-two-characters",
+        PAIRING_TEST_TOKEN,
     )
     svg = qr_svg_for_payload(payload)
     assert svg.lstrip().startswith("<?xml") or "<svg" in svg
@@ -91,7 +99,7 @@ def test_qr_svg_contains_path_and_is_svg() -> None:
 def test_qr_ascii_is_multiline_and_dense() -> None:
     payload = encode_pairing_payload(
         "http://192.168.1.75:8765",
-        "test-token-with-at-least-thirty-two-characters",
+        PAIRING_TEST_TOKEN,
     )
     ascii_qr = qr_ascii_for_payload(payload)
     lines = [line for line in ascii_qr.splitlines() if line.strip()]
@@ -102,14 +110,14 @@ def test_qr_ascii_is_multiline_and_dense() -> None:
 
 
 def test_primary_gateway_base_url_prefers_o_aaaaa(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("VOCAGATEWAY_PUBLIC_URL", "http://homelab.example:8765")
+    monkeypatch.setenv(PUBLIC_URL_ENVIRONMENT_VARIABLE, "http://homelab.example:8765")
     assert primary_gateway_base_url(DEFAULT_GATEWAY_PORT) == "http://homelab.example:8765"
 
 
 def test_default_pairing_url_prefers_saved_a(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("VOCAGATEWAY_PUBLIC_URL", "http://192.168.1.20:8765")
+    monkeypatch.setenv(PUBLIC_URL_ENVIRONMENT_VARIABLE, LOCAL_GATEWAY_URL)
     assert (
         default_pairing_url(DEFAULT_GATEWAY_PORT, saved_pairing_url="https://dictation.example.com")
         == "https://dictation.example.com"
@@ -119,7 +127,7 @@ def test_default_pairing_url_prefers_saved_a(
 def test_default_pairing_url_drops_stale_am_a7a5a(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("VOCAGATEWAY_PUBLIC_URL", "http://192.168.9.9:8765")
+    monkeypatch.setenv(PUBLIC_URL_ENVIRONMENT_VARIABLE, "http://192.168.9.9:8765")
     # 10.0.0.1 is ambient LAN and not in discovered set (override is the only hit).
     assert (
         default_pairing_url(DEFAULT_GATEWAY_PORT, saved_pairing_url="http://10.0.0.1:8765")
@@ -130,10 +138,10 @@ def test_default_pairing_url_drops_stale_am_a7a5a(
 def test_default_pairing_url_keeps_live_amb_aa(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("VOCAGATEWAY_PUBLIC_URL", "http://192.168.1.20:8765")
+    monkeypatch.setenv(PUBLIC_URL_ENVIRONMENT_VARIABLE, LOCAL_GATEWAY_URL)
     assert (
-        default_pairing_url(DEFAULT_GATEWAY_PORT, saved_pairing_url="http://192.168.1.20:8765")
-        == "http://192.168.1.20:8765"
+        default_pairing_url(DEFAULT_GATEWAY_PORT, saved_pairing_url=LOCAL_GATEWAY_URL)
+        == LOCAL_GATEWAY_URL
     )
 
 
