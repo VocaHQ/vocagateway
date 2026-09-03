@@ -28,6 +28,7 @@ REMEDIATED_FILES: tuple[str, ...] = (
     "app/models/handy.py",
     "app/models/moonshine.py",
     "app/models/sherpa_onnx.py",
+    "app/main.py",
     "tests/conftest.py",
     "tests/test_readiness.py",
     "tests/test_harvest_model_pins.py",

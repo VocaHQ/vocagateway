@@ -1,28 +1,29 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
+from typing import Any
 
-from fastapi import FastAPI, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, Request, Response, responses, staticfiles
 
-from app.audio import FFmpegNormalizer
-from app.config import Settings
-from app.context import VERSION, GatewayContext
-from app.engines import (
-    EngineManager,
-    EngineProvider,
-    StaticEngineProvider,
-    build_engine,
-    close_engine,
+from app import (
+    audio,
+    config,
+    context,
+    engines,
+    errors,
+    model_manager,
+    readiness,
+    runtime_config,
+    schemas,
+    service,
+    storage,
+    templating,
+    tokens,
 )
-from app.errors import APIProblem
-from app.model_manager import ModelManager
 from app.models.base import AudioNormalizer, TranscriptionEngine
-from app.readiness import ReadinessMonitor
 from app.routes import (
     admin_config,
     admin_models,
@@ -34,158 +35,196 @@ from app.routes import (
     streaming,
     transcriptions,
 )
-from app.runtime_config import RuntimeConfig
-from app.schemas import ErrorDetail, ErrorEnvelope
-from app.service import TranscriptionService
-from app.storage import SessionRepository
-from app.templating import render
-from app.tokens import TokenStore
 
 WEBUI_DIR = Path(__file__).parent / "webui"
+SECURITY_CSP = (
+    "default-src 'self'; script-src 'self'; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com; "
+    "img-src 'self' data:; connect-src 'self'; media-src 'self' blob:; "
+    "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
+    "form-action 'self'"
+)
+ROUTERS = (
+    health.router,
+    sessions.router,
+    transcriptions.router,
+    streaming.router,
+    admin_status.router,
+    admin_tokens.router,
+    admin_models.router,
+    admin_config.router,
+    pairing.router,
+)
+
+
+class _AppBuilder:
+    def __init__(
+        self,
+        settings: config.Settings | None,
+        engine: TranscriptionEngine | None,
+        normalizer: AudioNormalizer | None,
+        model_mgr: model_manager.ModelManager | None,
+        run_cfg: runtime_config.RuntimeConfig | None,
+    ) -> None:
+        self.settings = settings
+        self.engine = engine
+        self.normalizer = normalizer
+        self.model_manager = model_mgr
+        self.runtime_config = run_cfg
+
+    def build(self) -> FastAPI:
+        ctx = self._build_context()
+        openapi_url = "/openapi.json" if ctx.settings.debug else None
+        app = FastAPI(
+            title="VocaGateway",
+            version=context.VERSION,
+            docs_url=None,
+            redoc_url=None,
+            openapi_url=openapi_url,
+            lifespan=_app_lifespan,
+        )
+        app.state.ctx = ctx
+        app.middleware("http")(_browser_security_middleware)
+        app.add_exception_handler(errors.APIProblem, _api_problem_handler)
+        self._setup_routes(app, ctx)
+        return app
+
+    def _build_context(self) -> context.GatewayContext:
+        cfg = self.settings or config.Settings.from_env()
+        repo = storage.SessionRepository(cfg.data_dir / "sessions.sqlite3")
+        repo.initialize()
+        mgr = self.model_manager or model_manager.ModelManager(cfg.resolved_models_dir())
+        setup = self._build_engine_setup(cfg, mgr)
+        return self._assemble_context(cfg, repo, mgr, setup)
+
+    def _build_engine_setup(
+        self, cfg: config.Settings, mgr: model_manager.ModelManager
+    ) -> tuple[engines.EngineProvider, engines.EngineManager | None, runtime_config.RuntimeConfig]:
+        if self.engine is None:
+            eng_mgr = engines.EngineManager(
+                cfg,
+                self.runtime_config or runtime_config.RuntimeConfig.load(cfg.config_path),
+                cfg.config_path,
+                mgr,
+            )
+            return eng_mgr, eng_mgr, eng_mgr.runtime_config
+        return engines.StaticEngineProvider(self.engine), None, runtime_config.RuntimeConfig()
+
+    def _assemble_context(
+        self,
+        cfg: config.Settings,
+        repo: storage.SessionRepository,
+        mgr: model_manager.ModelManager,
+        setup: tuple[
+            engines.EngineProvider,
+            engines.EngineManager | None,
+            runtime_config.RuntimeConfig,
+        ],
+    ) -> context.GatewayContext:
+        provider, eng_mgr, pair_cfg = setup
+        srv = service.TranscriptionService(
+            cfg, repo, provider, self.normalizer or audio.FFmpegNormalizer()
+        )
+        return context.GatewayContext(
+            settings=cfg,
+            repository=repo,
+            manager=mgr,
+            token_store=tokens.TokenStore(cfg.data_dir / "device_tokens.json"),
+            engine_provider=provider,
+            engine_manager=eng_mgr,
+            service=srv,
+            readiness=readiness.ReadinessMonitor(provider),
+            pairing_config=pair_cfg,
+            config_path=cfg.config_path,
+        )
+
+    def _setup_routes(self, app: FastAPI, ctx: context.GatewayContext) -> None:
+        for router in ROUTERS:
+            app.include_router(router)
+        app.add_api_route("/", _render_page, methods=["GET"], include_in_schema=False)
+        if WEBUI_DIR.is_dir():
+            app.mount("/assets", staticfiles.StaticFiles(directory=WEBUI_DIR), name="webui-assets")
+        if ctx.settings.debug:
+            app.add_api_route("/docs", _render_page, methods=["GET"], include_in_schema=False)
 
 
 def create_app(
-    settings: Settings | None = None,
+    settings: config.Settings | None = None,
     *,
     engine: TranscriptionEngine | None = None,
     normalizer: AudioNormalizer | None = None,
-    model_manager: ModelManager | None = None,
-    runtime_config: RuntimeConfig | None = None,
+    model_manager: model_manager.ModelManager | None = None,
+    runtime_config: runtime_config.RuntimeConfig | None = None,
 ) -> FastAPI:
-    configured = settings or Settings.from_env()
-    repository = SessionRepository(configured.data_dir / "sessions.sqlite3")
-    repository.initialize()
-    manager = model_manager or ModelManager(configured.resolved_models_dir())
-    token_store = TokenStore(configured.data_dir / "device_tokens.json")
-    config_path = configured.config_path
-    if engine is not None:
-        engine_provider: EngineProvider = StaticEngineProvider(engine)
-        engine_manager: EngineManager | None = None
-        pairing_config = RuntimeConfig()
-    else:
-        engine_manager = EngineManager(
-            configured,
-            runtime_config or RuntimeConfig.load(config_path),
-            config_path,
-            manager,
-        )
-        engine_provider = engine_manager
-        pairing_config = engine_manager.runtime_config
-    service = TranscriptionService(
-        configured,
-        repository,
-        engine_provider,
-        normalizer or FFmpegNormalizer(),
+    builder = _AppBuilder(
+        settings=settings,
+        engine=engine,
+        normalizer=normalizer,
+        model_mgr=model_manager,
+        run_cfg=runtime_config,
     )
-    readiness = ReadinessMonitor(engine_provider)
-    ctx = GatewayContext(
-        settings=configured,
-        repository=repository,
-        manager=manager,
-        token_store=token_store,
-        engine_provider=engine_provider,
-        engine_manager=engine_manager,
-        service=service,
-        readiness=readiness,
-        pairing_config=pairing_config,
-        config_path=config_path,
-    )
+    return builder.build()
 
-    @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        service.cleanup_expired()
-        warmup_task = asyncio.create_task(readiness.warmup())
-        app.state.warmup_task = warmup_task
-        try:
-            yield
-        finally:
-            if not warmup_task.done():
-                warmup_task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await warmup_task
-            await asyncio.to_thread(close_engine, engine_provider.current())
 
-    app = FastAPI(
-        title="VocaGateway",
-        version=VERSION,
-        docs_url=None,
-        redoc_url=None,
-        openapi_url="/openapi.json" if configured.debug else None,
-        lifespan=lifespan,
-    )
-    app.state.ctx = ctx
+def select_engine(settings: config.Settings) -> TranscriptionEngine:
+    """Resolve an engine purely from environment settings (CLI usage)."""
+    if settings.engine not in runtime_config.VALID_ENGINES:
+        raise RuntimeError("VOCAGATEWAY_ENGINE is not a supported engine.")
+    mgr = model_manager.ModelManager(settings.resolved_models_dir())
+    cfg = runtime_config.RuntimeConfig(engine=settings.engine)
+    return engines.build_engine(settings, cfg, mgr)
 
-    @app.middleware("http")
-    async def add_browser_security_headers(
-        request: Request,
-        call_next: Callable[[Request], Awaitable[Response]],
-    ) -> Response:
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["Permissions-Policy"] = "microphone=(self)"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self'; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-            "font-src 'self' https://fonts.gstatic.com; "
-            "img-src 'self' data:; connect-src 'self'; media-src 'self' blob:; "
-            "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
-            "form-action 'self'"
-        )
-        if request.url.path == "/" or request.url.path.startswith(("/ui/", "/v1/")):
-            response.headers["Cache-Control"] = "no-store"
-        return response
 
-    @app.exception_handler(APIProblem)
-    async def api_problem_handler(_: Request, problem: APIProblem) -> JSONResponse:
-        envelope = ErrorEnvelope(
-            error=ErrorDetail(
-                code=problem.code,
-                message=problem.message,
-                recoverable=problem.recoverable,
+@asynccontextmanager
+async def _app_lifespan(app: FastAPI) -> Any:
+    ctx: context.GatewayContext = app.state.ctx
+    ctx.service.cleanup_expired()
+    warmup_task = asyncio.create_task(ctx.readiness.warmup())
+    app.state.warmup_task = warmup_task
+    try:
+        yield
+    finally:
+        if not warmup_task.done():
+            warmup_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await warmup_task
+        await asyncio.to_thread(engines.close_engine, ctx.engine_provider.current())
+
+
+async def _browser_security_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    response = await call_next(request)
+    headers = response.headers
+    headers["X-Content-Type-Options"] = "nosniff"
+    headers["X-Frame-Options"] = "DENY"
+    headers["Referrer-Policy"] = "no-referrer"
+    headers["Permissions-Policy"] = "microphone=(self)"
+    headers["Content-Security-Policy"] = SECURITY_CSP
+    path = request.url.path
+    if path == "/" or path.startswith(("/ui/", "/v1/")):
+        headers["Cache-Control"] = "no-store"
+    return response
+
+
+async def _api_problem_handler(_: Request, exc: Exception) -> responses.JSONResponse:
+    if isinstance(exc, errors.APIProblem):
+        envelope = schemas.ErrorEnvelope(
+            error=schemas.ErrorDetail(
+                code=exc.code,
+                message=exc.message,
+                recoverable=exc.recoverable,
             )
         )
-        return JSONResponse(status_code=problem.status_code, content=envelope.model_dump())
-
-    # ---------------------------------------------------------------- WebUI
-
-    @app.get("/", include_in_schema=False)
-    async def webui_index() -> FileResponse:
-        return FileResponse(WEBUI_DIR / "index.html")
-
-    if WEBUI_DIR.is_dir():
-        app.mount("/assets", StaticFiles(directory=WEBUI_DIR), name="webui-assets")
-
-    # ------------------------------------------------------------- API docs
-
-    if configured.debug:
-
-        @app.get("/docs", include_in_schema=False)
-        async def api_docs() -> HTMLResponse:
-            return HTMLResponse(render("docs/swagger.html", title=app.title))
-
-    app.include_router(health.router)
-    app.include_router(sessions.router)
-    app.include_router(transcriptions.router)
-    app.include_router(streaming.router)
-    app.include_router(admin_status.router)
-    app.include_router(admin_tokens.router)
-    app.include_router(admin_models.router)
-    app.include_router(admin_config.router)
-    app.include_router(pairing.router)
-
-    return app
+        return responses.JSONResponse(status_code=exc.status_code, content=envelope.model_dump())
+    raise exc
 
 
-def select_engine(settings: Settings) -> TranscriptionEngine:
-    """Resolve an engine purely from environment settings (CLI usage)."""
-    from app.runtime_config import VALID_ENGINES
-
-    if settings.engine not in VALID_ENGINES:
-        raise RuntimeError("VOCAGATEWAY_ENGINE is not a supported engine.")
-    manager = ModelManager(settings.resolved_models_dir())
-    # Same resolution path as the long-running server (including sherpa-onnx
-    # and mlx-audio). CLI tools like vocagateway-cleanup must accept every engine
-    # VALID_ENGINES lists, not a hand-maintained subset.
-    return build_engine(settings, RuntimeConfig(engine=settings.engine), manager)
+async def _render_page(request: Request) -> Response:
+    if request.url.path == "/docs":
+        return responses.HTMLResponse(
+            templating.render("docs/swagger.html", title=request.app.title)
+        )
+    return responses.FileResponse(WEBUI_DIR / "index.html")

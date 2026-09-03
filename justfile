@@ -45,7 +45,7 @@ format:
 lint:
     uv run python -m ruff check --exit-non-zero-on-fix
     uv run python -m ruff format --check --diff
-    uv run flake8 app/templating.py app/context.py app/storage.py app/readiness.py app/models/mlx_audio.py app/models/whisper_cpp.py app/routes/admin_status.py app/routes/admin_tokens.py app/routes/pairing.py app/fragments/tokens.py app/fragments/pairing.py app/metrics.py app/audio.py app/config.py app/pairing_view.py app/routes/sessions.py app/runtime_config.py app/models/warmup.py app/routes/admin_config.py app/models/faster_whisper.py app/tokens.py app/models/handy.py app/models/moonshine.py app/models/sherpa_onnx.py tests/test_wps_compliance.py
+    uv run flake8 app/templating.py app/context.py app/storage.py app/readiness.py app/models/mlx_audio.py app/models/whisper_cpp.py app/routes/admin_status.py app/routes/admin_tokens.py app/routes/pairing.py app/fragments/tokens.py app/fragments/pairing.py app/metrics.py app/audio.py app/config.py app/pairing_view.py app/routes/sessions.py app/runtime_config.py app/models/warmup.py app/routes/admin_config.py app/models/faster_whisper.py app/tokens.py app/models/handy.py app/models/moonshine.py app/models/sherpa_onnx.py app/main.py tests/test_wps_compliance.py
 
 # Run all checks
 [group('dev')]

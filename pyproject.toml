@@ -127,6 +127,7 @@ max-asserts = 5
 max-module-members = 7
 per-file-ignores = [
   "app/schemas.py: WPS202",
+  "app/main.py: WPS201, WPS235",
 ]
 
 [build-system]

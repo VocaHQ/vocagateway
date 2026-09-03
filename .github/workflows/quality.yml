@@ -49,7 +49,7 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       # Enforce WPS rules on remediated modules
-      - run: uv run flake8 app/templating.py app/context.py app/storage.py app/readiness.py app/models/mlx_audio.py app/models/whisper_cpp.py app/routes/admin_status.py app/routes/admin_tokens.py app/routes/pairing.py app/fragments/tokens.py app/fragments/pairing.py app/metrics.py app/audio.py app/config.py app/pairing_view.py app/routes/sessions.py app/runtime_config.py app/models/warmup.py app/routes/admin_config.py app/models/faster_whisper.py app/tokens.py app/models/handy.py app/models/moonshine.py app/models/sherpa_onnx.py tests/test_wps_compliance.py
+      - run: uv run flake8 app/templating.py app/context.py app/storage.py app/readiness.py app/models/mlx_audio.py app/models/whisper_cpp.py app/routes/admin_status.py app/routes/admin_tokens.py app/routes/pairing.py app/fragments/tokens.py app/fragments/pairing.py app/metrics.py app/audio.py app/config.py app/pairing_view.py app/routes/sessions.py app/runtime_config.py app/models/warmup.py app/routes/admin_config.py app/models/faster_whisper.py app/tokens.py app/models/handy.py app/models/moonshine.py app/models/sherpa_onnx.py app/main.py tests/test_wps_compliance.py
       - run: uv run mypy app
       - run: uv run pytest
       - name: Validate Compose configuration
