@@ -6,9 +6,10 @@ normalizes; a local engine transcribes; the gateway returns an idempotent
 transcript. License: [AGPL-3.0](LICENSE). **Not on-device** — audio leaves the
 client for the machine you run. No Voca account, no hosted Voca cloud.
 
-Product and operator docs: [README.md](README.md),
-[docs/configuration.md](docs/configuration.md),
-[docs/deployment.md](docs/deployment.md), [docs/models.md](docs/models.md).
+Product and operator docs: [README.md](README.md) and the
+[docs index](docs/README.md) ([configuration](docs/configuration.md),
+[deployment](docs/deployment.md), [tailscale](docs/tailscale.md),
+[troubleshooting](docs/troubleshooting.md), [models](docs/models.md)).
 This file is for coding agents.
 
 ## Critical: git worktrees for every branch and PR

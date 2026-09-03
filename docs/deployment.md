@@ -5,6 +5,20 @@ directly on Linux, or inside its Linux container. The meaningful differences are
 the available speech engines, acceleration, isolation, and operational
 portability.
 
+## Contents
+
+- [Which deployment should I choose?](#which-deployment-should-i-choose)
+  - [Recommendation](#recommendation)
+- [Native macOS deployment](#native-macos-deployment) — [install](#install-and-run) · [run at login](#run-at-login)
+- [Native Linux deployment](#native-linux-deployment) — [install](#install-and-run-1) · [systemd user service](#run-as-a-systemd-user-service)
+- [Docker Compose deployment](#docker-compose-deployment) — [prerequisites](#prerequisites) · [first model](#first-model) · [routine operations](#routine-operations) · [backup](#persistent-data-and-backup) · [performance profiles](#performance-profiles)
+- [Multi-architecture image](#multi-architecture-image)
+- [Gateway URL and network placement](#gateway-url-and-network-placement) — [trusted LAN](#trusted-local-network) · [Tailscale Serve](#tailscale-serve) · [VPS or public DNS](#vps-or-public-dns)
+- [Configuration paths and env vars](#configuration-paths-and-env-vars)
+
+Quick starts live in the [README](../README.md). This page is the longer form:
+what to choose, how to keep it running, and how the phone reaches it.
+
 ## Which deployment should I choose?
 
 | Consideration | Native macOS | Native Linux | Docker Compose |
@@ -136,12 +150,14 @@ printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
 docker compose up --detach --build
 ```
 
-[`.env.example`](../.env.example) is the annotated template for the same file.
-It ships the loopback publication defaults uncommented and everything else
-commented out with an explanation: the pairing-QR address, the container
-listener, the engine choice, session retention, the optional image tag, network
-mode, and the Swagger UI. Start from it rather than writing `.env` by hand, so
-the options are in front of you. Never commit either file.
+[`.env.example`](../.env.example) is the annotated template for the same file,
+organised in seven numbered sections: the token, the published host/port, the
+pairing-QR address, the image tag, gateway behaviour (engine, retention, the
+Swagger UI), the container listener, and the settings that look like they
+belong in `.env` but are never forwarded to the container. It ships the
+loopback publication defaults uncommented and everything else commented out
+with an explanation. Start from it rather than writing `.env` by hand, so the
+options are in front of you. Never commit the populated file.
 
 The appended token overrides the empty `VOCAGATEWAY_TOKEN=` placeholder in the
 template; Compose uses the last assignment when a key repeats in `.env`.
@@ -235,10 +251,12 @@ docker buildx build \
   --push .
 ```
 
-Set `VOCAGATEWAY_IMAGE` in `.env` to use that tag. Compose still includes a
-local build definition; use `docker compose pull` followed by
-`docker compose up --detach --no-build` when you explicitly want the registry
-image.
+Set `VOCAGATEWAY_IMAGE` in `.env` to use that tag for the `gateway` service.
+It renames what is built; it does not switch Compose to pulling. `up --build`
+still builds locally and applies the tag, so run `docker compose pull` followed
+by `docker compose up --detach --no-build` when you explicitly want the
+registry image. The `native`, `cuda`, and `vulkan` services carry fixed tags and
+ignore the variable.
 
 ## Gateway URL and network placement
 
@@ -321,6 +339,13 @@ Native installs store the bootstrap token at `~/.config/vocagateway/token`,
 engine settings at `~/.config/vocagateway/config.json`, and application data
 under `~/.local/share/vocagateway/`. Docker Compose persists the same layout
 under `/data` in the `vocagateway-data` named volume.
+
+Under Compose those paths are not tunable from `.env`. `compose.yaml` forwards
+only the variables it names, so `VOCAGATEWAY_DATA_DIR`,
+`VOCAGATEWAY_MODELS_DIR`, `VOCAGATEWAY_CONFIG_FILE`, `VOCAGATEWAY_TOKEN_FILE`,
+and the macOS engine paths are read out of `.env` and dropped —
+`docker compose config` passes and nothing changes. Move container data by
+remapping the `vocagateway-data` volume.
 
 Environment variables use the `VOCAGATEWAY_*` prefix (for example
 `VOCAGATEWAY_TOKEN`, `VOCAGATEWAY_BIND_HOST`, `VOCAGATEWAY_PUBLIC_URL`). The
