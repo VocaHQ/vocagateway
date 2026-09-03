@@ -87,3 +87,93 @@ def test_single_file_digest_comes_from_the_aa(monkeypatch) -> None:
     assert record is not None
     assert record["sha256"] == real_sha256
     assert record["sha256"] != WRONG_XET_DIGEST
+
+
+def _single_file_model(module, model_id: str):
+    filename = f"{model_id}.bin"
+    return module.CatalogModel(
+        id=f"whisper.cpp:{filename}",
+        engine="whisper.cpp",
+        key=filename,
+        label=model_id,
+        size_bytes=1,
+        languages="Multilingual",
+        quality="Balanced",
+        minimum_ram_gb=1,
+        download_url=f"https://huggingface.co/octocat/demo/resolve/main/{filename}",
+    )
+
+
+def _write_pins(path: Path, models: dict[str, Any]) -> None:
+    path.write_text(json.dumps({"models": models}), encoding="utf-8")
+
+
+def test_default_harvest_only_adds_missing_models(tmp_path: Path, monkeypatch) -> None:
+    """Adding one model must not silently refresh every existing pin."""
+    module = _load_module()
+    existing_model = _single_file_model(module, "existing")
+    new_model = _single_file_model(module, "new")
+    old_record = {"revision": "old-revision", "sha256": "a" * SHA256_DIGEST_LENGTH}
+    new_record = {"revision": "new-revision", "sha256": "b" * SHA256_DIGEST_LENGTH}
+    output = tmp_path / "pins.json"
+    _write_pins(output, {existing_model.id: old_record})
+    harvested: list[str] = []
+
+    def fake_harvest(model, *, download_unpinnable: bool):
+        harvested.append(model.id)
+        return new_record
+
+    monkeypatch.setattr(module, "_BASE_CATALOG", (existing_model, new_model))
+    monkeypatch.setattr(module, "harvest", fake_harvest)
+
+    assert module.main(["--output", str(output)]) == 0
+
+    records = json.loads(output.read_text(encoding="utf-8"))["models"]
+    assert harvested == [new_model.id]
+    assert records[existing_model.id] == old_record
+    assert records[new_model.id] == new_record
+
+
+def test_targeted_refresh_replaces_pin_as_one_snapshot(tmp_path: Path, monkeypatch) -> None:
+    """A new revision must never retain stale fields from the prior record."""
+    module = _load_module()
+    model = _single_file_model(module, "existing")
+    output = tmp_path / "pins.json"
+    old_record = {
+        "revision": "old-revision",
+        "sha256": "a" * SHA256_DIGEST_LENGTH,
+        "obsolete": "must disappear",
+    }
+    new_record = {"revision": "new-revision", "sha256": "b" * SHA256_DIGEST_LENGTH}
+    _write_pins(output, {model.id: old_record})
+    monkeypatch.setattr(module, "_BASE_CATALOG", (model,))
+    monkeypatch.setattr(
+        module,
+        "harvest",
+        lambda selected, *, download_unpinnable: new_record,
+    )
+
+    assert module.main(["--only", model.id, "--output", str(output)]) == 0
+
+    records = json.loads(output.read_text(encoding="utf-8"))["models"]
+    assert records[model.id] == new_record
+
+
+def test_incomplete_refresh_preserves_previous_pin_and_fails(tmp_path: Path, monkeypatch) -> None:
+    """Never create a revision/digest pair assembled from different snapshots."""
+    module = _load_module()
+    model = _single_file_model(module, "existing")
+    output = tmp_path / "pins.json"
+    old_record = {"revision": "old-revision", "sha256": "a" * SHA256_DIGEST_LENGTH}
+    _write_pins(output, {model.id: old_record})
+    monkeypatch.setattr(module, "_BASE_CATALOG", (model,))
+    monkeypatch.setattr(
+        module,
+        "harvest",
+        lambda selected, *, download_unpinnable: {"revision": "new-revision"},
+    )
+
+    assert module.main(["--only", model.id, "--output", str(output)]) == 1
+
+    records = json.loads(output.read_text(encoding="utf-8"))["models"]
+    assert records[model.id] == old_record

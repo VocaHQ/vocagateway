@@ -322,9 +322,11 @@ includes the bearer token, recordings, transcripts, or session identifiers.
 ## A model download fails SHA-256 verification
 
 The gateway pins the expected digest of every catalog model it can
-(`app/model_pins.json`) and discards a download that does not match, so the
-failure means the bytes served differ from the bytes this release was built
-against. The partial file is already deleted; nothing unverified is kept.
+(`app/model_pins.json`) and discards a download that does not match. It retries
+short responses and checksum mismatches three times against that same pin; it
+never changes or bypasses the expected digest. A reported failure therefore
+means the mismatch persisted. The partial file is already deleted; nothing
+unverified is kept.
 
 Two very different causes look identical here, so check which one it is before
 retrying:
@@ -339,10 +341,9 @@ retrying:
    ```
 
 2. **The bytes were altered in transit or at the source.** A corrupted proxy or
-   mirror, or a compromised upstream. Retry once — a corrupted transfer usually
-   will not reproduce, while an altered source will fail identically every
-   time. Do not "fix" a reproducible mismatch by refreshing the pin unless the
-   upstream commit genuinely changed.
+   mirror, or a compromised upstream. Because the gateway already retried the
+   transfer, do not keep clicking Retry. Do not "fix" a reproducible mismatch
+   by refreshing the pin unless the upstream commit genuinely changed.
 
 Never work around this by deleting the pin. The check is the only thing
 standing between a swapped model file and an ONNX/GGUF/Core ML runtime that

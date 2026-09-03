@@ -454,11 +454,10 @@ model can execute code in those runtimes.
 
 ### Coverage
 
-40 of 58 catalog models are pinned, covering every Hugging Face source. The
-remainder cannot be pinned from published metadata:
+Every catalog source that publishes usable integrity metadata is pinned,
+including all Hugging Face sources and the Moonshine asset manifests. The
+current exceptions cannot be pinned from published metadata:
 
-- 13 Moonshine models are downloaded by the `moonshine_voice` library rather
-  than by the gateway, so their transfer is outside our control.
 - 3 Handy-mirrored models on `blob.handy.computer` return a multipart S3 ETag,
   which is not a digest of the file content.
 - 2 sherpa-onnx release tarballs on GitHub publish no checksum.
@@ -476,17 +475,23 @@ is silently downgraded.
 
 ### Refreshing pins
 
-When upstream legitimately re-uploads a model, its pinned download starts
-failing until the pin is updated. That is intentional: the change becomes a
-reviewable diff instead of a silent swap.
+The harvester is incremental by default: after adding a catalog model, it pins
+only entries missing from `app/model_pins.json`. Existing records remain byte
+for byte unchanged, so adding one model cannot silently refresh every model in
+the catalog. Use `--refresh` only when intentionally reviewing every upstream
+change; `--only` explicitly refreshes the matching model or family.
 
 ```sh
-uv run scripts/harvest-model-pins.py                    # all free sources
-uv run scripts/harvest-model-pins.py --only whisperkit:  # one family
+uv run scripts/harvest-model-pins.py                     # newly added models
+uv run scripts/harvest-model-pins.py --only whisperkit:  # refresh one family
+uv run scripts/harvest-model-pins.py --refresh           # refresh everything
 ```
 
-Review the resulting diff as carefully as code. A changed digest means the
-upstream bytes changed, and the commit message should say why.
+Each revision and its digests are written as one snapshot. If the complete
+snapshot cannot be collected, the command fails and preserves the previous
+record rather than combining a new revision with stale hashes. Review the
+resulting diff as carefully as code. A changed digest means the upstream bytes
+changed, and the commit message should say why.
 
 ## Engine selection
 
