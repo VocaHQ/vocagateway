@@ -2005,6 +2005,7 @@ apple = [
 engines = [
     { name = "faster-whisper" },
     { name = "moonshine-voice" },
+    { name = "numpy" },
     { name = "sherpa-onnx" },
     { name = "sherpa-onnx-bin" },
 ]
@@ -2029,6 +2030,7 @@ requires-dist = [
     { name = "jinja2", specifier = ">=3.1,<4" },
     { name = "mlx-audio", extras = ["stt"], marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'apple'", specifier = ">=0.4.6,<0.5" },
     { name = "moonshine-voice", marker = "extra == 'engines'", specifier = ">=0.1.5,<0.2" },
+    { name = "numpy", marker = "extra == 'engines'", specifier = ">=1.21,<3" },
     { name = "pysbd", specifier = ">=0.3.4,<0.4" },
     { name = "python-multipart", specifier = ">=0.0.9,<1" },
     { name = "qrcode", specifier = ">=7.4,<9" },

@@ -391,10 +391,11 @@ class SherpaOnnxEngine:
 def _read_wave_samples(audio_path: Path) -> tuple[int, Any]:
     """Read a PCM WAV file as the float waveform sherpa-onnx accepts.
 
-    numpy ships with sherpa-onnx, so the vectorized conversion is always
-    available on the path that actually reaches this function; the list
-    comprehension it replaces built one Python float per sample, which is
-    roughly half a million short-lived objects for a 30-second recording.
+    numpy is a declared dependency of the `engines` extra, which is the only
+    way this engine is installed, so the vectorized conversion is always
+    available on the path that reaches this function. The list comprehension it
+    replaces built one Python float per sample, which is roughly half a million
+    short-lived objects for a 30-second recording.
     """
     import numpy
 

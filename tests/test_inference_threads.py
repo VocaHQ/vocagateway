@@ -7,6 +7,10 @@ from pytest import MonkeyPatch
 
 from app import system
 
+# Some hypervisors report an identical topology line for every vCPU.
+CPUINFO_DEGENERATE_TOPOLOGY = "".join(
+    f"processor\t: {index}\nphysical id\t: 0\ncore id\t\t: 0\n" for index in range(16)
+)
 CPUINFO_TWO_CORES_FOUR_THREADS = """\
 processor\t: 0
 physical id\t: 0
@@ -83,3 +87,37 @@ def test_an_unreadable_cpuinfo_falls_back_to_the_logical_count(
 
     monkeypatch.setattr(system.Path, "read_text", unreadable)
     assert system._CpuSets._linux_physical_cpus(6) == 6
+
+
+def test_a_degenerate_hypervisor_topology_does_not_go_single_threaded(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """One reported core for sixteen vCPUs is a bogus topology, not a 1-core host.
+
+    Trusting it would run every engine single-threaded — a several-fold
+    regression against simply counting logical CPUs — with no diagnostic.
+    """
+    assert len(system._CpuSets._cpuinfo_cores(CPUINFO_DEGENERATE_TOPOLOGY)) == 1
+
+    monkeypatch.setattr(
+        system.Path,
+        "read_text",
+        lambda self, **keywords: CPUINFO_DEGENERATE_TOPOLOGY,  # noqa: ARG005
+    )
+    assert system._CpuSets._linux_physical_cpus(16) == 8
+
+
+def test_a_believable_topology_is_still_trusted(monkeypatch: MonkeyPatch) -> None:
+    """The floor must not undo the point of counting cores at all."""
+    monkeypatch.setattr(
+        system.Path,
+        "read_text",
+        lambda self, **keywords: CPUINFO_TWO_CORES_FOUR_THREADS,  # noqa: ARG005
+    )
+    assert system._CpuSets._linux_physical_cpus(4) == 2
+
+
+def test_a_processor_block_without_a_package_does_not_inherit_the_previous_one() -> None:
+    mixed = "processor\t: 0\nphysical id\t: 0\ncore id\t\t: 0\nprocessor\t: 1\ncore id\t\t: 0\n"
+
+    assert system._CpuSets._cpuinfo_cores(mixed) == {("0", "0"), ("", "0")}

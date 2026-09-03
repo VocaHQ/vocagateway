@@ -22,6 +22,10 @@ dependencies = [
 [project.optional-dependencies]
 engines = [
   "faster-whisper>=1.2,<2",
+  # sherpa-onnx itself declares no dependencies, so numpy only arrives here by
+  # way of faster-whisper's onnxruntime. The sherpa engine decodes its waveform
+  # with numpy, so this extra states that dependency rather than inheriting it.
+  "numpy>=1.21,<3",
   "moonshine-voice>=0.1.5,<0.2",
   "sherpa-onnx>=1.13.4,<2",
   "sherpa-onnx-bin>=1.13.4,<2",

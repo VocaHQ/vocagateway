@@ -24,6 +24,10 @@ MEBIBYTE = 1024
 # clamped by the container quota, and capped: past this point the per-layer sync
 # cost outweighs the extra core on every model this catalog ships.
 MAXIMUM_INFERENCE_THREADS = 8
+# No CPU this gateway targets runs more than two threads per core, so a
+# reported topology claiming fewer cores than that is not believable and is
+# treated as a floor rather than a count. See `_linux_physical_cpus`.
+MAXIMUM_THREADS_PER_CORE = 2
 
 # Engines that cannot run on every host, and the requirement the WebUI shows.
 # The desktop-app adapters are the strictest: Handy ships for macOS, and VocaMac
@@ -249,7 +253,12 @@ class _CpuSets:
         except OSError:
             return logical_cpus
         cores = cls._cpuinfo_cores(cpuinfo)
-        return len(cores) or logical_cpus
+        if not cores:
+            return logical_cpus
+        # Some hypervisors report one identical (physical id, core id) pair for
+        # every vCPU. Believing that would run a 16-vCPU guest single-threaded,
+        # so a count that implies more than two threads per core is discarded.
+        return max(len(cores), logical_cpus // MAXIMUM_THREADS_PER_CORE)
 
     @classmethod
     def _cpuinfo_cores(cls, cpuinfo: str) -> set[tuple[str, str]]:
@@ -259,7 +268,9 @@ class _CpuSets:
         for line in cpuinfo.splitlines():
             key, _, entry = line.partition(KEY_VALUE_SEPARATOR)
             label = key.strip().lower()
-            if label == "physical id":
+            if label == "processor":
+                package = ""
+            elif label == "physical id":
                 package = entry.strip()
             elif label == "core id":
                 cores.add((package, entry.strip()))
