@@ -1,16 +1,24 @@
 name: vocagateway
 
-# Every gateway service takes the same settings; only the build and the device
-# wiring differ per profile. Keeping them in one anchor means a variable added
-# here reaches all four services instead of three of them.
+# Every gateway service takes the same settings; only the accelerator and the
+# device wiring differ per profile. Keeping them in one anchor means a variable
+# added here reaches all three services instead of two of them.
 # The commit each image is built from, reported by /v1/admin/status and the
 # WebUI. `just up` exports these from git; a bare `docker compose up --build`
 # leaves them empty and the gateway reports `commit: null`. They sit last in the
-# Dockerfiles, so a new commit only invalidates the final ENV layer.
+# Dockerfile, so a new commit only invalidates the final ENV layer.
 x-gateway-build-args: &gateway-build-args
   VOCAGATEWAY_GIT_COMMIT: ${VOCAGATEWAY_GIT_COMMIT:-}
   VOCAGATEWAY_GIT_COMMIT_SUBJECT: ${VOCAGATEWAY_GIT_COMMIT_SUBJECT:-}
   VOCAGATEWAY_GIT_COMMIT_DATE: ${VOCAGATEWAY_GIT_COMMIT_DATE:-}
+  # Extra cmake flags for the whisper.cpp build, appended last so they override
+  # the Dockerfile's defaults. See "Tuning the whisper.cpp build" in
+  # docs/deployment.md — the common one is
+  # VOCAGATEWAY_WHISPER_CMAKE_EXTRA=-DCMAKE_CUDA_ARCHITECTURES=89-real
+  WHISPER_CMAKE_EXTRA: ${VOCAGATEWAY_WHISPER_CMAKE_EXTRA:-}
+  # Blank means one compile job per core. Lower it if a build is killed for
+  # memory — the cuda one is the hungry one.
+  BUILD_JOBS: ${VOCAGATEWAY_BUILD_JOBS:-}
 
 x-gateway-environment: &gateway-environment
   VOCAGATEWAY_TOKEN_FILE: /run/secrets/vocagateway_token
@@ -30,78 +38,83 @@ x-gateway-environment: &gateway-environment
   VOCAGATEWAY_RETENTION_HOURS: ${VOCAGATEWAY_RETENTION_HOURS:-24}
   VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO: ${VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO:-true}
 
+# Everything the three services share. Each one then names only what actually
+# differs: its image tag, its ACCEL build arg, and its device wiring.
+x-gateway-service: &gateway-service
+  restart: unless-stopped
+  init: true
+  network_mode: ${VOCAGATEWAY_NETWORK_MODE:-bridge}
+  ports:
+    - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:${VOCAGATEWAY_PORT:-8765}"
+  environment: *gateway-environment
+  secrets: [vocagateway_token]
+  volumes: [vocagateway-data:/data]
+  # The gateway never escalates: it runs as uid 10001 from the first instruction
+  # of the entrypoint and needs no capability the kernel grants a process by
+  # default.
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  # whisper-cli writes its transcript to a per-request temporary directory. On
+  # the default overlay filesystem every one of those is a copy-up; in RAM it is
+  # free. The cap is well above what a transcript needs — it exists so a runaway
+  # cannot spend the host's memory.
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  # json-file keeps every byte forever by default, which on an appliance that is
+  # meant to run untouched for months eventually fills the disk.
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
   gateway:
+    <<: *gateway-service
     image: ${VOCAGATEWAY_IMAGE:-vocagateway:local}
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args: *gateway-build-args
-    restart: unless-stopped
-    init: true
-    network_mode: ${VOCAGATEWAY_NETWORK_MODE:-bridge}
-    ports:
-      - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:${VOCAGATEWAY_PORT:-8765}"
-    environment: *gateway-environment
-    secrets:
-      - vocagateway_token
-    volumes:
-      - vocagateway-data:/data
-
-  gateway-native:
-    profiles: ["native"]
-    image: vocagateway:native
     build:
       context: .
       dockerfile: Dockerfile
       args:
         <<: *gateway-build-args
-        GGML_NATIVE: "ON"
-    restart: unless-stopped
-    init: true
-    network_mode: ${VOCAGATEWAY_NETWORK_MODE:-bridge}
-    ports:
-      - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:${VOCAGATEWAY_PORT:-8765}"
-    environment: *gateway-environment
-    secrets: [vocagateway_token]
-    volumes: [vocagateway-data:/data]
+        ACCEL: cpu
 
   gateway-cuda:
+    <<: *gateway-service
     profiles: ["cuda"]
     image: vocagateway:cuda
     build:
       context: .
-      dockerfile: Dockerfile.cuda
-      args: *gateway-build-args
-    restart: unless-stopped
-    init: true
-    network_mode: ${VOCAGATEWAY_NETWORK_MODE:-bridge}
-    ports:
-      - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:${VOCAGATEWAY_PORT:-8765}"
-    environment:
-      <<: *gateway-environment
-      NVIDIA_VISIBLE_DEVICES: all
+      dockerfile: Dockerfile
+      args:
+        <<: *gateway-build-args
+        ACCEL: cuda
+    # `gpus` is the whole request; NVIDIA_VISIBLE_DEVICES is what the Container
+    # Toolkit sets from it, so naming it again in the environment adds nothing.
     gpus: all
-    secrets: [vocagateway_token]
-    volumes: [vocagateway-data:/data]
 
   gateway-vulkan:
+    <<: *gateway-service
     profiles: ["vulkan"]
     image: vocagateway:vulkan
     build:
       context: .
-      dockerfile: Dockerfile.vulkan
-      args: *gateway-build-args
-    restart: unless-stopped
-    init: true
-    network_mode: ${VOCAGATEWAY_NETWORK_MODE:-bridge}
-    ports:
-      - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:${VOCAGATEWAY_PORT:-8765}"
-    environment: *gateway-environment
+      dockerfile: Dockerfile
+      args:
+        <<: *gateway-build-args
+        ACCEL: vulkan
     devices:
       - /dev/dri:/dev/dri
-    secrets: [vocagateway_token]
-    volumes: [vocagateway-data:/data]
+    # Passing /dev/dri through is not enough on its own: the render node is
+    # root:render on the host, and the gateway runs as uid 10001, which is in
+    # neither group. Without this the open fails with EACCES, Vulkan enumerates
+    # no physical device, and whisper.cpp falls back to Mesa's software
+    # rasteriser — slower than the plain CPU image, and silent about it.
+    # The render GID differs per distribution (993 on Ubuntu, 104 on Debian);
+    # read the host's with: stat -c '%g' /dev/dri/renderD128
+    group_add:
+      - "${VOCAGATEWAY_RENDER_GID:-993}"
+      - "${VOCAGATEWAY_VIDEO_GID:-44}"
 
 secrets:
   vocagateway_token:

@@ -1,27 +1,19 @@
-.venv
-.pytest_cache
-.ruff_cache
-.mypy_cache
-__pycache__
-tests
-data
-*.db
-*.sqlite*
-*.wav
-*.log
+# Allowlist, not a denylist. The build copies exactly four things — pyproject.toml,
+# uv.lock, README.md (hatchling reads it for the wheel metadata) and app/ — so
+# everything else is excluded up front and re-admitted below. A denylist has to be
+# amended every time the repo grows a directory; this does not, and it keeps the
+# context small enough that a build never waits on it.
+#
+# A populated .env holds the bearer token. No stage copies it, but a `*` rule means
+# it is never sent to the daemon or captured in a build cache layer either.
+*
 
-# A populated .env holds the bearer token. No Dockerfile copies it, but keeping
-# it out of the build context means it is never sent to the daemon or captured
-# in a build cache layer.
-.env
-.envrc
+!pyproject.toml
+!uv.lock
+!README.md
+!app
+!app/**
 
-# Never needed by a build stage; .git in particular is large and changes on
-# every commit, which would invalidate the context for no reason.
-.git
-.gitignore
-.github
-docs
-scripts
-LICENSE
-justfile
+# Re-exclude what the allowlist above lets back in through app/.
+app/**/__pycache__
+app/**/*.pyc

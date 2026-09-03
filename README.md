@@ -821,11 +821,8 @@ Only run one gateway service at a time. Every profile publishes the same port
 and shares the same model volume.
 
 ```sh
-# Portable CPU + OpenBLAS (default; amd64 and arm64)
+# Portable CPU (default; amd64 and arm64)
 docker compose up --detach --build gateway
-
-# Build CPU kernels for this exact host (fastest CPU image, not portable)
-docker compose --profile native up --detach --build gateway-native
 
 # NVIDIA host with Container Toolkit
 docker compose --profile cuda up --detach --build gateway-cuda
@@ -834,9 +831,17 @@ docker compose --profile cuda up --detach --build gateway-cuda
 docker compose --profile vulkan up --detach --build gateway-vulkan
 ```
 
+All three come from one `Dockerfile`, selected by the `ACCEL` build argument.
+The CPU image needs no host-specific build: `GGML_CPU_ALL_VARIANTS` compiles a
+ggml CPU backend per micro-architecture and the best one the host reports is
+loaded at startup, so a portable image still runs AVX2/AVX-512 code on x86 and
+dotprod/i8mm code on arm64.
+
 The CUDA profile supports both faster-whisper CUDA and the CUDA `whisper.cpp`
 binary. The Vulkan profile accelerates `whisper.cpp`; faster-whisper remains on
-CPU there. The dashboard reports what devices the container can actually see.
+CPU there, and the container needs the host's render GID — see
+[Vulkan GPU access](docs/deployment.md#giving-the-vulkan-container-access-to-the-gpu).
+The dashboard reports what devices the container can actually see.
 
 ## CLI and routine operations
 

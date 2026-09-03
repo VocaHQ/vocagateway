@@ -11,7 +11,7 @@ portability.
   - [Recommendation](#recommendation)
 - [Native macOS deployment](#native-macos-deployment) — [install](#install-and-run) · [run at login](#run-at-login)
 - [Native Linux deployment](#native-linux-deployment) — [install](#install-and-run-1) · [systemd user service](#run-as-a-systemd-user-service)
-- [Docker Compose deployment](#docker-compose-deployment) — [prerequisites](#prerequisites) · [first model](#first-model) · [routine operations](#routine-operations) · [backup](#persistent-data-and-backup) · [performance profiles](#performance-profiles)
+- [Docker Compose deployment](#docker-compose-deployment) — [prerequisites](#prerequisites) · [first model](#first-model) · [routine operations](#routine-operations) · [backup](#persistent-data-and-backup) · [performance profiles](#performance-profiles) · [Vulkan GPU access](#giving-the-vulkan-container-access-to-the-gpu) · [build tuning](#tuning-the-whispercpp-build)
 - [Multi-architecture image](#multi-architecture-image)
 - [Gateway URL and network placement](#gateway-url-and-network-placement) — [trusted LAN](#trusted-local-network) · [Tailscale Serve](#tailscale-serve) · [VPS or public DNS](#vps-or-public-dns)
 - [Configuration paths and env vars](#configuration-paths-and-env-vars)
@@ -219,26 +219,114 @@ instead of copying the native macOS model directory blindly.
 
 ### Performance profiles
 
-The default `gateway` is the portable CPU/OpenBLAS service. Stop it before
-starting another profile because all services publish the same port and share
-the named volume.
+All three services come from the same `Dockerfile`; the `ACCEL` build argument
+picks the accelerator, and Compose sets it per service. Stop the running one
+before starting another, because all three publish the same port and share the
+named volume.
 
 ```sh
 docker compose down
 
-# Optimize CPU code for exactly this build host.
-docker compose --profile native up --detach --build gateway-native
+# Portable CPU (default). No profile flag needed.
+docker compose up --detach --build
 
 # NVIDIA Container Toolkit and a supported NVIDIA GPU are required.
 docker compose --profile cuda up --detach --build gateway-cuda
 
-# A working host Vulkan driver and /dev/dri are required.
+# A working host Vulkan driver and /dev/dri are required; see below.
 docker compose --profile vulkan up --detach --build gateway-vulkan
 ```
 
-The native CPU image is not a portable registry artifact; build it on the
-machine that will run it. The CUDA and Vulkan images should be published only
-for architectures supported by their base images and host drivers.
+There is no separate "native" CPU profile any more, and none is needed. The CPU
+image is built with `GGML_CPU_ALL_VARIANTS`, which compiles one ggml CPU backend
+per micro-architecture — `sse42` through `haswell`, `zen4`, `alderlake` and
+`sapphirerapids` on x86, `armv8.0` through `armv8.2+dotprod`, `armv8.6+i8mm` and
+`armv9.2+sme` on arm64 — and dlopens the best one the host reports at startup.
+The image stays a portable registry artifact while still running AVX2/AVX-512
+kernels on a modern x86 host and dotprod/i8mm kernels on a modern arm64 one,
+which is what the old `native` build was for.
+
+The CUDA and Vulkan images should be published only for architectures supported
+by their base images and host drivers.
+
+#### Giving the Vulkan container access to the GPU
+
+Passing `/dev/dri` through is necessary but not sufficient. The render node is
+owned by `root:render` on the host and the gateway runs as uid 10001, so without
+a matching supplementary group the open fails with `EACCES`, Vulkan enumerates
+no physical device, and whisper.cpp falls back to Mesa's software rasteriser —
+slower than the plain CPU image, and silent about it.
+
+Compose adds the group for you, but the GID differs per distribution (993 on
+Ubuntu, 104 on Debian). Read the host's and put it in `.env`:
+
+```sh
+stat -c '%g' /dev/dri/renderD128    # e.g. 993
+echo 'VOCAGATEWAY_RENDER_GID=993' >> .env
+```
+
+The Vulkan profile ships the Mesa ICDs, so it covers AMD and Intel GPUs. NVIDIA
+over Vulkan needs the host ICD injected by the Container Toolkit instead; on an
+NVIDIA host use the CUDA profile.
+
+#### Tuning the whisper.cpp build
+
+`VOCAGATEWAY_WHISPER_CMAKE_EXTRA` in `.env` is appended to the `cmake` line
+after the defaults, so a flag set there overrides one the Dockerfile sets.
+
+```sh
+# Build CUDA kernels for one known GPU instead of the portable spread of
+# virtual and real architectures ggml picks. Much faster nvcc, smaller binary,
+# and the image no longer runs anywhere else.
+VOCAGATEWAY_WHISPER_CMAKE_EXTRA=-DCMAKE_CUDA_ARCHITECTURES=89-real
+
+# Build the CPU image without OpenBLAS.
+VOCAGATEWAY_WHISPER_CMAKE_EXTRA=-DGGML_BLAS=OFF
+```
+
+`VOCAGATEWAY_BUILD_JOBS` caps how many compile jobs run at once; blank means one
+per core. The cuda image is the one that needs it: nvcc instantiates a great many
+templates and each job can want most of a gigabyte, so on a small builder an
+uncapped build is OOM-killed partway through and reports only `Error 137`. Budget
+roughly one job per 2 GB of builder memory — an 8 GB machine wants
+`VOCAGATEWAY_BUILD_JOBS=3`.
+
+OpenBLAS stays on by default because it measurably earns its place. On arm64
+(Docker Desktop, `--cpus 4`, `ggml-tiny.en`, `samples/jfk.wav`, `-bs 2 -bo 2`)
+the BLAS build ran the clip in ~1.95-2.06 s against ~3.15-3.18 s without it —
+about 1.6x, consistently across five runs each. That is with the
+per-micro-architecture CPU kernels already in play, so it is BLAS earning it
+rather than BLAS compensating for a baseline build. The balance may differ on an
+x86 host with AVX-512; time the same clip against both images before changing
+it:
+
+```sh
+docker build --build-arg ACCEL=cpu --tag vocagateway:blas .
+docker build --build-arg ACCEL=cpu \
+  --build-arg WHISPER_CMAKE_EXTRA=-DGGML_BLAS=OFF --tag vocagateway:noblas .
+
+for tag in blas noblas; do
+  echo "== ${tag}"
+  time docker run --rm \
+    --volume vocagateway_vocagateway-data:/data:ro \
+    --volume "$PWD/sample.wav:/tmp/sample.wav:ro" \
+    --entrypoint whisper-cli "vocagateway:${tag}" \
+      -m /data/models/<your-model>.bin -f /tmp/sample.wav -np -nt \
+      -t "$(nproc)" -bs 2 -bo 2
+done
+```
+
+The gateway passes `-bs 2 -bo 2` and a physical-core thread count of its own, so
+matching them here keeps the measurement representative.
+
+The image deliberately leaves `OPENBLAS_NUM_THREADS` unset. OpenBLAS-pthread
+sizes its pool from the host CPU count and cannot see the cgroup quota, so a
+container allowed two CPUs still reads `nproc` as whatever the host has — which
+looks like it should oversubscribe badly. It does not: ggml's BLAS backend
+issues a matmul from one thread at a time rather than from each of its workers,
+so the two pools never nest. Pinned to 1 and unset were within run-to-run noise
+for `ggml-tiny.en` and `ggml-base.en`, at `--cpus 4` and `--cpus 2` on a 10-CPU
+host. Pinning it would only cap OpenBLAS's own parallelism for no gain.
 
 ## Multi-architecture image
 
@@ -250,6 +338,11 @@ docker buildx build \
   --tag ghcr.io/your-user/vocagateway:latest \
   --push .
 ```
+
+On an amd64 builder the arm64 half of that compiles whisper.cpp under QEMU
+emulation, which takes tens of minutes. A native arm64 builder — a remote
+buildx node, or a CI runner of that architecture — is the fix; the build's
+ccache and uv cache mounts at least make a repeat run cheap.
 
 Set `VOCAGATEWAY_IMAGE` in `.env` to use that tag for the `gateway` service.
 It renames what is built; it does not switch Compose to pulling. `up --build`
