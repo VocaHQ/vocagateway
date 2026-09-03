@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import importlib.util
+from importlib import util as importlib_util
 from typing import Literal
 
 from app.build_info import current_commit
@@ -58,30 +58,30 @@ async def status_payload(ctx: GatewayContext) -> AdminStatusResponse:
         ),
         DependencyStatus(
             name="faster-whisper",
-            available=importlib.util.find_spec("faster_whisper") is not None,
-            path=PYTHON_PACKAGE_PATH if importlib.util.find_spec("faster_whisper") else None,
+            available=importlib_util.find_spec("faster_whisper") is not None,
+            path=PYTHON_PACKAGE_PATH if importlib_util.find_spec("faster_whisper") else None,
             install_hint="Install vocagateway[engines] or use the Docker image",
         ),
         DependencyStatus(
             name="Moonshine Voice",
-            available=importlib.util.find_spec("moonshine_voice") is not None,
-            path=PYTHON_PACKAGE_PATH if importlib.util.find_spec("moonshine_voice") else None,
+            available=importlib_util.find_spec("moonshine_voice") is not None,
+            path=PYTHON_PACKAGE_PATH if importlib_util.find_spec("moonshine_voice") else None,
             install_hint="Install vocagateway[engines] or use the Docker image",
         ),
         DependencyStatus(
             name="sherpa-onnx",
-            available=importlib.util.find_spec("sherpa_onnx") is not None,
-            path=PYTHON_PACKAGE_PATH if importlib.util.find_spec("sherpa_onnx") else None,
+            available=importlib_util.find_spec("sherpa_onnx") is not None,
+            path=PYTHON_PACKAGE_PATH if importlib_util.find_spec("sherpa_onnx") else None,
             install_hint="Install vocagateway[engines] or use the Docker image",
         ),
         DependencyStatus(
             name="MLX Audio",
             available=(
-                system.is_apple_silicon and importlib.util.find_spec("mlx_audio") is not None
+                system.is_apple_silicon and importlib_util.find_spec("mlx_audio") is not None
             ),
             path=(
                 PYTHON_PACKAGE_PATH
-                if system.is_apple_silicon and importlib.util.find_spec("mlx_audio") is not None
+                if system.is_apple_silicon and importlib_util.find_spec("mlx_audio") is not None
                 else None
             ),
             install_hint=(
