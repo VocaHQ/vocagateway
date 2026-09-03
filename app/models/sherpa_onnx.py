@@ -23,6 +23,7 @@ STREAMING_MODEL_TYPE = "streaming_zipformer"
 TRANSCRIPTION_TIMEOUT_SECONDS = 180
 MAXIMUM_ERROR_MESSAGE_LENGTH = 240
 PCM_SAMPLE_SCALE = 32_768.0
+CPU_DEVICE = "cpu"
 
 
 class SherpaOnnxEngine:
@@ -158,7 +159,7 @@ class SherpaOnnxEngine:
                 num_threads=threads,
                 language="auto",
                 use_itn=True,
-                provider="cpu",
+                provider=CPU_DEVICE,
             )
         if self.catalog_model.model_type == "nemo_transducer":
             # Ordered (encoder, decoder, joiner, tokens) in the catalog entry: not every
@@ -172,14 +173,14 @@ class SherpaOnnxEngine:
                 tokens=tokens,
                 num_threads=threads,
                 model_type="nemo_transducer",
-                provider="cpu",
+                provider=CPU_DEVICE,
             )
         if self.catalog_model.model_type == "nemo_ctc":
             return sherpa_onnx.OfflineRecognizer.from_nemo_ctc(
                 model=str(self.model_root / "model.int8.onnx"),
                 tokens=tokens,
                 num_threads=threads,
-                provider="cpu",
+                provider=CPU_DEVICE,
             )
         if self.catalog_model.model_type == "nemo_canary":
             # English-only for now: source/target language is fixed at load time, not
@@ -189,14 +190,14 @@ class SherpaOnnxEngine:
                 decoder=str(self.model_root / "decoder.int8.onnx"),
                 tokens=tokens,
                 num_threads=threads,
-                provider="cpu",
+                provider=CPU_DEVICE,
             )
         if self.catalog_model.model_type == "dolphin_ctc":
             return sherpa_onnx.OfflineRecognizer.from_dolphin_ctc(
                 model=str(self.model_root / "model.int8.onnx"),
                 tokens=tokens,
                 num_threads=threads,
-                provider="cpu",
+                provider=CPU_DEVICE,
             )
         if self.catalog_model.model_type == "qwen3_asr":
             # Unlike every other type here, this one takes a Hugging Face tokenizer
@@ -207,7 +208,7 @@ class SherpaOnnxEngine:
                 decoder=str(self.model_root / "decoder.int8.onnx"),
                 tokenizer=str(self.model_root / "tokenizer"),
                 num_threads=threads,
-                provider="cpu",
+                provider=CPU_DEVICE,
             )
         if self.catalog_model.model_type == STREAMING_MODEL_TYPE:
             encoder_file, decoder_file, joiner_file, _ = self.catalog_model.required_files
@@ -217,7 +218,7 @@ class SherpaOnnxEngine:
                 decoder=str(self.model_root / decoder_file),
                 joiner=str(self.model_root / joiner_file),
                 num_threads=threads,
-                provider="cpu",
+                provider=CPU_DEVICE,
                 enable_endpoint_detection=True,
             )
         raise EngineUnavailableError(

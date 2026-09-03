@@ -35,6 +35,7 @@ from app.storage import SessionRepository, StoredSession
 from app.text_styles import apply_writing_style
 
 TRANSCRIPTION_SLOT_TIMEOUT_SECONDS = 0.05
+FAILED_SESSION_STATE = "failed"
 
 
 class TranscriptionService:
@@ -118,15 +119,21 @@ class TranscriptionService:
             return completed
         except SilentAudioError as error:
             self.metrics.failed(_elapsed_ms(started))
-            self.repository.update(session_id, state="failed", error_code="silent_audio")
+            self.repository.update(
+                session_id, state=FAILED_SESSION_STATE, error_code="silent_audio"
+            )
             raise APIProblem(HTTP_422_UNPROCESSABLE_CONTENT, "silent_audio", str(error)) from error
         except InvalidAudioError as error:
             self.metrics.failed(_elapsed_ms(started))
-            self.repository.update(session_id, state="failed", error_code="invalid_audio")
+            self.repository.update(
+                session_id, state=FAILED_SESSION_STATE, error_code="invalid_audio"
+            )
             raise APIProblem(HTTP_422_UNPROCESSABLE_CONTENT, "invalid_audio", str(error)) from error
         except EngineUnavailableError as error:
             self.metrics.failed(_elapsed_ms(started))
-            self.repository.update(session_id, state="failed", error_code="engine_unavailable")
+            self.repository.update(
+                session_id, state=FAILED_SESSION_STATE, error_code="engine_unavailable"
+            )
             raise APIProblem(
                 HTTP_503_SERVICE_UNAVAILABLE, "engine_unavailable", str(error), recoverable=True
             ) from error
@@ -135,13 +142,17 @@ class TranscriptionService:
             # but retrying replays the same language against the same model, so the
             # audio is discarded rather than kept for a Retry that cannot succeed.
             self.metrics.failed(_elapsed_ms(started))
-            self.repository.update(session_id, state="failed", error_code="language_unsupported")
+            self.repository.update(
+                session_id, state=FAILED_SESSION_STATE, error_code="language_unsupported"
+            )
             raise APIProblem(
                 HTTP_422_UNPROCESSABLE_CONTENT, "language_unsupported", str(error)
             ) from error
         except TranscriptionProcessError as error:
             self.metrics.failed(_elapsed_ms(started))
-            self.repository.update(session_id, state="failed", error_code="transcription_failed")
+            self.repository.update(
+                session_id, state=FAILED_SESSION_STATE, error_code="transcription_failed"
+            )
             raise APIProblem(
                 HTTP_502_BAD_GATEWAY, "transcription_failed", str(error), recoverable=True
             ) from error
@@ -149,7 +160,9 @@ class TranscriptionService:
             # Leave the session retryable: stuck "transcribing" rejects finish
             # and is not in the retry allow-list (failed/uploaded/completed).
             self.metrics.failed(_elapsed_ms(started))
-            self.repository.update(session_id, state="failed", error_code="internal_error")
+            self.repository.update(
+                session_id, state=FAILED_SESSION_STATE, error_code="internal_error"
+            )
             raise
         finally:
             normalized.unlink(missing_ok=True)

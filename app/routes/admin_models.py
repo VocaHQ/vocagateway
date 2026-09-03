@@ -27,6 +27,7 @@ from app.schemas import (
 )
 
 router = APIRouter(dependencies=[Depends(require_token)])
+DOWNLOAD_IN_PROGRESS_CODE = "download_in_progress"
 
 
 def _loose_bool(form_value: object) -> bool:
@@ -126,7 +127,7 @@ async def start_model_download(model_id: str, ctx: GatewayContextDependency) -> 
         ) from error
     except DownloadInProgressError as error:
         raise APIProblem(
-            HTTP_409_CONFLICT, "download_in_progress", "This model is already downloading."
+            HTTP_409_CONFLICT, DOWNLOAD_IN_PROGRESS_CODE, "This model is already downloading."
         ) from error
     return DownloadResponse(model_id=model_id, status=state.status)
 
@@ -143,7 +144,7 @@ async def start_custom_download(
         code = "invalid_model_digest" if "SHA-256" in str(error) else "invalid_model_url"
         raise APIProblem(HTTP_422_UNPROCESSABLE_CONTENT, code, str(error)) from error
     except DownloadInProgressError as error:
-        raise APIProblem(HTTP_409_CONFLICT, "download_in_progress", str(error)) from error
+        raise APIProblem(HTTP_409_CONFLICT, DOWNLOAD_IN_PROGRESS_CODE, str(error)) from error
     return DownloadResponse(model_id=state.model_id, status=state.status)
 
 
@@ -166,7 +167,7 @@ async def delete_model(
         deleted = ctx.manager.delete(model_id)
     except DownloadInProgressError as error:
         raise APIProblem(
-            HTTP_409_CONFLICT, "download_in_progress", "Cancel the download before deleting."
+            HTTP_409_CONFLICT, DOWNLOAD_IN_PROGRESS_CODE, "Cancel the download before deleting."
         ) from error
     if not deleted:
         response.status_code = HTTP_404_NOT_FOUND
@@ -240,7 +241,7 @@ async def ui_start_download(
         ) from error
     except DownloadInProgressError as error:
         raise APIProblem(
-            HTTP_409_CONFLICT, "download_in_progress", "This model is already downloading."
+            HTTP_409_CONFLICT, DOWNLOAD_IN_PROGRESS_CODE, "This model is already downloading."
         ) from error
     return _models_list_html(
         ctx,
@@ -271,7 +272,7 @@ async def ui_custom_download(
         code = "invalid_model_digest" if "SHA-256" in str(error) else "invalid_model_url"
         raise APIProblem(HTTP_422_UNPROCESSABLE_CONTENT, code, str(error)) from error
     except DownloadInProgressError as error:
-        raise APIProblem(HTTP_409_CONFLICT, "download_in_progress", str(error)) from error
+        raise APIProblem(HTTP_409_CONFLICT, DOWNLOAD_IN_PROGRESS_CODE, str(error)) from error
     return _models_list_html(
         ctx,
         installed_only=installed_only,
@@ -323,7 +324,7 @@ async def ui_delete_model(
         ctx.manager.delete(model_id)
     except DownloadInProgressError as error:
         raise APIProblem(
-            HTTP_409_CONFLICT, "download_in_progress", "Cancel the download before deleting."
+            HTTP_409_CONFLICT, DOWNLOAD_IN_PROGRESS_CODE, "Cancel the download before deleting."
         ) from error
     return _models_list_html(
         ctx,

@@ -25,6 +25,7 @@ WEBSOCKET_INTERNAL_ERROR_CODE = 1011
 MINIMUM_SAMPLE_RATE_HZ = 8_000
 MAXIMUM_SAMPLE_RATE_HZ = 96_000
 MAXIMUM_STREAM_ERROR_LENGTH = 200
+MESSAGE_TYPE_KEY = "type"
 
 
 @router.websocket("/v1/stream")
@@ -46,7 +47,7 @@ async def stream_transcription(websocket: WebSocket) -> None:
         await websocket.accept()
         await websocket.send_json(
             {
-                "type": "unsupported",
+                MESSAGE_TYPE_KEY: "unsupported",
                 "reason": "active_engine",
                 "engine": selected_health.name,
             }
@@ -61,7 +62,7 @@ async def stream_transcription(websocket: WebSocket) -> None:
         await websocket.accept()
         await websocket.send_json(
             {
-                "type": "unavailable",
+                MESSAGE_TYPE_KEY: "unavailable",
                 "reason": "engine_not_ready",
                 "engine": selected_health.name,
             }
@@ -81,7 +82,7 @@ async def stream_transcription(websocket: WebSocket) -> None:
     received_samples = 0
     try:
         start = await websocket.receive_json()
-        if start.get("type") != "start":
+        if start.get(MESSAGE_TYPE_KEY) != "start":
             raise ValueError("The first stream message must be start.")
         sample_rate = int(start.get("sample_rate", 0))
         if not MINIMUM_SAMPLE_RATE_HZ <= sample_rate <= MAXIMUM_SAMPLE_RATE_HZ:
@@ -103,11 +104,11 @@ async def stream_transcription(websocket: WebSocket) -> None:
 
             await asyncio.to_thread(stream.add_listener, receive_event)
             await websocket.send_json(
-                {"type": "ready", "engine": selected_health.name.split(":", 1)[0]}
+                {MESSAGE_TYPE_KEY: "ready", "engine": selected_health.name.split(":", 1)[0]}
             )
             while True:
                 message = await websocket.receive()
-                if message.get("type") == "websocket.disconnect":
+                if message.get(MESSAGE_TYPE_KEY) == "websocket.disconnect":
                     break
                 chunk = message.get("bytes")
                 if chunk is not None:
@@ -124,12 +125,14 @@ async def stream_transcription(websocket: WebSocket) -> None:
                     with lines_lock:
                         partial = joined_stream_lines(lines)
                     if partial:
-                        await websocket.send_json({"type": "partial", "transcript": partial})
+                        await websocket.send_json(
+                            {MESSAGE_TYPE_KEY: "partial", "transcript": partial}
+                        )
                     continue
                 text_message = message.get("text")
                 if text_message:
                     command = json.loads(text_message)
-                    if command.get("type") == "finish":
+                    if command.get(MESSAGE_TYPE_KEY) == "finish":
                         final_result = await asyncio.to_thread(stream.stop)
                         with lines_lock:
                             for line in getattr(final_result, "lines", []) or []:
@@ -146,7 +149,9 @@ async def stream_transcription(websocket: WebSocket) -> None:
                             raise ValueError("Moonshine returned an empty transcript.")
                         await asyncio.to_thread(stream.close)
                         stream = None
-                        await websocket.send_json({"type": "complete", "transcript": transcript})
+                        await websocket.send_json(
+                            {MESSAGE_TYPE_KEY: "complete", "transcript": transcript}
+                        )
                         await websocket.close(code=1000)
                         return
     except WebSocketDisconnect:
@@ -155,7 +160,7 @@ async def stream_transcription(websocket: WebSocket) -> None:
         with suppress(RuntimeError):
             await websocket.send_json(
                 {
-                    "type": "error",
+                    MESSAGE_TYPE_KEY: "error",
                     "message": str(error)[-MAXIMUM_STREAM_ERROR_LENGTH:] or "Streaming failed.",
                 }
             )
