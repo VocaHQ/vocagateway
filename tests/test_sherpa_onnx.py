@@ -34,14 +34,14 @@ EXPECTED_TRANSCRIPT = "hello"
 def _catalog(
     model_type: str = SENSE_VOICE_MODEL_TYPE, required_files: tuple[str, ...] | None = None
 ) -> CatalogModel:
-    if required_files is not None:
-        files = required_files
-    elif model_type in (SENSE_VOICE_MODEL_TYPE, "nemo_ctc"):
+    if required_files is None and model_type in (SENSE_VOICE_MODEL_TYPE, "nemo_ctc"):
         files = (SHERPA_MODEL_FILE, TOKENS_FILE)
-    elif model_type == "nemo_canary":
+    elif required_files is None and model_type == "nemo_canary":
         files = (ENCODER_INT8_FILE, DECODER_INT8_FILE, TOKENS_FILE)
-    else:
+    elif required_files is None:
         files = (ENCODER_INT8_FILE, DECODER_INT8_FILE, "joiner.int8.onnx", TOKENS_FILE)
+    else:
+        files = required_files
     return CatalogModel(
         id=f"sherpa-onnx:{model_type}",
         engine="sherpa-onnx",
