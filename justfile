@@ -1,5 +1,5 @@
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
-# server/.env holds the Compose token. It belongs to the container, not to the
+# .env holds the Compose token. It belongs to the container, not to the
 # recipes, so it is never loaded into this file's environment.
 set dotenv-load := false
 

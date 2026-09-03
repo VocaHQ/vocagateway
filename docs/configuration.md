@@ -5,6 +5,17 @@ are `vocagateway` (`vocagateway`, `vocagateway-token`, and related scripts).
 Deprecated `vocaphone-*` console-script aliases still resolve for one cycle.
 Environment variables and on-disk paths use the `vocagateway` prefix.
 
+## Contents
+
+- [Status and network boundary](#status-and-network-boundary)
+- [Default port](#default-port)
+- [On-disk paths (native)](#on-disk-paths-native)
+- [QR pairing payload](#qr-pairing-payload)
+- [Environment variables](#environment-variables) — [gateway process](#gateway-process) · [Compose-only](#compose-only-not-read-by-a-native-process)
+- [Stale names (not read)](#stale-names-not-read)
+- [VocaLinux remote_api](#vocalinux-remote_api)
+- [Related docs](#related-docs)
+
 ## Status and network boundary
 
 VocaGateway is **Beta** optional self-hosted infrastructure. There is no Voca
@@ -52,32 +63,48 @@ Prefix: `VOCAGATEWAY_*`. Values below match `Settings.from_env()` and
 
 ### Gateway process
 
-| Variable | Native default | Purpose |
-| --- | --- | --- |
-| `VOCAGATEWAY_BIND_HOST` | `0.0.0.0` | Listener interface |
-| `VOCAGATEWAY_PORT` | `8765` | Listener port |
-| `VOCAGATEWAY_TOKEN` | unset (file or auto-create) | Bearer token override (≥ 32 characters) |
-| `VOCAGATEWAY_TOKEN_FILE` | `~/.config/vocagateway/token` | Bearer-token file |
-| `VOCAGATEWAY_DATA_DIR` | `~/.local/share/vocagateway` | Sessions and application data |
-| `VOCAGATEWAY_MODELS_DIR` | `~/.local/share/vocagateway/models` | Downloaded models |
-| `VOCAGATEWAY_CONFIG_FILE` | `~/.config/vocagateway/config.json` | Persisted WebUI settings |
-| `VOCAGATEWAY_ENGINE` | `auto` | Force an engine id |
-| `VOCAGATEWAY_PUBLIC_URL` | unset | Pairing QR URL override |
-| `VOCAGATEWAY_PAIRING_URL` | unset | Alias for `VOCAGATEWAY_PUBLIC_URL` |
-| `VOCAGATEWAY_DEBUG` | `false` | Serve `/docs` and `/openapi.json` |
-| `VOCAGATEWAY_RETENTION_HOURS` | `24` | Failed-session audio retention |
-| `VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO` | `true` | Delete audio after success |
-| `VOCAGATEWAY_WHISPER_BINARY` | `/opt/homebrew/bin/whisper-cli` | `whisper.cpp` CLI |
-| `VOCAGATEWAY_WHISPER_MODEL` | `~/.local/share/whisper.cpp/models/ggml-base.en.bin` | Fallback `whisper.cpp` model |
-| `VOCAGATEWAY_WHISPERKIT_BINARY` | `whisperkit-cli` | WhisperKit CLI (macOS); also the 0.7.2 VocaMac fallback |
-| `VOCAGATEWAY_VOCAMAC_APP` | `/Applications/VocaMac.app` | Optional VocaMac bundle |
-| `VOCAGATEWAY_VOCAMAC_MODEL` | unset | Pin a VocaMac model ID instead of following the app |
-| `VOCAGATEWAY_HANDY_BINARY` | `/Applications/Handy.app/Contents/MacOS/handy` | Optional Handy binary |
-| `VOCAGATEWAY_HANDY_MODEL` | unset | Pin a Handy model id |
-| `VOCAGATEWAY_HANDY_FALLBACK_MODEL` | `handy-computer/whisper-base-gguf/whisper-base-Q8_0.gguf` | Handy fallback model |
+The **In `.env`?** column is what `compose.yaml` actually does with the
+variable. `compose.yaml` forwards only the keys it names, so a variable marked
+*ignored* is read out of `.env`, interpolated into nothing, and dropped:
+`docker compose config` passes and the container never sees it.
+
+| Variable | Native default | In `.env`? | Purpose |
+| --- | --- | --- | --- |
+| `VOCAGATEWAY_BIND_HOST` | `0.0.0.0` | forwarded | Listener interface. Keep it wildcard on the default bridge network, or the published port cannot reach the process |
+| `VOCAGATEWAY_PORT` | `8765` | forwarded | Listener port, and the container-side target of the published mapping |
+| `VOCAGATEWAY_TOKEN` | unset (file or auto-create) | Compose **secret** | Bearer token override (≥ 32 characters). Mounted at `/run/secrets/vocagateway_token`, never as a container env var |
+| `VOCAGATEWAY_TOKEN_FILE` | `~/.config/vocagateway/token` | ignored — image pins `/run/secrets/vocagateway_token` | Bearer-token file |
+| `VOCAGATEWAY_DATA_DIR` | `~/.local/share/vocagateway` | ignored — image pins `/data` | Sessions and application data |
+| `VOCAGATEWAY_MODELS_DIR` | `~/.local/share/vocagateway/models` | ignored — image pins `/data/models` | Downloaded models |
+| `VOCAGATEWAY_CONFIG_FILE` | `~/.config/vocagateway/config.json` | ignored — image pins `/data/config/config.json` | Persisted WebUI settings |
+| `VOCAGATEWAY_ENGINE` | `auto` | forwarded | Pin an engine id. Anything but `auto` overrides the WebUI's saved choice for the whole process |
+| `VOCAGATEWAY_PUBLIC_URL` | unset | forwarded | Pairing QR URL override. A pairing address already saved in the WebUI card wins over it |
+| `VOCAGATEWAY_PAIRING_URL` | unset | forwarded | Alias for `VOCAGATEWAY_PUBLIC_URL`, checked second |
+| `VOCAGATEWAY_DEBUG` | `false` | forwarded | Serve `/docs` and `/openapi.json`, and report the build commit in `/v1/admin/status` |
+| `VOCAGATEWAY_RETENTION_HOURS` | `24` | forwarded | Failed-session audio retention |
+| `VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO` | `true` | forwarded | Delete audio after success |
+| `VOCAGATEWAY_WHISPER_BINARY` | `/opt/homebrew/bin/whisper-cli` | ignored — image pins `/usr/local/bin/whisper-cli` | `whisper.cpp` CLI |
+| `VOCAGATEWAY_WHISPER_MODEL` | `~/.local/share/whisper.cpp/models/ggml-base.en.bin` | ignored | Fallback `whisper.cpp` model, used only when no model is selected in the WebUI |
+| `VOCAGATEWAY_WHISPERKIT_BINARY` | `whisperkit-cli` | ignored — macOS only | WhisperKit CLI (macOS); also the 0.7.2 VocaMac fallback |
+| `VOCAGATEWAY_VOCAMAC_APP` | `/Applications/VocaMac.app` | ignored — macOS only | Optional VocaMac bundle |
+| `VOCAGATEWAY_VOCAMAC_MODEL` | unset | ignored — macOS only | Pin a VocaMac model ID instead of following the app |
+| `VOCAGATEWAY_HANDY_BINARY` | `/Applications/Handy.app/Contents/MacOS/handy` | ignored — macOS only | Optional Handy binary |
+| `VOCAGATEWAY_HANDY_MODEL` | unset | ignored — macOS only | Pin a Handy model id |
+| `VOCAGATEWAY_HANDY_FALLBACK_MODEL` | `handy-computer/whisper-base-gguf/whisper-base-Q8_0.gguf` | ignored — macOS only | Model used when the pinned Handy model is missing |
+
+`VOCAGATEWAY_ENGINE` accepts `auto`, `sherpa-onnx`, `faster-whisper`,
+`moonshine`, `whisper.cpp`, `mlx-audio`, `whisperkit`, `vocamac`, or `handy`.
+Only the first five run in the Linux container, and only the value's spelling is
+checked at startup — the host check that answers `422 invalid_engine` in the
+WebUI and on `PUT /v1/admin/config` does not apply here. A macOS-only engine
+pinned through the variable on Linux starts fine and leaves `/health/ready` at
+`503`.
 
 Optional build/status stamps (when set): `VOCAGATEWAY_GIT_COMMIT`,
-`VOCAGATEWAY_GIT_COMMIT_SUBJECT`, `VOCAGATEWAY_GIT_COMMIT_DATE`.
+`VOCAGATEWAY_GIT_COMMIT_SUBJECT`, `VOCAGATEWAY_GIT_COMMIT_DATE`. These are
+build arguments, not settings — keep them out of `.env`, where they would pin
+every later build to one commit. `just up` and `just image` export them from
+git; see [Stamping the build commit](../README.md#stamping-the-build-commit).
 
 ### Compose-only (not read by a native process)
 
@@ -86,7 +113,7 @@ Optional build/status stamps (when set): `VOCAGATEWAY_GIT_COMMIT`,
 | `VOCAGATEWAY_PUBLISH_HOST` | `127.0.0.1` | Host interface Docker publishes |
 | `VOCAGATEWAY_PUBLISH_PORT` | `8765` | Host port Docker publishes |
 | `VOCAGATEWAY_NETWORK_MODE` | `bridge` | Set `host` on Linux Docker Engine only |
-| `VOCAGATEWAY_IMAGE` | `vocagateway:local` | Local or registry image tag |
+| `VOCAGATEWAY_IMAGE` | `vocagateway:local` | Tag for the `gateway` service. It renames what gets built rather than switching Compose to pulling; use `docker compose pull` then `up --no-build` for a registry image. The `native`/`cuda`/`vulkan` services ignore it |
 
 Container defaults for data paths are under `/data` (and the token secret under
 `/run/secrets/vocagateway_token`). See the [README configuration table](../README.md#configuration).

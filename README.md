@@ -52,59 +52,45 @@ on-disk paths use the `vocagateway` prefix (`VOCAGATEWAY_*`,
 `~/.config/vocagateway/`, `~/.local/share/vocagateway/`). The live pairing and env
 contract is in [configuration.md](docs/configuration.md).
 
-## The Voca family
+## Deploy in three steps
 
-Directory: [vocahq.com](https://vocahq.com). [VocaPhone](https://vocaphone.vocahq.com)
-is the live consumer. Embedding this gateway in a desktop app stays Planned.
+1. **Pick a host.** [Native macOS](#native-macos-quick-start) on Apple silicon,
+   [native Linux](#native-linux-quick-start) on a desktop or home server, or
+   [Docker Compose](#docker-compose-quick-start) for a reproducible Linux
+   image. [Deployment summary](#deployment-summary) compares the three.
+2. **Open the WebUI, enter the token, download one model.** The [fast model
+   guide](#fast-model-guide) picks it for you. `GET /health/ready` answers
+   `503` until that model can transcribe, and `200` once it can.
+3. **Pair a phone** with the [QR in the Pair & test tab](#phone-pairing-qr),
+   then decide how the phone reaches the host: [LAN, Tailscale, or an HTTPS
+   reverse proxy](#listener-and-network-access).
 
-| Product | Status | Website | Source |
-| --- | --- | --- | --- |
-| [VocaLinux](https://vocalinux.com/) | Available now (`v0.16.0`) | [vocalinux.com](https://vocalinux.com/) | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) |
-| [VocaMac](https://vocamac.com/) | Beta (`v0.9.0`) | [vocamac.com](https://vocamac.com/) | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) |
-| [VocaWin](https://vocawin.com/) | Unsigned beta (`v0.1.0-beta.1`) | [vocawin.com](https://vocawin.com/) | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) |
-| [VocaPhone](https://vocaphone.vocahq.com) | Android beta / iOS [TestFlight](https://testflight.apple.com/join/wd85wQ3W) (live consumer) | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) |
-| [VocaGateway](https://vocagateway.vocahq.com/) | Beta | [vocagateway.vocahq.com](https://vocagateway.vocahq.com/) | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) |
+## Contents
 
-## Consumers
+- [Deployment summary](#deployment-summary) — macOS vs Linux vs Docker
+- [Native macOS quick start](#native-macos-quick-start)
+- [Native Linux quick start](#native-linux-quick-start)
+  - [Phone pairing QR](#phone-pairing-qr)
+- [Docker Compose quick start](#docker-compose-quick-start)
+  - [Stamping the build commit](#stamping-the-build-commit)
+- [WebUI](#webui)
+  - [Fast model guide](#fast-model-guide)
+- [Model download integrity](#model-download-integrity)
+- [Engine selection](#engine-selection)
+- [Configuration](#configuration) — every `VOCAGATEWAY_*` variable and its default
+- [Listener and network access](#listener-and-network-access)
+  - [HTTPS reverse proxy (VPS)](#https-reverse-proxy-vps)
+- [Health and readiness](#health-and-readiness)
+- [Docker performance profiles](#docker-performance-profiles)
+- [CLI and routine operations](#cli-and-routine-operations)
+- [Development checks](#development-checks)
+- [The Voca family](#the-voca-family) and [consumers](#consumers)
 
-| Project | How it uses this gateway |
-| --- | --- |
-| [vocaphone](https://github.com/VocaHQ/vocaphone) | Live consumer. Git submodule at `server/` for the iOS/Android clients |
-| [vocalinux](https://github.com/VocaHQ/vocalinux) | `remote_api` can POST audio to `/v1/audio/transcriptions` on this host. Embedding the gateway in the app is still Planned. |
-| [vocamac](https://github.com/VocaHQ/vocamac) / [vocawin](https://github.com/VocaHQ/vocawin) | Planned: ship and start the headless server from the desktop app |
-
-### VocaLinux `remote_api`
-
-A running VocaLinux can treat this host as an OpenAI transcription server. Set
-the engine to `remote_api`. Server URL is the gateway origin, for example
-`http://192.168.1.20:8765`. API Endpoint must be OpenAI
-`/v1/audio/transcriptions`, not VocaLinux's default `/inference`. API Key is the
-gateway bearer token. The Model field is ignored; the engine you loaded in the
-WebUI is what runs.
-
-```sh
-curl -H "Authorization: Bearer $TOKEN" -F file=@sample.wav -F model=whisper-1 \
-  http://127.0.0.1:8765/v1/audio/transcriptions
-```
-
-VocaLinux's Test Connection is `GET /` on that origin, which is the
-unauthenticated WebUI, so a bad key can still look green. The first dictation is
-the real check. The client times out after 30 seconds, and a cold model load can
-miss that. Default concurrency is one in-flight transcription; a busy gateway
-returns 503. The gateway speaks HTTP on the LAN by default. HTTPS needs a
-certificate the desktop OS trusts.
-
-This is still optional self-hosted compute. Audio leaves the desktop and travels
-to the gateway host. It is not on-device transcription, and this endpoint does
-not stream.
-
-Clone with submodules when working from a consumer:
-
-```sh
-git clone --recurse-submodules https://github.com/VocaHQ/vocaphone.git
-# or later: git submodule update --init --recursive
-```
-
+Longer form ([docs index](docs/)): [deployment.md](docs/deployment.md)
+(operations, backup, Compose profiles) · [configuration.md](docs/configuration.md) (paths, environment
+variables, pairing payload) · [tailscale.md](docs/tailscale.md) (private HTTPS)
+· [troubleshooting.md](docs/troubleshooting.md) (what to check when it breaks)
+· [models.md](docs/models.md) (all 58 models and 108 languages)
 
 ## Deployment summary
 
@@ -250,11 +236,20 @@ docker compose ps
 curl --fail http://127.0.0.1:8765/health/live
 ```
 
-[`.env.example`](.env.example) is the annotated template. It already sets the
-loopback publication defaults and comments out every other supported setting, so
-starting from it is how you find out what is tunable. Appending the token
-overrides the empty `VOCAGATEWAY_TOKEN=` placeholder it ships with. Compose
-takes the last assignment of a repeated key.
+[`.env.example`](.env.example) is the annotated template, in seven numbered
+sections: the token, the published host/port, the pairing address, the image,
+gateway behaviour, the container listener, and — the section that saves the
+most time — the settings that look like they belong in `.env` but are never
+passed to the container. It ships the loopback publication defaults
+uncommented and everything else commented out, so starting from it is how you
+find out what is tunable. Appending the token overrides the empty
+`VOCAGATEWAY_TOKEN=` placeholder it ships with; Compose takes the last
+assignment of a repeated key.
+
+An empty `VOCAGATEWAY_TOKEN` is not a Compose error and not a startup error.
+The gateway falls back to a secret it generates and never prints, so
+`/health/live` looks healthy while every authenticated request returns `401`.
+Fill it in before the first `up`.
 
 The token is provided as a Compose secret rather than a container environment
 variable. Models, configuration, and the SQLite database persist in the
@@ -541,7 +536,10 @@ WebUI labels these models **personal use**. Review the current
 before deploying them outside a personal setup.
 
 The WebUI can explicitly select an engine or installed model and persists that
-choice in the runtime configuration file.
+choice in the runtime configuration file. `VOCAGATEWAY_ENGINE` outranks it:
+anything other than `auto` pins the engine for the whole process, and the
+WebUI's saved engine choice stops taking effect. Leave the variable at `auto`
+unless you want that lock.
 
 Four engines need a specific host, and the WebUI names the requirement next to
 each one:
@@ -557,6 +555,11 @@ The engine picker lists them only on a host that can run them, and both the
 WebUI and `PUT /v1/admin/config` reject a selection the host cannot run with
 `422 invalid_engine` rather than persisting a broken choice. `auto` skips them
 on every other host.
+
+That host check covers the WebUI and the API, not `VOCAGATEWAY_ENGINE`. Setting
+`VOCAGATEWAY_ENGINE=vocamac` on Linux or in a container is accepted at startup;
+the engine simply reports unavailable and `/health/ready` stays `503`. Check the
+variable before hunting for a model problem.
 
 On Apple silicon, current WhisperKit CLIs expose a local `serve` mode. The
 gateway starts it on a random `127.0.0.1` port during warmup and reuses the
@@ -633,14 +636,18 @@ uv run vocagateway
 | `VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO` | `true` | `true` | Delete source/normalized audio after success |
 | `VOCAGATEWAY_PUBLIC_URL` | unset | unset | Address the pairing QR encodes, overriding auto-discovery |
 | `VOCAGATEWAY_PAIRING_URL` | unset | unset | Alias for `VOCAGATEWAY_PUBLIC_URL`, checked second |
-| `VOCAGATEWAY_DEBUG` | `false` | `false` | Serve the Swagger UI at `/docs` and the schema at `/openapi.json` |
+| `VOCAGATEWAY_DEBUG` | `false` | `false` | Serve the Swagger UI at `/docs` and the schema at `/openapi.json`, and report the build commit in `/v1/admin/status` |
 
 Under Compose, `VOCAGATEWAY_BIND_HOST`, `PORT`, `ENGINE`, `RETENTION_HOURS`,
 `DELETE_SUCCESSFUL_AUDIO`, `PUBLIC_URL`, `PAIRING_URL`, and `DEBUG` are read
 from `.env` and passed into the container. `VOCAGATEWAY_TOKEN` becomes a
 Compose secret at `/run/secrets/vocagateway_token` rather than an environment
-variable. The remaining paths and binaries are fixed by the image to their
-container locations, and the macOS-only engine variables have no effect there.
+variable. Every other variable in the table above is fixed by the image or
+simply absent from a Linux container, and — this is the part that bites —
+`compose.yaml` does not forward it, so writing `VOCAGATEWAY_DATA_DIR`,
+`VOCAGATEWAY_MODELS_DIR`, `VOCAGATEWAY_CONFIG_FILE`, or any macOS engine path
+into `.env` passes `docker compose config` and changes nothing. Relocate
+container data by remapping the `vocagateway-data` volume instead.
 
 Compose-only variables, which the gateway process itself never reads, also live
 in `.env`:
@@ -650,7 +657,7 @@ in `.env`:
 | `VOCAGATEWAY_PUBLISH_HOST` | `127.0.0.1` | Host interface published by Docker |
 | `VOCAGATEWAY_PUBLISH_PORT` | `8765` | Host port published by Docker |
 | `VOCAGATEWAY_NETWORK_MODE` | `bridge` | Set to `host` on Linux Docker Engine to share the host's network namespace (ignores `VOCAGATEWAY_PUBLISH_HOST`/`PORT`); not supported by Docker Desktop |
-| `VOCAGATEWAY_IMAGE` | `vocagateway:local` | Local or registry image tag |
+| `VOCAGATEWAY_IMAGE` | `vocagateway:local` | Tag for the `gateway` service. It does not switch Compose from building to pulling — `up --build` still builds locally and applies the tag. To run a prebuilt image: `docker compose pull` then `up --no-build`. The `native`/`cuda`/`vulkan` services have fixed tags and ignore it |
 
 Use [`.env.example`](.env.example) as a template and never commit the populated
 `.env` file.
@@ -896,7 +903,61 @@ docker buildx build \
 For backup, update, and native-vs-container guidance, continue with
 [deployment.md](docs/deployment.md). For pairing, paths, and env vars, see
 [configuration.md](docs/configuration.md). For failures, see
-[troubleshooting.md](docs/troubleshooting.md).
+[troubleshooting.md](docs/troubleshooting.md). The [docs index](docs/) lists
+all five pages.
+
+## The Voca family
+
+Directory: [vocahq.com](https://vocahq.com). [VocaPhone](https://vocaphone.vocahq.com)
+is the live consumer. Embedding this gateway in a desktop app stays Planned.
+
+| Product | Status | Website | Source |
+| --- | --- | --- | --- |
+| [VocaLinux](https://vocalinux.com/) | Available now (`v0.16.0`) | [vocalinux.com](https://vocalinux.com/) | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) |
+| [VocaMac](https://vocamac.com/) | Beta (`v0.9.0`) | [vocamac.com](https://vocamac.com/) | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) |
+| [VocaWin](https://vocawin.com/) | Unsigned beta (`v0.1.0-beta.1`) | [vocawin.com](https://vocawin.com/) | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) |
+| [VocaPhone](https://vocaphone.vocahq.com) | Android beta / iOS [TestFlight](https://testflight.apple.com/join/wd85wQ3W) (live consumer) | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) |
+| [VocaGateway](https://vocagateway.vocahq.com/) | Beta | [vocagateway.vocahq.com](https://vocagateway.vocahq.com/) | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) |
+
+## Consumers
+
+| Project | How it uses this gateway |
+| --- | --- |
+| [vocaphone](https://github.com/VocaHQ/vocaphone) | Live consumer. Git submodule at `gateway/` for the iOS/Android clients |
+| [vocalinux](https://github.com/VocaHQ/vocalinux) | `remote_api` can POST audio to `/v1/audio/transcriptions` on this host. Embedding the gateway in the app is still Planned. |
+| [vocamac](https://github.com/VocaHQ/vocamac) / [vocawin](https://github.com/VocaHQ/vocawin) | Planned: ship and start the headless server from the desktop app |
+
+### VocaLinux `remote_api`
+
+A running VocaLinux can treat this host as an OpenAI transcription server. Set
+the engine to `remote_api`. Server URL is the gateway origin, for example
+`http://192.168.1.20:8765`. API Endpoint must be OpenAI
+`/v1/audio/transcriptions`, not VocaLinux's default `/inference`. API Key is the
+gateway bearer token. The Model field is ignored; the engine you loaded in the
+WebUI is what runs.
+
+```sh
+curl -H "Authorization: Bearer $TOKEN" -F file=@sample.wav -F model=whisper-1 \
+  http://127.0.0.1:8765/v1/audio/transcriptions
+```
+
+VocaLinux's Test Connection is `GET /` on that origin, which is the
+unauthenticated WebUI, so a bad key can still look green. The first dictation is
+the real check. The client times out after 30 seconds, and a cold model load can
+miss that. Default concurrency is one in-flight transcription; a busy gateway
+returns 503. The gateway speaks HTTP on the LAN by default. HTTPS needs a
+certificate the desktop OS trusts.
+
+This is still optional self-hosted compute. Audio leaves the desktop and travels
+to the gateway host. It is not on-device transcription, and this endpoint does
+not stream.
+
+Clone with submodules when working from a consumer:
+
+```sh
+git clone --recurse-submodules https://github.com/VocaHQ/vocaphone.git
+# or later: git submodule update --init --recursive
+```
 
 ## License and contact
 

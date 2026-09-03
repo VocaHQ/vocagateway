@@ -1,5 +1,38 @@
 # Troubleshooting
 
+Find the symptom, not the subsystem.
+
+**The gateway**
+
+- [Gateway reachable, model not ready](#gateway-reachable-model-not-ready) — liveness `200`, readiness `503`
+- [Gateway unavailable](#gateway-unavailable)
+- [401 unauthorized](#401-unauthorized)
+- [413, 415, or 422](#413-415-or-422) — upload rejected
+- [A model download fails SHA-256 verification](#a-model-download-fails-sha-256-verification)
+- [Reporting a gateway bug](#reporting-a-gateway-bug) — attach the redacted diagnostics bundle
+
+**Network and Docker**
+
+- [Docker service does not start](#docker-service-does-not-start)
+- [A LAN hostname such as homelabone does not connect](#a-lan-hostname-such-as-homelabone-does-not-connect) — also covers a pairing QR that only offers a `172.x` address
+
+**Speed and accuracy**
+
+- [Native Apple silicon transcription is slow](#native-apple-silicon-transcription-is-slow)
+- [Linux transcription is still slow](#linux-transcription-is-still-slow)
+- [The transcript came back in the wrong language](#the-transcript-came-back-in-the-wrong-language)
+
+**The phone app and keyboard**
+
+- [Keyboard is missing](#keyboard-is-missing)
+- [Start does not open vocaphone](#start-does-not-open-vocaphone)
+- [Keyboard never shows recording](#keyboard-never-shows-recording)
+- [Microphone is denied](#microphone-is-denied)
+- [AirPods are connected but the wrong microphone is used](#airpods-are-connected-but-the-wrong-microphone-is-used)
+- [Media plays through the receiver after dictation](#media-plays-through-the-receiver-after-dictation)
+- [Transcript did not insert](#transcript-did-not-insert)
+- [Finish appears unresponsive](#finish-appears-unresponsive)
+
 ## Keyboard is missing
 
 Confirm the extension is signed with the containing app, then add vocaphone in
@@ -85,6 +118,13 @@ families.
 With `VOCAGATEWAY_ENGINE=whisper.cpp`, also check
 `$VOCAGATEWAY_WHISPER_BINARY` and `$VOCAGATEWAY_WHISPER_MODEL`.
 
+Check `VOCAGATEWAY_ENGINE` itself before going further. Any value other than
+`auto` pins the engine for the whole process and overrides the WebUI's saved
+choice, and the host check that returns `422 invalid_engine` in the WebUI does
+not apply to the variable. `VOCAGATEWAY_ENGINE=vocamac` (or `handy`,
+`whisperkit`, `mlx-audio`) on Linux or in a container is accepted at startup and
+then reports unavailable forever, which looks exactly like a missing model.
+
 For Docker, open Models and download/select SenseVoice Small INT8, Parakeet TDT
 INT8, or a faster-whisper Base model. CPU + INT8 applies to faster-whisper;
 sherpa entries are already quantized. The container cannot run MLX Audio,
@@ -141,8 +181,12 @@ docker compose logs gateway
 ```
 
 Confirm `.env` contains a `VOCAGATEWAY_TOKEN` of at least 32 characters and
-is not a copy with the placeholder unchanged. A healthy container can still be
-not ready until a model is selected; the Docker healthcheck measures liveness.
+is not a copy with the placeholder unchanged. Nothing enforces this for you:
+`docker compose config` accepts the empty placeholder, and a container started
+without a token falls back to a secret it generates and never prints, so
+`/health/live` stays green while every authenticated request returns `401`. A
+healthy container can also be not ready until a model is selected; the Docker
+healthcheck measures liveness.
 
 If port 8765 is already in use, change `VOCAGATEWAY_PUBLISH_PORT` in `.env` and
 recreate the service. Tailscale Serve must then point to that same host port.
