@@ -14,6 +14,7 @@ ARM64_ARCHITECTURE = "arm64"
 UTF8_ENCODING = "utf-8"
 KEY_VALUE_SEPARATOR = ":"
 DEVICE_DIRECTORY_NAME = "device"
+DEFAULT_VOCAMAC_APPLICATION_PATH = Path("/Applications/VocaMac.app")
 
 # Engines that cannot run on every host, and the requirement the WebUI shows.
 # The desktop-app adapters are the strictest: Handy ships for macOS, and VocaMac
@@ -51,7 +52,7 @@ def detect_system(
     whisper_binary: Path,
     whisperkit_binary: str,
     handy_binary: Path,
-    vocamac_app: Path = Path("/Applications/VocaMac.app"),
+    vocamac_app: Path = DEFAULT_VOCAMAC_APPLICATION_PATH,
 ) -> SystemInfo:
     arch = platform.machine()
     is_mac = platform.system() == "Darwin"
