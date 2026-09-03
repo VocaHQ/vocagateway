@@ -92,6 +92,16 @@ def _download_total_bytes(manager: ModelManager, model_id: str) -> int:
     return state.total_bytes or 0
 
 
+def _write_invalid_archive(archive: Path) -> None:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:bz2") as file_handle:
+        payload = b"onnx"
+        metadata = tarfile.TarInfo("model-root/model.onnx")
+        metadata.size = len(payload)
+        file_handle.addfile(metadata, io.BytesIO(payload))
+    archive.write_bytes(buffer.getvalue())
+
+
 TINY_FILE = CatalogModel(
     id=WHISPER_CPP_TINY_ID,
     engine=WHISPER_CPP_ENGINE,
@@ -783,13 +793,7 @@ def test_custom_download_rejects_malformed_b52d7(tmp_path: Path) -> None:
 
 async def test_archive_download_rejects_wrong_arc_a7516(tmp_path: Path) -> None:
     archive = tmp_path / "model.tar.bz2"
-    buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w:bz2") as file_handle:
-        payload = b"onnx"
-        metadata = tarfile.TarInfo("model-root/model.onnx")
-        metadata.size = len(payload)
-        file_handle.addfile(metadata, io.BytesIO(payload))
-    archive.write_bytes(buffer.getvalue())
+    _write_invalid_archive(archive)
     model = dataclasses.replace(
         SHERPA_TEST,
         archive_url=archive.as_uri(),
