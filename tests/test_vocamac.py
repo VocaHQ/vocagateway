@@ -14,6 +14,18 @@ EXECUTABLE_FILE_MODE = 0o700
 DEFAULT_TEST_WEIGHT_BYTES = 16
 LARGE_TEST_WEIGHT_BYTES = 512
 EXPECTED_HEADLESS_INFERENCE_MS = 125
+UTF8_ENCODING = "utf-8"
+SUPPORT_DIRECTORY_NAME = "support"
+MODELS_DIRECTORY_NAME = "models"
+PARAKEET_MODEL = "parakeet-tdt-0.6b-v2"
+SMALL_MODEL = "small"
+AUDIO_FILE_NAME = "audio.wav"
+AUDIO_FORMAT = "audio"
+TEST_AUDIO_BYTES = b"audio"
+RAW_STYLE = "raw"
+WHISPER_SMALL_MODEL = "openai_whisper-small"
+AUTO_LANGUAGE = "auto"
+WHISPER_TINY_MODEL = "openai_whisper-tiny"
 
 # Records the arguments of the last call so the one-shot CLI path stays inspectable.
 FAKE_CLI = """#!/bin/sh
@@ -31,12 +43,12 @@ def _write_model(
     """Create a complete VocaMac Core ML model folder."""
     directory = models_dir / variant
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "config.json").write_text("{}", encoding="utf-8")
+    (directory / "config.json").write_text("{}", encoding=UTF8_ENCODING)
     for component in REQUIRED_COMPONENTS:
         weights = directory / component / "weights"
         weights.mkdir(parents=True)
         (weights / "weight.bin").write_bytes(b"w" * weight_bytes)
-        (directory / component / "metadata.json").write_text("[]", encoding="utf-8")
+        (directory / component / "metadata.json").write_text("[]", encoding=UTF8_ENCODING)
         (directory / component / "coremldata.bin").write_bytes(b"model")
     return directory
 
@@ -58,15 +70,22 @@ def _build_engine(tmp_path: Path, *, model: str | None = None) -> tuple[VocaMacE
     app_path = tmp_path / "VocaMac.app"
     app_path.mkdir(exist_ok=True)
     binary = tmp_path / "whisperkit-cli"
-    binary.write_text(FAKE_CLI, encoding="utf-8")
+    binary.write_text(FAKE_CLI, encoding=UTF8_ENCODING)
     binary.chmod(EXECUTABLE_FILE_MODE)
-    models_dir = tmp_path / "support" / "models" / "models" / "argmaxinc" / "whisperkit-coreml"
+    models_dir = (
+        tmp_path
+        / SUPPORT_DIRECTORY_NAME
+        / MODELS_DIRECTORY_NAME
+        / MODELS_DIRECTORY_NAME
+        / "argmaxinc"
+        / "whisperkit-coreml"
+    )
     models_dir.mkdir(parents=True, exist_ok=True)
     engine = VocaMacEngine(
         str(binary),
         model,
         app_path=app_path,
-        support_dir=tmp_path / "support",
+        support_dir=tmp_path / SUPPORT_DIRECTORY_NAME,
         preferences_file=tmp_path / "com.vocamac.app.plist",
     )
     return engine, models_dir
@@ -83,12 +102,12 @@ def _build_headless_engine(
     app_path = tmp_path / "VocaMac.app"
     executable = app_path / "Contents" / "MacOS" / "VocaMac"
     executable.parent.mkdir(parents=True)
-    model_payload = json.dumps({"models": models}, separators=(",", ":"))
+    model_payload = json.dumps({MODELS_DIRECTORY_NAME: models}, separators=(",", ":"))
     transcription_payload = json.dumps(
         transcription
         or {
             "text": "private local result",
-            "model": "parakeet-tdt-0.6b-v2",
+            "model": PARAKEET_MODEL,
             "engine": "parakeet",
             "detected_language": "en",
             "duration_seconds": 0.125,
@@ -110,14 +129,14 @@ def _build_headless_engine(
         )
         + "  *) exit 2 ;;\n"
         "esac\n",
-        encoding="utf-8",
+        encoding=UTF8_ENCODING,
     )
     executable.chmod(EXECUTABLE_FILE_MODE)
     engine = VocaMacEngine(
         str(tmp_path / "missing-whisperkit-cli"),
         model,
         app_path=app_path,
-        support_dir=tmp_path / "support",
+        support_dir=tmp_path / SUPPORT_DIRECTORY_NAME,
         preferences_file=tmp_path / "com.vocamac.app.plist",
     )
     return engine, executable
@@ -147,20 +166,20 @@ async def test_vocamac_headless_cli_uses_the_apps_aa(
     engine, executable = _build_headless_engine(
         tmp_path,
         [
-            _headless_model("small", selected=False),
-            _headless_model("parakeet-tdt-0.6b-v2", selected=True),
+            _headless_model(SMALL_MODEL, selected=False),
+            _headless_model(PARAKEET_MODEL, selected=True),
         ],
     )
-    audio = tmp_path / "audio.wav"
-    audio.write_bytes(b"audio")
+    audio = tmp_path / AUDIO_FILE_NAME
+    audio.write_bytes(TEST_AUDIO_BYTES)
 
     assert engine.is_available() is True
     assert (await engine.health()).name == "vocamac:parakeet-tdt-0.6b-v2"
-    operation_result = await engine.transcribe(audio, TranscriptionOptions("en", "raw"))
+    operation_result = await engine.transcribe(audio, TranscriptionOptions("en", RAW_STYLE))
 
     assert operation_result.text == "private local result"
     assert operation_result.inference_ms == EXPECTED_HEADLESS_INFERENCE_MS
-    arguments = Path(f"{executable}.args").read_text(encoding="utf-8").splitlines()
+    arguments = Path(f"{executable}.args").read_text(encoding=UTF8_ENCODING).splitlines()
     assert arguments[:3] == ["--transcribe-file", str(audio), "--json"]
     assert arguments[arguments.index("--language") + 1] == "en"
     assert "--model" not in arguments
@@ -172,21 +191,21 @@ async def test_vocamac_headless_cli_honours_an_ex_aaa(
     engine, executable = _build_headless_engine(
         tmp_path,
         [
-            _headless_model("small", selected=False),
-            _headless_model("parakeet-tdt-0.6b-v2", selected=True),
+            _headless_model(SMALL_MODEL, selected=False),
+            _headless_model(PARAKEET_MODEL, selected=True),
         ],
-        model="openai_whisper-small",
+        model=WHISPER_SMALL_MODEL,
     )
-    audio = tmp_path / "audio.wav"
-    audio.write_bytes(b"audio")
+    audio = tmp_path / AUDIO_FILE_NAME
+    audio.write_bytes(TEST_AUDIO_BYTES)
 
     assert engine.is_available() is True
     assert (await engine.health()).name == "vocamac:small"
-    await engine.transcribe(audio, TranscriptionOptions("auto", "raw"))
+    await engine.transcribe(audio, TranscriptionOptions(AUTO_LANGUAGE, RAW_STYLE))
 
-    arguments = Path(f"{executable}.args").read_text(encoding="utf-8").splitlines()
-    assert arguments[arguments.index("--model") + 1] == "small"
-    assert arguments[arguments.index("--language") + 1] == "auto"
+    arguments = Path(f"{executable}.args").read_text(encoding=UTF8_ENCODING).splitlines()
+    assert arguments[arguments.index("--model") + 1] == SMALL_MODEL
+    assert arguments[arguments.index("--language") + 1] == AUTO_LANGUAGE
 
 
 async def test_vocamac_headless_cli_reports_an_un_aaaa(
@@ -194,7 +213,7 @@ async def test_vocamac_headless_cli_reports_an_un_aaaa(
 ) -> None:
     engine, _ = _build_headless_engine(
         tmp_path,
-        [_headless_model("parakeet-tdt-0.6b-v2", selected=True, downloaded=False)],
+        [_headless_model(PARAKEET_MODEL, selected=True, downloaded=False)],
     )
 
     health = await engine.health()
@@ -209,17 +228,17 @@ async def test_vocamac_headless_cli_surfaces_mode_aaaaa(
 ) -> None:
     engine, _ = _build_headless_engine(
         tmp_path,
-        [_headless_model("parakeet-tdt-0.6b-v2", selected=True)],
+        [_headless_model(PARAKEET_MODEL, selected=True)],
         failure={
             "error": "model_not_downloaded",
             "message": "Model is not downloaded: parakeet-tdt-0.6b-v2",
         },
     )
-    audio = tmp_path / "audio.wav"
-    audio.write_bytes(b"audio")
+    audio = tmp_path / AUDIO_FILE_NAME
+    audio.write_bytes(TEST_AUDIO_BYTES)
 
     with pytest.raises(EngineUnavailableError, match="Model is not downloaded"):
-        await engine.transcribe(audio, TranscriptionOptions("auto", "raw"))
+        await engine.transcribe(audio, TranscriptionOptions(AUTO_LANGUAGE, RAW_STYLE))
 
 
 async def test_vocamac_headless_warmup_does_not_l_a(
@@ -227,7 +246,7 @@ async def test_vocamac_headless_warmup_does_not_l_a(
 ) -> None:
     engine, executable = _build_headless_engine(
         tmp_path,
-        [_headless_model("parakeet-tdt-0.6b-v2", selected=True)],
+        [_headless_model(PARAKEET_MODEL, selected=True)],
     )
 
     assert await engine.warmup() == 0
@@ -240,35 +259,35 @@ async def test_vocamac_without_headless_cli_keeps_aa(tmp_path: Path) -> None:
     executable.parent.mkdir(parents=True)
     executable.write_text(
         '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$0.args"\nexit 0\n',
-        encoding="utf-8",
+        encoding=UTF8_ENCODING,
     )
     executable.chmod(EXECUTABLE_FILE_MODE)
-    selected = _write_model(models_dir, "openai_whisper-small")
-    _write_preferences(tmp_path, "small")
-    audio = tmp_path / "audio.wav"
-    audio.write_bytes(b"audio")
+    selected = _write_model(models_dir, WHISPER_SMALL_MODEL)
+    _write_preferences(tmp_path, SMALL_MODEL)
+    audio = tmp_path / AUDIO_FILE_NAME
+    audio.write_bytes(TEST_AUDIO_BYTES)
 
     health = await engine.health()
-    await engine.transcribe(audio, TranscriptionOptions("auto", "raw"))
+    await engine.transcribe(audio, TranscriptionOptions(AUTO_LANGUAGE, RAW_STYLE))
 
     assert health.ready is True
     assert health.name == "vocamac:openai_whisper-small"
     assert not Path(f"{executable}.args").exists()
-    arguments = (tmp_path / "whisperkit-cli.args").read_text(encoding="utf-8").splitlines()
+    arguments = (tmp_path / "whisperkit-cli.args").read_text(encoding=UTF8_ENCODING).splitlines()
     assert arguments[arguments.index("--model-path") + 1] == str(selected)
 
 
 async def test_vocamac_runs_the_model_selected_in_aaa(tmp_path: Path) -> None:
     engine, models_dir = _build_engine(tmp_path)
-    _write_model(models_dir, "openai_whisper-tiny", weight_bytes=LARGE_TEST_WEIGHT_BYTES)
-    selected = _write_model(models_dir, "openai_whisper-small")
-    _write_preferences(tmp_path, "small")
-    audio = tmp_path / "audio.wav"
-    audio.write_bytes(b"audio")
+    _write_model(models_dir, WHISPER_TINY_MODEL, weight_bytes=LARGE_TEST_WEIGHT_BYTES)
+    selected = _write_model(models_dir, WHISPER_SMALL_MODEL)
+    _write_preferences(tmp_path, SMALL_MODEL)
+    audio = tmp_path / AUDIO_FILE_NAME
+    audio.write_bytes(TEST_AUDIO_BYTES)
 
     health = await engine.health()
-    transcript = await engine.transcribe(audio, TranscriptionOptions("auto", "raw"))
-    arguments = (tmp_path / "whisperkit-cli.args").read_text(encoding="utf-8").splitlines()
+    transcript = await engine.transcribe(audio, TranscriptionOptions(AUTO_LANGUAGE, RAW_STYLE))
+    arguments = (tmp_path / "whisperkit-cli.args").read_text(encoding=UTF8_ENCODING).splitlines()
 
     assert health.ready is True
     assert health.name == "vocamac:openai_whisper-small"
@@ -277,14 +296,14 @@ async def test_vocamac_runs_the_model_selected_in_aaa(tmp_path: Path) -> None:
     assert arguments[arguments.index("--model-path") + 1] == str(selected)
     # VocaMac already downloaded the matching tokenizer, so reuse it.
     assert arguments[arguments.index("--download-tokenizer-path") + 1] == str(
-        tmp_path / "support" / "models"
+        tmp_path / SUPPORT_DIRECTORY_NAME / MODELS_DIRECTORY_NAME
     )
 
 
 async def test_vocamac_skips_an_interrupted_download(tmp_path: Path) -> None:
     engine, models_dir = _build_engine(tmp_path)
-    _write_partial_model(models_dir, "openai_whisper-tiny")
-    _write_model(models_dir, "openai_whisper-small")
+    _write_partial_model(models_dir, WHISPER_TINY_MODEL)
+    _write_model(models_dir, WHISPER_SMALL_MODEL)
     _write_preferences(tmp_path, "tiny")
 
     health = await engine.health()
@@ -297,8 +316,8 @@ async def test_vocamac_does_not_replace_a_selecte_aaaa(
     tmp_path: Path,
 ) -> None:
     engine, models_dir = _build_engine(tmp_path)
-    _write_model(models_dir, "openai_whisper-small")
-    _write_preferences(tmp_path, "parakeet-tdt-0.6b-v2")
+    _write_model(models_dir, WHISPER_SMALL_MODEL)
+    _write_preferences(tmp_path, PARAKEET_MODEL)
 
     health = await engine.health()
 
@@ -306,17 +325,17 @@ async def test_vocamac_does_not_replace_a_selecte_aaaa(
     assert health.ready is False
     assert health.name == "vocamac:parakeet-tdt-0.6b-v2"
 
-    audio = tmp_path / "audio.wav"
-    audio.write_bytes(b"audio")
+    audio = tmp_path / AUDIO_FILE_NAME
+    audio.write_bytes(TEST_AUDIO_BYTES)
     with pytest.raises(EngineUnavailableError, match="not a WhisperKit model"):
-        await engine.transcribe(audio, TranscriptionOptions("auto", "raw"))
+        await engine.transcribe(audio, TranscriptionOptions(AUTO_LANGUAGE, RAW_STYLE))
 
 
 async def test_vocamac_does_not_replace_an_unknow_aaaaa(
     tmp_path: Path,
 ) -> None:
     engine, models_dir = _build_engine(tmp_path)
-    _write_model(models_dir, "openai_whisper-small")
+    _write_model(models_dir, WHISPER_SMALL_MODEL)
     _write_preferences(tmp_path, "future-vocamac-engine-model")
 
     health = await engine.health()
@@ -328,24 +347,24 @@ async def test_vocamac_does_not_replace_an_unknow_aaaaa(
 
 async def test_vocamac_prefers_the_largest_model_a(tmp_path: Path) -> None:
     engine, models_dir = _build_engine(tmp_path)
-    _write_model(models_dir, "openai_whisper-tiny", weight_bytes=DEFAULT_TEST_WEIGHT_BYTES)
-    largest = _write_model(models_dir, "openai_whisper-small", weight_bytes=LARGE_TEST_WEIGHT_BYTES)
+    _write_model(models_dir, WHISPER_TINY_MODEL, weight_bytes=DEFAULT_TEST_WEIGHT_BYTES)
+    largest = _write_model(models_dir, WHISPER_SMALL_MODEL, weight_bytes=LARGE_TEST_WEIGHT_BYTES)
 
     assert (await engine.health()).name == f"vocamac:{largest.name}"
 
 
 async def test_vocamac_honours_an_explicit_model_aa(tmp_path: Path) -> None:
     engine, models_dir = _build_engine(tmp_path, model="tiny")
-    pinned = _write_model(models_dir, "openai_whisper-tiny")
-    _write_model(models_dir, "openai_whisper-small", weight_bytes=LARGE_TEST_WEIGHT_BYTES)
-    _write_preferences(tmp_path, "small")
+    pinned = _write_model(models_dir, WHISPER_TINY_MODEL)
+    _write_model(models_dir, WHISPER_SMALL_MODEL, weight_bytes=LARGE_TEST_WEIGHT_BYTES)
+    _write_preferences(tmp_path, SMALL_MODEL)
 
     assert (await engine.health()).name == f"vocamac:{pinned.name}"
 
 
 async def test_vocamac_never_substitutes_a_config_f22a7(tmp_path: Path) -> None:
     engine, models_dir = _build_engine(tmp_path, model="large-v3")
-    _write_model(models_dir, "openai_whisper-small")
+    _write_model(models_dir, WHISPER_SMALL_MODEL)
 
     health = await engine.health()
 
@@ -360,7 +379,7 @@ async def test_vocamac_is_unavailable_without_the_aaa(tmp_path: Path) -> None:
     assert engine.is_available() is False
     assert (await engine.health()).name == "vocamac:no-model-selected"
 
-    _write_model(models_dir, "openai_whisper-small")
+    _write_model(models_dir, WHISPER_SMALL_MODEL)
     assert engine.is_available() is True
 
     engine.app_path.rmdir()
@@ -370,7 +389,7 @@ async def test_vocamac_is_unavailable_without_the_aaa(tmp_path: Path) -> None:
 
 async def test_vocamac_is_unavailable_without_whi_aaaa(tmp_path: Path) -> None:
     engine, models_dir = _build_engine(tmp_path)
-    _write_model(models_dir, "openai_whisper-small")
+    _write_model(models_dir, WHISPER_SMALL_MODEL)
     Path(engine.whisperkit_binary).unlink()
 
     assert engine.is_available() is False
