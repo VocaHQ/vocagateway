@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Form, Response
 from fastapi.responses import HTMLResponse
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_409_CONFLICT
 
 from app.admin_queries import token_entries
-from app.context import BOOTSTRAP_TOKEN_ID, GatewayContext, get_context, require_token
+from app.context import BOOTSTRAP_TOKEN_ID, GatewayContext, GatewayContextDependency, require_token
 from app.errors import APIProblem
 from app.fragments.tokens import tokens_fragment
 from app.schemas import (
@@ -16,6 +18,7 @@ from app.schemas import (
 )
 
 router = APIRouter(dependencies=[Depends(require_token)])
+TokenLabelForm = Annotated[str, Form(min_length=1, max_length=100)]
 
 
 def tokens_fragment_str(ctx: GatewayContext, *, new_token: tuple[str, str] | None = None) -> str:
@@ -24,14 +27,14 @@ def tokens_fragment_str(ctx: GatewayContext, *, new_token: tuple[str, str] | Non
 
 @router.get("/v1/admin/tokens", response_model=list[DeviceTokenEntry])
 async def list_admin_tokens(
-    ctx: GatewayContext = Depends(get_context),
+    ctx: GatewayContextDependency,
 ) -> list[DeviceTokenEntry]:
     return token_entries(ctx)
 
 
 @router.post("/v1/admin/tokens", response_model=DeviceTokenCreateResponse)
 async def create_admin_token(
-    body: DeviceTokenCreateRequest, ctx: GatewayContext = Depends(get_context)
+    body: DeviceTokenCreateRequest, ctx: GatewayContextDependency
 ) -> DeviceTokenCreateResponse:
     record, plaintext = ctx.token_store.create(body.label)
     return DeviceTokenCreateResponse(
@@ -41,7 +44,7 @@ async def create_admin_token(
 
 @router.delete("/v1/admin/tokens/{token_id}", response_model=DeviceTokenRevokeResponse)
 async def revoke_admin_token(
-    token_id: str, response: Response, ctx: GatewayContext = Depends(get_context)
+    token_id: str, response: Response, ctx: GatewayContextDependency
 ) -> DeviceTokenRevokeResponse:
     if token_id == BOOTSTRAP_TOKEN_ID:
         raise APIProblem(
@@ -57,7 +60,7 @@ async def revoke_admin_token(
 
 @router.post("/v1/admin/tokens/{token_id}/rotate", response_model=DeviceTokenCreateResponse)
 async def rotate_admin_token(
-    token_id: str, ctx: GatewayContext = Depends(get_context)
+    token_id: str, ctx: GatewayContextDependency
 ) -> DeviceTokenCreateResponse:
     if token_id == BOOTSTRAP_TOKEN_ID:
         raise APIProblem(
@@ -77,23 +80,21 @@ async def rotate_admin_token(
 
 
 @router.get("/ui/partials/tokens", response_class=HTMLResponse)
-async def ui_tokens(ctx: GatewayContext = Depends(get_context)) -> HTMLResponse:
+async def ui_tokens(ctx: GatewayContextDependency) -> HTMLResponse:
     return HTMLResponse(tokens_fragment_str(ctx))
 
 
 @router.post("/ui/partials/tokens", response_class=HTMLResponse)
 async def ui_create_token(
-    label: str = Form(..., min_length=1, max_length=100),
-    ctx: GatewayContext = Depends(get_context),
+    label: TokenLabelForm,
+    ctx: GatewayContextDependency,
 ) -> HTMLResponse:
     record, plaintext = ctx.token_store.create(label)
     return HTMLResponse(tokens_fragment_str(ctx, new_token=(record.label, plaintext)))
 
 
 @router.delete("/ui/partials/tokens/{token_id}", response_class=HTMLResponse)
-async def ui_revoke_token(
-    token_id: str, ctx: GatewayContext = Depends(get_context)
-) -> HTMLResponse:
+async def ui_revoke_token(token_id: str, ctx: GatewayContextDependency) -> HTMLResponse:
     if token_id == BOOTSTRAP_TOKEN_ID:
         raise APIProblem(
             HTTP_409_CONFLICT,
@@ -105,9 +106,7 @@ async def ui_revoke_token(
 
 
 @router.post("/ui/partials/tokens/{token_id}/rotate", response_class=HTMLResponse)
-async def ui_rotate_token(
-    token_id: str, ctx: GatewayContext = Depends(get_context)
-) -> HTMLResponse:
+async def ui_rotate_token(token_id: str, ctx: GatewayContextDependency) -> HTMLResponse:
     if token_id == BOOTSTRAP_TOKEN_ID:
         raise APIProblem(
             HTTP_409_CONFLICT,
