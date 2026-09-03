@@ -7,7 +7,12 @@ import pytest
 from app.catalog import CatalogModel
 from app.errors import EngineUnavailableError, LanguageUnsupportedError, TranscriptionProcessError
 from app.models.base import TranscriptionOptions
-from app.models.whisper_cpp import WhisperCppEngine
+from app.models.whisper_cpp import (
+    DECODER_BEAM_SIZE,
+    DECODER_BEST_OF,
+    WhisperCppEngine,
+    _build_arguments,
+)
 
 EXECUTABLE_FILE_MODE = 0o700
 WHISPER_BINARY_NAME = "whisper-cli"
@@ -234,3 +239,59 @@ async def test_warmup_prefetches_the_model_when_ready(tmp_path: Path) -> None:
     advised = await ready_engine.warmup()
 
     assert advised > 0
+
+
+def test_decoding_flags_narrow_the_search_and_use_the_whole_cpu(tmp_path: Path) -> None:
+    """whisper-cli's own defaults (4 threads, beam 5, best-of 5) are batch settings.
+
+    A dictation clip is short and the decoder dominates on a CPU-only host, so
+    the gateway asks for the machine's cores and a narrower beam instead.
+    """
+    arguments = _build_arguments(
+        tmp_path / WHISPER_BINARY_NAME,
+        tmp_path / MODEL_FILE_NAME,
+        tmp_path / AUDIO_FILE_NAME,
+        tmp_path / "result",
+        AUTO_LANGUAGE,
+        6,
+    )
+
+    assert arguments[arguments.index("-t") + 1] == "6"
+    assert arguments[arguments.index("-bs") + 1] == str(DECODER_BEAM_SIZE)
+    assert arguments[arguments.index("-bo") + 1] == str(DECODER_BEST_OF)
+    # Temperature fallback stays on: it is what rescues a repetition loop.
+    assert "-nf" not in arguments
+
+
+async def test_the_operator_thread_override_reaches_the_command_line(tmp_path: Path) -> None:
+    """The WebUI's CPU threads box has to survive the whole way to argv.
+
+    Before this engine took `cpu_threads` it silently ran on whisper-cli's own
+    default of 4 no matter what the operator had chosen.
+    """
+    binary = tmp_path / WHISPER_BINARY_NAME
+    _write_binary(
+        binary,
+        r"""#!/bin/sh
+printf '%s\n' "$@" > "$0.args"
+of=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -of) of="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '%s' "threaded result" > "$of.txt"
+""",
+    )
+    model = tmp_path / MODEL_FILE_NAME
+    model.write_bytes(MODEL_BYTES)
+    audio = tmp_path / AUDIO_FILE_NAME
+    audio.write_bytes(AUDIO_BYTES)
+
+    await WhisperCppEngine(binary, model, cpu_threads=3).transcribe(
+        audio, TranscriptionOptions(AUTO_LANGUAGE, RAW_STYLE)
+    )
+
+    recorded = (tmp_path / "whisper-cli.args").read_text(encoding="utf-8").splitlines()
+    assert recorded[recorded.index("-t") + 1] == "3"

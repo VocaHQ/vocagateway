@@ -72,7 +72,10 @@ class FFmpegNormalizer:
             destination.unlink(missing_ok=True)
             raise InvalidAudioError(_safe_ffmpeg_message(stderr))
         try:
-            self._validate_wave(destination, maximum_seconds)
+            # Reading the whole PCM file and summing its squares is tens of
+            # milliseconds of pure CPU for a minute of audio. On the event loop
+            # that stalls every other request in flight, so it runs on a worker.
+            await asyncio.to_thread(self._validate_wave, destination, maximum_seconds)
         except Exception:
             destination.unlink(missing_ok=True)
             raise
@@ -105,10 +108,24 @@ class FFmpegNormalizer:
     def _check_silence(self, samples: array[int]) -> None:
         if not samples:
             raise InvalidAudioError("Recording contains no audio frames.")
-        energy = sum(sample * sample for sample in samples)
-        rms = math.sqrt(energy / len(samples))
-        if rms < SILENCE_RMS_THRESHOLD:
+        if _root_mean_square(samples) < SILENCE_RMS_THRESHOLD:
             raise SilentAudioError("Recording appears to be silent.")
+
+
+def _root_mean_square(samples: array[int]) -> float:
+    """RMS amplitude, vectorized when numpy is present.
+
+    numpy arrives with every engine extra but the core install does without it,
+    so the pure-Python sum stays as the fallback rather than becoming a new
+    hard dependency of the gateway.
+    """
+    try:
+        import numpy
+    except ImportError:
+        energy = sum(sample * sample for sample in samples)
+        return math.sqrt(energy / len(samples))
+    block = numpy.frombuffer(samples, dtype=numpy.int16).astype(numpy.float64)
+    return float(numpy.sqrt(numpy.square(block).mean()))
 
 
 def validate_audio_upload_headers(

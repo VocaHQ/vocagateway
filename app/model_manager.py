@@ -35,6 +35,10 @@ USER_AGENT = "vocagateway-gateway/0.2"
 HF_BASE_URL = "https://huggingface.co"
 DEFAULT_HF_REVISION = "main"
 DOWNLOADING_STATUS = "downloading"
+# What an on-disk install looks like, shared by the full scan and the single
+# lookup so the two can never disagree about whether a model is installed.
+WEIGHT_FILE_SUFFIXES: tuple[str, ...] = (".bin", ".gguf")
+WHISPERKIT_CONFIG_FILE = "config.json"
 PARTIAL_DIRECTORY_SUFFIX = ".partial"
 COMPLETED_STATUS = "completed"
 # `?expand=true` is what makes the tree API report each file's SHA-256, but it
@@ -171,9 +175,25 @@ class ModelManager:
         return self.models_dir / model.engine / model.key
 
     def installed_path(self, model_id: str) -> Path | None:
-        installed = {model.id: model for model in self.installed()}
-        entry = installed.get(model_id)
-        return entry.path if entry else None
+        """Locate one installed model without sizing every other one.
+
+        `installed()` walks and sums every file under every model directory to
+        report sizes. Engine selection calls this on each request path that
+        rebuilds an engine and never looks at a size, so it resolves the path
+        from the catalog index and checks the same marker `installed()` does.
+        """
+        path = self._path_for_id(model_id)
+        if path is None:
+            return None
+        model = self.catalog_model(model_id)
+        if model is None:
+            # A model outside the catalog: a weights file, or a WhisperKit
+            # folder, which counts as installed only once its config lands.
+            if path.suffix in WEIGHT_FILE_SUFFIXES:
+                return path if path.is_file() else None
+            return path if (path / WHISPERKIT_CONFIG_FILE).is_file() else None
+        marker = path / model.marker_file if model.marker_file else path
+        return path if marker.exists() else None
 
     # --------------------------------------------------------------- listing
 
@@ -201,7 +221,7 @@ class ModelManager:
         whisper_cpp_dir = self.models_dir / ENGINE_WHISPER_CPP
         if whisper_cpp_dir.is_dir():
             for model_file in sorted(whisper_cpp_dir.iterdir()):
-                if not model_file.is_file() or model_file.suffix not in {".bin", ".gguf"}:
+                if not model_file.is_file() or model_file.suffix not in WEIGHT_FILE_SUFFIXES:
                     continue
                 if model_file in catalog_paths:
                     continue
@@ -220,7 +240,7 @@ class ModelManager:
         whisperkit_dir = self.models_dir / ENGINE_WHISPERKIT
         if whisperkit_dir.is_dir():
             for folder in sorted(whisperkit_dir.iterdir()):
-                if not folder.is_dir() or not (folder / "config.json").is_file():
+                if not folder.is_dir() or not (folder / WHISPERKIT_CONFIG_FILE).is_file():
                     continue
                 if folder in catalog_paths:
                     continue
@@ -643,7 +663,7 @@ class ModelManager:
             name = model_id[len("custom:") :]
             if Path(name).name != name or not name:
                 return None
-            if name.endswith((".bin", ".gguf")):
+            if name.endswith(WEIGHT_FILE_SUFFIXES):
                 return self.models_dir / ENGINE_WHISPER_CPP / name
             return self.models_dir / ENGINE_WHISPERKIT / name
         return None
@@ -654,7 +674,7 @@ def _validate_custom_url(url: str) -> str:
     if parsed.scheme != "https":
         raise ValueError("Only HTTPS URLs are supported.")
     filename = Path(parsed.path).name
-    if not filename.endswith((".bin", ".gguf")):
+    if not filename.endswith(WEIGHT_FILE_SUFFIXES):
         raise ValueError("Custom models must be .bin or .gguf files.")
     return filename
 

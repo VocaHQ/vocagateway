@@ -1,18 +1,24 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import time
 from importlib import util as importlib_util
 from pathlib import Path
 from typing import Any
 
+from app import system
 from app.errors import EngineUnavailableError, TranscriptionProcessError
 from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
 from app.runtime_config import AUTO_ENGINE
 
 TRANSCRIPTION_TIMEOUT_SECONDS = 180
 MAXIMUM_ERROR_MESSAGE_LENGTH = 240
+# Silero VAD costs a few milliseconds and hands the decoder only the speech.
+# A dictation clip is mostly the pause before and after the sentence, and the
+# decoder is the expensive half on a CPU host, so skipping that silence is the
+# largest single saving available here.
+VAD_MINIMUM_SILENCE_MS = 500
+VAD_SPEECH_PAD_MS = 200
 
 
 class FasterWhisperEngine:
@@ -84,14 +90,11 @@ class FasterWhisperEngine:
 
         device = _resolved_device(self.device)
         comp_type = _resolved_compute_type(self.compute_type, device)
-        cpu_total = os.cpu_count() or 1
-        default_threads = min(cpu_total, 8)
-        threads = self.cpu_threads or max(1, default_threads)
         return WhisperModel(
             str(self.model_path),
             device=device,
             compute_type=comp_type,
-            cpu_threads=threads,
+            cpu_threads=system.inference_thread_count(self.cpu_threads),
             num_workers=1,
             local_files_only=True,
         )
@@ -121,6 +124,20 @@ async def _run_inference(model: Any, audio_path: Path, options: TranscriptionOpt
 
 
 def _extract_text(model: Any, audio_path: Path, options: TranscriptionOptions) -> str:
+    """Decode the clip, retrying without VAD when VAD found no speech at all.
+
+    The RMS gate in `app.audio` already rejects a silent recording, so an empty
+    VAD pass here means quiet-but-real speech that Silero was not confident
+    about. Decoding the whole clip is slower than the VAD path but it is the
+    difference between a transcript and a failure, so it is worth the retry.
+    """
+    transcript = _decode(model, audio_path, options, use_vad=True)
+    if transcript:
+        return transcript
+    return _decode(model, audio_path, options, use_vad=False)
+
+
+def _decode(model: Any, audio_path: Path, options: TranscriptionOptions, *, use_vad: bool) -> str:
     segments, _ = model.transcribe(
         str(audio_path),
         language=None if options.language == AUTO_ENGINE else options.language,
@@ -128,7 +145,14 @@ def _extract_text(model: Any, audio_path: Path, options: TranscriptionOptions) -
         best_of=1,
         temperature=0,
         condition_on_previous_text=False,
-        vad_filter=False,
+        # Nothing downstream reads segment times — the gateway returns one joined
+        # string — so decoding timestamp tokens is work spent on output nobody uses.
+        without_timestamps=True,
+        vad_filter=use_vad,
+        vad_parameters={
+            "min_silence_duration_ms": VAD_MINIMUM_SILENCE_MS,
+            "speech_pad_ms": VAD_SPEECH_PAD_MS,
+        },
     )
     valid_texts = [segment.text.strip() for segment in segments if segment.text.strip()]
     return " ".join(valid_texts).strip()

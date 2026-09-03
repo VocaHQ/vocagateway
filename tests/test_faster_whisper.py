@@ -8,7 +8,7 @@ from pathlib import Path
 from pytest import MonkeyPatch
 
 from app.models.base import EngineTranscription, TranscriptionOptions
-from app.models.faster_whisper import FasterWhisperEngine
+from app.models.faster_whisper import FasterWhisperEngine, _decode, _extract_text
 
 
 class _Segment:
@@ -60,3 +60,37 @@ async def test_faster_whisper_keeps_one_model_loaded(
             "local_files_only": True,
         }
     ]
+
+
+class _VadOnlyModel:
+    """Stands in for a model whose VAD pass finds nothing to decode."""
+
+    def __init__(self, _: str, **options: object) -> None:
+        self.vad_flags: list[object] = []
+
+    def transcribe(self, _: str, **options: object) -> tuple[list[_Segment], object]:
+        self.vad_flags.append(options["vad_filter"])
+        if options["vad_filter"]:
+            return [], object()
+        return [_Segment()], object()
+
+
+def test_the_vad_pass_runs_first_and_skips_the_silence() -> None:
+    model = _VadOnlyModel("model")
+    _decode(model, Path("audio.wav"), TranscriptionOptions("en", "raw"), use_vad=True)
+
+    assert model.vad_flags == [True]
+
+
+def test_a_quiet_clip_that_vad_rejects_is_decoded_in_full_instead() -> None:
+    """The RMS gate upstream already refused true silence.
+
+    An empty VAD pass therefore means quiet speech Silero was unsure about, and
+    a slower full decode beats returning a transcription failure for it.
+    """
+    model = _VadOnlyModel("model")
+
+    text = _extract_text(model, Path("audio.wav"), TranscriptionOptions("en", "raw"))
+
+    assert text == "persistent result"
+    assert model.vad_flags == [True, False]

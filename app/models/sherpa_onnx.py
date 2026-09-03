@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import re
 import time
 import wave
@@ -11,7 +10,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from app import catalog, errors
+from app import catalog, errors, system
 from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
 
 MODEL_METADATA = ".vocagateway-model.json"
@@ -283,9 +282,7 @@ class SherpaOnnxEngine:
         self.supports_streaming: bool = (
             catalog_model is not None and catalog_model.model_type == STREAMING_MODEL_TYPE
         )
-        cpu_total = os.cpu_count() or 1
-        default_threads = min(cpu_total, 8)
-        threads = cpu_threads or max(1, default_threads)
+        threads = system.inference_thread_count(cpu_threads)
         self._builder = _SherpaRecognizerBuilder(model_root, catalog_model, threads)
 
     async def create_stream(self) -> _SherpaOnnxStreamAdapter:
@@ -391,17 +388,26 @@ class SherpaOnnxEngine:
         return self._builder.build()
 
 
-def _read_wave_samples(audio_path: Path) -> tuple[int, list[float]]:
+def _read_wave_samples(audio_path: Path) -> tuple[int, Any]:
+    """Read a PCM WAV file as the float waveform sherpa-onnx accepts.
+
+    numpy ships with sherpa-onnx, so the vectorized conversion is always
+    available on the path that actually reaches this function; the list
+    comprehension it replaces built one Python float per sample, which is
+    roughly half a million short-lived objects for a 30-second recording.
+    """
+    import numpy
+
     with wave.open(str(audio_path), "rb") as source:
         if source.getsampwidth() != 2:
             raise ValueError("sherpa-onnx expects normalized 16-bit PCM WAV audio.")
         channels = source.getnchannels()
         sample_rate = source.getframerate()
         frames = source.readframes(source.getnframes())
-    samples = memoryview(frames).cast("h")
+    samples = numpy.frombuffer(frames, dtype=numpy.int16)
     if channels > 1:
         samples = samples[::channels]
-    return sample_rate, [sample / PCM_SAMPLE_SCALE for sample in samples]
+    return sample_rate, samples.astype(numpy.float32) / PCM_SAMPLE_SCALE
 
 
 def _decode_wave(recognizer: Any, audio_path: Path) -> str:
