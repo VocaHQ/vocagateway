@@ -320,8 +320,9 @@ async def test_unexpected_finish_error_leaves_ses_f5519(
     transcription_in_progress, so a stuck transcribing state blocks recovery.
     """
     app = create_app(settings, engine=BoomEngine(), normalizer=FakeNormalizer())
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://gateway") as client:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://gateway"
+    ) as client:
         session_id = uuid4()
         await client.post(
             SESSIONS_API_PATH,
@@ -338,6 +339,5 @@ async def test_unexpected_finish_error_leaves_ses_f5519(
             await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
 
         session = await client.get(f"/v1/sessions/{session_id}", headers=authorization)
-        body = session.json()
-        assert body["state"] == "failed"
-        assert body["error_code"] == "internal_error"
+        assert session.json()["state"] == "failed"
+        assert session.json()["error_code"] == "internal_error"
