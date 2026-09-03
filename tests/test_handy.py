@@ -27,39 +27,36 @@ def _write_downloaded_model(cache: Path, model: str) -> Path:
     return model_path
 
 
+def _write_handy_binary(tmp_path: Path, script: str) -> Path:
+    binary = tmp_path / HANDY_BINARY_NAME
+    binary.write_text(script, encoding=UTF8_ENCODING)
+    binary.chmod(EXECUTABLE_FILE_MODE)
+    return binary
+
+
+def _write_audio(tmp_path: Path) -> Path:
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"audio")
+    return audio
+
+
 async def test_handy_adapter_uses_downloaded_mode_aa(
     tmp_path: Path,
 ) -> None:
     model = "owner/repository/model.gguf"
-    binary = tmp_path / HANDY_BINARY_NAME
-    binary.write_text(
-        "#!/bin/sh\nprintf '%s\\n' '{\"text\":\"private local result\"}'\n",
-        encoding=UTF8_ENCODING,
+    binary = _write_handy_binary(
+        tmp_path, "#!/bin/sh\nprintf '%s\\n' '{\"text\":\"private local result\"}'\n"
     )
-    binary.chmod(EXECUTABLE_FILE_MODE)
-    model_path = (
-        tmp_path
-        / CACHE_DIRECTORY_NAME
-        / "models--owner--repository"
-        / "snapshots"
-        / "revision"
-        / "model.gguf"
-    )
-    model_path.parent.mkdir(parents=True)
-    model_path.write_bytes(b"model")
-    audio = tmp_path / "audio.wav"
-    audio.write_bytes(b"audio")
+    _write_downloaded_model(tmp_path / CACHE_DIRECTORY_NAME, model)
+    audio = _write_audio(tmp_path)
 
     engine = HandyEngine(binary, model, huggingface_cache=tmp_path / CACHE_DIRECTORY_NAME)
-    health = await engine.health()
-    transcript = await engine.transcribe(
-        audio,
-        TranscriptionOptions(language="auto", style="raw"),
-    )
 
-    assert health.ready is True
-    assert health.name == f"handy:{model}"
-    assert transcript == "private local result"
+    assert (await engine.health()).ready is True
+    assert (await engine.health()).name == f"handy:{model}"
+    assert await engine.transcribe(audio, TranscriptionOptions(language="auto", style="raw")) == (
+        "private local result"
+    )
 
 
 async def test_handy_health_is_false_when_model_i_f7f57(
