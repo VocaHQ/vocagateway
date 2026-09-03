@@ -41,16 +41,18 @@ async def test_whisperkit_keeps_one_native_server_aa(
     process = FakeProcess()
     starts = 0
 
-    def start_server(_: str, __: Path, ___: Path | None = None) -> whisperkit._WhisperKitServer:
+    def start_server(
+        _: str, _model: Path, _config: Path | None = None
+    ) -> whisperkit._WhisperKitServer:
         nonlocal starts
         starts += 1
         return whisperkit._WhisperKitServer(process=process, port=FAKE_SERVER_PORT)  # type: ignore[arg-type]
 
     def transcribe(
         _: whisperkit._WhisperKitServer,
-        __: Path,
-        ___: Path,
-        ____: str,
+        _audio: Path,
+        _model: Path,
+        _style: str,
     ) -> str:
         return "persistent native result"
 
