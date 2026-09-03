@@ -4,7 +4,7 @@ import re
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, BinaryIO
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
@@ -210,7 +210,7 @@ class _AdhocUpload:
                 "The recording is empty.",
             )
 
-    async def _write_stream(self, output: object, maximum_upload_bytes: int) -> None:
+    async def _write_stream(self, output: BinaryIO, maximum_upload_bytes: int) -> None:
         while True:
             chunk = await self.audio_file.read(_READ_CHUNK_BYTES)
             if not chunk:
@@ -222,7 +222,7 @@ class _AdhocUpload:
                     "audio_too_large",
                     "The recording exceeds the upload limit.",
                 )
-            output.write(chunk)  # type: ignore[attr-defined]
+            output.write(chunk)
 
 
 class _TranscriptionEndpoint:
