@@ -24,9 +24,10 @@ and hashing the file, which is roughly 3.5 GB in total, so they are skipped
 unless --download-unpinnable is passed.
 
 Usage:
-    uv run scripts/harvest-model-pins.py                     # free sources only
+    uv run scripts/harvest-model-pins.py                     # pin new models only
+    uv run scripts/harvest-model-pins.py --refresh           # refresh every pin
     uv run scripts/harvest-model-pins.py --download-unpinnable
-    uv run scripts/harvest-model-pins.py --only sherpa-onnx:  # id prefix filter
+    uv run scripts/harvest-model-pins.py --only sherpa-onnx:  # refresh one family
 """
 
 from __future__ import annotations
@@ -193,7 +194,56 @@ def harvest(model: CatalogModel, *, download_unpinnable: bool) -> dict[str, Any]
     return record or None
 
 
-def main() -> int:
+def _select_models(
+    models: list[CatalogModel],
+    existing: dict[str, Any],
+    *,
+    only: str,
+    refresh: bool,
+    download_unpinnable: bool,
+) -> list[CatalogModel]:
+    selected = [model for model in models if model.id.startswith(only) and not model.retired]
+    if only or refresh:
+        return selected
+    return [
+        model
+        for model in selected
+        if model.id not in existing
+        and (
+            download_unpinnable
+            or model.huggingface_repo
+            or (model.download_url and "huggingface.co/" in model.download_url)
+        )
+    ]
+
+
+def _expects_complete_pin(model: CatalogModel, download_unpinnable: bool) -> bool:
+    is_huggingface_file = bool(model.download_url and "huggingface.co/" in model.download_url)
+    has_external_download = bool(model.download_url or model.archive_url)
+    return bool(
+        model.huggingface_repo
+        or is_huggingface_file
+        or (download_unpinnable and has_external_download)
+    )
+
+
+def _pin_is_complete(model: CatalogModel, record: dict[str, Any]) -> bool:
+    if model.huggingface_repo and (not record.get("revision") or not record.get("file_digests")):
+        return False
+    if (
+        model.download_url
+        and "huggingface.co/" in model.download_url
+        and (not record.get("revision") or not record.get("sha256"))
+    ):
+        return False
+    if (model.download_url or model.archive_url) and not (
+        model.huggingface_repo or (model.download_url and "huggingface.co/" in model.download_url)
+    ):
+        return bool(record.get("sha256"))
+    return True
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--download-unpinnable",
@@ -201,8 +251,13 @@ def main() -> int:
         help="Also hash sources that publish no digest (~3.5 GB of transfer).",
     )
     parser.add_argument("--only", default="", help="Only harvest model ids with this prefix.")
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Refresh existing pins too. By default only missing models are harvested.",
+    )
     parser.add_argument("--output", type=Path, default=PINS_PATH)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     existing: dict[str, Any] = {}
     if args.output.is_file():
@@ -213,13 +268,19 @@ def main() -> int:
 
     # Retired entries are refused by `start_download`, so a pin for one can
     # never be checked against a fresh download and only rots in the file.
-    models = [m for m in _BASE_CATALOG if m.id.startswith(args.only) and not m.retired]
+    models = _select_models(
+        list(_BASE_CATALOG),
+        existing,
+        only=args.only,
+        refresh=args.refresh,
+        download_unpinnable=args.download_unpinnable,
+    )
     print(f"Harvesting pins for {len(models)} model(s)\n")
     live_ids = {model.id for model in _BASE_CATALOG if not model.retired}
     records: dict[str, Any] = {
         model_id: record for model_id, record in existing.items() if model_id in live_ids
     }
-    pinned = skipped = 0
+    pinned = skipped = failed = 0
     for model in models:
         print(f"  {model.id}")
         try:
@@ -228,24 +289,33 @@ def main() -> int:
             # One repo's exhausted retries shouldn't discard however many
             # models were already harvested this run.
             print(f"    ! harvest failed: {error}", file=sys.stderr)
-            skipped += 1
+            failed += 1
             continue
         if record is None:
             # Keep any previously harvested record rather than dropping it.
-            if model.id not in records:
+            if _expects_complete_pin(model, args.download_unpinnable):
+                failed += 1
+                print("    ! could not produce a complete pin", file=sys.stderr)
+            elif model.id not in records:
                 skipped += 1
                 print("    - nothing pinnable without --download-unpinnable")
             continue
-        merged = {**records.get(model.id, {}), **record}
-        records[model.id] = merged
+        if not _pin_is_complete(model, record):
+            failed += 1
+            print("    ! pin is incomplete; previous record preserved", file=sys.stderr)
+            continue
+        # A revision and its digests are one snapshot. Replacing the whole
+        # record prevents a new revision from being paired with a stale digest
+        # left over from an earlier model source.
+        records[model.id] = record
         pinned += 1
         summary = []
-        if merged.get("revision"):
-            summary.append(f"revision {merged['revision'][:12]}")
-        if merged.get("sha256"):
-            summary.append(f"sha256 {merged['sha256'][:12]}")
-        if merged.get("file_digests"):
-            summary.append(f"{len(merged['file_digests'])} file digests")
+        if record.get("revision"):
+            summary.append(f"revision {record['revision'][:12]}")
+        if record.get("sha256"):
+            summary.append(f"sha256 {record['sha256'][:12]}")
+        if record.get("file_digests"):
+            summary.append(f"{len(record['file_digests'])} file digests")
         print(f"    + {', '.join(summary) or 'no data'}")
 
     payload = {
@@ -257,9 +327,19 @@ def main() -> int:
         ),
         "models": dict(sorted(records.items())),
     }
-    args.output.write_text(json.dumps(payload, indent=2, sort_keys=False) + "\n", encoding="utf-8")
-    print(f"\nWrote {args.output} — {pinned} pinned, {skipped} unpinnable this run")
-    return 0
+    rendered = json.dumps(payload, indent=2, sort_keys=False) + "\n"
+    current = args.output.read_text(encoding="utf-8") if args.output.is_file() else None
+    if rendered != current:
+        temporary = args.output.with_name(f".{args.output.name}.tmp")
+        try:
+            temporary.write_text(rendered, encoding="utf-8")
+            temporary.replace(args.output)
+        finally:
+            temporary.unlink(missing_ok=True)
+    print(
+        f"\nWrote {args.output} — {pinned} pinned, {skipped} unpinnable, {failed} failed this run"
+    )
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
