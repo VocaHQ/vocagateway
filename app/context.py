@@ -89,5 +89,6 @@ def require_token(
 ) -> None:
     # credentials is None when the header is absent, empty, or carries a
     # non-bearer scheme; all three are the same 401 as a wrong token.
-    if not ctx.token_matches(credentials.credentials if credentials else ""):
+    presented_token = "" if credentials is None else credentials.credentials
+    if not ctx.token_matches(presented_token):
         raise APIProblem(HTTP_401_UNAUTHORIZED, "unauthorized", "A valid bearer token is required.")
