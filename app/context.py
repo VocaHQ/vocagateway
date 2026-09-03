@@ -80,11 +80,12 @@ def get_context(request: Request) -> GatewayContext:
 
 
 GatewayContextDependency = Annotated[GatewayContext, Depends(get_context)]
+TokenCredentialsDependency = Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)]
 
 
 def require_token(
-    ctx: GatewayContext = Depends(get_context),
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    ctx: GatewayContextDependency,
+    credentials: TokenCredentialsDependency,
 ) -> None:
     # credentials is None when the header is absent, empty, or carries a
     # non-bearer scheme; all three are the same 401 as a wrong token.
