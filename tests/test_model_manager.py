@@ -71,6 +71,21 @@ DOWNLOAD_STATE_MODEL_ID = "t"
 COUNT_KEY = "count"
 SAMPLE_LANGUAGE_CODE = "b"
 
+
+def _create_test_archive(source: Path, archive_root: str) -> None:
+    response_body = source.parent / archive_root
+    response_body.mkdir()
+    (response_body / SHERPA_MODEL_NAME).write_bytes(b"onnx")
+    (response_body / TOKENS_FILE_NAME).write_text("token")
+    with tarfile.open(source, "w:bz2") as archive:
+        archive.add(response_body, arcname=archive_root)
+
+
+def _assert_download_completed(manager: ModelManager, model_id: str) -> None:
+    state = manager.download_state(model_id)
+    assert state is not None and state.status == COMPLETED_STATUS
+
+
 TINY_FILE = CatalogModel(
     id=WHISPER_CPP_TINY_ID,
     engine=WHISPER_CPP_ENGINE,
@@ -469,19 +484,14 @@ async def test_moonshine_download_uses_catalog_la_aa(
 
 async def test_archive_download_extracts_validate_aaa(tmp_path: Path) -> None:
     source = tmp_path / "model.tar.bz2"
-    response_body = tmp_path / "published-model"
-    response_body.mkdir()
-    (response_body / SHERPA_MODEL_NAME).write_bytes(b"onnx")
-    (response_body / TOKENS_FILE_NAME).write_text("token")
-    with tarfile.open(source, "w:bz2") as archive:
-        archive.add(response_body, arcname="published-model")
+    _create_test_archive(source, "published-model")
     catalog_model = dataclasses.replace(SHERPA_TEST, archive_url=source.as_uri())
     manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(catalog_model,))
 
-    state = manager.start_download(catalog_model.id)
+    manager.start_download(catalog_model.id)
     await asyncio.wait_for(_wait_finished(manager, catalog_model.id), timeout=5)
 
-    assert state.status == COMPLETED_STATUS
+    _assert_download_completed(manager, catalog_model.id)
     installed = manager.installed_path(catalog_model.id)
     assert installed is not None
     assert (installed / SHERPA_MODEL_NAME).read_bytes() == b"onnx"
