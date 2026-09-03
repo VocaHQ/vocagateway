@@ -5,6 +5,7 @@ import platform
 import resource
 import time
 import wave
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -117,29 +118,22 @@ class TranscriptionService:
         self.metrics.started()
 
 
-class _TranscriptGuard:
-    @classmethod
-    def require_matching_script(cls, text: str, language: str) -> None:
-        """Refuse a transcript written in the wrong alphabet.
+def _require_matching_script(text: str, language: str) -> None:
+    """Refuse a transcript written in the wrong alphabet.
 
-        Models that detect the language themselves can return fluent text in a
-        language nobody asked for — Dolphin turns a short Hindi phrase into Cyrillic.
-        Inserting that at the cursor is worse than failing, because it looks like a
-        real transcript. Raised as `LanguageUnsupportedError` so it carries the same
-        non-retryable `language_unsupported` code the clients already explain.
-        """
-        if scripts.transcript_matches_language(text, language):
-            return
-        raise errors.LanguageUnsupportedError(
-            f"The model transcribed this as a different language than {language}. "
-            "It detects the language itself and misread a short recording; try "
-            "speaking a full sentence, or choose a model that supports this language."
-        )
-
-    @classmethod
-    def conservative_cleanup(cls, text: str) -> str:
-        """Backward-compatible name for the original clean transcript mode."""
-        return text_styles.apply_writing_style(text, "clean")
+    Models that detect the language themselves can return fluent text in a
+    language nobody asked for — Dolphin turns a short Hindi phrase into Cyrillic.
+    Inserting that at the cursor is worse than failing, because it looks like a
+    real transcript. Raised as `LanguageUnsupportedError` so it carries the same
+    non-retryable `language_unsupported` code the clients already explain.
+    """
+    if scripts.transcript_matches_language(text, language):
+        return
+    raise errors.LanguageUnsupportedError(
+        f"The model transcribed this as a different language than {language}. "
+        "It detects the language itself and misread a short recording; try "
+        "speaking a full sentence, or choose a model that supports this language."
+    )
 
 
 class _Pipeline:
@@ -275,24 +269,47 @@ class _EnginePass:
         return _Pipeline.engine_outcome(raw_result, inference_started), engine
 
 
-class _SessionJob:
-    def __init__(self, service: TranscriptionService, stored: storage.StoredSession) -> None:
+class _TranscriptionJob[JobResult](ABC):
+    def __init__(self, service: TranscriptionService) -> None:
         self.service = service
-        self.stored = stored
 
-    async def run(self) -> storage.StoredSession:
-        session_id = self.stored.session_id
-        normalized = self.service.normalized_dir / f"{session_id}.wav"
+    async def run(self) -> JobResult:
+        normalized = self._normalized_path()
         started = time.monotonic()
         try:
             return await self._complete(normalized, started)
         except Exception as error:
-            mapped = self._fail(error, started)
+            mapped = _Pipeline.mapped_failure(error, self.service.metrics, started)
+            mapped = self._record_failure(mapped)
             if mapped is error:
                 raise
             raise mapped from error
         finally:
             self._release(normalized)
+
+    @abstractmethod
+    def _normalized_path(self) -> Path: ...
+
+    @abstractmethod
+    async def _complete(self, normalized: Path, started: float) -> JobResult: ...
+
+    def _record_failure(self, mapped: Exception) -> Exception:
+        return mapped
+
+    def _release(self, normalized: Path) -> None:
+        normalized.unlink(missing_ok=True)
+        self.service._transcription_slots.release()
+        self.service.metrics.finished()
+
+
+class _SessionJob(_TranscriptionJob[storage.StoredSession]):
+    def __init__(self, service: TranscriptionService, stored: storage.StoredSession) -> None:
+        super().__init__(service)
+        self.stored = stored
+
+    def _normalized_path(self) -> Path:
+        session_id = str(self.stored.session_id)
+        return self.service.normalized_dir / f"{session_id}.wav"
 
     async def _complete(self, normalized: Path, started: float) -> storage.StoredSession:
         self.service.repository.update(self.stored.session_id, state="transcribing")
@@ -300,7 +317,7 @@ class _SessionJob:
         outcome, normalization_ms, engine = await _EnginePass(
             self.service, self.stored.language, self.stored.style
         ).run(source, normalized)
-        _TranscriptGuard.require_matching_script(outcome.text, self.stored.language)
+        _require_matching_script(outcome.text, self.stored.language)
         completed = self._persist(source, outcome.text)
         await self._record_success(engine, started, normalization_ms, outcome, normalized)
         return completed
@@ -344,8 +361,7 @@ class _SessionJob:
             ),
         )
 
-    def _fail(self, error: Exception, started: float) -> Exception:
-        mapped = _Pipeline.mapped_failure(error, self.service.metrics, started)
+    def _record_failure(self, mapped: Exception) -> Exception:
         code = mapped.code if isinstance(mapped, errors.APIProblem) else "internal_error"
         # Leave unknown failures retryable: stuck "transcribing" rejects finish
         # and is not in the retry allow-list (failed/uploaded/completed).
@@ -357,36 +373,21 @@ class _SessionJob:
         )
         return mapped
 
-    def _release(self, normalized: Path) -> None:
-        normalized.unlink(missing_ok=True)
-        self.service._transcription_slots.release()
-        self.service.metrics.finished()
 
-
-class _AdhocJob:
+class _AdhocJob(_TranscriptionJob[AdhocTranscription]):
     def __init__(self, service: TranscriptionService, source: Path, language: str) -> None:
-        self.service = service
+        super().__init__(service)
         self.source = source
         self.language = language
 
-    async def run(self) -> AdhocTranscription:
-        normalized = self.service.normalized_dir / f"adhoc-{uuid4()}.wav"
-        started = time.monotonic()
-        try:
-            return await self._complete(normalized, started)
-        except Exception as error:
-            mapped = self._fail(error, started)
-            if mapped is error:
-                raise
-            raise mapped from error
-        finally:
-            self._release(normalized)
+    def _normalized_path(self) -> Path:
+        return self.service.normalized_dir / f"adhoc-{uuid4()}.wav"
 
     async def _complete(self, normalized: Path, started: float) -> AdhocTranscription:
         outcome, normalization_ms, engine = await _EnginePass(
             self.service, self.language, "raw"
         ).run(self.source, normalized)
-        _TranscriptGuard.require_matching_script(outcome.text, self.language)
+        _require_matching_script(outcome.text, self.language)
         return await self._success(engine, outcome, normalization_ms, normalized, started)
 
     async def _success(
@@ -408,15 +409,3 @@ class _AdhocJob:
         )
         self.service.metrics.record_result(duration_ms, success=True, timing=timing)
         return AdhocTranscription(outcome.text.strip(), name, timing)
-
-    def _fail(self, error: Exception, started: float) -> Exception:
-        return _Pipeline.mapped_failure(error, self.service.metrics, started)
-
-    def _release(self, normalized: Path) -> None:
-        normalized.unlink(missing_ok=True)
-        self.service._transcription_slots.release()
-        self.service.metrics.finished()
-
-
-_require_matching_script = _TranscriptGuard.require_matching_script
-conservative_cleanup = _TranscriptGuard.conservative_cleanup

@@ -11,7 +11,7 @@ from typing import Any, cast
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app import context, scripts, serializers, text_styles
-from app.models.base import StreamingEngine
+from app.models.base import StreamingEngine, TranscriptionEngine
 
 router = APIRouter()
 
@@ -71,8 +71,10 @@ class _StreamGate:
         return None
 
     @classmethod
-    async def _reject_unsupported(cls, websocket: WebSocket, selected_engine: object) -> None:
-        selected_health = await selected_engine.health()  # type: ignore[attr-defined]
+    async def _reject_unsupported(
+        cls, websocket: WebSocket, selected_engine: TranscriptionEngine
+    ) -> None:
+        selected_health = await selected_engine.health()
         await websocket.accept()
         await websocket.send_json(
             {
