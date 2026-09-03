@@ -10,6 +10,8 @@ from app.fragments.shared import _format_bytes
 from app.schemas import AdminModelEntry
 from app.templating import render
 
+LIST_SEPARATOR = ", "
+
 # Download-size caps shown in the filter panel (keys match admin_queries).
 _SIZE_FILTER_OPTIONS: tuple[tuple[str, str], ...] = (
     ("", "Any size"),
@@ -155,11 +157,13 @@ def _empty_filter_message(
 ) -> str | None:
     bits: list[str] = []
     if families:
-        bits.append("families " + ", ".join(families))
+        bits.append("families " + LIST_SEPARATOR.join(families))
     if languages:
-        bits.append(", ".join(LANGUAGE_NAMES.get(code, code) for code in languages))
+        bits.append(LIST_SEPARATOR.join(LANGUAGE_NAMES.get(code, code) for code in languages))
     if engines:
-        bits.append("engines " + ", ".join(ENGINE_LABELS.get(eng, eng) for eng in engines))
+        bits.append(
+            "engines " + LIST_SEPARATOR.join(ENGINE_LABELS.get(eng, eng) for eng in engines)
+        )
     if max_size:
         label = next((lab for key, lab in _SIZE_FILTER_OPTIONS if key == max_size), max_size)
         bits.append(label.lower())
@@ -167,7 +171,7 @@ def _empty_filter_message(
         bits.append("fits this machine")
     if installed_only:
         bits.append("installed only")
-    return ", ".join(bits) if bits else None
+    return LIST_SEPARATOR.join(bits) if bits else None
 
 
 def _family_dom_id(family: str) -> str:
@@ -187,7 +191,7 @@ def _family_context(family: str, models: list[AdminModelEntry]) -> dict[str, obj
         "dom_id": _family_dom_id(family),
         "count_label": count,
         "installed_label": f"{installed} installed" if installed else "none installed",
-        "engine_note": ", ".join(engines),
+        "engine_note": LIST_SEPARATOR.join(engines),
         # Family-level status once. Active uses a check label (not the same pill
         # as recommended); nested cards skip repeating "recommended".
         "is_active": active is not None,

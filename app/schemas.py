@@ -1,23 +1,26 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.runtime_config import AUTO_ENGINE
 
 MAXIMUM_LANGUAGE_TAG_LENGTH = 20
 MINIMUM_CUSTOM_MODEL_URL_LENGTH = 12
 MAXIMUM_CUSTOM_MODEL_URL_LENGTH = 2_000
 MAXIMUM_CPU_THREADS = 256
+FORBID_EXTRA_FIELDS: Literal["forbid"] = "forbid"
 
 
 class CreateSessionRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra=FORBID_EXTRA_FIELDS)
 
     client_session_id: UUID
     language: str = Field(
-        default="auto", max_length=MAXIMUM_LANGUAGE_TAG_LENGTH, pattern=r"^[A-Za-z-]+$|^auto$"
+        default=AUTO_ENGINE, max_length=MAXIMUM_LANGUAGE_TAG_LENGTH, pattern=r"^[A-Za-z-]+$|^auto$"
     )
     style: Literal[
         "raw",
@@ -209,7 +212,7 @@ class AdminModelEntry(BaseModel):
 
 
 class CustomDownloadRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra=FORBID_EXTRA_FIELDS)
 
     url: str = Field(
         min_length=MINIMUM_CUSTOM_MODEL_URL_LENGTH,
@@ -229,7 +232,7 @@ class DeviceTokenEntry(BaseModel):
 
 
 class DeviceTokenCreateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra=FORBID_EXTRA_FIELDS)
 
     label: str = Field(min_length=1, max_length=100)
 
@@ -260,13 +263,13 @@ class ConfigResponse(BaseModel):
     moonshine_language: str = "en"
     sherpa_model: str | None = None
     mlx_audio_model: str | None = None
-    compute_device: str = "auto"
-    compute_type: str = "auto"
+    compute_device: str = AUTO_ENGINE
+    compute_type: str = AUTO_ENGINE
     cpu_threads: int = 0
 
 
 class ConfigUpdateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra=FORBID_EXTRA_FIELDS)
 
     engine: Literal[
         "auto",
@@ -279,8 +282,10 @@ class ConfigUpdateRequest(BaseModel):
         "sherpa-onnx",
         "mlx-audio",
     ]
-    compute_device: Literal["auto", "cpu", "cuda"] = "auto"
-    compute_type: Literal["auto", "int8", "int8_float16", "float16", "float32"] = "auto"
+    compute_device: Literal["auto", "cpu", "cuda"] = cast(Literal["auto"], AUTO_ENGINE)
+    compute_type: Literal["auto", "int8", "int8_float16", "float16", "float32"] = cast(
+        Literal["auto"], AUTO_ENGINE
+    )
     cpu_threads: int = Field(default=0, ge=0, le=MAXIMUM_CPU_THREADS)
 
 

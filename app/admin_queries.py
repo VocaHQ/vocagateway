@@ -23,6 +23,8 @@ from app.schemas import (
 from app.serializers import metrics_status, model_covers
 from app.system import detect_system
 
+PYTHON_PACKAGE_PATH = "Python package"
+
 
 async def status_payload(ctx: GatewayContext) -> AdminStatusResponse:
     settings = ctx.settings
@@ -57,19 +59,19 @@ async def status_payload(ctx: GatewayContext) -> AdminStatusResponse:
         DependencyStatus(
             name="faster-whisper",
             available=importlib.util.find_spec("faster_whisper") is not None,
-            path="Python package" if importlib.util.find_spec("faster_whisper") else None,
+            path=PYTHON_PACKAGE_PATH if importlib.util.find_spec("faster_whisper") else None,
             install_hint="Install vocagateway[engines] or use the Docker image",
         ),
         DependencyStatus(
             name="Moonshine Voice",
             available=importlib.util.find_spec("moonshine_voice") is not None,
-            path="Python package" if importlib.util.find_spec("moonshine_voice") else None,
+            path=PYTHON_PACKAGE_PATH if importlib.util.find_spec("moonshine_voice") else None,
             install_hint="Install vocagateway[engines] or use the Docker image",
         ),
         DependencyStatus(
             name="sherpa-onnx",
             available=importlib.util.find_spec("sherpa_onnx") is not None,
-            path="Python package" if importlib.util.find_spec("sherpa_onnx") else None,
+            path=PYTHON_PACKAGE_PATH if importlib.util.find_spec("sherpa_onnx") else None,
             install_hint="Install vocagateway[engines] or use the Docker image",
         ),
         DependencyStatus(
@@ -78,7 +80,7 @@ async def status_payload(ctx: GatewayContext) -> AdminStatusResponse:
                 system.is_apple_silicon and importlib.util.find_spec("mlx_audio") is not None
             ),
             path=(
-                "Python package"
+                PYTHON_PACKAGE_PATH
                 if system.is_apple_silicon and importlib.util.find_spec("mlx_audio") is not None
                 else None
             ),
