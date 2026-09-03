@@ -72,6 +72,41 @@ def _write_audio(tmp_path: Path) -> Path:
     return audio
 
 
+def _headless_script(
+    models: list[dict[str, object]],
+    transcription: dict[str, object] | None,
+    failure: dict[str, str] | None,
+) -> str:
+    model_payload = json.dumps({MODELS_DIRECTORY_NAME: models}, separators=(",", ":"))
+    transcription_payload = json.dumps(
+        transcription
+        or {
+            "text": "private local result",
+            "model": PARAKEET_MODEL,
+            "engine": "parakeet",
+            "detected_language": "en",
+            "duration_seconds": 0.125,
+            "audio_length_seconds": 1.0,
+        },
+        separators=(",", ":"),
+    )
+    failure_payload = json.dumps(failure, separators=(",", ":")) if failure else ""
+    return (
+        "#!/bin/sh\n"
+        "# --transcribe-file capability marker\n"
+        'printf \'%s\\n\' "$@" > "$0.args"\n'
+        'case "$1" in\n'
+        f"  --list-models) printf '%s\\n' '{model_payload}' ;;\n"
+        + (
+            f"  --transcribe-file) printf '%s\\n' '{failure_payload}' >&2; exit 4 ;;\n"
+            if failure
+            else f"  --transcribe-file) printf '%s\\n' '{transcription_payload}' ;;\n"
+        )
+        + "  *) exit 2 ;;\n"
+        "esac\n"
+    )
+
+
 def _build_engine(tmp_path: Path, *, model: str | None = None) -> tuple[VocaMacEngine, Path]:
     app_path = tmp_path / "VocaMac.app"
     app_path.mkdir(exist_ok=True)
@@ -108,35 +143,7 @@ def _build_headless_engine(
     app_path = tmp_path / "VocaMac.app"
     executable = app_path / "Contents" / "MacOS" / "VocaMac"
     executable.parent.mkdir(parents=True)
-    model_payload = json.dumps({MODELS_DIRECTORY_NAME: models}, separators=(",", ":"))
-    transcription_payload = json.dumps(
-        transcription
-        or {
-            "text": "private local result",
-            "model": PARAKEET_MODEL,
-            "engine": "parakeet",
-            "detected_language": "en",
-            "duration_seconds": 0.125,
-            "audio_length_seconds": 1.0,
-        },
-        separators=(",", ":"),
-    )
-    failure_payload = json.dumps(failure, separators=(",", ":")) if failure else ""
-    executable.write_text(
-        "#!/bin/sh\n"
-        "# --transcribe-file capability marker\n"
-        'printf \'%s\\n\' "$@" > "$0.args"\n'
-        'case "$1" in\n'
-        f"  --list-models) printf '%s\\n' '{model_payload}' ;;\n"
-        + (
-            f"  --transcribe-file) printf '%s\\n' '{failure_payload}' >&2; exit 4 ;;\n"
-            if failure
-            else f"  --transcribe-file) printf '%s\\n' '{transcription_payload}' ;;\n"
-        )
-        + "  *) exit 2 ;;\n"
-        "esac\n",
-        encoding=UTF8_ENCODING,
-    )
+    executable.write_text(_headless_script(models, transcription, failure), encoding=UTF8_ENCODING)
     executable.chmod(EXECUTABLE_FILE_MODE)
     engine = VocaMacEngine(
         str(tmp_path / "missing-whisperkit-cli"),
