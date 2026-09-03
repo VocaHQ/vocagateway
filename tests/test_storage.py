@@ -9,6 +9,8 @@ import pytest
 from app.storage import SessionRepository
 
 STALE_SESSION_AGE_HOURS = 48
+ENGLISH_LANGUAGE_CODE = "en"
+RAW_STYLE = "raw"
 
 
 @pytest.fixture
@@ -29,20 +31,20 @@ def test_create_or_get_is_idempotent_for_th_d1296(
 ) -> None:
     session_id = uuid4()
 
-    first = repository.create_or_get(session_id, "en", "raw")
+    first = repository.create_or_get(session_id, ENGLISH_LANGUAGE_CODE, RAW_STYLE)
     second = repository.create_or_get(session_id, "de", "casual")
 
     assert first.job_id == second.job_id
-    assert second.language == "en"
-    assert second.style == "raw"
+    assert second.language == ENGLISH_LANGUAGE_CODE
+    assert second.style == RAW_STYLE
     assert second.state == "created"
 
 
 def test_create_or_get_assigns_a_unique_job_aaa(
     repository: SessionRepository,
 ) -> None:
-    first = repository.create_or_get(uuid4(), "en", "raw")
-    second = repository.create_or_get(uuid4(), "en", "raw")
+    first = repository.create_or_get(uuid4(), ENGLISH_LANGUAGE_CODE, RAW_STYLE)
+    second = repository.create_or_get(uuid4(), ENGLISH_LANGUAGE_CODE, RAW_STYLE)
 
     assert first.job_id != second.job_id
 
@@ -53,7 +55,7 @@ def test_get_returns_none_for_an_unknown_session(repository: SessionRepository) 
 
 def test_update_preserves_audio_name_by_default(repository: SessionRepository) -> None:
     session_id = uuid4()
-    repository.create_or_get(session_id, "en", "raw")
+    repository.create_or_get(session_id, ENGLISH_LANGUAGE_CODE, RAW_STYLE)
     repository.update(session_id, state="processing", audio_name="clip.wav")
 
     updated = repository.update(session_id, state="completed", transcript="hello")
@@ -65,7 +67,7 @@ def test_update_preserves_audio_name_by_default(repository: SessionRepository) -
 
 def test_update_can_overwrite_the_audio_nam_aaaa(repository: SessionRepository) -> None:
     session_id = uuid4()
-    repository.create_or_get(session_id, "en", "raw")
+    repository.create_or_get(session_id, ENGLISH_LANGUAGE_CODE, RAW_STYLE)
     repository.update(session_id, state="processing", audio_name="first.wav")
 
     updated = repository.update(
@@ -77,7 +79,7 @@ def test_update_can_overwrite_the_audio_nam_aaaa(repository: SessionRepository) 
 
 def test_update_bumps_updated_at(repository: SessionRepository) -> None:
     session_id = uuid4()
-    created = repository.create_or_get(session_id, "en", "raw")
+    created = repository.create_or_get(session_id, ENGLISH_LANGUAGE_CODE, RAW_STYLE)
 
     updated = repository.update(session_id, state="failed", error_code="engine_unavailable")
 
@@ -94,7 +96,7 @@ def test_delete_removes_the_session_and_ret_fdaac(
     repository: SessionRepository,
 ) -> None:
     session_id = uuid4()
-    repository.create_or_get(session_id, "en", "raw")
+    repository.create_or_get(session_id, ENGLISH_LANGUAGE_CODE, RAW_STYLE)
 
     deleted = repository.delete(session_id)
 
@@ -112,8 +114,8 @@ def test_expired_only_returns_sessions_past_aa(
 ) -> None:
     fresh_id = uuid4()
     stale_id = uuid4()
-    repository.create_or_get(fresh_id, "en", "raw")
-    repository.create_or_get(stale_id, "en", "raw")
+    repository.create_or_get(fresh_id, ENGLISH_LANGUAGE_CODE, RAW_STYLE)
+    repository.create_or_get(stale_id, ENGLISH_LANGUAGE_CODE, RAW_STYLE)
 
     stale_time = (datetime.now(UTC) - timedelta(hours=STALE_SESSION_AGE_HOURS)).isoformat()
     with repository._connect() as connection:
