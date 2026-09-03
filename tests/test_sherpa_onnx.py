@@ -15,19 +15,33 @@ from app.models.base import EngineTranscription, TranscriptionOptions
 from app.models.sherpa_onnx import SherpaOnnxEngine, _SherpaOnnxStreamAdapter
 
 NORMALIZED_SAMPLE_RATE_HZ = 16_000
+SENSE_VOICE_MODEL_TYPE = "sense_voice"
+SHERPA_MODEL_FILE = "model.int8.onnx"
+TOKENS_FILE = "tokens.txt"
+ENCODER_INT8_FILE = "encoder.int8.onnx"
+DECODER_INT8_FILE = "decoder.int8.onnx"
+SHERPA_ONNX_MODULE = "sherpa_onnx"
+IMPORTLIB_FIND_SPEC_PATH = "app.models.sherpa_onnx.importlib.util.find_spec"
+TOKENS_COMPONENT = "tokens"
+ENCODER_COMPONENT = "encoder"
+DECODER_COMPONENT = "decoder"
+DECODER_FILE = "decoder.onnx"
+JOINER_FILE = "joiner.onnx"
+ENCODER_FILE = "encoder.onnx"
+EXPECTED_TRANSCRIPT = "hello"
 
 
 def _catalog(
-    model_type: str = "sense_voice", required_files: tuple[str, ...] | None = None
+    model_type: str = SENSE_VOICE_MODEL_TYPE, required_files: tuple[str, ...] | None = None
 ) -> CatalogModel:
     if required_files is not None:
         files = required_files
-    elif model_type in ("sense_voice", "nemo_ctc"):
-        files = ("model.int8.onnx", "tokens.txt")
+    elif model_type in (SENSE_VOICE_MODEL_TYPE, "nemo_ctc"):
+        files = (SHERPA_MODEL_FILE, TOKENS_FILE)
     elif model_type == "nemo_canary":
-        files = ("encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt")
+        files = (ENCODER_INT8_FILE, DECODER_INT8_FILE, TOKENS_FILE)
     else:
-        files = ("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt")
+        files = (ENCODER_INT8_FILE, DECODER_INT8_FILE, "joiner.int8.onnx", TOKENS_FILE)
     return CatalogModel(
         id=f"sherpa-onnx:{model_type}",
         engine="sherpa-onnx",
@@ -94,12 +108,12 @@ async def test_sherpa_keeps_one_recognizer_loaded(
         def decode_stream(self, stream: Stream) -> None:
             assert isinstance(stream, Stream)
 
-    module = types.ModuleType("sherpa_onnx")
+    module = types.ModuleType(SHERPA_ONNX_MODULE)
     module.OfflineRecognizer = Recognizer  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "sherpa_onnx", module)
+    monkeypatch.setitem(sys.modules, SHERPA_ONNX_MODULE, module)
     monkeypatch.setattr(
-        "app.models.sherpa_onnx.importlib.util.find_spec",
-        lambda _: importlib.machinery.ModuleSpec("sherpa_onnx", loader=None),
+        IMPORTLIB_FIND_SPEC_PATH,
+        lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
     engine = SherpaOnnxEngine(root, catalog_model, cpu_threads=2)
@@ -129,9 +143,9 @@ def _fake_recognizer_module(
         return cls()
 
     setattr(Recognizer, factory_name, classmethod(factory))
-    module = types.ModuleType("sherpa_onnx")
+    module = types.ModuleType(SHERPA_ONNX_MODULE)
     setattr(module, attr_name, Recognizer)
-    monkeypatch.setitem(sys.modules, "sherpa_onnx", module)
+    monkeypatch.setitem(sys.modules, SHERPA_ONNX_MODULE, module)
 
 
 def test_sherpa_nemo_ctc_loads_with_its_own_files(
@@ -142,15 +156,15 @@ def test_sherpa_nemo_ctc_loads_with_its_own_files(
     constructions: list[dict[str, object]] = []
     _fake_recognizer_module("from_nemo_ctc", constructions, monkeypatch)
     monkeypatch.setattr(
-        "app.models.sherpa_onnx.importlib.util.find_spec",
-        lambda _: importlib.machinery.ModuleSpec("sherpa_onnx", loader=None),
+        IMPORTLIB_FIND_SPEC_PATH,
+        lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
     SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
 
     assert len(constructions) == 1
-    assert constructions[0]["model"] == str(root / "model.int8.onnx")
-    assert constructions[0]["tokens"] == str(root / "tokens.txt")
+    assert constructions[0]["model"] == str(root / SHERPA_MODEL_FILE)
+    assert constructions[0][TOKENS_COMPONENT] == str(root / TOKENS_FILE)
 
 
 def test_sherpa_nemo_canary_loads_english_o_aa(
@@ -161,16 +175,16 @@ def test_sherpa_nemo_canary_loads_english_o_aa(
     constructions: list[dict[str, object]] = []
     _fake_recognizer_module("from_nemo_canary", constructions, monkeypatch)
     monkeypatch.setattr(
-        "app.models.sherpa_onnx.importlib.util.find_spec",
-        lambda _: importlib.machinery.ModuleSpec("sherpa_onnx", loader=None),
+        IMPORTLIB_FIND_SPEC_PATH,
+        lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
     SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
 
     assert len(constructions) == 1
-    assert constructions[0]["encoder"] == str(root / "encoder.int8.onnx")
-    assert constructions[0]["decoder"] == str(root / "decoder.int8.onnx")
-    assert constructions[0]["tokens"] == str(root / "tokens.txt")
+    assert constructions[0][ENCODER_COMPONENT] == str(root / ENCODER_INT8_FILE)
+    assert constructions[0][DECODER_COMPONENT] == str(root / DECODER_INT8_FILE)
+    assert constructions[0][TOKENS_COMPONENT] == str(root / TOKENS_FILE)
     # No src_lang/tgt_lang override: sherpa-onnx defaults both to "en", matching the
     # English-only catalog entry this project currently ships for Canary.
     assert "src_lang" not in constructions[0]
@@ -183,40 +197,40 @@ def test_sherpa_nemo_transducer_uses_each_f_bf636(
     """GigaAM's RNNT export ships an INT8 encoder but a non-quantized decoder/joiner."""
     catalog_model = _catalog(
         "nemo_transducer",
-        required_files=("encoder.int8.onnx", "decoder.onnx", "joiner.onnx", "tokens.txt"),
+        required_files=(ENCODER_INT8_FILE, DECODER_FILE, JOINER_FILE, TOKENS_FILE),
     )
     root = _model_root(tmp_path, catalog_model)
     constructions: list[dict[str, object]] = []
     _fake_recognizer_module("from_transducer", constructions, monkeypatch)
     monkeypatch.setattr(
-        "app.models.sherpa_onnx.importlib.util.find_spec",
-        lambda _: importlib.machinery.ModuleSpec("sherpa_onnx", loader=None),
+        IMPORTLIB_FIND_SPEC_PATH,
+        lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
     SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
 
-    assert constructions[0]["encoder"] == str(root / "encoder.int8.onnx")
-    assert constructions[0]["decoder"] == str(root / "decoder.onnx")
-    assert constructions[0]["joiner"] == str(root / "joiner.onnx")
+    assert constructions[0][ENCODER_COMPONENT] == str(root / ENCODER_INT8_FILE)
+    assert constructions[0][DECODER_COMPONENT] == str(root / DECODER_FILE)
+    assert constructions[0]["joiner"] == str(root / JOINER_FILE)
 
 
 def test_sherpa_dolphin_loads_a_single_file_ctc(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     for model_type, factory in (("dolphin_ctc", "from_dolphin_ctc"),):
-        catalog_model = _catalog(model_type, required_files=("model.int8.onnx", "tokens.txt"))
+        catalog_model = _catalog(model_type, required_files=(SHERPA_MODEL_FILE, TOKENS_FILE))
         root = _model_root(tmp_path, catalog_model)
         constructions: list[dict[str, object]] = []
         _fake_recognizer_module(factory, constructions, monkeypatch)
         monkeypatch.setattr(
-            "app.models.sherpa_onnx.importlib.util.find_spec",
-            lambda _: importlib.machinery.ModuleSpec("sherpa_onnx", loader=None),
+            IMPORTLIB_FIND_SPEC_PATH,
+            lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
         )
 
         SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
 
-        assert constructions[0]["model"] == str(root / "model.int8.onnx")
-        assert constructions[0]["tokens"] == str(root / "tokens.txt")
+        assert constructions[0]["model"] == str(root / SHERPA_MODEL_FILE)
+        assert constructions[0][TOKENS_COMPONENT] == str(root / TOKENS_FILE)
 
 
 def test_sherpa_qwen3_asr_loads_a_tokenizer_fe25a(
@@ -227,8 +241,8 @@ def test_sherpa_qwen3_asr_loads_a_tokenizer_fe25a(
         "qwen3_asr",
         required_files=(
             "conv_frontend.onnx",
-            "encoder.int8.onnx",
-            "decoder.int8.onnx",
+            ENCODER_INT8_FILE,
+            DECODER_INT8_FILE,
             "tokenizer/vocab.json",
             "tokenizer/merges.txt",
             "tokenizer/tokenizer_config.json",
@@ -238,17 +252,17 @@ def test_sherpa_qwen3_asr_loads_a_tokenizer_fe25a(
     constructions: list[dict[str, object]] = []
     _fake_recognizer_module("from_qwen3_asr", constructions, monkeypatch)
     monkeypatch.setattr(
-        "app.models.sherpa_onnx.importlib.util.find_spec",
-        lambda _: importlib.machinery.ModuleSpec("sherpa_onnx", loader=None),
+        IMPORTLIB_FIND_SPEC_PATH,
+        lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
     SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
 
     assert constructions[0]["conv_frontend"] == str(root / "conv_frontend.onnx")
-    assert constructions[0]["encoder"] == str(root / "encoder.int8.onnx")
-    assert constructions[0]["decoder"] == str(root / "decoder.int8.onnx")
+    assert constructions[0][ENCODER_COMPONENT] == str(root / ENCODER_INT8_FILE)
+    assert constructions[0][DECODER_COMPONENT] == str(root / DECODER_INT8_FILE)
     assert constructions[0]["tokenizer"] == str(root / "tokenizer")
-    assert "tokens" not in constructions[0]
+    assert TOKENS_COMPONENT not in constructions[0]
 
 
 def test_streaming_zipformer_loads_via_onli_aaa(
@@ -256,7 +270,7 @@ def test_streaming_zipformer_loads_via_onli_aaa(
 ) -> None:
     catalog_model = _catalog(
         "streaming_zipformer",
-        required_files=("encoder.onnx", "decoder.onnx", "joiner.onnx", "tokens.txt"),
+        required_files=(ENCODER_FILE, DECODER_FILE, JOINER_FILE, TOKENS_FILE),
     )
     root = _model_root(tmp_path, catalog_model)
     constructions: list[dict[str, object]] = []
@@ -264,16 +278,16 @@ def test_streaming_zipformer_loads_via_onli_aaa(
         "from_transducer", constructions, monkeypatch, attr_name="OnlineRecognizer"
     )
     monkeypatch.setattr(
-        "app.models.sherpa_onnx.importlib.util.find_spec",
-        lambda _: importlib.machinery.ModuleSpec("sherpa_onnx", loader=None),
+        IMPORTLIB_FIND_SPEC_PATH,
+        lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
     SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
 
-    assert constructions[0]["encoder"] == str(root / "encoder.onnx")
-    assert constructions[0]["decoder"] == str(root / "decoder.onnx")
-    assert constructions[0]["joiner"] == str(root / "joiner.onnx")
-    assert constructions[0]["tokens"] == str(root / "tokens.txt")
+    assert constructions[0][ENCODER_COMPONENT] == str(root / ENCODER_FILE)
+    assert constructions[0][DECODER_COMPONENT] == str(root / DECODER_FILE)
+    assert constructions[0]["joiner"] == str(root / JOINER_FILE)
+    assert constructions[0][TOKENS_COMPONENT] == str(root / TOKENS_FILE)
     assert constructions[0]["enable_endpoint_detection"] is True
 
 
@@ -282,7 +296,7 @@ async def test_create_stream_wraps_the_recognizer_aaaa(
 ) -> None:
     catalog_model = _catalog(
         "streaming_zipformer",
-        required_files=("encoder.onnx", "decoder.onnx", "joiner.onnx", "tokens.txt"),
+        required_files=(ENCODER_FILE, DECODER_FILE, JOINER_FILE, TOKENS_FILE),
     )
     root = _model_root(tmp_path, catalog_model)
     raw_stream = object()
@@ -295,12 +309,12 @@ async def test_create_stream_wraps_the_recognizer_aaaa(
         def create_stream(self) -> object:
             return raw_stream
 
-    module = types.ModuleType("sherpa_onnx")
+    module = types.ModuleType(SHERPA_ONNX_MODULE)
     module.OnlineRecognizer = Recognizer  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "sherpa_onnx", module)
+    monkeypatch.setitem(sys.modules, SHERPA_ONNX_MODULE, module)
     monkeypatch.setattr(
-        "app.models.sherpa_onnx.importlib.util.find_spec",
-        lambda _: importlib.machinery.ModuleSpec("sherpa_onnx", loader=None),
+        IMPORTLIB_FIND_SPEC_PATH,
+        lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
     engine = SherpaOnnxEngine(root, catalog_model)
@@ -321,7 +335,7 @@ def test_every_shipped_sherpa_model_type_ha_aaaaa(
             raise AttributeError(name)
 
     def make_module() -> types.ModuleType:
-        module = types.ModuleType("sherpa_onnx")
+        module = types.ModuleType(SHERPA_ONNX_MODULE)
 
         class Any_:
             def __getattr__(self, name: str) -> object:
@@ -334,10 +348,10 @@ def test_every_shipped_sherpa_model_type_ha_aaaaa(
         module.OnlineRecognizer = Any_()  # type: ignore[attr-defined]
         return module
 
-    monkeypatch.setitem(sys.modules, "sherpa_onnx", make_module())
+    monkeypatch.setitem(sys.modules, SHERPA_ONNX_MODULE, make_module())
     monkeypatch.setattr(
-        "app.models.sherpa_onnx.importlib.util.find_spec",
-        lambda _: importlib.machinery.ModuleSpec("sherpa_onnx", loader=None),
+        IMPORTLIB_FIND_SPEC_PATH,
+        lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
     shipped = [model for model in DEFAULT_CATALOG if model.engine == ENGINE_SHERPA_ONNX]
@@ -348,9 +362,9 @@ def test_every_shipped_sherpa_model_type_ha_aaaaa(
 
 
 def test_sherpa_rejects_unknown_model_type(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    catalog_model = _catalog("not_a_real_engine", required_files=("tokens.txt",))
+    catalog_model = _catalog("not_a_real_engine", required_files=(TOKENS_FILE,))
     root = _model_root(tmp_path, catalog_model)
-    monkeypatch.setitem(sys.modules, "sherpa_onnx", types.ModuleType("sherpa_onnx"))
+    monkeypatch.setitem(sys.modules, SHERPA_ONNX_MODULE, types.ModuleType(SHERPA_ONNX_MODULE))
 
     with pytest.raises(EngineUnavailableError, match="Unsupported sherpa-onnx model type"):
         SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
@@ -417,9 +431,9 @@ def test_decode_wave_online_reads_result_fr_a(tmp_path: Path) -> None:
 def test_supports_streaming_only_for_the_st_aa(tmp_path: Path) -> None:
     streaming_model = _catalog(
         "streaming_zipformer",
-        required_files=("encoder.onnx", "decoder.onnx", "joiner.onnx", "tokens.txt"),
+        required_files=(ENCODER_FILE, DECODER_FILE, JOINER_FILE, TOKENS_FILE),
     )
-    batch_model = _catalog("sense_voice")
+    batch_model = _catalog(SENSE_VOICE_MODEL_TYPE)
 
     streaming_engine = SherpaOnnxEngine(_model_root(tmp_path, streaming_model), streaming_model)
     batch_engine = SherpaOnnxEngine(_model_root(tmp_path, batch_model), batch_model)
@@ -431,7 +445,7 @@ def test_supports_streaming_only_for_the_st_aa(tmp_path: Path) -> None:
 
 
 async def test_create_stream_rejects_a_non_stream_aaa(tmp_path: Path) -> None:
-    catalog_model = _catalog("sense_voice")
+    catalog_model = _catalog(SENSE_VOICE_MODEL_TYPE)
     engine = SherpaOnnxEngine(_model_root(tmp_path, catalog_model), catalog_model)
 
     with pytest.raises(EngineUnavailableError, match="does not stream"):
@@ -491,10 +505,10 @@ def test_stream_adapter_reports_partial_the_aaaa() -> None:
     adapter.add_listener(events.append)
 
     recognizer.ready_remaining = 1
-    recognizer.text = "hello"
+    recognizer.text = EXPECTED_TRANSCRIPT
     adapter.add_audio([0.1, 0.2], NORMALIZED_SAMPLE_RATE_HZ)
     assert len(events) == 1
-    assert events[0].line.text == "hello"
+    assert events[0].line.text == EXPECTED_TRANSCRIPT
     assert events[0].line.line_id == 0
 
     recognizer.ready_remaining = 1
@@ -541,10 +555,10 @@ def test_stream_adapter_does_not_repeat_ide_a() -> None:
     adapter.add_listener(events.append)
 
     recognizer.ready_remaining = 1
-    recognizer.text = "hello"
+    recognizer.text = EXPECTED_TRANSCRIPT
     adapter.add_audio([0.1], NORMALIZED_SAMPLE_RATE_HZ)
     recognizer.ready_remaining = 1
-    recognizer.text = "hello"  # unchanged
+    recognizer.text = EXPECTED_TRANSCRIPT  # unchanged
     adapter.add_audio([0.2], NORMALIZED_SAMPLE_RATE_HZ)
 
     assert len(events) == 1
