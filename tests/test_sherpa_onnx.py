@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import importlib.machinery
 import sys
 import types
 import wave
 from array import array
+from importlib import machinery
 from pathlib import Path
 
 import pytest
@@ -113,7 +113,7 @@ async def test_sherpa_keeps_one_recognizer_loaded(
     monkeypatch.setitem(sys.modules, SHERPA_ONNX_MODULE, module)
     monkeypatch.setattr(
         IMPORTLIB_FIND_SPEC_PATH,
-        lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
+        lambda _: machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
     engine = SherpaOnnxEngine(root, catalog_model, cpu_threads=2)
@@ -157,7 +157,7 @@ def test_sherpa_nemo_ctc_loads_with_its_own_files(
     _fake_recognizer_module("from_nemo_ctc", constructions, monkeypatch)
     monkeypatch.setattr(
         IMPORTLIB_FIND_SPEC_PATH,
-        lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
+        lambda _: machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
     SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
@@ -176,7 +176,7 @@ def test_sherpa_nemo_canary_loads_english_o_aa(
     _fake_recognizer_module("from_nemo_canary", constructions, monkeypatch)
     monkeypatch.setattr(
         IMPORTLIB_FIND_SPEC_PATH,
-        lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
+        lambda _: machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
     SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
@@ -204,7 +204,7 @@ def test_sherpa_nemo_transducer_uses_each_f_bf636(
     _fake_recognizer_module("from_transducer", constructions, monkeypatch)
     monkeypatch.setattr(
         IMPORTLIB_FIND_SPEC_PATH,
-        lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
+        lambda _: machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
     SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
@@ -224,7 +224,7 @@ def test_sherpa_dolphin_loads_a_single_file_ctc(
         _fake_recognizer_module(factory, constructions, monkeypatch)
         monkeypatch.setattr(
             IMPORTLIB_FIND_SPEC_PATH,
-            lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
+            lambda _: machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
         )
 
         SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
@@ -253,7 +253,7 @@ def test_sherpa_qwen3_asr_loads_a_tokenizer_fe25a(
     _fake_recognizer_module("from_qwen3_asr", constructions, monkeypatch)
     monkeypatch.setattr(
         IMPORTLIB_FIND_SPEC_PATH,
-        lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
+        lambda _: machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
     SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
@@ -279,7 +279,7 @@ def test_streaming_zipformer_loads_via_onli_aaa(
     )
     monkeypatch.setattr(
         IMPORTLIB_FIND_SPEC_PATH,
-        lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
+        lambda _: machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
     SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
@@ -313,7 +313,7 @@ async def test_create_stream_wraps_the_recognizer_aaaa(
     monkeypatch.setitem(sys.modules, SHERPA_ONNX_MODULE, module)
     monkeypatch.setattr(
         IMPORTLIB_FIND_SPEC_PATH,
-        lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
+        lambda _: machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
     engine = SherpaOnnxEngine(root, catalog_model)
@@ -350,7 +350,7 @@ def test_every_shipped_sherpa_model_type_ha_aaaaa(
     monkeypatch.setitem(sys.modules, SHERPA_ONNX_MODULE, make_module())
     monkeypatch.setattr(
         IMPORTLIB_FIND_SPEC_PATH,
-        lambda _: importlib.machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
+        lambda _: machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
     shipped = [model for model in DEFAULT_CATALOG if model.engine == ENGINE_SHERPA_ONNX]

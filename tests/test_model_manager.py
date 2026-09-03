@@ -6,8 +6,8 @@ import io
 import sys
 import tarfile
 import time
-import urllib.request
 from pathlib import Path
+from urllib import request as urllib_request
 
 import pytest
 
@@ -919,7 +919,7 @@ def test_download_file_retries_transient_ne_aaaa(
             raise TimeoutError("simulated read timeout")
         return FakeResponse(payload)
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(urllib_request, "urlopen", fake_urlopen)
 
     destination = tmp_path / DOWNLOAD_DESTINATION_NAME
     state = model_manager.DownloadState(model_id=DOWNLOAD_STATE_MODEL_ID)

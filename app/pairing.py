@@ -301,14 +301,14 @@ def _address_rank(address: str) -> tuple[int, str]:
 def qr_svg_for_payload(payload: str, *, box_size: int = 6, border: int = 2) -> str:
     """Return a self-contained SVG QR for *payload* without Pillow."""
     import qrcode
-    import qrcode.image.svg
+    from qrcode.image import svg as qrcode_svg
 
     qr = qrcode.QRCode(
         version=None,
         error_correction=qrcode.constants.ERROR_CORRECT_M,
         box_size=box_size,
         border=border,
-        image_factory=qrcode.image.svg.SvgPathImage,
+        image_factory=qrcode_svg.SvgPathImage,
     )
     qr.add_data(payload)
     qr.make(fit=True)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import importlib.util
 import re
+from importlib import util as importlib_util
 from pathlib import Path
 
 SCRIPT_PATH = Path(__file__).resolve().parent.parent / "scripts" / "generate_model_docs.py"
@@ -9,9 +9,9 @@ LANGUAGE_SET_SIZE = 12
 
 
 def _load_module():
-    spec = importlib.util.spec_from_file_location("generate_model_docs", SCRIPT_PATH)
+    spec = importlib_util.spec_from_file_location("generate_model_docs", SCRIPT_PATH)
     assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
+    module = importlib_util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 

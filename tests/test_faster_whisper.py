@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import importlib.machinery
 import sys
 import types
+from importlib import machinery
 from pathlib import Path
 
 from pytest import MonkeyPatch
@@ -36,7 +36,7 @@ async def test_faster_whisper_keeps_one_model_loaded(
     monkeypatch.setitem(sys.modules, "faster_whisper", module)
     monkeypatch.setattr(
         "app.models.faster_whisper.importlib_util.find_spec",
-        lambda _: importlib.machinery.ModuleSpec("faster_whisper", loader=None),
+        lambda _: machinery.ModuleSpec("faster_whisper", loader=None),
     )
 
     engine = FasterWhisperEngine(model_path, device="cpu", compute_type="int8", cpu_threads=2)

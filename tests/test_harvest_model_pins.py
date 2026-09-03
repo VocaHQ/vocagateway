@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import importlib.util
 import json
+from importlib import util as importlib_util
 from pathlib import Path
 from typing import Any
 
@@ -10,9 +10,9 @@ SHA256_DIGEST_LENGTH = 64
 
 
 def _load_module():
-    spec = importlib.util.spec_from_file_location("harvest_model_pins", SCRIPT_PATH)
+    spec = importlib_util.spec_from_file_location("harvest_model_pins", SCRIPT_PATH)
     assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
+    module = importlib_util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
