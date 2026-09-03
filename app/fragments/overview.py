@@ -308,11 +308,11 @@ def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessS
     ok = metrics.successful_transcriptions
     bad = metrics.failed_transcriptions
     rejected = metrics.rejected_transcriptions
-    failed_detail = (
-        f"{rejected} overload rejection" + ("s" if rejected != 1 else "")
-        if rejected
-        else "Since this process started"
-    )
+    failed_detail = "Since this process started"
+    if rejected:
+        failed_detail = f"{rejected} overload rejection"
+        if rejected != 1:
+            failed_detail += "s"
     latency_detail = (
         f"Last {last_latency}" if metrics.last_latency_ms is not None else "Run a test to measure"
     )
@@ -381,11 +381,11 @@ def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessS
         },
     ]
     history = metrics.history
-    sample_note = (
-        f"{len(history)} sample" + ("" if len(history) == 1 else "s")
-        if history
-        else "Collecting samples"
-    )
+    sample_note = "Collecting samples"
+    if history:
+        sample_note = f"{len(history)} sample"
+        if len(history) != 1:
+            sample_note += "s"
     return render(
         "overview/operations.html",
         probe_age=f"{readiness.probe_age_seconds:.1f}",
@@ -626,7 +626,9 @@ def _pipeline_chart(
             f"{segs}</div>"
         )
         footer = " · ".join(f"{label} {_format_latency(ms)}" for label, ms, _ in stages if ms > 0)
-        sub = f"RTF {rtf_value}" + (f" · {rtf_detail}" if rtf_detail else "")
+        sub = f"RTF {rtf_value}"
+        if rtf_detail:
+            sub += f" · {rtf_detail}"
     return {
         "title": "Last job stages",
         "sub": sub,

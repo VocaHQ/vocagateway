@@ -185,7 +185,9 @@ def _family_context(family: str, models: list[AdminModelEntry]) -> dict[str, obj
     active = next((entry for entry in models if entry.active), None)
     recommended = next((entry for entry in models if entry.recommended), None)
     engines = sorted({ENGINE_LABELS.get(entry.engine, entry.engine) for entry in models})
-    count = f"{len(models)} model" + ("" if len(models) == 1 else "s")
+    count = f"{len(models)} model"
+    if len(models) != 1:
+        count += "s"
     return {
         "name": family,
         "dom_id": _family_dom_id(family),
