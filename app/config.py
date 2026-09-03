@@ -97,7 +97,9 @@ class Settings:
     debug: bool = False
 
     def resolved_models_dir(self) -> Path:
-        return self.models_dir if self.models_dir is not None else self.data_dir / "models"
+        if self.models_dir is None:
+            return self.data_dir / "models"
+        return self.models_dir
 
     @property
     def token_file_display(self) -> str:
