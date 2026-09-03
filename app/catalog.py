@@ -60,6 +60,7 @@ UKRAINIAN_LANGUAGE_CODE = "uk"
 VIETNAMESE_LANGUAGE_CODE = "vi"
 CHINESE_LANGUAGE_CODE = "zh"
 HINDI_LANGUAGE_CODE = "hi"
+HINGLISH_ROMAN_LANGUAGE_CODE = "hinglish_roman"
 TAGALOG_LANGUAGE_CODE = "tl"
 MIT_LICENSE = "MIT"
 ENGLISH_ONLY = "English only"
@@ -111,6 +112,7 @@ MOONSHINE_VI_TINY_STREAMING_SIZE_BYTES = 32_309_008
 MOONSHINE_KO_SIZE_BYTES = 71_815_486
 MOONSHINE_UK_SIZE_BYTES = 141_001_214
 DISTIL_LARGE_V3_SIZE_BYTES = 1_515_408_824
+HINGLISH_MODEL_SIZE_BYTES = 574_041_195
 
 # Qwen3-ASR's upstream card lists 30 languages plus Chinese dialects. The
 # dialects are represented by the model's Mandarin/`yue` capability rather
@@ -181,6 +183,10 @@ class CatalogModel:
     file_digests: tuple[tuple[str, str], ...] = ()
     model_type: str | None = None
     language_codes: tuple[str, ...] = ()
+    # Some fine-tunes expose an application-level output contract whose wire
+    # value is not a token understood by the decoder (for example, Roman
+    # Hinglish is requested as `hinglish_roman` but Whisper expects `hi`).
+    decoder_language_code: str | None = None
     apple_silicon_only: bool = False
     detects_language_automatically: bool = False
     retired: bool = False
@@ -281,6 +287,7 @@ class _WhisperModelBuilders:
             language_codes=tuple(
                 kwargs.get("language_codes") or cls.whisper_language_codes(cls._languages(args))
             ),
+            decoder_language_code=kwargs.get("decoder_language_code"),
             license_name=str(kwargs.get("license_name", "See model source")),  # noqa: WPS226
         )
 
@@ -554,6 +561,7 @@ LANGUAGE_NAMES: MappingProxyType[str, str] = MappingProxyType(
         "haw": "Hawaiian",
         "he": "Hebrew",
         HINDI_LANGUAGE_CODE: "Hindi",
+        HINGLISH_ROMAN_LANGUAGE_CODE: "Hinglish — Roman",
         CROATIAN_LANGUAGE_CODE: "Croatian",
         "ht": "Haitian Creole",
         HUNGARIAN_LANGUAGE_CODE: "Hungarian",
@@ -1757,6 +1765,28 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         ),
         source="Breeze ASR",
         language_codes=(CHINESE_LANGUAGE_CODE, ENGLISH_LANGUAGE_CODE),
+        license_name=APACHE_LICENSE,
+    ),
+    _whisper_cpp(
+        "ggml-apex-hinglish-q5_0.bin",
+        "Hinglish — Roman (Experimental)",
+        HINGLISH_MODEL_SIZE_BYTES,
+        "Hindi + English, Roman script",
+        "Experimental · Roman output",
+        4,
+        download_url=(
+            "https://huggingface.co/Marquestra/Whisper-Hindi2Hinglish-Apex-GGML/"
+            "resolve/main/ggml-apex-hinglish-q5_0.bin"
+        ),
+        family="Whisper / Hinglish",
+        description=(
+            "Experimental Whisper Large v3 Turbo fine-tune for mixed Hindi and English. "
+            "It returns the words as spoken in one Latin script rather than Devanagari "
+            "or an English translation."
+        ),
+        source="Whisper-Hindi2Hinglish-Apex",
+        language_codes=(HINGLISH_ROMAN_LANGUAGE_CODE,),
+        decoder_language_code=HINDI_LANGUAGE_CODE,
         license_name=APACHE_LICENSE,
     ),
     _whisper_cpp(

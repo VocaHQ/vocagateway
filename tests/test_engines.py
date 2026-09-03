@@ -114,6 +114,31 @@ def test_model_selection_builds_new_engine_aa(
     assert getattr(RuntimeConfig.load(config_path), config_field) == catalog_model.id
 
 
+def test_whisper_model_selection_keeps_catalog_output_contract(tmp_path: Path) -> None:
+    catalog_model = CatalogModel(
+        id="whisper.cpp:hinglish",
+        engine="whisper.cpp",
+        key="hinglish.bin",
+        label="Hinglish",
+        size_bytes=1,
+        languages="Hindi + English, Roman script",
+        quality="Experimental",
+        minimum_ram_gb=4,
+        language_codes=("hinglish_roman",),
+        decoder_language_code="hi",
+    )
+    manager = ModelManager(tmp_path / MODELS_DIRECTORY, catalog=(catalog_model,))
+    model_path = manager.model_path(catalog_model)
+    model_path.parent.mkdir(parents=True)
+    model_path.write_bytes(b"model")
+    settings = _settings(tmp_path)
+    engines = EngineManager(settings, RuntimeConfig(), tmp_path / "config.json", manager)
+
+    engines.select_model(catalog_model.id)
+
+    assert getattr(engines.current(), "catalog_model", None) == catalog_model
+
+
 @pytest.mark.parametrize(
     ("engine", "linux", "intel_mac", "apple_silicon"),
     [

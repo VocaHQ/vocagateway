@@ -55,6 +55,12 @@ def test_uncertain_cases_pass_rather_than_fail() -> None:
     assert transcript_matches_language("私は元気です", "zh") is True
 
 
+def test_roman_hinglish_uses_the_latin_script_contract() -> None:
+    assert transcript_matches_language("Aaj mujhe office jaana hai", "hinglish_roman") is True
+    assert transcript_matches_language("आज मुझे जाना है", "hinglish_roman") is False
+    assert transcript_matches_language("Aaj office में meeting hai", "hinglish_roman") is False
+
+
 @pytest.mark.parametrize(
     ("text", "language"),
     [

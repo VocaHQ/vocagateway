@@ -94,6 +94,14 @@ class _ModelPathResolver:
         chosen = min(installed, key=lambda model: model.size_bytes)
         return chosen.path, self.model_manager.catalog_model(chosen.id)
 
+    def catalog_model_for_path(self, path: Path | None) -> catalog.CatalogModel | None:
+        if path is None:
+            return None
+        for installed in self.model_manager.installed():
+            if installed.path == path:
+                return self.model_manager.catalog_model(installed.id)
+        return None
+
     def apply_model(self, rc: runtime_config.RuntimeConfig, model_id: str, path_str: str) -> None:
         prefix = model_id.split(":", 1)[0]
         if prefix == catalog.ENGINE_MOONSHINE:
@@ -171,7 +179,11 @@ class _ModelPathResolver:
                 cpu_threads=rc.cpu_threads,
             )
         cpp_p = self.resolve_path(catalog.ENGINE_WHISPER_CPP, rc) or self.settings.whisper_model
-        return whisper_cpp.WhisperCppEngine(self.settings.whisper_binary, cpp_p)
+        return whisper_cpp.WhisperCppEngine(
+            self.settings.whisper_binary,
+            cpp_p,
+            self.catalog_model_for_path(cpp_p),
+        )
 
 
 class _EngineBuilder:
@@ -274,7 +286,9 @@ class _EngineBuilder:
             WhisperKitEngine(self.settings.whisperkit_binary, path)
             if engine == catalog.ENGINE_WHISPERKIT
             else whisper_cpp.WhisperCppEngine(
-                self.settings.whisper_binary, path or self.settings.whisper_model
+                self.settings.whisper_binary,
+                path or self.settings.whisper_model,
+                self.resolver.catalog_model_for_path(path or self.settings.whisper_model),
             )
         )
 

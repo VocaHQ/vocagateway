@@ -13,7 +13,7 @@ from starlette import status
 
 from app import audio, context, errors, schemas
 
-_LANGUAGE_PATTERN = re.compile(r"^[A-Za-z-]+$|^auto$")
+_LANGUAGE_PATTERN = re.compile(r"^(?:[A-Za-z-]+|hinglish_roman)$")
 _TRUTHY = frozenset(("true", "1", "yes"))
 _MAX_LANGUAGE_LENGTH = 20
 _READ_CHUNK_BYTES = 65_536
@@ -129,7 +129,7 @@ class _AudioForm:
             raise errors.APIProblem(
                 status.HTTP_422_UNPROCESSABLE_CONTENT,
                 "invalid_language",
-                "Language must be auto or a language tag.",
+                "Language must be auto, a language tag, or hinglish_roman.",
             )
         return language_value
 
