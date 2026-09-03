@@ -160,7 +160,7 @@ behind a reverse proxy at a **domain root**, not a subpath.
 | Workflow | When | What |
 | --- | --- | --- |
 | `quality.yml` | `app/`, `tests/`, `scripts/`, `pyproject.toml`, `uv.lock`, `compose.yaml` | ffmpeg, ruff, format `--check`, `mypy app`, pytest, compose config |
-| `container.yml` | `Dockerfile`, `.dockerignore`, `compose.yaml`, `pyproject.toml`, `uv.lock`, workflow | `docker buildx` CPU/CUDA/Vulkan matrix, CPU backend/runtime smoke test, all-profile Compose config |
+| `container.yml` | `Dockerfile`, `.dockerignore`, `compose.yaml`, `pyproject.toml`, `uv.lock`, workflow | `docker buildx` CPU/CUDA/Vulkan matrix (representative CUDA architecture), CPU backend/runtime smoke test, all-profile Compose config |
 | `verify-model-pins.yml` | pin/catalog/harvester paths + weekly | `scripts/verify-model-pins.py` |
 | `deploy-pages.yml` | `web/**` on `main` | GitHub Pages |
 

@@ -844,8 +844,10 @@ dotprod/i8mm code on arm64.
 An Apple silicon Docker Desktop build validates only the Linux arm64 CPU path;
 it cannot validate Linux amd64 or an NVIDIA CUDA image. The Container GitHub
 Actions workflow builds CPU, CUDA, and Vulkan separately and smoke-tests the CPU
-image. Treat that matrix as the cross-platform build result. If a local build is
-killed for memory, set `VOCAGATEWAY_BUILD_JOBS` in `.env`; see
+image. Its compile-only CUDA check targets one representative GPU architecture
+instead of producing the Dockerfile's portable architecture spread. Treat that
+matrix as the cross-platform build result, not as a release image. If a local
+build is killed for memory, set `VOCAGATEWAY_BUILD_JOBS` in `.env`; see
 [Tuning the whisper.cpp build](docs/deployment.md#tuning-the-whispercpp-build).
 
 The CUDA profile supports both faster-whisper CUDA and the CUDA `whisper.cpp`

@@ -354,7 +354,10 @@ Conversely, Docker Desktop on an Apple silicon Mac can validate the Linux arm64
 CPU image but not the Linux amd64 or NVIDIA CUDA paths. Pull requests that touch
 container inputs run the Container GitHub Actions matrix for CPU, CUDA, and
 Vulkan; use that result for cross-platform validation rather than treating one
-local M1 build as coverage of all three variants.
+local M1 build as coverage of all three variants. The CI CUDA build is a
+compile-only check narrowed to one representative GPU architecture and omits
+the CPU variants already exercised by the CPU job. It is deliberately faster
+than the portable CUDA image produced from the unmodified Dockerfile defaults.
 
 Set `VOCAGATEWAY_IMAGE` in `.env` to use that tag for the `gateway` service.
 It renames what is built; it does not switch Compose to pulling. `up --build`

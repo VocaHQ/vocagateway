@@ -8,9 +8,11 @@ name: Container
 #
 # One Dockerfile now builds all three accelerator images, so a change to it can
 # break cuda or vulkan while cpu still succeeds. The matrix below builds each
-# one. They are the reason this belongs in CI rather than on a laptop: the cuda
-# build alone compiles CUDA kernels for the better part of an hour, and a
-# developer machine has neither the cores nor, typically, the memory for it.
+# one. They are the reason this belongs in CI rather than on a laptop. A
+# portable cuda image compiles kernels for a broad GPU architecture spread; the
+# matrix narrows its compile-only validation to one architecture because no GPU
+# executes the cache-only result. Release/operator builds keep the portable
+# Dockerfile default.
 on:
   push:
     branches: [main]
@@ -53,19 +55,26 @@ jobs:
             smoke: true
             reclaim-disk: false
             build_jobs: 4
+            cmake_extra: ''
           - accel: vulkan
             timeout: 40
             smoke: false
             reclaim-disk: false
             build_jobs: 4
-          # The CUDA devel base plus the object files for ggml's whole spread of
-          # virtual and real architectures do not fit alongside the runner's
-          # preinstalled toolchains.
+            cmake_extra: ''
+          # The CUDA devel/runtime bases and Python engine layers are still much
+          # larger than the other variants, so reclaim the runner's unused SDKs.
           - accel: cuda
-            timeout: 90
+            timeout: 40
             smoke: false
             reclaim-disk: true
             build_jobs: 3
+            # Compiling every CUDA architecture dominates the job despite the
+            # image never running on a GPU. Ada is a representative real-code
+            # compile; CPU dispatch is already built and exercised above.
+            cmake_extra: >-
+              -DCMAKE_CUDA_ARCHITECTURES=89-real
+              -DGGML_CPU_ALL_VARIANTS=OFF
     name: build (${{ matrix.accel }})
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -101,6 +110,7 @@ jobs:
             --tag "vocagateway:test-${ACCEL}" \
             --build-arg "ACCEL=${ACCEL}" \
             --build-arg "BUILD_JOBS=${BUILD_JOBS}" \
+            --build-arg "WHISPER_CMAKE_EXTRA=${CMAKE_EXTRA}" \
             --build-arg VOCAGATEWAY_GIT_COMMIT="${GITHUB_SHA}" \
             --cache-from "type=gha,scope=gateway-${ACCEL}" \
             --cache-to "type=gha,mode=max,scope=gateway-${ACCEL}" \
@@ -109,6 +119,7 @@ jobs:
         env:
           ACCEL: ${{ matrix.accel }}
           BUILD_JOBS: ${{ matrix.build_jobs }}
+          CMAKE_EXTRA: ${{ matrix.cmake_extra }}
           SMOKE: ${{ matrix.smoke }}
 
       # Everything below is the cpu image only. It is what a laptop build was
