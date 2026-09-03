@@ -1,26 +1,17 @@
 from __future__ import annotations
 
+import platform
 import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Header, Query, Request
 from fastapi.responses import HTMLResponse
-from starlette.status import (
-    HTTP_409_CONFLICT,
-    HTTP_413_CONTENT_TOO_LARGE,
-    HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-    HTTP_422_UNPROCESSABLE_CONTENT,
-)
+from starlette.status import HTTP_409_CONFLICT, HTTP_422_UNPROCESSABLE_CONTENT
 
-from app.admin_queries import config_response
-from app.audio import ALLOWED_AUDIO_TYPES, atomic_upload_path, complete_atomic_upload
+from app import admin_queries, audio, errors, pairing_view
 from app.context import TOKEN_FILE_HINT, GatewayContextDependency, require_token
-from app.errors import APIProblem
+from app.fragments import settings, test_panel, tokens
 from app.fragments.engine import engine_update_fragment
-from app.fragments.settings import settings_fragment
-from app.fragments.test_panel import pair_and_test_fragment
-from app.fragments.tokens import tokens_fragment_str
-from app.pairing_view import pairing_html
 from app.schemas import (
     ConfigResponse,
     ConfigUpdateRequest,
@@ -30,7 +21,6 @@ from app.schemas import (
 )
 
 router = APIRouter(dependencies=[Depends(require_token)])
-MINIMUM_TEST_UPLOAD_BYTES = 128
 TestLanguageQuery = Annotated[str, Query(pattern=r"^[A-Za-z-]+$|^auto$")]
 ContentTypeHeader = Annotated[str | None, Header()]
 ContentLengthHeader = Annotated[int | None, Header()]
@@ -42,7 +32,7 @@ CpuThreadsForm = Annotated[int, Form()]
 
 @router.get("/v1/admin/config", response_model=ConfigResponse)
 async def get_config(ctx: GatewayContextDependency) -> ConfigResponse:
-    return config_response(ctx)
+    return admin_queries.config_response(ctx)
 
 
 @router.put("/v1/admin/config", response_model=SelectModelResponse)
@@ -51,7 +41,7 @@ async def update_config(
 ) -> SelectModelResponse:
     engine_manager = ctx.engine_manager
     if engine_manager is None:
-        raise APIProblem(
+        raise errors.APIProblem(
             HTTP_409_CONFLICT, "engine_locked", "The engine was fixed at startup and cannot switch."
         )
     try:
@@ -59,7 +49,9 @@ async def update_config(
             body.engine, body.compute_device, body.compute_type, body.cpu_threads
         )
     except ValueError as error:
-        raise APIProblem(HTTP_422_UNPROCESSABLE_CONTENT, "invalid_engine", str(error)) from error
+        raise errors.APIProblem(
+            HTTP_422_UNPROCESSABLE_CONTENT, "invalid_engine", str(error)
+        ) from error
     await ctx.readiness.warmup()
     state = await ctx.readiness.probe()
     return SelectModelResponse(
@@ -75,57 +67,32 @@ async def test_transcription(
     content_type: ContentTypeHeader = None,
     content_length: ContentLengthHeader = None,
 ) -> TestTranscriptionResponse:
-    normalized_type = (content_type or "").split(";", maxsplit=1)[0].lower()
-    suffix = ALLOWED_AUDIO_TYPES.get(normalized_type)
-    if suffix is None:
-        raise APIProblem(
-            HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            "unsupported_audio_type",
-            "This audio type is not supported.",
-        )
-    maximum_upload_bytes = ctx.settings.maximum_upload_bytes
-    if content_length is not None and content_length > maximum_upload_bytes:
-        raise APIProblem(
-            HTTP_413_CONTENT_TOO_LARGE,
-            "audio_too_large",
-            "The recording exceeds the upload limit.",
-        )
-    upload_dir = ctx.settings.data_dir / "test-uploads"
-    temporary, final = atomic_upload_path(upload_dir, f"test-{int(time.time() * 1000)}", suffix)
-    received = 0
+    max_bytes = ctx.settings.maximum_upload_bytes
+    suffix = audio.validate_audio_upload_headers(content_type, content_length, max_bytes)
+    final = await audio.save_streamed_upload(
+        request.stream(),
+        ctx.settings.data_dir / "test-uploads",
+        f"test-{int(time.time() * 1000)}",
+        suffix,
+        max_bytes,
+    )
     try:
-        with temporary.open("wb") as output:
-            async for chunk in request.stream():
-                received += len(chunk)
-                if received > maximum_upload_bytes:
-                    raise APIProblem(
-                        HTTP_413_CONTENT_TOO_LARGE,
-                        "audio_too_large",
-                        "The recording exceeds the upload limit.",
-                    )
-                output.write(chunk)
-        if received < MINIMUM_TEST_UPLOAD_BYTES:
-            raise APIProblem(
-                HTTP_422_UNPROCESSABLE_CONTENT, "audio_empty", "The recording is empty."
-            )
-        complete_atomic_upload(temporary, final)
-    except Exception:
-        temporary.unlink(missing_ok=True)
-        raise
-    try:
-        transcription = await ctx.service.transcribe_adhoc(final, language)
-    finally:
+        outcome = await ctx.service.transcribe_adhoc(final, language)
+    except BaseException:
         final.unlink(missing_ok=True)
+        raise
+    final.unlink(missing_ok=True)
+    timing = outcome.timing
     return TestTranscriptionResponse(
-        transcript=transcription.transcript,
-        engine=transcription.engine,
-        duration_ms=transcription.timing.total_ms,
-        normalization_ms=transcription.timing.normalization_ms,
-        model_load_ms=transcription.timing.model_load_ms,
-        inference_ms=transcription.timing.inference_ms,
-        audio_duration_ms=transcription.timing.audio_duration_ms,
-        real_time_factor=transcription.timing.real_time_factor,
-        peak_memory_mb=transcription.timing.peak_memory_mb,
+        transcript=outcome.transcript,
+        engine=outcome.engine,
+        duration_ms=timing.total_ms,
+        normalization_ms=timing.normalization_ms,
+        model_load_ms=timing.model_load_ms,
+        inference_ms=timing.inference_ms,
+        audio_duration_ms=timing.audio_duration_ms,
+        real_time_factor=timing.real_time_factor,
+        peak_memory_mb=timing.peak_memory_mb,
     )
 
 
@@ -138,12 +105,12 @@ async def ui_settings(ctx: GatewayContextDependency) -> HTMLResponse:
         ("Token file", TOKEN_FILE_HINT),
     ]
     return HTMLResponse(
-        settings_fragment(
-            config_response(ctx),
+        settings.settings_fragment(
+            admin_queries.config_response(ctx),
             paths,
             ctx.settings.bind_host,
             ctx.settings.port,
-            tokens_fragment_str(ctx),
+            tokens.tokens_fragment_str(ctx),
         )
     )
 
@@ -158,13 +125,15 @@ async def ui_update_config(
 ) -> HTMLResponse:
     engine_manager = ctx.engine_manager
     if engine_manager is None:
-        raise APIProblem(
+        raise errors.APIProblem(
             HTTP_409_CONFLICT, "engine_locked", "The engine was fixed at startup and cannot switch."
         )
     try:
         engine_manager.configure(engine, compute_device, compute_type, cpu_threads)
     except ValueError as error:
-        raise APIProblem(HTTP_422_UNPROCESSABLE_CONTENT, "invalid_engine", str(error)) from error
+        raise errors.APIProblem(
+            HTTP_422_UNPROCESSABLE_CONTENT, "invalid_engine", str(error)
+        ) from error
     await ctx.readiness.warmup()
     state = await ctx.readiness.probe()
     return HTMLResponse(
@@ -180,11 +149,9 @@ async def ui_update_config(
 @router.get("/ui/partials/test", response_class=HTMLResponse)
 async def ui_test(ctx: GatewayContextDependency) -> HTMLResponse:
     """Pair phone (once) and try the pipeline from this browser."""
-    import platform
-
     return HTMLResponse(
-        pair_and_test_fragment(
-            pairing_html(ctx),
+        test_panel.pair_and_test_fragment(
+            pairing_view.pairing_html(ctx),
             ctx.settings.maximum_duration_seconds,
             bind_host=ctx.settings.bind_host,
             is_mac=platform.system() == "Darwin",
