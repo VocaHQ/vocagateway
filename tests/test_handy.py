@@ -97,30 +97,17 @@ async def test_handy_retries_empty_primary_result_e08a0(
 ) -> None:
     primary = "owner/primary/primary.gguf"
     fallback = "owner/fallback/fallback.gguf"
-    binary = tmp_path / HANDY_BINARY_NAME
-    binary.write_text(
+    binary = _write_handy_binary(
+        tmp_path,
         "#!/bin/sh\n"
         'case "$*" in\n'
         "  *primary.gguf*) printf '%s\\n' '{\"text\":\"\"}' ;;\n"
         "  *) printf '%s\\n' '{\"text\":\"fallback result\"}' ;;\n"
         "esac\n",
-        encoding=UTF8_ENCODING,
     )
-    binary.chmod(EXECUTABLE_FILE_MODE)
-    for model in (primary, fallback):
-        owner, repository, filename = model.split("/")
-        model_path = (
-            tmp_path
-            / CACHE_DIRECTORY_NAME
-            / f"models--{owner}--{repository}"
-            / "snapshots"
-            / "revision"
-            / filename
-        )
-        model_path.parent.mkdir(parents=True)
-        model_path.write_bytes(b"model")
-    audio = tmp_path / "audio.wav"
-    audio.write_bytes(b"audio")
+    _write_downloaded_model(tmp_path / CACHE_DIRECTORY_NAME, primary)
+    _write_downloaded_model(tmp_path / CACHE_DIRECTORY_NAME, fallback)
+    audio = _write_audio(tmp_path)
 
     engine = HandyEngine(
         binary,
@@ -129,12 +116,9 @@ async def test_handy_retries_empty_primary_result_e08a0(
         huggingface_cache=tmp_path / CACHE_DIRECTORY_NAME,
     )
 
-    transcript = await engine.transcribe(
-        audio,
-        TranscriptionOptions(language="auto", style="raw"),
+    assert await engine.transcribe(audio, TranscriptionOptions(language="auto", style="raw")) == (
+        "fallback result"
     )
-
-    assert transcript == "fallback result"
 
 
 async def test_handy_follows_the_model_selected_i_aaa(
