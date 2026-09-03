@@ -7,13 +7,14 @@ from pathlib import Path
 
 DEFAULT_HANDY_FALLBACK_MODEL = "handy-computer/whisper-base-gguf/whisper-base-Q8_0.gguf"
 WILDCARD_BIND_HOST = "0.0.0.0"
-WILDCARD_BIND_HOSTS = frozenset({WILDCARD_BIND_HOST, "::"})
+WILDCARD_BIND_HOSTS = frozenset((WILDCARD_BIND_HOST, "::"))
 APP_DIR_NAME = "vocagateway"
 DEFAULT_MAXIMUM_UPLOAD_BYTES = 26_214_400
 MINIMUM_TOKEN_LENGTH = 32
 CONFIGURATION_DIRECTORY_MODE = 0o700
 TOKEN_FILE_MODE = 0o600
 TOKEN_SECRET_BYTES = 48
+FILE_WRITE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL
 
 
 def format_host_port(host: str, port: int) -> str:
@@ -23,20 +24,12 @@ def format_host_port(host: str, port: int) -> str:
 
 
 def local_webui_url(host: str, port: int) -> str:
-    """Return the loopback URL that opens a listener from the same host."""
-    if host == WILDCARD_BIND_HOST:
-        host = "127.0.0.1"
-    elif host == "::":
+    """Return a URL suitable for opening the WebUI on the gateway machine itself."""
+    if host == "::":
         host = "::1"
+    elif host in WILDCARD_BIND_HOSTS:
+        host = "127.0.0.1"
     return f"http://{format_host_port(host, port)}/"
-
-
-def _xdg_config_home() -> Path:
-    return Path(os.environ.get("XDG_CONFIG_HOME", "~/.config")).expanduser()
-
-
-def _xdg_data_home() -> Path:
-    return Path(os.environ.get("XDG_DATA_HOME", "~/.local/share")).expanduser()
 
 
 def _env(name: str, default: str = "") -> str:
@@ -51,24 +44,13 @@ def _env_path(name: str, default: Path) -> Path:
 
 
 def _default_token_file() -> Path:
-    return _xdg_config_home() / APP_DIR_NAME / "token"
+    base = Path(os.environ.get("XDG_CONFIG_HOME", "~/.config")).expanduser()
+    return base / APP_DIR_NAME / "token"
 
 
 def _default_config_file() -> Path:
-    return _xdg_config_home() / APP_DIR_NAME / "config.json"
-
-
-def _default_data_dir() -> Path:
-    return _xdg_data_home() / APP_DIR_NAME
-
-
-def _display_path(path: Path | str) -> str:
-    """Render paths with `~` instead of an absolute home prefix for operators."""
-    text = str(path)
-    home = str(Path.home())
-    if home and (text == home or text.startswith(home + os.sep)):
-        return "~" + text[len(home) :]
-    return text
+    base = Path(os.environ.get("XDG_CONFIG_HOME", "~/.config")).expanduser()
+    return base / APP_DIR_NAME / "config.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,10 +83,6 @@ class Settings:
             return self.data_dir / "models"
         return self.models_dir
 
-    @property
-    def token_file_display(self) -> str:
-        return _display_path(self.token_file)
-
     @classmethod
     def from_env(cls) -> Settings:
         token_file = _env_path("VOCAGATEWAY_TOKEN_FILE", _default_token_file())
@@ -112,13 +90,16 @@ class Settings:
         if not token and token_file.is_file():
             token = token_file.read_text(encoding="utf-8").strip()
         if not token:
-            token = _generate_token(token_file)
+            token = cls._generate_token(token_file)
         if len(token) < MINIMUM_TOKEN_LENGTH:
             raise RuntimeError(
                 "Set VOCAGATEWAY_TOKEN to at least 32 characters or create "
-                f"{_display_path(token_file)} with mode 600."
+                f"{cls._display_path(token_file)} with mode 600."
             )
-        data_dir = _env_path("VOCAGATEWAY_DATA_DIR", _default_data_dir())
+        default_data_dir = (
+            Path(os.environ.get("XDG_DATA_HOME", "~/.local/share")).expanduser() / APP_DIR_NAME
+        )
+        data_dir = _env_path("VOCAGATEWAY_DATA_DIR", default_data_dir)
         models_override = _env("VOCAGATEWAY_MODELS_DIR")
         return cls(
             token=token,
@@ -163,20 +144,35 @@ class Settings:
             debug=_env("VOCAGATEWAY_DEBUG", "false").lower() in {"1", "true", "yes"},
         )
 
+    @property
+    def token_file_display(self) -> str:
+        return self._display_path(self.token_file)
 
-def _write_token_file(token_file: Path, token: str) -> None:
-    token_file.parent.mkdir(parents=True, exist_ok=True)
-    token_file.parent.chmod(CONFIGURATION_DIRECTORY_MODE)
-    descriptor = os.open(token_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, TOKEN_FILE_MODE)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as token_handle:
-        token_handle.write(token + "\n")
+    @classmethod
+    def _display_path(cls, path: Path | str) -> str:
+        """Render paths with `~` instead of an absolute home prefix for operators."""
+        text = str(path)
+        home = str(Path.home())
+        home_prefix = f"{home}{os.sep}"
+        if home and (text == home or text.startswith(home_prefix)):
+            remainder = text[len(home) :]
+            return f"~{remainder}"
+        return text
 
-
-def _generate_token(token_file: Path) -> str:
-    """First-run friendly default: create a private token automatically."""
-    token = secrets.token_urlsafe(TOKEN_SECRET_BYTES)
-    try:
-        _write_token_file(token_file, token)
-    except OSError:
+    @classmethod
+    def _generate_token(cls, token_file: Path) -> str:
+        """First-run friendly default: create a private token automatically."""
+        token = secrets.token_urlsafe(TOKEN_SECRET_BYTES)
+        try:
+            cls._write_token(token_file, token)
+        except OSError:
+            return token
         return token
-    return token
+
+    @classmethod
+    def _write_token(cls, token_file: Path, token: str) -> None:
+        token_file.parent.mkdir(parents=True, exist_ok=True)
+        token_file.parent.chmod(CONFIGURATION_DIRECTORY_MODE)
+        descriptor = os.open(token_file, FILE_WRITE_FLAGS, TOKEN_FILE_MODE)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as token_handle:
+            token_handle.write(f"{token}\n")

@@ -70,7 +70,7 @@ class TranscriptionService:
                 "Transcription is already in progress.",
             )
 
-        source = self._safe_audio_path(stored.audio_name)
+        source = _safe_audio_path(self.upload_dir, stored.audio_name)
         await self._acquire_transcription_slot()
 
         normalized = self.normalized_dir / f"{session_id}.wav"
@@ -105,9 +105,10 @@ class TranscriptionService:
                 source.unlink(missing_ok=True)
             total_ms = _elapsed_ms(started)
             engine_name = (await engine.health()).name
-            self.metrics.succeeded(
+            self.metrics.record_result(
                 total_ms,
-                _pipeline_timing(
+                success=True,
+                timing=_pipeline_timing(
                     total_ms,
                     normalization_ms,
                     outcome,
@@ -117,19 +118,19 @@ class TranscriptionService:
             )
             return completed
         except SilentAudioError as error:
-            self.metrics.failed(_elapsed_ms(started))
+            _record_failure(self.metrics, started)
             self.repository.update(
                 session_id, state=FAILED_SESSION_STATE, error_code="silent_audio"
             )
             raise APIProblem(HTTP_422_UNPROCESSABLE_CONTENT, "silent_audio", str(error)) from error
         except InvalidAudioError as error:
-            self.metrics.failed(_elapsed_ms(started))
+            _record_failure(self.metrics, started)
             self.repository.update(
                 session_id, state=FAILED_SESSION_STATE, error_code="invalid_audio"
             )
             raise APIProblem(HTTP_422_UNPROCESSABLE_CONTENT, "invalid_audio", str(error)) from error
         except EngineUnavailableError as error:
-            self.metrics.failed(_elapsed_ms(started))
+            _record_failure(self.metrics, started)
             self.repository.update(
                 session_id, state=FAILED_SESSION_STATE, error_code="engine_unavailable"
             )
@@ -140,7 +141,7 @@ class TranscriptionService:
             # Before the general handler below: this is a `TranscriptionProcessError`,
             # but retrying replays the same language against the same model, so the
             # audio is discarded rather than kept for a Retry that cannot succeed.
-            self.metrics.failed(_elapsed_ms(started))
+            _record_failure(self.metrics, started)
             self.repository.update(
                 session_id, state=FAILED_SESSION_STATE, error_code="language_unsupported"
             )
@@ -148,7 +149,7 @@ class TranscriptionService:
                 HTTP_422_UNPROCESSABLE_CONTENT, "language_unsupported", str(error)
             ) from error
         except TranscriptionProcessError as error:
-            self.metrics.failed(_elapsed_ms(started))
+            _record_failure(self.metrics, started)
             self.repository.update(
                 session_id, state=FAILED_SESSION_STATE, error_code="transcription_failed"
             )
@@ -158,7 +159,7 @@ class TranscriptionService:
         except Exception:
             # Leave the session retryable: stuck "transcribing" rejects finish
             # and is not in the retry allow-list (failed/uploaded/completed).
-            self.metrics.failed(_elapsed_ms(started))
+            _record_failure(self.metrics, started)
             self.repository.update(
                 session_id, state=FAILED_SESSION_STATE, error_code="internal_error"
             )
@@ -197,31 +198,31 @@ class TranscriptionService:
                 audio_duration_ms,
                 name,
             )
-            self.metrics.succeeded(duration_ms, timing)
+            self.metrics.record_result(duration_ms, success=True, timing=timing)
             return AdhocTranscription(outcome.text.strip(), name, timing)
         except SilentAudioError as error:
-            self.metrics.failed(_elapsed_ms(started))
+            _record_failure(self.metrics, started)
             raise APIProblem(HTTP_422_UNPROCESSABLE_CONTENT, "silent_audio", str(error)) from error
         except InvalidAudioError as error:
-            self.metrics.failed(_elapsed_ms(started))
+            _record_failure(self.metrics, started)
             raise APIProblem(HTTP_422_UNPROCESSABLE_CONTENT, "invalid_audio", str(error)) from error
         except EngineUnavailableError as error:
-            self.metrics.failed(_elapsed_ms(started))
+            _record_failure(self.metrics, started)
             raise APIProblem(
                 HTTP_503_SERVICE_UNAVAILABLE, "engine_unavailable", str(error), recoverable=True
             ) from error
         except LanguageUnsupportedError as error:
-            self.metrics.failed(_elapsed_ms(started))
+            _record_failure(self.metrics, started)
             raise APIProblem(
                 HTTP_422_UNPROCESSABLE_CONTENT, "language_unsupported", str(error)
             ) from error
         except TranscriptionProcessError as error:
-            self.metrics.failed(_elapsed_ms(started))
+            _record_failure(self.metrics, started)
             raise APIProblem(
                 HTTP_502_BAD_GATEWAY, "transcription_failed", str(error), recoverable=True
             ) from error
         except Exception:
-            self.metrics.failed(_elapsed_ms(started))
+            _record_failure(self.metrics, started)
             raise
         finally:
             normalized.unlink(missing_ok=True)
@@ -239,7 +240,7 @@ class TranscriptionService:
         if session is None:
             return False
         if session.audio_name:
-            self._safe_audio_path(session.audio_name).unlink(missing_ok=True)
+            _safe_audio_path(self.upload_dir, session.audio_name).unlink(missing_ok=True)
         (self.normalized_dir / f"{session_id}.wav").unlink(missing_ok=True)
         return True
 
@@ -256,7 +257,7 @@ class TranscriptionService:
                 self._transcription_slots.acquire(), timeout=TRANSCRIPTION_SLOT_TIMEOUT_SECONDS
             )
         except TimeoutError as error:
-            self.metrics.rejected()
+            self.metrics.dequeued(rejected=True)
             raise APIProblem(
                 HTTP_503_SERVICE_UNAVAILABLE,
                 "engine_overloaded",
@@ -264,18 +265,23 @@ class TranscriptionService:
                 recoverable=True,
             ) from error
         except BaseException:
-            self.metrics.cancelled()
+            self.metrics.dequeued()
             raise
         self.metrics.started()
 
-    def _safe_audio_path(self, audio_name: str) -> Path:
-        if Path(audio_name).name != audio_name:
-            raise APIProblem(
-                HTTP_500_INTERNAL_SERVER_ERROR,
-                "invalid_storage_reference",
-                "Stored audio reference is invalid.",
-            )
-        return self.upload_dir / audio_name
+
+def _safe_audio_path(upload_dir: Path, audio_name: str) -> Path:
+    if Path(audio_name).name != audio_name:
+        raise APIProblem(
+            HTTP_500_INTERNAL_SERVER_ERROR,
+            "invalid_storage_reference",
+            "Stored audio reference is invalid.",
+        )
+    return upload_dir / audio_name
+
+
+def _record_failure(metrics: RuntimeMetrics, started: float) -> None:
+    metrics.record_result(_elapsed_ms(started), success=False)
 
 
 def _require_matching_script(text: str, language: str) -> None:

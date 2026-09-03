@@ -22,10 +22,7 @@ class _FakeClock:
 def _simulate_transcription(metrics: RuntimeMetrics, latency: int, *, success: bool) -> None:
     metrics.queued()
     metrics.started()
-    if success:
-        metrics.succeeded(latency)
-    else:
-        metrics.failed(latency)
+    metrics.record_result(latency, success=success)
     metrics.finished()
 
 
@@ -41,9 +38,9 @@ def test_runtime_metrics_track_work_and_outcomes() -> None:
     _simulate_transcription(metrics, FAILED_TRANSCRIPTION_LATENCY_MS, success=False)
 
     metrics.queued()
-    metrics.rejected()
+    metrics.dequeued(rejected=True)
     metrics.queued()
-    metrics.cancelled()
+    metrics.dequeued()
     snapshot = metrics.snapshot()
 
     assert (

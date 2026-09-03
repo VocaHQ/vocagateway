@@ -6,7 +6,7 @@ from starlette.status import HTTP_400_BAD_REQUEST, HTTP_503_SERVICE_UNAVAILABLE
 
 from app.context import BOOTSTRAP_TOKEN_ID, GatewayContext
 from app.errors import APIProblem
-from app.fragments.pairing import PairingFragmentData, pairing_fragment
+from app.fragments.pairing import PairingFragmentData, pairing_fragment, redact_token
 from app.pairing import (
     discover_gateway_base_urls,
     encode_pairing_payload,
@@ -85,6 +85,89 @@ def forget_stale_lan_addresses(ctx: GatewayContext, discovered: list[str]) -> No
         pairing_config.save(ctx.config_path)
 
 
+class PairingPresenter:
+    def __init__(self, ctx: GatewayContext) -> None:
+        self.ctx = ctx
+        self._discovered = discover_gateway_base_urls(ctx.settings.port)
+        forget_stale_lan_addresses(ctx, self._discovered)
+
+    def render_html(
+        self,
+        selected_url: str | None = None,
+        token_id: str | None = None,
+        *,
+        persist: bool = False,
+    ) -> str:
+        candidates = self._candidates()
+        selected, candidates = self._select_url(selected_url, candidates, persist)
+        token_info = resolve_pairing_token(self.ctx, token_id)
+        token = token_info[1]
+        svg = qr_svg_for_payload(encode_pairing_payload(selected, token)) if selected else ""
+        return pairing_fragment(
+            PairingFragmentData(
+                selected_url=selected,
+                candidates=candidates,
+                token_redacted=redact_token(token),
+                token_plaintext=token,
+                qr_svg=svg,
+                saved_urls=self.ctx.pairing_config.pairing_urls,
+                token_options=pairing_token_options(self.ctx),
+                selected_token_id=token_info[0],
+                token_status=token_info[2],
+                requested_token_id=token_id or "",
+                requested_token_label=token_info[3],
+            )
+        )
+
+    def forget_url(self, url: str) -> str:
+        try:
+            normalized = normalize_gateway_input(url, self.ctx.settings.port)
+        except ValueError as error:
+            raise APIProblem(HTTP_400_BAD_REQUEST, "invalid_pairing_url", str(error)) from error
+        cfg = self.ctx.pairing_config
+        if self.ctx.engine_manager is not None and normalized in cfg.pairing_urls:
+            cfg.pairing_urls.remove(normalized)
+            if cfg.pairing_url == normalized:
+                cfg.pairing_url = None
+            cfg.save(self.ctx.config_path)
+        return self.render_html()
+
+    def _candidates(self) -> list[str]:
+        candidates = list(self._discovered)
+        for saved in self.ctx.pairing_config.pairing_urls:
+            if saved not in candidates:
+                candidates.append(saved)
+        return candidates
+
+    def _select_url(
+        self, selected_url: str | None, candidates: list[str], persist: bool
+    ) -> tuple[str | None, list[str]]:
+        cfg = self.ctx.pairing_config
+        selected: str | None = None
+        if selected_url:
+            try:
+                selected = normalize_gateway_input(selected_url, self.ctx.settings.port)
+            except ValueError:
+                selected = None
+            if selected and persist:
+                self._persist_url(selected)
+        if not selected:
+            selected = cfg.pairing_url or primary_gateway_base_url(self.ctx.settings.port)
+        if selected and selected not in candidates:
+            candidates.insert(0, selected)
+        return selected, candidates
+
+    def _persist_url(self, selected: str) -> None:
+        if self.ctx.engine_manager is None:
+            return
+        cfg = self.ctx.pairing_config
+        if selected not in self._discovered and selected not in cfg.pairing_urls:
+            cfg.pairing_urls.append(selected)
+        if cfg.pairing_url != selected:
+            cfg.pairing_url = selected
+            cfg.save(self.ctx.config_path)
+
+
 def pairing_html(
     ctx: GatewayContext,
     selected_url: str | None = None,
@@ -92,72 +175,11 @@ def pairing_html(
     *,
     persist: bool = False,
 ) -> str:
-    pairing_config = ctx.pairing_config
-    discovered = discover_gateway_base_urls(ctx.settings.port)
-    forget_stale_lan_addresses(ctx, discovered)
-    candidates = list(discovered)
-    for saved in pairing_config.pairing_urls:
-        if saved not in candidates:
-            candidates.append(saved)
-    selected: str | None
-    if selected_url:
-        try:
-            selected = normalize_gateway_input(selected_url, ctx.settings.port)
-        except ValueError:
-            selected = pairing_config.pairing_url or primary_gateway_base_url(ctx.settings.port)
-        else:
-            if selected not in candidates:
-                candidates = [selected, *candidates]
-            if persist and ctx.engine_manager is not None:
-                changed = pairing_config.pairing_url != selected
-                if selected not in discovered and selected not in pairing_config.pairing_urls:
-                    pairing_config.pairing_urls.append(selected)
-                    changed = True
-                if changed:
-                    pairing_config.pairing_url = selected
-                    pairing_config.save(ctx.config_path)
-    else:
-        selected = pairing_config.pairing_url or primary_gateway_base_url(ctx.settings.port)
-        if selected and selected not in candidates:
-            candidates = [selected, *candidates]
-    resolved_token_id, token, token_status, requested_label = resolve_pairing_token(ctx, token_id)
-    redacted = (
-        f"{token[:4]}…{token[-4:]} ({len(token)} characters)"
-        if len(token) > 8
-        else "•" * len(token)
-    )
-    qr_svg = ""
-    if selected:
-        qr_svg = qr_svg_for_payload(encode_pairing_payload(selected, token))
-    return pairing_fragment(
-        PairingFragmentData(
-            selected_url=selected,
-            candidates=candidates,
-            token_redacted=redacted,
-            token_plaintext=token,
-            qr_svg=qr_svg,
-            saved_urls=pairing_config.pairing_urls,
-            token_options=pairing_token_options(ctx),
-            selected_token_id=resolved_token_id,
-            token_status=token_status,
-            requested_token_id=token_id or "",
-            requested_token_label=requested_label,
-        )
-    )
+    return PairingPresenter(ctx).render_html(selected_url, token_id, persist=persist)
 
 
 def forget_pairing_url(ctx: GatewayContext, url: str) -> str:
-    try:
-        normalized = normalize_gateway_input(url, ctx.settings.port)
-    except ValueError as error:
-        raise APIProblem(HTTP_400_BAD_REQUEST, "invalid_pairing_url", str(error)) from error
-    pairing_config = ctx.pairing_config
-    if ctx.engine_manager is not None and normalized in pairing_config.pairing_urls:
-        pairing_config.pairing_urls.remove(normalized)
-        if pairing_config.pairing_url == normalized:
-            pairing_config.pairing_url = None
-        pairing_config.save(ctx.config_path)
-    return pairing_html(ctx)
+    return PairingPresenter(ctx).forget_url(url)
 
 
 def resolve_pairing_url(ctx: GatewayContext, url: str | None) -> str:

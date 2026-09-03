@@ -4,14 +4,9 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request, Response
-from starlette.status import (
-    HTTP_409_CONFLICT,
-    HTTP_413_CONTENT_TOO_LARGE,
-    HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-    HTTP_422_UNPROCESSABLE_CONTENT,
-)
+from starlette.status import HTTP_409_CONFLICT
 
-from app.audio import ALLOWED_AUDIO_TYPES, atomic_upload_path, complete_atomic_upload
+from app.audio import save_streamed_upload, validate_audio_upload_headers
 from app.context import GatewayContextDependency, require_token
 from app.errors import APIProblem
 from app.schemas import CreateSessionRequest, DeleteResponse, ModelResponse, SessionResponse
@@ -19,7 +14,6 @@ from app.serializers import session_response
 
 router = APIRouter(dependencies=[Depends(require_token)])
 
-MINIMUM_AUDIO_UPLOAD_BYTES = 128
 ContentTypeHeader = Annotated[str | None, Header()]
 ContentLengthHeader = Annotated[int | None, Header()]
 
@@ -54,43 +48,15 @@ async def upload_audio(
     stored = ctx.service.require(session_id)
     if stored.state == "completed":
         return session_response(stored)
-    normalized_type = (content_type or "").split(";", maxsplit=1)[0].lower()
-    suffix = ALLOWED_AUDIO_TYPES.get(normalized_type)
-    if suffix is None:
-        raise APIProblem(
-            HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            "unsupported_audio_type",
-            "This audio type is not supported.",
-        )
-    maximum_upload_bytes = ctx.settings.maximum_upload_bytes
-    if content_length is not None and content_length > maximum_upload_bytes:
-        raise APIProblem(
-            HTTP_413_CONTENT_TOO_LARGE,
-            "audio_too_large",
-            "The recording exceeds the upload limit.",
-        )
-
-    temporary, final = atomic_upload_path(ctx.service.upload_dir, str(session_id).lower(), suffix)
-    received = 0
-    try:
-        with temporary.open("wb") as output:
-            async for chunk in request.stream():
-                received += len(chunk)
-                if received > maximum_upload_bytes:
-                    raise APIProblem(
-                        HTTP_413_CONTENT_TOO_LARGE,
-                        "audio_too_large",
-                        "The recording exceeds the upload limit.",
-                    )
-                output.write(chunk)
-        if received < MINIMUM_AUDIO_UPLOAD_BYTES:
-            raise APIProblem(
-                HTTP_422_UNPROCESSABLE_CONTENT, "audio_empty", "The recording is empty."
-            )
-        complete_atomic_upload(temporary, final)
-    except Exception:
-        temporary.unlink(missing_ok=True)
-        raise
+    max_bytes = ctx.settings.maximum_upload_bytes
+    suffix = validate_audio_upload_headers(content_type, content_length, max_bytes)
+    final = await save_streamed_upload(
+        request.stream(),
+        ctx.service.upload_dir,
+        str(session_id).lower(),
+        suffix,
+        max_bytes,
+    )
     updated = ctx.repository.update(
         session_id,
         state="uploaded",

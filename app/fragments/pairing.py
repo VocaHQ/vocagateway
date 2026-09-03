@@ -22,6 +22,15 @@ class PairingFragmentData:
     requested_token_label: str | None
 
 
+def redact_token(token: str) -> str:
+    token_len = len(token)
+    if token_len <= 8:
+        return "•" * token_len
+    prefix = token[:4]
+    suffix = token[-4:]
+    return f"{prefix}…{suffix} ({token_len} characters)"
+
+
 def pairing_fragment(pairing_data: PairingFragmentData) -> str:
     """See app/templates/pairing/card.html for the markup and behavior notes."""
     if not pairing_data.selected_url:
