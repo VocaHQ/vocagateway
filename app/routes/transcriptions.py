@@ -13,7 +13,7 @@ from starlette import status
 
 from app import audio, context, errors, schemas
 
-_LANGUAGE_PATTERN = re.compile(r"^[A-Za-z-]+$|^auto$")
+_LANGUAGE_PATTERN = re.compile(r"^[A-Za-z_-]+$|^auto$")
 _TRUTHY = frozenset(("true", "1", "yes"))
 _MAX_LANGUAGE_LENGTH = 20
 _READ_CHUNK_BYTES = 65_536

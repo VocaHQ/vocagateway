@@ -108,6 +108,7 @@ EXPECTED_SCRIPTS: MappingProxyType[str, frozenset[str]] = MappingProxyType(
 # instead of being wrongly held to Latin.
 _LATIN_LANGUAGES = frozenset(
     (
+        "hinglish_roman",
         "en",
         "es",
         "fr",

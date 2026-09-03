@@ -2,7 +2,7 @@
 
 # Models and languages
 
-Every model in the catalog (65 of them), what it speaks, and which models cover a given language. Generated from `app/catalog.py`, so it always matches the catalog the gateway actually ships.
+Every model in the catalog (66 of them), what it speaks, and which models cover a given language. Generated from `app/catalog.py`, so it always matches the catalog the gateway actually ships.
 
 The WebUI Models tab shows the same information per card, with a language filter. Use this page to pick a model before installing anything.
 
@@ -98,6 +98,7 @@ GGML models through the standalone `whisper-cli` binary.
 | whisper.cpp Large v3 Turbo | 1.62 GB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
 | Whisper Large v3 Q5 | 1.08 GB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
 | Breeze ASR Q5 | 1.08 GB | Mandarin Chinese, English | — | Apache 2.0 |
+| Hinglish — Roman (Experimental) | 574 MB | Hinglish — Roman | — | Apache 2.0 |
 | whisper.cpp Large v3 | 3.00 GB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
 
 ### whisperkit
@@ -174,7 +175,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 
 ## Language index
 
-108 languages, alphabetically. Expand one to see every model that covers it. A model marked `auto language` will not let you pin this language explicitly — it decides for itself.
+109 languages, alphabetically. Expand one to see every model that covers it. A model marked `auto language` will not let you pin this language explicitly — it decides for itself.
 
 <details>
 <summary><strong>Afrikaans</strong> (<code>af</code>) — 18 models</summary>
@@ -1232,6 +1233,15 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | WhisperKit Small | whisperkit | 484 MB | — |
 | WhisperKit Large v3 Turbo (compressed) | whisperkit | 626 MB | — |
 | WhisperKit Large v3 Turbo | whisperkit | 1.61 GB | — |
+
+</details>
+
+<details>
+<summary><strong>Hinglish — Roman</strong> (<code>hinglish_roman</code>) — 1 models</summary>
+
+| Model | Engine | Download | Flags |
+| --- | --- | ---: | --- |
+| Hinglish — Roman (Experimental) | whisper.cpp | 574 MB | — |
 
 </details>
 

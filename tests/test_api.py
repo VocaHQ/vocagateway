@@ -20,6 +20,7 @@ from app.config import Settings
 from app.errors import LanguageUnsupportedError
 from app.main import create_app
 from app.models.base import EngineHealth, TranscriptionOptions
+from app.schemas import CreateSessionRequest
 
 TEST_AUDIO_SIZE = 200
 TEST_AUDIO_BYTES = b"x" * TEST_AUDIO_SIZE
@@ -51,6 +52,11 @@ class WrongLanguageEngine:
         raise LanguageUnsupportedError(
             "The selected model does not support hi. Choose Auto, en, or another model."
         )
+
+
+def test_session_schema_accepts_roman_hinglish_output_contract() -> None:
+    request = CreateSessionRequest(client_session_id=uuid4(), language="hinglish_roman")
+    assert request.language == "hinglish_roman"
 
 
 async def test_unsupported_language_is_reported_a_d68a4(

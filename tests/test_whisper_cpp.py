@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from app.catalog import CatalogModel
 from app.errors import EngineUnavailableError, TranscriptionProcessError
 from app.models.base import TranscriptionOptions
 from app.models.whisper_cpp import WhisperCppEngine
@@ -86,6 +87,49 @@ fi
         assert recorded[recorded.index("-f") + 1] == str(audio)
     else:
         assert "-l" not in recorded
+
+
+async def test_transcribe_uses_catalog_decoder_language_for_output_contract(
+    tmp_path: Path,
+) -> None:
+    binary = tmp_path / WHISPER_BINARY_NAME
+    _write_binary(
+        binary,
+        r"""#!/bin/sh
+printf '%s\n' "$@" > "$0.args"
+of=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -of) of="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '%s' "aaj office hai" > "$of.txt"
+""",
+    )
+    model = tmp_path / MODEL_FILE_NAME
+    model.write_bytes(MODEL_BYTES)
+    audio = tmp_path / AUDIO_FILE_NAME
+    audio.write_bytes(AUDIO_BYTES)
+    catalog_model = CatalogModel(
+        id="whisper.cpp:hinglish",
+        engine="whisper.cpp",
+        key=MODEL_FILE_NAME,
+        label="Hinglish",
+        size_bytes=1,
+        languages="Hindi + English, Roman script",
+        quality="Experimental",
+        minimum_ram_gb=4,
+        language_codes=("hinglish_roman",),
+        decoder_language_code="hi",
+    )
+
+    await WhisperCppEngine(binary, model, catalog_model).transcribe(
+        audio, TranscriptionOptions("hinglish_roman", RAW_STYLE)
+    )
+
+    recorded = (tmp_path / "whisper-cli.args").read_text(encoding="utf-8").splitlines()
+    assert recorded[recorded.index("-l") + 1] == "hi"
 
 
 async def test_transcribe_raises_when_the_engine_aaaa(tmp_path: Path) -> None:

@@ -20,6 +20,7 @@ from app.config import Settings
 from app.errors import EngineUnavailableError
 from app.main import create_app
 from app.models.base import EngineHealth, TranscriptionOptions
+from app.routes.transcriptions import _AudioForm
 
 TRANSCRIPTIONS = "/v1/audio/transcriptions"
 MULTIPART_CONTENT_TYPE = "multipart/form-data; boundary=----x"
@@ -48,6 +49,10 @@ class UnavailableEngine:
 
     async def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> str:
         raise EngineUnavailableError("The local engine is not available.")
+
+
+def test_audio_form_accepts_roman_hinglish_output_contract() -> None:
+    assert _AudioForm.language("hinglish_roman") == "hinglish_roman"
 
 
 async def test_transcriptions_require_a_bearer_token(

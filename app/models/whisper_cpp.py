@@ -4,6 +4,7 @@ import asyncio
 import tempfile
 from pathlib import Path
 
+from app.catalog import CatalogModel
 from app.errors import EngineUnavailableError, TranscriptionProcessError
 from app.models.base import EngineHealth, TranscriptionOptions
 from app.models.warmup import prefetch_model_paths
@@ -13,9 +14,12 @@ MAXIMUM_ERROR_MESSAGE_LENGTH = 200
 
 
 class WhisperCppEngine:
-    def __init__(self, binary: Path, model: Path) -> None:
+    def __init__(
+        self, binary: Path, model: Path, catalog_model: CatalogModel | None = None
+    ) -> None:
         self.binary = binary
         self.model = model
+        self.catalog_model = catalog_model
 
     async def health(self) -> EngineHealth:
         ready = self.binary.is_file() and self.model.is_file()
@@ -31,8 +35,13 @@ class WhisperCppEngine:
         await self._require_ready()
         with tempfile.TemporaryDirectory(prefix="vocagateway-transcript-") as temporary:
             output_stem = Path(temporary) / "result"
+            language = self.catalog_model.decoder_language_code if self.catalog_model else None
             arguments = _build_arguments(
-                self.binary, self.model, audio_path, output_stem, options.language
+                self.binary,
+                self.model,
+                audio_path,
+                output_stem,
+                language or options.language,
             )
             await _execute_whisper_cpp(arguments)
             return _read_output_text(output_stem.with_suffix(".txt"))

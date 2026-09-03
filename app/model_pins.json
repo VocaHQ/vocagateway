@@ -374,6 +374,10 @@
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
       "sha256": "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"
     },
+    "whisper.cpp:ggml-apex-hinglish-q5_0.bin": {
+      "revision": "d1de3ff618856e5675c47d3158ca820506fb4d9e",
+      "sha256": "9d877151b15cec1feb9110cfbc0a3162cf377bcc0ab1935174226f461cf60f13"
+    },
     "whisper.cpp:ggml-base.en.bin": {
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
       "sha256": "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002"

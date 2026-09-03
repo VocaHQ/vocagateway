@@ -354,6 +354,21 @@ def test_catalog_includes_the_newer_apple_s_ed423() -> None:
         assert model.huggingface_folder == ""
 
 
+def test_catalog_includes_the_roman_hinglish_model() -> None:
+    entries = {model.id: model for model in DEFAULT_CATALOG}
+    model = entries["whisper.cpp:ggml-apex-hinglish-q5_0.bin"]
+
+    assert model.download_url == (
+        "https://huggingface.co/Marquestra/Whisper-Hindi2Hinglish-Apex-GGML/"
+        "resolve/d1de3ff618856e5675c47d3158ca820506fb4d9e/ggml-apex-hinglish-q5_0.bin"
+    )
+    assert model.size_bytes == 574_041_195
+    assert model.language_codes == ("hinglish_roman",)
+    assert model.decoder_language_code == "hi"
+    assert model.license_name == "Apache 2.0"
+    assert model.sha256 == ("9d877151b15cec1feb9110cfbc0a3162cf377bcc0ab1935174226f461cf60f13")
+
+
 def test_every_catalog_model_has_a_download_f979c() -> None:
     for model in DEFAULT_CATALOG:
         if model.engine == "moonshine":
