@@ -211,9 +211,14 @@ def main() -> int:
         except (OSError, json.JSONDecodeError):
             existing = {}
 
-    models = [m for m in _BASE_CATALOG if m.id.startswith(args.only)]
+    # Retired entries are refused by `start_download`, so a pin for one can
+    # never be checked against a fresh download and only rots in the file.
+    models = [m for m in _BASE_CATALOG if m.id.startswith(args.only) and not m.retired]
     print(f"Harvesting pins for {len(models)} model(s)\n")
-    records: dict[str, Any] = dict(existing)
+    live_ids = {model.id for model in _BASE_CATALOG if not model.retired}
+    records: dict[str, Any] = {
+        model_id: record for model_id, record in existing.items() if model_id in live_ids
+    }
     pinned = skipped = 0
     for model in models:
         print(f"  {model.id}")

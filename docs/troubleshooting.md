@@ -156,7 +156,10 @@ request. Check:
 - the active engine is `sherpa-onnx`, Moonshine, or `faster-whisper`, not the
   per-request `whisper.cpp` CLI
 - Precision is INT8 and CPU threads is 0 or no higher than the effective CPU
-  allocation shown on Overview
+  allocation shown on Overview. Leave it at 0 unless you are deliberately
+  capping the gateway: 0 means the engine counts the host's physical cores,
+  clamped by the container's CPU quota, so it neither oversubscribes a cgroup
+  nor spreads a batch across hyperthread siblings that then hold it back
 - the container has not been assigned a fractional CPU quota
 - Tiny/Base is used before Small/Medium on low-power servers
 - for capable hardware, the `native`, `cuda`, or `vulkan` Compose profile is
@@ -165,6 +168,20 @@ request. Check:
 Do not run multiple profile services together: they share port 8765 and the
 model volume. SenseVoice Small INT8 is the smallest portable multilingual
 choice, while Parakeet TDT INT8 covers 25 European languages with punctuation.
+
+If you need Whisper itself rather than one of the faster architectures, the
+choice is between two tiers, and it is a speed/accuracy trade rather than a
+free win. On the Open ASR Leaderboard's English average, full Whisper Large v3
+scores 5.78 WER and Large v3 Turbo 6.36; on German the gap is wider, 4.00
+against 6.12. Turbo keeps Large v3's encoder and replaces its 32-layer decoder
+with four, so it is roughly 1.7x faster and half the download. Pick Turbo when
+latency matters, full Large v3 when accuracy does — as a faster-whisper model
+either way, so the weights stay resident between requests.
+
+Distil-Whisper Large v3.5 beats both on English (5.40) at the same size, if you
+do not need other languages. The whisper.cpp Medium builds and the 3 GB
+whisper.cpp Large v3 are retired; an installed copy keeps working and the WebUI
+points at its replacement.
 Moonshine English Tiny/Small Streaming are fast Linux options;
 Tiny prioritizes latency and Small balances speed with accuracy. Other Moonshine
 languages use the batch upload path after recording. The app automatically

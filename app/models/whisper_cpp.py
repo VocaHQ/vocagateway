@@ -4,7 +4,7 @@ import asyncio
 import tempfile
 from pathlib import Path
 
-from app import scripts
+from app import scripts, system
 from app.catalog import CatalogModel
 from app.errors import EngineUnavailableError, LanguageUnsupportedError, TranscriptionProcessError
 from app.models.base import EngineHealth, TranscriptionOptions
@@ -12,15 +12,29 @@ from app.models.warmup import prefetch_model_paths
 
 TRANSCRIPTION_TIMEOUT_SECONDS = 75
 MAXIMUM_ERROR_MESSAGE_LENGTH = 200
+# whisper-cli defaults to a beam of 5 with 5 greedy candidates, which is tuned for
+# batch transcription of long recordings. Dictation clips are short and the decoder
+# dominates on a CPU-only host, so the gateway narrows the search: measured on a
+# 17 s clip with ggml-tiny.en and the GPU disabled, `-t <cores> -bs 2 -bo 2` cut the
+# run from 1.83 s to 0.77 s with no change to the transcript. Temperature fallback
+# stays on — it is what rescues a degenerate segment from a repetition loop.
+DECODER_BEAM_SIZE = 2
+DECODER_BEST_OF = 2
 
 
 class WhisperCppEngine:
     def __init__(
-        self, binary: Path, model: Path, catalog_model: CatalogModel | None = None
+        self,
+        binary: Path,
+        model: Path,
+        catalog_model: CatalogModel | None = None,
+        *,
+        cpu_threads: int = 0,
     ) -> None:
         self.binary = binary
         self.model = model
         self.catalog_model = catalog_model
+        self.cpu_threads = system.inference_thread_count(cpu_threads)
 
     async def health(self) -> EngineHealth:
         ready = self.binary.is_file() and self.model.is_file()
@@ -42,6 +56,7 @@ class WhisperCppEngine:
                 audio_path,
                 output_stem,
                 self._decoder_language(options.language),
+                self.cpu_threads,
             )
             await _execute_whisper_cpp(arguments)
             transcript = _read_output_text(output_stem.with_suffix(".txt"))
@@ -76,10 +91,12 @@ class WhisperCppEngine:
 
 
 def _build_arguments(
-    binary: Path, model: Path, audio: Path, output: Path, language: str
+    binary: Path, model: Path, audio: Path, output: Path, language: str, threads: int
 ) -> list[str]:
     arguments = [str(binary), "-m", str(model), "-f", str(audio)]
     arguments.extend(["-otxt", "-of", str(output), "-np", "-nt"])
+    arguments.extend(["-t", str(threads)])
+    arguments.extend(["-bs", str(DECODER_BEAM_SIZE), "-bo", str(DECODER_BEST_OF)])
     if language != "auto":
         arguments.extend(["-l", language])
     return arguments

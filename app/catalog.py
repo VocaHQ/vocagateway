@@ -112,6 +112,24 @@ MOONSHINE_VI_TINY_STREAMING_SIZE_BYTES = 32_309_008
 MOONSHINE_KO_SIZE_BYTES = 71_815_486
 MOONSHINE_UK_SIZE_BYTES = 141_001_214
 DISTIL_LARGE_V3_SIZE_BYTES = 1_515_408_824
+FASTER_WHISPER_LARGE_V3_TURBO_SIZE_BYTES = 1_621_669_956
+FASTER_WHISPER_LARGE_V3_SIZE_BYTES = 3_090_839_273
+FASTER_WHISPER_MEDIUM_SIZE_BYTES = 1_530_575_217
+FASTER_WHISPER_MEDIUM_EN_SIZE_BYTES = 1_530_460_562
+ACCURATE_QUALITY = "Accurate"
+# Turbo is not the most accurate Whisper — the Open ASR Leaderboard puts it at
+# 6.36 average WER against full Large v3's 5.78 — so it must not claim to be in
+# a picker that also offers Large v3 and the Q5 build of those same weights.
+TURBO_QUALITY = "Large-model accuracy · fast decoder"
+WHISPERKIT_COMPRESSED_LARGE_ID = "whisperkit:openai_whisper-large-v3-v20240930_626MB"
+DISTIL_LARGE_V35_SIZE_BYTES = 1_516_487_390
+WHISPER_TURBO_REPLACEMENT_ID = "whisper.cpp:ggml-large-v3-turbo.bin"
+WHISPER_TURBO_RETIREMENT_REASON = (
+    "Whisper Large v3 Turbo replaces this tier: the same encoder with four decoder layers "
+    "instead of 32, so it is smaller and several times faster. It is not more accurate — the "
+    "Open ASR Leaderboard puts Turbo about 0.6 WER points behind full Large v3 on English "
+    "and up to 2 behind on German — but Medium trails both, so nothing here is given up."
+)
 HINGLISH_MODEL_SIZE_BYTES = 574_041_195
 
 # Qwen3-ASR's upstream card lists 30 languages plus Chinese dialects. The
@@ -254,6 +272,15 @@ class _PinManager:
 
 class _WhisperModelBuilders:
     @classmethod
+    def retirement(cls, kwargs: dict[str, Any]) -> dict[str, Any]:
+        """The retirement triple, so each Whisper builder spells it once."""
+        return {
+            "retired": bool(kwargs.get("retired", False)),
+            "replacement_id": kwargs.get("replacement_id"),
+            "retirement_reason": kwargs.get("retirement_reason"),
+        }
+
+    @classmethod
     def whisper_language_codes(cls, languages: str) -> tuple[str, ...]:
         return (ENGLISH_LANGUAGE_CODE,) if languages == ENGLISH_ONLY else WHISPER_LANGUAGES
 
@@ -289,6 +316,7 @@ class _WhisperModelBuilders:
             ),
             decoder_language_code=kwargs.get("decoder_language_code"),
             license_name=str(kwargs.get("license_name", "See model source")),  # noqa: WPS226
+            **cls.retirement(kwargs),
         )
 
     @classmethod
@@ -314,6 +342,7 @@ class _WhisperModelBuilders:
             description="Core ML Whisper model optimized for Apple silicon.",
             source="WhisperKit",
             language_codes=cls.whisper_language_codes(cls._languages(args)),
+            **cls.retirement(kwargs),
         )
 
     @classmethod
@@ -333,7 +362,7 @@ class _WhisperModelBuilders:
             languages=cls._languages(args),
             quality=str(args[2]),
             minimum_ram_gb=float(args[3]),
-            huggingface_repo=cls._faster_whisper_repo(key),
+            huggingface_repo=str(kwargs.get("repository") or cls._faster_whisper_repo(key)),
             huggingface_folder="",
             family="Whisper / CTranslate2",
             description=(
@@ -345,6 +374,7 @@ class _WhisperModelBuilders:
             language_codes=cls.whisper_language_codes(cls._languages(args)),
             license_name=str(kwargs.get("license_name", "See model source")),
             commercial_use=bool(kwargs.get("commercial_use", True)),
+            **cls.retirement(kwargs),
         )
 
     @classmethod
@@ -381,6 +411,11 @@ class _WhisperModelBuilders:
 
     @classmethod
     def _faster_whisper_repo(cls, key: str) -> str:
+        """Systran publishes the CTranslate2 conversions this engine loads.
+
+        Entries whose conversion lives elsewhere (Whisper Large v3 Turbo has no
+        Systran build) pass `repository=` instead of matching this convention.
+        """
         if key.startswith("distil-"):
             return f"Systran/faster-distil-whisper-{key.removeprefix('distil-')}"
         return f"Systran/faster-whisper-{key}"
@@ -1579,6 +1614,43 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "small", "faster-whisper Small", _megabytes("484"), MULTILINGUAL, BALANCED_QUALITY, 6
     ),
     _faster_whisper(
+        "large-v3-turbo",
+        "faster-whisper Large v3 Turbo",
+        FASTER_WHISPER_LARGE_V3_TURBO_SIZE_BYTES,
+        MULTILINGUAL,
+        TURBO_QUALITY,
+        8,
+        repository="deepdml/faster-whisper-large-v3-turbo-ct2",
+        license_name=MIT_LICENSE,
+    ),
+    _faster_whisper(
+        "medium.en",
+        "faster-whisper Medium EN",
+        FASTER_WHISPER_MEDIUM_EN_SIZE_BYTES,
+        ENGLISH_ONLY,
+        ACCURATE_QUALITY,
+        8,
+        license_name=MIT_LICENSE,
+    ),
+    _faster_whisper(
+        "medium",
+        "faster-whisper Medium",
+        FASTER_WHISPER_MEDIUM_SIZE_BYTES,
+        MULTILINGUAL,
+        ACCURATE_QUALITY,
+        8,
+        license_name=MIT_LICENSE,
+    ),
+    _faster_whisper(
+        "large-v3",
+        "faster-whisper Large v3",
+        FASTER_WHISPER_LARGE_V3_SIZE_BYTES,
+        MULTILINGUAL,
+        MOST_ACCURATE_QUALITY,
+        VERY_HIGH_MEMORY_RAM_GB,
+        license_name=MIT_LICENSE,
+    ),
+    _faster_whisper(
         "distil-small.en",
         "Distil-Whisper Small EN",
         _megabytes("332"),
@@ -1595,6 +1667,16 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         8,
     ),
     _faster_whisper(
+        "distil-large-v3.5",
+        "Distil-Whisper Large v3.5",
+        DISTIL_LARGE_V35_SIZE_BYTES,
+        ENGLISH_ONLY,
+        "Most accurate English · distilled",
+        8,
+        repository="distil-whisper/distil-large-v3.5-ct2",
+        license_name=MIT_LICENSE,
+    ),
+    _faster_whisper(
         "distil-large-v3",
         "Distil-Whisper Large v3",
         DISTIL_LARGE_V3_SIZE_BYTES,
@@ -1602,6 +1684,13 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "Most accurate · distilled",
         VERY_HIGH_MEMORY_RAM_GB,
         license_name=MIT_LICENSE,
+        retired=True,
+        replacement_id="faster-whisper:distil-large-v3.5",
+        retirement_reason=(
+            "v3.5 is the same architecture and within 1 MB of the same download, and it is the "
+            "one the Open ASR Leaderboard measures: 5.40 average WER, ahead of full Whisper "
+            "Large v3 at 5.78 and Turbo at 6.36."
+        ),
     ),
     _whisperkit(
         "openai_whisper-tiny", "WhisperKit Tiny", _megabytes("66"), MULTILINGUAL, FASTEST_QUALITY, 4
@@ -1645,6 +1734,13 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         MULTILINGUAL,
         BALANCED_QUALITY,
         8,
+        retired=True,
+        replacement_id=WHISPERKIT_COMPRESSED_LARGE_ID,
+        retirement_reason=(
+            "On the same LibriSpeech run this scores 3.95% WER against 2.49% for the compressed "
+            "Large v3, which is 142 MB larger and needs no more memory. The compressed Small "
+            "build stays as the genuinely small option."
+        ),
     ),
     _whisperkit(
         "openai_whisper-large-v3-v20240930_626MB",
@@ -1652,7 +1748,11 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         _megabytes("626"),
         MULTILINGUAL,
         MOST_ACCURATE_QUALITY,
-        HIGH_MEMORY_RAM_GB,
+        # Now the only full-quality WhisperKit tier, so it has to be offered to
+        # the 8 GB Macs that used to pick Small. A 626 MB Core ML model is well
+        # within that budget; the old 12 GB floor was inherited from the 1.6 GB
+        # build this entry replaces.
+        8,
     ),
     _whisperkit(
         "openai_whisper-large-v3-v20240930_turbo",
@@ -1661,6 +1761,13 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         MULTILINGUAL,
         MOST_ACCURATE_QUALITY,
         VERY_HIGH_MEMORY_RAM_GB,
+        retired=True,
+        replacement_id=WHISPERKIT_COMPRESSED_LARGE_ID,
+        retirement_reason=(
+            "Argmax's own evaluation runs both builds over the 2,620 LibriSpeech utterances: "
+            "2.40% WER here against 2.49% for the compressed build. Eight hundredths of a WER "
+            "point is not worth 984 MB of download and 16 GB of required RAM."
+        ),
     ),
     _whisper_cpp(
         "ggml-tiny.en.bin",
@@ -1700,16 +1807,22 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "whisper.cpp Medium EN",
         _megabytes("1500"),
         ENGLISH_ONLY,
-        "Accurate",
+        ACCURATE_QUALITY,
         HIGH_MEMORY_RAM_GB,
+        retired=True,
+        replacement_id=WHISPER_TURBO_REPLACEMENT_ID,
+        retirement_reason=WHISPER_TURBO_RETIREMENT_REASON,
     ),
     _whisper_cpp(
         "ggml-medium.bin",
         "whisper.cpp Medium",
         _megabytes("1500"),
         MULTILINGUAL,
-        "Accurate",
+        ACCURATE_QUALITY,
         HIGH_MEMORY_RAM_GB,
+        retired=True,
+        replacement_id=WHISPER_TURBO_REPLACEMENT_ID,
+        retirement_reason=WHISPER_TURBO_RETIREMENT_REASON,
     ),
     _whisper_cpp(
         "whisper-medium-q4_1.bin",
@@ -1732,8 +1845,11 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "whisper.cpp Large v3 Turbo",
         _megabytes("1620"),
         MULTILINGUAL,
-        MOST_ACCURATE_QUALITY,
-        VERY_HIGH_MEMORY_RAM_GB,
+        TURBO_QUALITY,
+        # Now the top whisper.cpp tier, so it has to be offered to the machines
+        # the retired Medium entries used to serve. A 1.6 GB f16 model needs
+        # about 2.5 GB resident, which a 12 GB host has to spare.
+        HIGH_MEMORY_RAM_GB,
     ),
     _whisper_cpp(
         "ggml-large-v3-q5_0.bin",
@@ -1796,6 +1912,14 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         MULTILINGUAL,
         MOST_ACCURATE_QUALITY,
         24,
+        retired=True,
+        replacement_id="faster-whisper:large-v3",
+        retirement_reason=(
+            "These are the most accurate Whisper weights there are — 5.78 average WER on the "
+            "Open ASR Leaderboard against Turbo's 6.36 — but not at 3 GB and 24 GB of RAM "
+            "through a CLI that reloads them on every request. The faster-whisper entry runs "
+            "the same weights as a resident INT8 model instead."
+        ),
     ),
 )
 
@@ -1833,7 +1957,9 @@ class _CatalogRecommender:
         return {
             f"{ENGINE_SHERPA_ONNX}:parakeet-tdt-0.6b-v3-int8",
             f"{ENGINE_SHERPA_ONNX}:parakeet-tdt-0.6b-v2-int8",
-            f"{ENGINE_FASTER_WHISPER}:small",
+            # Turbo is the one Whisper tier a CPU-only host can run at a usable
+            # speed: same encoder as Large v3, four decoder layers instead of 32.
+            f"{ENGINE_FASTER_WHISPER}:large-v3-turbo",
             f"{ENGINE_FASTER_WHISPER}:distil-medium.en",
         }
 

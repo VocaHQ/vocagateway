@@ -18,6 +18,16 @@ DEVICE_DIRECTORY_NAME = "device"
 DEFAULT_VOCAMAC_APPLICATION_PATH = Path("/Applications/VocaMac.app")
 GIBIBYTE = 1024**3
 MEBIBYTE = 1024
+# ggml and CTranslate2 split work evenly across the threads they are given, so a
+# thread pinned to an efficiency core (or descheduled by a cgroup quota) holds the
+# whole batch back. Threads are therefore counted in physical performance cores,
+# clamped by the container quota, and capped: past this point the per-layer sync
+# cost outweighs the extra core on every model this catalog ships.
+MAXIMUM_INFERENCE_THREADS = 8
+# No CPU this gateway targets runs more than two threads per core, so a
+# reported topology claiming fewer cores than that is not believable and is
+# treated as a floor rather than a count. See `_linux_physical_cpus`.
+MAXIMUM_THREADS_PER_CORE = 2
 
 # Engines that cannot run on every host, and the requirement the WebUI shows.
 # The desktop-app adapters are the strictest: Handy ships for macOS, and VocaMac
@@ -202,11 +212,69 @@ class _SysProbe:
 
 class _CpuSets:
     @classmethod
+    def inference_threads(cls, configured: int = 0) -> int:
+        """Threads an inference engine should use on this host.
+
+        `configured` is the operator's explicit override from the WebUI; 0 means
+        "decide for me", which is the default every engine starts with.
+        """
+        if configured > 0:
+            return configured
+        logical = os.cpu_count() or 1
+        cores = min(cls.physical_cpu_count(logical), int(cls.effective_cpu_count(logical)) or 1)
+        return max(1, min(cores, MAXIMUM_INFERENCE_THREADS))
+
+    @classmethod
+    def physical_cpu_count(cls, logical_cpus: int) -> int:
+        """Physical cores, preferring performance cores on Apple silicon."""
+        if platform.system() == "Darwin":
+            return cls._darwin_physical_cpus(logical_cpus)
+        return cls._linux_physical_cpus(logical_cpus)
+
+    @classmethod
     def effective_cpu_count(cls, logical_cpus: int) -> float:
         limits = [float(logical_cpus)]
         cls._append_quota(limits)
         cls._append_cpuset(limits)
         return round(min(limits), 2)
+
+    @classmethod
+    def _darwin_physical_cpus(cls, logical_cpus: int) -> int:
+        for key in ("hw.perflevel0.physicalcpu", "hw.physicalcpu"):
+            raw = _SysProbe.sysctl(key)
+            if raw.isdigit() and int(raw) > 0:
+                return int(raw)
+        return logical_cpus
+
+    @classmethod
+    def _linux_physical_cpus(cls, logical_cpus: int) -> int:
+        try:
+            cpuinfo = Path("/proc/cpuinfo").read_text(encoding=UTF8_ENCODING)
+        except OSError:
+            return logical_cpus
+        cores = cls._cpuinfo_cores(cpuinfo)
+        if not cores:
+            return logical_cpus
+        # Some hypervisors report one identical (physical id, core id) pair for
+        # every vCPU. Believing that would run a 16-vCPU guest single-threaded,
+        # so a count that implies more than two threads per core is discarded.
+        return max(len(cores), logical_cpus // MAXIMUM_THREADS_PER_CORE)
+
+    @classmethod
+    def _cpuinfo_cores(cls, cpuinfo: str) -> set[tuple[str, str]]:
+        """Unique (physical id, core id) pairs, which is one entry per real core."""
+        cores: set[tuple[str, str]] = set()
+        package = ""
+        for line in cpuinfo.splitlines():
+            key, _, entry = line.partition(KEY_VALUE_SEPARATOR)
+            label = key.strip().lower()
+            if label == "processor":
+                package = ""
+            elif label == "physical id":
+                package = entry.strip()
+            elif label == "core id":
+                cores.add((package, entry.strip()))
+        return cores
 
     @classmethod
     def _append_quota(cls, limits: list[float]) -> None:
@@ -488,6 +556,7 @@ class _HostDetector:
 
 
 detect_system = _HostDetector.detect
+inference_thread_count = _CpuSets.inference_threads
 engine_requirement = _EngineHost.requirement
 engine_runs_on = _EngineHost.runs_on
 engine_runs_here = _EngineHost.runs_here

@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import builtins
+import math
+import random
 import wave
+from array import array
 from pathlib import Path
 
 import pytest
+from pytest import MonkeyPatch
 
-from app.audio import FFmpegNormalizer
+from app.audio import FFmpegNormalizer, _root_mean_square
 from app.errors import InvalidAudioError, SilentAudioError
 
 MAXIMUM_RECORDING_DURATION_SECONDS = 120
@@ -48,3 +53,32 @@ async def test_silence_is_rejected(tmp_path: Path) -> None:
         await FFmpegNormalizer().normalize(
             source, tmp_path / "output.wav", MAXIMUM_RECORDING_DURATION_SECONDS
         )
+
+
+def _pure_python_rms(samples: array[int]) -> float:
+    return math.sqrt(sum(sample * sample for sample in samples) / len(samples))
+
+
+@pytest.mark.parametrize("sample_count", [1, 5, 1000, 48_000])
+def test_both_rms_paths_agree_exactly(sample_count: int, monkeypatch: MonkeyPatch) -> None:
+    """The vectorized path must not shift the silence threshold.
+
+    numpy comes in with the engine extras and is missing from a core install,
+    so the two branches decide the same recordings are silent or they disagree
+    about which uploads the gateway rejects.
+    """
+    random.seed(sample_count)
+    samples = array("h", [random.randint(-32768, 32767) for _ in range(sample_count)])
+    expected = _pure_python_rms(samples)
+
+    assert _root_mean_square(samples) == pytest.approx(expected)
+
+    real_import = builtins.__import__
+
+    def without_numpy(name: str, *arguments: object, **keywords: object) -> object:
+        if name == "numpy":
+            raise ImportError(name)
+        return real_import(name, *arguments, **keywords)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(builtins, "__import__", without_numpy)
+    assert _root_mean_square(samples) == pytest.approx(expected)

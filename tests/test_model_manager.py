@@ -12,7 +12,12 @@ from urllib import request as urllib_request
 import pytest
 
 from app import model_manager
-from app.catalog import DEFAULT_CATALOG, RETIRED_CATALOG, CatalogModel
+from app.catalog import (
+    DEFAULT_CATALOG,
+    RETIRED_CATALOG,
+    CatalogModel,
+    recommended_ids,
+)
 from app.model_manager import (
     DownloadInProgressError,
     ModelIntegrityError,
@@ -21,6 +26,7 @@ from app.model_manager import (
     UnknownModelError,
     normalize_sha256,
 )
+from app.system import SystemInfo
 
 TINY_FILE_SIZE_BYTES = 11
 TINY_FOLDER_SIZE_BYTES = 30
@@ -232,7 +238,7 @@ def test_catalog_includes_all_moonshine_lan_aaa() -> None:
         entries["faster-whisper:distil-medium.en"].huggingface_repo
         == "Systran/faster-distil-whisper-medium.en"
     )
-    assert entries["faster-whisper:distil-large-v3"].license_name == "MIT"
+    assert entries["faster-whisper:distil-large-v3.5"].license_name == "MIT"
 
 
 def test_retired_moonshine_installation_remains_manageable(tmp_path: Path) -> None:
@@ -1171,3 +1177,142 @@ def test_language_names_are_escaped() -> None:
     )
     assert "<script>" not in html
     assert "&lt;script&gt;" in html
+
+
+def test_installed_path_agrees_with_the_full_scan(manager: ModelManager) -> None:
+    """The cheap lookup must not disagree with the listing it short-circuits.
+
+    `installed_path` resolves one model from the catalog index instead of
+    sizing every install, so the two have to stay in step for catalog models,
+    custom files, and models that are simply not there.
+    """
+    whisper_dir = manager.models_dir / WHISPER_CPP_ENGINE
+    whisper_dir.mkdir(parents=True)
+    (whisper_dir / "ggml-tiny.bin").write_bytes(b"abc")
+    (whisper_dir / "strange.gguf").write_bytes(b"custom-bytes")
+    kit_dir = manager.models_dir / WHISPERKIT_ENGINE / WHISPERKIT_TINY_KEY
+    kit_dir.mkdir(parents=True)
+    (kit_dir / CONFIG_FILE_NAME).write_text(EMPTY_JSON_OBJECT)
+
+    scanned = {model.id: model.path for model in manager.installed()}
+
+    for model_id, path in scanned.items():
+        assert manager.installed_path(model_id) == path
+    assert manager.installed_path("whisper.cpp:absent.bin") is None
+    assert manager.installed_path("custom:never-downloaded.bin") is None
+
+    # A half-extracted WhisperKit folder has no config.json, so neither the
+    # scan nor the lookup may call it installed.
+    (manager.models_dir / WHISPERKIT_ENGINE / "incomplete").mkdir()
+    assert "custom:incomplete" not in {model.id for model in manager.installed()}
+    assert manager.installed_path("custom:incomplete") is None
+
+
+def test_whisper_cpp_tiers_beaten_by_turbo_are_retired() -> None:
+    """Medium and non-turbo Large v3 cost more than Turbo and score no better.
+
+    Retiring them keeps existing installations manageable — they still appear,
+    with a replacement — while removing them from what the WebUI offers.
+    """
+    retired = {model.id: model for model in RETIRED_CATALOG}
+    active = {model.id for model in DEFAULT_CATALOG}
+    superseded = {
+        "whisper.cpp:ggml-medium.bin",
+        "whisper.cpp:ggml-medium.en.bin",
+        "whisper.cpp:ggml-large-v3.bin",
+    }
+
+    assert superseded <= set(retired)
+    assert not superseded & active
+    for model_id in superseded:
+        replacement = retired[model_id].replacement_id
+        assert replacement in active
+        assert retired[model_id].retirement_reason
+
+
+def test_the_catalog_offers_a_whisper_tier_a_cpu_host_can_actually_run() -> None:
+    """Large v3 Turbo keeps Whisper's encoder and drops 28 decoder layers.
+
+    Without it the fastest multilingual Whisper a CPU-only host could pick was
+    `small`; `large-v3` decodes far too slowly to dictate against.
+    """
+    entries = {model.id: model for model in DEFAULT_CATALOG}
+    turbo = entries["faster-whisper:large-v3-turbo"]
+
+    assert turbo.huggingface_repo == "deepdml/faster-whisper-large-v3-turbo-ct2"
+    assert turbo.size_bytes < entries["faster-whisper:large-v3"].size_bytes
+    assert turbo.minimum_ram_gb < entries["faster-whisper:large-v3"].minimum_ram_gb
+
+
+def _system_info(*, ram_gb: float, is_apple_silicon: bool) -> SystemInfo:
+    return SystemInfo(
+        os_name="Darwin" if is_apple_silicon else "Linux",
+        os_version="",
+        arch="arm64" if is_apple_silicon else "x86_64",
+        chip="",
+        ram_gb=ram_gb,
+        is_apple_silicon=is_apple_silicon,
+        ffmpeg_path=None,
+        whisper_cpp_path=None,
+        whisperkit_cli_path=None,
+        handy_installed=False,
+        vocamac_installed=False,
+        logical_cpus=8,
+        effective_cpus=8.0,
+        containerized=False,
+        accelerators=(),
+        cpu_features=(),
+    )
+
+
+@pytest.mark.parametrize("ram_gb", [4.0, 8.0, 16.0, 64.0])
+@pytest.mark.parametrize("apple", [True, False])
+def test_no_recommendation_points_at_a_retired_model(ram_gb: float, apple: bool) -> None:
+    """A recommendation for a model the WebUI refuses to download is a dead end."""
+    active = {model.id for model in DEFAULT_CATALOG}
+    system_info = _system_info(ram_gb=ram_gb, is_apple_silicon=apple)
+
+    assert recommended_ids(system_info) <= active
+
+
+def test_quantized_variants_are_kept_only_where_they_earn_their_size() -> None:
+    """Argmax evaluates both WhisperKit Large v3 builds on the same LibriSpeech run.
+
+    The compressed build costs 0.08 WER points (2.49% against 2.40%) and saves
+    984 MB, so only one of the pair belongs in the catalog. The compressed Small
+    build survives separately because it serves a smaller footprint, not the
+    same one.
+    """
+    active = {model.id for model in DEFAULT_CATALOG}
+    retired = {model.id for model in RETIRED_CATALOG}
+
+    assert "whisperkit:openai_whisper-large-v3-v20240930_626MB" in active
+    assert "whisperkit:openai_whisper-small_216MB" in active
+    assert "whisperkit:openai_whisper-large-v3-v20240930_turbo" in retired
+    assert "whisperkit:openai_whisper-small" in retired
+
+
+def test_the_english_only_builds_are_not_treated_as_duplicates() -> None:
+    """`.en` variants are separately trained weights, not a second quantization.
+
+    They measure better on English than the multilingual build of the same size
+    (3.56% against 3.95% WER for WhisperKit Small), so both stay.
+    """
+    active = {model.id for model in DEFAULT_CATALOG}
+
+    for key in ("tiny", "base", "small", "medium"):
+        assert f"faster-whisper:{key}" in active
+        assert f"faster-whisper:{key}.en" in active
+
+
+def test_no_turbo_build_claims_to_be_the_most_accurate() -> None:
+    """Turbo trades accuracy for speed, and the picker must not say otherwise.
+
+    The Open ASR Leaderboard puts Whisper Large v3 Turbo at 6.36 average WER
+    against full Large v3's 5.78, and the catalog offers both — plus the Q5
+    build of the full weights. Letting Turbo wear the top accuracy label sends
+    people to the least accurate of the three.
+    """
+    for model in DEFAULT_CATALOG:
+        if "turbo" in model.key.lower():
+            assert model.quality != "Most accurate", model.id
