@@ -27,36 +27,48 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
     # pairing_html is ignored: pairing lives under Pair & test so Overview stays
     # a status dashboard after the one-time setup is done.
     del pairing_html
-    is_mac = status.system.os.startswith("Darwin")
-    machine_label = "Mac" if is_mac else "server"
-    ffmpeg_hint = "brew install ffmpeg" if is_mac else "Install FFmpeg with your package manager"
-    engine_hint = (
-        "brew install whisper-cpp or whisperkit-cli"
-        if is_mac
-        else "Install vocagateway[engines] (sherpa-onnx / faster-whisper) or use Docker"
-    )
     ready = (
         status.setup.token_configured
         and status.setup.ffmpeg_available
         and status.setup.engine_ready
     )
-    # Network exposure warning lives in the top app banner + Settings panel.
-    hero_copy = (
+    onboarding = _onboarding_context(status.system.os, ready)
+    return render(
+        "overview/page.html",
+        ready=ready,
+        hero_copy=_hero_copy(ready),
+        operations_html=operations_fragment(status.metrics, status.readiness),
+        system_panel_html=_system_panel(
+            status.system, status.version, onboarding["machine_label"], status.commit
+        ),
+        dependencies_html=_dependencies_panel(status.dependencies),
+        onboarding_html=_onboarding_steps(status, ready=ready, **onboarding),
+    )
+
+
+def _hero_copy(ready: bool) -> str:
+    """Keep the readiness state copy close to the page composition."""
+    return (
         "Pair a phone or run a quick test when you want."
         if ready
         else "Finish the steps below, then pair your phone."
     )
-    return render(
-        "overview/page.html",
-        ready=ready,
-        hero_copy=hero_copy,
-        operations_html=operations_fragment(status.metrics, status.readiness),
-        system_panel_html=_system_panel(
-            status.system, status.version, machine_label, status.commit
+
+
+def _onboarding_context(os_name: str, ready: bool) -> dict[str, str]:
+    """Build the platform-specific values required by the onboarding panel."""
+    is_mac = os_name.startswith("Darwin")
+    return {
+        "machine_label": "Mac" if is_mac else "server",
+        "ffmpeg_hint": "brew install ffmpeg"
+        if is_mac
+        else "Install FFmpeg with your package manager",
+        "engine_hint": (
+            "brew install whisper-cpp or whisperkit-cli"
+            if is_mac
+            else "Install vocagateway[engines] (sherpa-onnx / faster-whisper) or use Docker"
         ),
-        dependencies_html=_dependencies_panel(status.dependencies),
-        onboarding_html=_onboarding_steps(status, machine_label, ffmpeg_hint, engine_hint, ready),
-    )
+    }
 
 
 def _system_panel(
