@@ -21,12 +21,13 @@ TEST_EFFECTIVE_CPU_COUNT = 8.0
 TEST_GATEWAY_PORT = 8765
 TEST_UPTIME_SECONDS = 42
 TEST_LATENCY_MS = 500
+WHISPER_CPP_ENGINE = "whisper.cpp"
 
 
 def _status(paths: PathStatus) -> AdminStatusResponse:
     return AdminStatusResponse(
         version="0.1.0",
-        engine=EngineStatus(id="whisper.cpp", name="whisper.cpp:ggml-base.en.bin", ready=True),
+        engine=EngineStatus(id=WHISPER_CPP_ENGINE, name="whisper.cpp:ggml-base.en.bin", ready=True),
         system=SystemStatus(
             os="Darwin",
             arch="arm64",
@@ -66,7 +67,7 @@ def _status(paths: PathStatus) -> AdminStatusResponse:
 
 
 def _config() -> ConfigResponse:
-    return ConfigResponse(engine="auto", available_engines=["auto", "whisper.cpp"])
+    return ConfigResponse(engine="auto", available_engines=["auto", WHISPER_CPP_ENGINE])
 
 
 def test_redact_home_path_replaces_home_prefix() -> None:
@@ -114,8 +115,8 @@ def test_build_diagnostics_bundle_redacts_c_a8a1b() -> None:
         )
     )
     config = ConfigResponse(
-        engine="whisper.cpp",
-        available_engines=["auto", "whisper.cpp"],
+        engine=WHISPER_CPP_ENGINE,
+        available_engines=["auto", WHISPER_CPP_ENGINE],
         whisper_model=f"{home}/.local/share/vocagateway/models/whisper.cpp/ggml-base.en.bin",
         whisperkit_model=f"{home}/.local/share/vocagateway/models/whisperkit/openai_whisper-tiny",
         faster_whisper_model=f"{home}/.local/share/vocagateway/models/faster-whisper/tiny.en",

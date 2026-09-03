@@ -27,6 +27,9 @@ from starlette.websockets import WebSocketDisconnect
 from app.config import Settings
 from app.main import create_app
 
+AUTHORIZATION_HEADER = "Authorization"
+ADMIN_STATUS_PATH = "/v1/admin/status"
+
 # Reachable without a credential by design: the phone polls health before it
 # has been paired, and container orchestrators probe liveness with no secret.
 PUBLIC_PATHS = frozenset({"/health", "/health/live", "/health/ready"})
@@ -76,7 +79,7 @@ def websocket_close_code(client: TestClient, header: str | None) -> int | None:
     accepted socket (which then closes 4409 for this non-streaming engine)
     means the credential passed.
     """
-    headers = {"Authorization": header} if header is not None else {}
+    headers = {AUTHORIZATION_HEADER: header} if header is not None else {}
     try:
         with client.websocket_connect("/v1/stream", headers=headers):
             return None
@@ -109,7 +112,7 @@ async def test_non_ascii_credential_is_rejected_r_aa(
     as `str` therefore let any unauthenticated client turn every authenticated
     route into a 500 with a stack trace, just by sending one high byte.
     """
-    response = await auth_client.get("/v1/admin/status", headers=[(b"authorization", raw)])
+    response = await auth_client.get(ADMIN_STATUS_PATH, headers=[(b"authorization", raw)])
     assert response.status_code == HTTP_401_UNAUTHORIZED
     assert response.json()["error"]["code"] == "unauthorized"
 
@@ -120,7 +123,7 @@ async def test_rejection_never_echoes_the_supplie_aaa(
     """A 401 body must not reflect the attempt back into logs or proxies."""
     wrong = "wrong-" + ("y" * MINIMUM_VALID_TOKEN_BYTES)
     response = await auth_client.get(
-        "/v1/admin/status", headers={"Authorization": f"Bearer {wrong}"}
+        ADMIN_STATUS_PATH, headers={AUTHORIZATION_HEADER: f"Bearer {wrong}"}
     )
     assert response.status_code == HTTP_401_UNAUTHORIZED
     assert wrong not in response.text
@@ -216,7 +219,7 @@ def test_websocket_and_http_agree_on_every_d806a(sync_client: TestClient) -> Non
     ]
     for header in forms:
         http_ok = (
-            sync_client.get("/v1/admin/status", headers={"Authorization": header}).status_code
+            sync_client.get(ADMIN_STATUS_PATH, headers={AUTHORIZATION_HEADER: header}).status_code
             != HTTP_401_UNAUTHORIZED
         )
         socket_ok = websocket_close_code(sync_client, header) is None
@@ -226,7 +229,7 @@ def test_websocket_and_http_agree_on_every_d806a(sync_client: TestClient) -> Non
 def test_websocket_accepts_a_device_token_u_b7078(
     sync_client: TestClient,
 ) -> None:
-    auth = {"Authorization": f"Bearer {TOKEN}"}
+    auth = {AUTHORIZATION_HEADER: f"Bearer {TOKEN}"}
     created = sync_client.post("/v1/admin/tokens", headers=auth, json={"label": "Pixel 6a"})
     assert created.status_code == HTTP_200_OK
     device = created.json()
@@ -247,7 +250,7 @@ def test_websocket_accepts_a_device_token_u_b7078(
 async def test_rotating_a_device_token_invalidate_a(
     auth_client: httpx.AsyncClient,
 ) -> None:
-    auth = {"Authorization": f"Bearer {TOKEN}"}
+    auth = {AUTHORIZATION_HEADER: f"Bearer {TOKEN}"}
     created = await auth_client.post("/v1/admin/tokens", headers=auth, json={"label": "Old phone"})
     original = created.json()["token"]
     token_id = created.json()["id"]
@@ -258,10 +261,12 @@ async def test_rotating_a_device_token_invalidate_a(
     assert replacement != original
     assert rotated.json()["id"] == token_id
 
-    old = await auth_client.get("/v1/admin/status", headers={"Authorization": f"Bearer {original}"})
+    old = await auth_client.get(
+        ADMIN_STATUS_PATH, headers={AUTHORIZATION_HEADER: f"Bearer {original}"}
+    )
     assert old.status_code == HTTP_401_UNAUTHORIZED
     new = await auth_client.get(
-        "/v1/admin/status", headers={"Authorization": f"Bearer {replacement}"}
+        ADMIN_STATUS_PATH, headers={AUTHORIZATION_HEADER: f"Bearer {replacement}"}
     )
     assert new.status_code == HTTP_200_OK
 
@@ -270,10 +275,10 @@ async def test_bootstrap_token_cannot_be_rotated_aa(
     auth_client: httpx.AsyncClient,
 ) -> None:
     """It lives in a file or the environment; rotating it here would be theatre."""
-    auth = {"Authorization": f"Bearer {TOKEN}"}
+    auth = {AUTHORIZATION_HEADER: f"Bearer {TOKEN}"}
     response = await auth_client.post("/v1/admin/tokens/bootstrap/rotate", headers=auth)
     assert response.status_code == HTTP_409_CONFLICT
     assert response.json()["error"]["code"] == "bootstrap_token_not_rotatable"
 
-    still_works = await auth_client.get("/v1/admin/status", headers=auth)
+    still_works = await auth_client.get(ADMIN_STATUS_PATH, headers=auth)
     assert still_works.status_code == HTTP_200_OK

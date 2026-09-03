@@ -12,6 +12,8 @@ from app.errors import LanguageUnsupportedError
 from app.models.base import EngineTranscription, TranscriptionOptions
 from app.models.mlx_audio import MLXAudioEngine
 
+ENGLISH_LANGUAGE_CODE = "en"
+
 
 async def test_mlx_audio_keeps_one_model_loaded(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -27,9 +29,11 @@ async def test_mlx_audio_keeps_one_model_loaded(
         text = " persistent mlx result "
 
     class Model:
-        def generate(self, audio_path: str, *, language: str = "en") -> TranscriptionResult:
+        def generate(
+            self, audio_path: str, *, language: str = ENGLISH_LANGUAGE_CODE
+        ) -> TranscriptionResult:
             assert audio_path == str(audio)
-            assert language == "en"
+            assert language == ENGLISH_LANGUAGE_CODE
             return TranscriptionResult()
 
     def load(path: Path) -> Model:
@@ -62,7 +66,7 @@ async def test_mlx_audio_keeps_one_model_loaded(
 
     engine = MLXAudioEngine(root, catalog_model)
     first = await engine.transcribe(audio, TranscriptionOptions("en-US", "raw"))
-    second = await engine.transcribe(audio, TranscriptionOptions("en", "raw"))
+    second = await engine.transcribe(audio, TranscriptionOptions(ENGLISH_LANGUAGE_CODE, "raw"))
 
     assert isinstance(first, EngineTranscription)
     assert first.text == "persistent mlx result"
@@ -85,7 +89,7 @@ async def test_mlx_rejects_a_language_the_model_c_aa(tmp_path: Path) -> None:
         languages="English only",
         quality="Fast",
         minimum_ram_gb=1,
-        language_codes=("en",),
+        language_codes=(ENGLISH_LANGUAGE_CODE,),
     )
 
     engine = MLXAudioEngine(root, catalog_model)

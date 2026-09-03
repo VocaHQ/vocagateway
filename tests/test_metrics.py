@@ -6,6 +6,7 @@ SUCCESSFUL_TRANSCRIPTION_LATENCY_MS = 120
 FAILED_TRANSCRIPTION_LATENCY_MS = 280
 AVERAGE_TRANSCRIPTION_LATENCY_MS = 200
 METRICS_SAMPLE_INTERVAL_SECONDS = 5.0
+SAMPLE_MODEL_ID = "t"
 
 
 def test_runtime_metrics_track_work_and_outcomes() -> None:
@@ -42,10 +43,10 @@ def test_runtime_metrics_track_work_and_outcomes() -> None:
 
 def test_runtime_metrics_history_samples_wh_aa(monkeypatch) -> None:
     metrics = RuntimeMetrics(concurrency_limit=1)
-    clock = {"t": 1000.0}
+    clock = {SAMPLE_MODEL_ID: 1000.0}
 
     def fake_monotonic() -> float:
-        return clock["t"]
+        return clock[SAMPLE_MODEL_ID]
 
     monkeypatch.setattr("app.metrics.time.monotonic", fake_monotonic)
 
@@ -54,18 +55,18 @@ def test_runtime_metrics_history_samples_wh_aa(monkeypatch) -> None:
     assert first.history[0].queue_depth == 0
 
     # Inside the min interval: no second sample.
-    clock["t"] += 1.0
+    clock[SAMPLE_MODEL_ID] += 1.0
     second = metrics.snapshot(sample=True)
     assert len(second.history) == 1
 
     metrics.queued()
-    clock["t"] += METRICS_SAMPLE_INTERVAL_SECONDS
+    clock[SAMPLE_MODEL_ID] += METRICS_SAMPLE_INTERVAL_SECONDS
     third = metrics.snapshot(sample=True)
     assert len(third.history) == 2
     assert third.history[-1].queue_depth == 1
 
     # Cap the ring buffer.
     for _ in range(HISTORY_MAX + 5):
-        clock["t"] += METRICS_SAMPLE_INTERVAL_SECONDS
+        clock[SAMPLE_MODEL_ID] += METRICS_SAMPLE_INTERVAL_SECONDS
         metrics.snapshot(sample=True)
     assert len(metrics.snapshot().history) == HISTORY_MAX
