@@ -5,7 +5,7 @@ import asyncio
 import json
 import os
 import sys
-import urllib.request
+from urllib import request as urllib_request
 
 import uvicorn
 
@@ -136,7 +136,7 @@ def status() -> None:
     settings = Settings.from_env()
     try:
         health_url = f"{local_webui_url(settings.bind_host, settings.port)}health"
-        with urllib.request.urlopen(health_url, timeout=2) as response:
+        with urllib_request.urlopen(health_url, timeout=2) as response:
             status_payload = json.load(response)
     except Exception as error:
         print(f"gateway unreachable: {error}", file=sys.stderr)
@@ -147,9 +147,9 @@ def status() -> None:
 def diagnostics() -> None:
     settings = Settings.from_env()
     url = f"{local_webui_url(settings.bind_host, settings.port)}v1/admin/diagnostics"
-    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {settings.token}"})
+    request = urllib_request.Request(url, headers={"Authorization": f"Bearer {settings.token}"})
     try:
-        with urllib.request.urlopen(request, timeout=5) as response:
+        with urllib_request.urlopen(request, timeout=5) as response:
             diagnostics_payload = json.load(response)
     except Exception as error:
         print(f"gateway unreachable or unauthorized: {error}", file=sys.stderr)

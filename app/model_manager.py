@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import http.client
 import json
 import re
 import shutil
 import tarfile
 import threading
 import time
-import urllib.error
-import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from http import client as http_client
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 from urllib.parse import urlparse
 
 from app.catalog import (
@@ -52,9 +52,9 @@ _RETRY_BACKOFF_SECONDS = 2.0
 _RETRYABLE_NETWORK_ERRORS = (
     TimeoutError,
     ConnectionError,
-    urllib.error.URLError,
-    http.client.IncompleteRead,
-    http.client.HTTPException,
+    urllib_error.URLError,
+    http_client.IncompleteRead,
+    http_client.HTTPException,
 )
 
 
@@ -645,8 +645,8 @@ def _list_repo_folder(
     while url:
 
         def fetch_page(page_url: str = url) -> tuple[list[dict[str, Any]], str]:
-            request = urllib.request.Request(page_url, headers={"User-Agent": USER_AGENT})
-            with urllib.request.urlopen(request, timeout=60) as response:
+            request = urllib_request.Request(page_url, headers={"User-Agent": USER_AGENT})
+            with urllib_request.urlopen(request, timeout=60) as response:
                 return json.load(response), response.headers.get("Link") or ""
 
         payload, link = _call_with_retries(fetch_page)
@@ -782,9 +782,9 @@ def _download_file(
     def attempt() -> str:
         nonlocal bytes_this_attempt
         bytes_this_attempt = 0
-        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        request = urllib_request.Request(url, headers={"User-Agent": USER_AGENT})
         digest = hashlib.sha256()
-        with urllib.request.urlopen(request, timeout=60) as response:
+        with urllib_request.urlopen(request, timeout=60) as response:
             length = response.headers.get("Content-Length")
             if state.total_bytes is None and length and length.isdigit():
                 state.total_bytes = int(length)
