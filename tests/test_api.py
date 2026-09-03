@@ -25,6 +25,15 @@ TEST_AUDIO_SIZE = 200
 TEST_AUDIO_BYTES = b"x" * TEST_AUDIO_SIZE
 OVERSIZED_AUDIO_SIZE = 20_001
 OVERSIZED_AUDIO_BYTES = b"x" * OVERSIZED_AUDIO_SIZE
+SESSIONS_API_PATH = "/v1/sessions"
+CLIENT_SESSION_ID_KEY = "client_session_id"
+STYLE_KEY = "style"
+CONTENT_TYPE_HEADER = "Content-Type"
+WAV_CONTENT_TYPE = "audio/wav"
+STATUS_KEY = "status"
+LANGUAGES_KEY = "languages"
+JOB_ID_KEY = "job_id"
+TRANSCRIPT_KEY = "transcript"
 
 
 class UnreadyEngine:
@@ -57,13 +66,13 @@ async def test_unsupported_language_is_reported_a_d68a4(
     async with httpx.AsyncClient(transport=transport, base_url="http://gateway") as client:
         session_id = uuid4()
         await client.post(
-            "/v1/sessions",
+            SESSIONS_API_PATH,
             headers=authorization,
-            json={"client_session_id": str(session_id), "language": "hi", "style": "raw"},
+            json={CLIENT_SESSION_ID_KEY: str(session_id), "language": "hi", STYLE_KEY: "raw"},
         )
         await client.put(
             f"/v1/sessions/{session_id}/audio",
-            headers={**authorization, "Content-Type": "audio/wav"},
+            headers={**authorization, CONTENT_TYPE_HEADER: WAV_CONTENT_TYPE},
             content=audio_bytes,
         )
         finished = await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
@@ -84,13 +93,13 @@ async def test_health_is_public_and_separates_eng_aa(
     response = await client.get("/health")
     assert response.status_code == HTTP_200_OK
     assert response.json() == {
-        "status": "ok",
+        STATUS_KEY: "ok",
         "engine_ready": True,
         "engine": "fake-local-model",
         "streaming_supported": False,
         # A stub engine has no catalog entry, so the gateway makes no claim and
         # clients keep every language selectable.
-        "languages": [],
+        LANGUAGES_KEY: [],
         "detects_language_automatically": False,
     }
 
@@ -99,10 +108,10 @@ async def test_health_is_public_and_separates_eng_aa(
     repeated = await client.get("/health")
 
     assert liveness.status_code == HTTP_200_OK
-    assert liveness.json()["status"] == "ok"
+    assert liveness.json()[STATUS_KEY] == "ok"
     assert liveness.json()["uptime_seconds"] >= 0
     assert readiness.status_code == HTTP_200_OK
-    assert readiness.json()["status"] == "ready"
+    assert readiness.json()[STATUS_KEY] == "ready"
     assert readiness.json()["engine"] == "fake-local-model"
     assert repeated.status_code == HTTP_200_OK
     assert fake_engine.health_calls == 1
@@ -131,7 +140,7 @@ async def test_readiness_can_fail_without_failing_ca0a7(tmp_path) -> None:
 
     assert liveness.status_code == HTTP_200_OK
     assert readiness.status_code == HTTP_503_SERVICE_UNAVAILABLE
-    assert readiness.json()["status"] == "not_ready"
+    assert readiness.json()[STATUS_KEY] == "not_ready"
     assert readiness.json()["engine"] == "missing-model"
 
 
@@ -142,18 +151,18 @@ async def test_complete_flow_is_idempotent_and_de_aaa(
 ) -> None:
     session_id = uuid4()
     payload = {
-        "client_session_id": str(session_id),
+        CLIENT_SESSION_ID_KEY: str(session_id),
         "language": "auto",
-        "style": "raw",
+        STYLE_KEY: "raw",
     }
-    created = await client.post("/v1/sessions", headers=authorization, json=payload)
-    repeated = await client.post("/v1/sessions", headers=authorization, json=payload)
+    created = await client.post(SESSIONS_API_PATH, headers=authorization, json=payload)
+    repeated = await client.post(SESSIONS_API_PATH, headers=authorization, json=payload)
     assert created.status_code == HTTP_200_OK
-    assert repeated.json()["job_id"] == created.json()["job_id"]
+    assert repeated.json()[JOB_ID_KEY] == created.json()[JOB_ID_KEY]
 
     uploaded = await client.put(
         f"/v1/sessions/{session_id}/audio",
-        headers={**authorization, "Content-Type": "audio/wav"},
+        headers={**authorization, CONTENT_TYPE_HEADER: WAV_CONTENT_TYPE},
         content=audio_bytes,
     )
     assert uploaded.status_code == HTTP_200_OK
@@ -162,9 +171,9 @@ async def test_complete_flow_is_idempotent_and_de_aaa(
     finished = await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
     finished_again = await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
     assert finished.status_code == HTTP_200_OK
-    assert finished.json()["transcript"] == "hello from the local model"
-    assert finished_again.json()["transcript"] == finished.json()["transcript"]
-    assert finished_again.json()["job_id"] == finished.json()["job_id"]
+    assert finished.json()[TRANSCRIPT_KEY] == "hello from the local model"
+    assert finished_again.json()[TRANSCRIPT_KEY] == finished.json()[TRANSCRIPT_KEY]
+    assert finished_again.json()[JOB_ID_KEY] == finished.json()[JOB_ID_KEY]
 
 
 async def test_session_accepts_writing_styles_and_aaaa(
@@ -173,17 +182,17 @@ async def test_session_accepts_writing_styles_and_aaaa(
 ) -> None:
     for style in ("formal", "casual", "very_casual", "excited"):
         response = await client.post(
-            "/v1/sessions",
+            SESSIONS_API_PATH,
             headers=authorization,
-            json={"client_session_id": str(uuid4()), "style": style},
+            json={CLIENT_SESSION_ID_KEY: str(uuid4()), STYLE_KEY: style},
         )
         assert response.status_code == HTTP_200_OK
-        assert response.json()["style"] == style
+        assert response.json()[STYLE_KEY] == style
 
     invalid = await client.post(
-        "/v1/sessions",
+        SESSIONS_API_PATH,
         headers=authorization,
-        json={"client_session_id": str(uuid4()), "style": "pirate"},
+        json={CLIENT_SESSION_ID_KEY: str(uuid4()), STYLE_KEY: "pirate"},
     )
     assert invalid.status_code == HTTP_422_UNPROCESSABLE_CONTENT
 
@@ -195,20 +204,20 @@ async def test_writing_style_is_applied_to_the_lo_aaaaa(
 ) -> None:
     session_id = uuid4()
     await client.post(
-        "/v1/sessions",
+        SESSIONS_API_PATH,
         headers=authorization,
-        json={"client_session_id": str(session_id), "style": "formal"},
+        json={CLIENT_SESSION_ID_KEY: str(session_id), STYLE_KEY: "formal"},
     )
     await client.put(
         f"/v1/sessions/{session_id}/audio",
-        headers={**authorization, "Content-Type": "audio/wav"},
+        headers={**authorization, CONTENT_TYPE_HEADER: WAV_CONTENT_TYPE},
         content=audio_bytes,
     )
 
     finished = await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
 
     assert finished.status_code == HTTP_200_OK
-    assert finished.json()["transcript"] == "Hello from the local model."
+    assert finished.json()[TRANSCRIPT_KEY] == "Hello from the local model."
 
 
 async def test_upload_rejects_unsupported_empty_a_f2c1d(
@@ -218,25 +227,25 @@ async def test_upload_rejects_unsupported_empty_a_f2c1d(
     async def create() -> str:
         session_id = str(uuid4())
         await client.post(
-            "/v1/sessions",
+            SESSIONS_API_PATH,
             headers=authorization,
-            json={"client_session_id": session_id},
+            json={CLIENT_SESSION_ID_KEY: session_id},
         )
         return session_id
 
     unsupported = await client.put(
         f"/v1/sessions/{await create()}/audio",
-        headers={**authorization, "Content-Type": "text/plain"},
+        headers={**authorization, CONTENT_TYPE_HEADER: "text/plain"},
         content=TEST_AUDIO_BYTES,
     )
     empty = await client.put(
         f"/v1/sessions/{await create()}/audio",
-        headers={**authorization, "Content-Type": "audio/wav"},
+        headers={**authorization, CONTENT_TYPE_HEADER: WAV_CONTENT_TYPE},
         content=b"x",
     )
     oversized = await client.put(
         f"/v1/sessions/{await create()}/audio",
-        headers={**authorization, "Content-Type": "audio/wav"},
+        headers={**authorization, CONTENT_TYPE_HEADER: WAV_CONTENT_TYPE},
         content=OVERSIZED_AUDIO_BYTES,
     )
     assert unsupported.status_code == HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -250,9 +259,9 @@ async def test_delete_is_idempotent(
 ) -> None:
     session_id = uuid4()
     await client.post(
-        "/v1/sessions",
+        SESSIONS_API_PATH,
         headers=authorization,
-        json={"client_session_id": str(session_id)},
+        json={CLIENT_SESSION_ID_KEY: str(session_id)},
     )
     first = await client.delete(f"/v1/sessions/{session_id}", headers=authorization)
     second = await client.delete(f"/v1/sessions/{session_id}", headers=authorization)
@@ -288,8 +297,8 @@ async def test_health_reports_what_the_loaded_mod_a(settings: Settings, audio_by
         payload = (await client.get("/health")).json()
 
     assert payload["detects_language_automatically"] is True
-    assert "hi" in payload["languages"] and "bn" in payload["languages"]
-    assert "en" not in payload["languages"]  # Dolphin is not trained on English
+    assert "hi" in payload[LANGUAGES_KEY] and "bn" in payload[LANGUAGES_KEY]
+    assert "en" not in payload[LANGUAGES_KEY]  # Dolphin is not trained on English
 
 
 class BoomEngine:
@@ -315,13 +324,13 @@ async def test_unexpected_finish_error_leaves_ses_f5519(
     async with httpx.AsyncClient(transport=transport, base_url="http://gateway") as client:
         session_id = uuid4()
         await client.post(
-            "/v1/sessions",
+            SESSIONS_API_PATH,
             headers=authorization,
-            json={"client_session_id": str(session_id), "language": "en", "style": "raw"},
+            json={CLIENT_SESSION_ID_KEY: str(session_id), "language": "en", STYLE_KEY: "raw"},
         )
         await client.put(
             f"/v1/sessions/{session_id}/audio",
-            headers={**authorization, "Content-Type": "audio/wav"},
+            headers={**authorization, CONTENT_TYPE_HEADER: WAV_CONTENT_TYPE},
             content=audio_bytes,
         )
         with pytest.raises(RuntimeError, match="engine exploded"):
