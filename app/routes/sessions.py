@@ -97,7 +97,6 @@ async def upload_audio(
         audio_name=final.name,
         transcript=None,
         error_code=None,
-        preserve_audio_name=False,
     )
     return session_response(updated)
 

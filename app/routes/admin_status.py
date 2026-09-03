@@ -7,10 +7,7 @@ from app.admin_queries import config_response, status_payload
 from app.context import GatewayContextDependency, require_token
 from app.diagnostics import build_diagnostics_bundle
 from app.engine_state import engine_id
-from app.fragments.about import about_fragment
-from app.fragments.engine import engine_pill_fragment
-from app.fragments.exposure import exposure_banner_fragment
-from app.fragments.overview import operations_fragment, overview_fragment
+from app.fragments import about, engine, exposure, overview
 from app.schemas import AdminStatusResponse, DiagnosticsBundle, EngineStatus, ReadinessStatus
 from app.serializers import metrics_status
 
@@ -36,13 +33,13 @@ async def get_admin_diagnostics(
 @router.get("/ui/partials/overview", response_class=HTMLResponse)
 async def ui_overview(ctx: GatewayContextDependency) -> HTMLResponse:
     status = await status_payload(ctx)
-    return HTMLResponse(overview_fragment(status))
+    return HTMLResponse(overview.overview_fragment(status))
 
 
 @router.get("/ui/partials/about", response_class=HTMLResponse)
 async def ui_about(ctx: GatewayContextDependency) -> HTMLResponse:
     status = await status_payload(ctx)
-    return HTMLResponse(about_fragment(status.version, status.commit))
+    return HTMLResponse(about.about_fragment(status.version, status.commit))
 
 
 @router.get("/ui/partials/operations", response_class=HTMLResponse)
@@ -51,7 +48,7 @@ async def ui_operations(ctx: GatewayContextDependency) -> HTMLResponse:
     metrics = ctx.service.metrics.snapshot(sample=True)
     readiness_details = await ctx.readiness.details()
     return HTMLResponse(
-        operations_fragment(
+        overview.operations_fragment(
             metrics_status(metrics),
             ReadinessStatus(
                 probe_age_seconds=round(readiness_details.checked_age_seconds, 3),
@@ -66,7 +63,7 @@ async def ui_operations(ctx: GatewayContextDependency) -> HTMLResponse:
 async def ui_engine_pill(ctx: GatewayContextDependency) -> HTMLResponse:
     state = await ctx.readiness.probe()
     return HTMLResponse(
-        engine_pill_fragment(
+        engine.engine_pill_fragment(
             EngineStatus(id=engine_id(ctx), name=state.name, ready=state.ready),
             bind_host=ctx.settings.bind_host,
             port=ctx.settings.port,
@@ -79,7 +76,7 @@ async def ui_exposure_banner(ctx: GatewayContextDependency) -> HTMLResponse:
     import platform
 
     return HTMLResponse(
-        exposure_banner_fragment(
+        exposure.exposure_banner_fragment(
             ctx.settings.bind_host,
             is_mac=platform.system() == "Darwin",
         )

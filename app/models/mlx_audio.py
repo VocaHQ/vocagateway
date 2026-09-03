@@ -51,16 +51,9 @@ class MLXAudioEngine:
     async def transcribe(
         self, audio_path: Path, options: TranscriptionOptions
     ) -> EngineTranscription:
-        self._validate_language(options.language)
-        if not (await self.health()).ready:
-            raise EngineUnavailableError(
-                "MLX Audio requires an Apple-silicon Mac, the apple engine extra, and a "
-                "downloaded MLX model."
-            )
+        await self._validate_request(options.language)
         async with self._inference_lock:
-            load_started = time.monotonic()
-            model, loaded_now = await self._ensure_model()
-            model_load_ms = _elapsed_ms(load_started) if loaded_now else 0
+            model, model_load_ms = await self._ensure_model()
             inference_started = time.monotonic()
             try:
                 text = await asyncio.wait_for(
@@ -70,9 +63,8 @@ class MLXAudioEngine:
             except TimeoutError as error:
                 raise TranscriptionProcessError("MLX Audio transcription timed out.") from error
             except Exception as error:
-                raise TranscriptionProcessError(
-                    f"MLX Audio failed: {str(error)[-MAXIMUM_ERROR_MESSAGE_LENGTH:]}"
-                ) from error
+                error_suffix = str(error)[-MAXIMUM_ERROR_MESSAGE_LENGTH:]
+                raise TranscriptionProcessError(f"MLX Audio failed: {error_suffix}") from error
             if not text:
                 raise TranscriptionProcessError("MLX Audio returned an empty transcript.")
             return EngineTranscription(
@@ -81,23 +73,24 @@ class MLXAudioEngine:
                 inference_ms=_elapsed_ms(inference_started),
             )
 
-    async def _ensure_model(self) -> tuple[Any, bool]:
+    async def _ensure_model(self) -> tuple[Any, int]:
         if self._model is not None:
-            return self._model, False
+            return self._model, 0
+        started = time.monotonic()
         async with self._load_lock:
             if self._model is not None:
-                return self._model, False
+                return self._model, 0
             self._model = await asyncio.to_thread(self._load_model_sync)
-            return self._model, True
+            return self._model, _elapsed_ms(started)
 
     def _load_model_sync(self) -> Any:
         if self.model_root is None:
             raise EngineUnavailableError("No MLX Audio model is selected.")
-        from mlx_audio.stt.utils import load
+        from mlx_audio.stt import utils as mlx_utils
 
-        return load(self.model_root)
+        return mlx_utils.load(self.model_root)
 
-    def _validate_language(self, language: str) -> None:
+    async def _validate_request(self, language: str) -> None:
         supported = self.catalog_model.language_codes if self.catalog_model else ()
         normalized = _language_code(language)
         if language != "auto" and supported and normalized not in supported:
@@ -105,6 +98,11 @@ class MLXAudioEngine:
             raise LanguageUnsupportedError(
                 f"The selected MLX model does not support {language}. Choose Auto, {choices}, "
                 "or another model."
+            )
+        if not (await self.health()).ready:
+            raise EngineUnavailableError(
+                "MLX Audio requires an Apple-silicon Mac, the apple engine extra, and a "
+                "downloaded MLX model."
             )
 
 

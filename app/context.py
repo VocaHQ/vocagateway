@@ -5,19 +5,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, Request
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from fastapi.security.utils import get_authorization_scheme_param
-from starlette.status import HTTP_401_UNAUTHORIZED
+from fastapi import Depends, Request, security
+from starlette import status
 
-from app.config import Settings
-from app.engines import EngineManager, EngineProvider
-from app.errors import APIProblem
-from app.model_manager import ModelManager
-from app.readiness import ReadinessMonitor
-from app.runtime_config import RuntimeConfig
-from app.service import TranscriptionService
-from app.storage import SessionRepository
+from app import (
+    config,
+    engines,
+    errors,
+    model_manager,
+    readiness,
+    runtime_config,
+    service,
+    storage,
+)
 from app.tokens import TokenStore
 
 VERSION = "0.1.0"
@@ -29,7 +29,7 @@ BOOTSTRAP_TOKEN_ID = "bootstrap"
 # `Authorization: Bearer <token>` to every Try-it-out request. auto_error=False
 # keeps rejection in `require_token`, so a missing or malformed header still
 # produces this API's 401 error envelope instead of Starlette's 403 default.
-bearer_scheme = HTTPBearer(
+bearer_scheme = security.HTTPBearer(
     scheme_name="Bearer token",
     description=(
         "The gateway bearer token, or any device token. Paste the value alone — "
@@ -49,15 +49,15 @@ class GatewayContext:
     independently importable `APIRouter()` instances.
     """
 
-    settings: Settings
-    repository: SessionRepository
-    manager: ModelManager
+    settings: config.Settings
+    repository: storage.SessionRepository
+    manager: model_manager.ModelManager
     token_store: TokenStore
-    engine_provider: EngineProvider
-    engine_manager: EngineManager | None
-    service: TranscriptionService
-    readiness: ReadinessMonitor
-    pairing_config: RuntimeConfig
+    engine_provider: engines.EngineProvider
+    engine_manager: engines.EngineManager | None
+    service: service.TranscriptionService
+    readiness: readiness.ReadinessMonitor
+    pairing_config: runtime_config.RuntimeConfig
     config_path: Path
 
     def token_matches(self, supplied: str) -> bool:
@@ -68,7 +68,7 @@ class GatewayContext:
         return self.token_store.matches(supplied)
 
     def token_is_valid(self, authorization: str | None) -> bool:
-        scheme, credentials = get_authorization_scheme_param(authorization)
+        scheme, credentials = security.utils.get_authorization_scheme_param(authorization)
         if scheme.lower() != "bearer" or not credentials:
             return False
         return self.token_matches(credentials)
@@ -80,7 +80,9 @@ def get_context(request: Request) -> GatewayContext:
 
 
 GatewayContextDependency = Annotated[GatewayContext, Depends(get_context)]
-TokenCredentialsDependency = Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)]
+TokenCredentialsDependency = Annotated[
+    security.HTTPAuthorizationCredentials | None, Depends(bearer_scheme)
+]
 
 
 def require_token(
@@ -91,4 +93,8 @@ def require_token(
     # non-bearer scheme; all three are the same 401 as a wrong token.
     presented_token = "" if credentials is None else credentials.credentials
     if not ctx.token_matches(presented_token):
-        raise APIProblem(HTTP_401_UNAUTHORIZED, "unauthorized", "A valid bearer token is required.")
+        raise errors.APIProblem(
+            status.HTTP_401_UNAUTHORIZED,
+            "unauthorized",
+            "A valid bearer token is required.",
+        )

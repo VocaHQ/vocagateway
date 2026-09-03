@@ -100,7 +100,6 @@ class TranscriptionService:
                 transcript=transcript,
                 error_code=None,
                 audio_name=None if self.settings.delete_successful_audio else stored.audio_name,
-                preserve_audio_name=not self.settings.delete_successful_audio,
             )
             if self.settings.delete_successful_audio:
                 source.unlink(missing_ok=True)

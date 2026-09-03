@@ -43,15 +43,17 @@ class ReadinessMonitor:
         now = time.monotonic()
         if self._engine is not engine:
             self._reset_for_engine(engine)
-        if not force and self._health is not None and now - self._checked_at < self.ttl_seconds:
-            return self._health
+        cached = self._cached_health(now, force)
+        if cached is not None:
+            return cached
         async with self._lock:
             engine = self.provider.current()
             now = time.monotonic()
             if self._engine is not engine:
                 self._reset_for_engine(engine)
-            if not force and self._health is not None and now - self._checked_at < self.ttl_seconds:
-                return self._health
+            cached = self._cached_health(now, force)
+            if cached is not None:
+                return cached
             try:
                 health = await engine.health()
             except Exception:
@@ -100,3 +102,10 @@ class ReadinessMonitor:
         self._checked_at = INITIAL_CHECK_TIMESTAMP
         self._warmup_state = "pending"
         self._warmed_bytes = 0
+
+    def _cached_health(self, now: float, force: bool) -> EngineHealth | None:
+        if force or self._health is None:
+            return None
+        if now - self._checked_at >= self.ttl_seconds:
+            return None
+        return self._health

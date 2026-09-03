@@ -19,8 +19,8 @@ from app.errors import APIProblem
 from app.fragments.engine import engine_update_fragment
 from app.fragments.settings import settings_fragment
 from app.fragments.test_panel import pair_and_test_fragment
+from app.fragments.tokens import tokens_fragment_str
 from app.pairing_view import pairing_html
-from app.routes.admin_tokens import tokens_fragment_str
 from app.schemas import (
     ConfigResponse,
     ConfigUpdateRequest,

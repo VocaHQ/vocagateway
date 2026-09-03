@@ -2,8 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from app.admin_queries import token_entries
+from app.context import GatewayContext
 from app.schemas import DeviceTokenEntry
 from app.templating import render
+
+
+def tokens_fragment_str(ctx: GatewayContext, *, new_token: tuple[str, str] | None = None) -> str:
+    return tokens_fragment(token_entries(ctx), new_token=new_token)
 
 
 def tokens_fragment(

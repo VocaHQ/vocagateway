@@ -7,9 +7,9 @@ from fastapi.responses import HTMLResponse
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_409_CONFLICT
 
 from app.admin_queries import token_entries
-from app.context import BOOTSTRAP_TOKEN_ID, GatewayContext, GatewayContextDependency, require_token
+from app.context import BOOTSTRAP_TOKEN_ID, GatewayContextDependency, require_token
 from app.errors import APIProblem
-from app.fragments.tokens import tokens_fragment
+from app.fragments.tokens import tokens_fragment_str
 from app.schemas import (
     DeviceTokenCreateRequest,
     DeviceTokenCreateResponse,
@@ -18,11 +18,7 @@ from app.schemas import (
 )
 
 router = APIRouter(dependencies=[Depends(require_token)])
-TokenLabelForm = Annotated[str, Form(min_length=1, max_length=100)]
-
-
-def tokens_fragment_str(ctx: GatewayContext, *, new_token: tuple[str, str] | None = None) -> str:
-    return tokens_fragment(token_entries(ctx), new_token=new_token)
+TokenLabelForm = Annotated[str | None, Form()]
 
 
 @router.get("/v1/admin/tokens", response_model=list[DeviceTokenEntry])
@@ -79,18 +75,21 @@ async def rotate_admin_token(
     )
 
 
-@router.get("/ui/partials/tokens", response_class=HTMLResponse)
-async def ui_tokens(ctx: GatewayContextDependency) -> HTMLResponse:
-    return HTMLResponse(tokens_fragment_str(ctx))
-
-
-@router.post("/ui/partials/tokens", response_class=HTMLResponse)
-async def ui_create_token(
-    label: TokenLabelForm,
+@router.api_route(
+    "/ui/partials/tokens",
+    methods=["GET", "POST"],
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def ui_tokens(
     ctx: GatewayContextDependency,
+    label: TokenLabelForm = None,
 ) -> HTMLResponse:
-    record, plaintext = ctx.token_store.create(label)
-    return HTMLResponse(tokens_fragment_str(ctx, new_token=(record.label, plaintext)))
+    new_token = None
+    if label:
+        record, plaintext = ctx.token_store.create(label)
+        new_token = (record.label, plaintext)
+    return HTMLResponse(tokens_fragment_str(ctx, new_token=new_token))
 
 
 @router.delete("/ui/partials/tokens/{token_id}", response_class=HTMLResponse)

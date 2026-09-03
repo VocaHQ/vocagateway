@@ -89,7 +89,7 @@ async def ui_rotate_pairing_token(
     url: OptionalUrlForm = None,
 ) -> HTMLResponse:
     rotated = ctx.token_store.rotate(token_id)
-    resolved_id = rotated[0].id if rotated is not None else token_id
+    resolved_id = token_id if rotated is None else rotated[0].id
     return HTMLResponse(pairing_html(ctx, url, resolved_id, persist=True))
 
 
