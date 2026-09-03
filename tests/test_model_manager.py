@@ -116,6 +116,25 @@ def _assert_pins_match_catalog(pins: dict[str, dict[str, object]]) -> None:
             assert normalize_sha256(record["sha256"]) == record["sha256"]
         for name, digest in record.get("file_digests", {}).items():
             assert normalize_sha256(digest) == digest, f"{model_id}:{name}"
+    expected_pins = {
+        model.id
+        for model in DEFAULT_CATALOG
+        if model.huggingface_repo
+        or (model.download_url and "huggingface.co/" in model.download_url)
+    }
+    missing = expected_pins - set(pins)
+    assert not missing, (
+        f"Hugging Face model pins are missing for {sorted(missing)}. "
+        "Run: uv run scripts/harvest-model-pins.py"
+    )
+    for model in DEFAULT_CATALOG:
+        record = pins.get(model.id, {})
+        if model.huggingface_repo:
+            assert record.get("revision"), f"{model.id} is missing its revision pin"
+            assert record.get("file_digests"), f"{model.id} is missing its file digest pins"
+        if model.download_url and "huggingface.co/" in model.download_url:
+            assert record.get("revision"), f"{model.id} is missing its revision pin"
+            assert record.get("sha256"), f"{model.id} is missing its SHA-256 pin"
 
 
 def _write_huggingface_fixture(mirror: Path, repository: str) -> None:
@@ -528,6 +547,100 @@ async def test_root_huggingface_folder_download(
     installed = manager.installed_path(FASTER_WHISPER_TINY_ID)
     assert installed is not None
     assert (installed / MODEL_BINARY_NAME).read_bytes() == b"model"
+
+
+async def test_folder_failure_waits_for_workers_before_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late worker must not recreate staging after another worker fails."""
+    import threading
+
+    slow_started = threading.Event()
+    slow_finished = threading.Event()
+
+    monkeypatch.setattr(
+        model_manager,
+        LIST_REPO_FOLDER_NAME,
+        lambda repo, name, revision=MAIN_REVISION: [
+            RepoFile(CONFIG_FILE_NAME, 2),
+            RepoFile("weights.bin", 7),
+        ],
+    )
+
+    def fake_download(
+        url: str,
+        destination: Path,
+        state: object,
+        cancel: object,
+        display_name: str,
+        expected_sha256: str | None = None,
+    ) -> str:
+        if display_name == CONFIG_FILE_NAME:
+            assert slow_started.wait(timeout=1)
+            raise RuntimeError("simulated file failure")
+        slow_started.set()
+        time.sleep(0.05)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"weights")
+        slow_finished.set()
+        return _sha256(b"weights")
+
+    monkeypatch.setattr(model_manager, "_download_file", fake_download)
+    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(TINY_FOLDER,))
+
+    manager.start_download(TINY_FOLDER.id)
+    await asyncio.wait_for(_wait_finished(manager, TINY_FOLDER.id), timeout=5)
+
+    assert slow_finished.is_set()
+    state = manager.download_state(TINY_FOLDER.id)
+    assert state is not None and state.status == FAILED_STATUS
+    assert "simulated file failure" in (state.error or "")
+    assert manager.installed_path(TINY_FOLDER.id) is None
+    assert not (manager.models_dir / WHISPERKIT_ENGINE / "openai_whisper-tiny.partial").exists()
+
+
+async def test_folder_download_bounds_parallel_file_requests(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Large repositories must not burst one request per listed file."""
+    import threading
+
+    names = (CONFIG_FILE_NAME, *(f"weight-{index}.bin" for index in range(12)))
+    monkeypatch.setattr(
+        model_manager,
+        LIST_REPO_FOLDER_NAME,
+        lambda repo, name, revision=MAIN_REVISION: [RepoFile(filename, 1) for filename in names],
+    )
+    active = maximum_active = 0
+    lock = threading.Lock()
+
+    def fake_download(
+        url: str,
+        destination: Path,
+        state: object,
+        cancel: object,
+        display_name: str,
+        expected_sha256: str | None = None,
+    ) -> str:
+        nonlocal active, maximum_active
+        with lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+        time.sleep(0.02)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"x")
+        with lock:
+            active -= 1
+        return _sha256(b"x")
+
+    monkeypatch.setattr(model_manager, "_download_file", fake_download)
+    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(TINY_FOLDER,))
+
+    manager.start_download(TINY_FOLDER.id)
+    await asyncio.wait_for(_wait_finished(manager, TINY_FOLDER.id), timeout=5)
+
+    _assert_download_completed(manager, TINY_FOLDER.id)
+    assert maximum_active <= model_manager.MAX_PARALLEL_FILE_DOWNLOADS
 
 
 async def test_moonshine_download_uses_catalog_la_aa(
@@ -979,15 +1092,71 @@ def test_download_file_retries_transient_ne_aaaa(
     assert state.downloaded_bytes == len(payload)
 
 
-def test_download_file_does_not_retry_hash_b4fa3(tmp_path: Path) -> None:
-    """A mismatch fails immediately -- it is not assumed to be transient."""
+def test_download_file_retries_hash_mismatch_against_same_pin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A transient bad response may recover, but only against the same pin."""
     import threading
 
+    attempts = {COUNT_KEY: 0}
+
+    class FakeResponse:
+        def __init__(self, payload: bytes) -> None:
+            self._buffer = io.BytesIO(payload)
+            self.headers = {"Content-Length": str(len(payload))}
+
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+        def read(self, size: int) -> bytes:
+            return self._buffer.read(size)
+
+    def fake_urlopen(request: object, timeout: int = 60) -> FakeResponse:
+        attempts[COUNT_KEY] += 1
+        payload = b"bad-bytes" if attempts[COUNT_KEY] < 3 else REAL_BYTES
+        return FakeResponse(payload)
+
+    monkeypatch.setattr(urllib_request, "urlopen", fake_urlopen)
+    destination = tmp_path / DOWNLOAD_DESTINATION_NAME
+    state = model_manager.DownloadState(model_id=DOWNLOAD_STATE_MODEL_ID)
+
+    digest = model_manager._download_file(
+        "https://example.invalid/model.bin",
+        destination,
+        state,
+        threading.Event(),
+        DOWNLOAD_DESTINATION_NAME,
+        _sha256(REAL_BYTES),
+    )
+
+    assert attempts[COUNT_KEY] == 3
+    assert digest == _sha256(REAL_BYTES)
+    assert destination.read_bytes() == REAL_BYTES
+    assert state.downloaded_bytes == len(REAL_BYTES)
+
+
+def test_download_file_rejects_persistent_hash_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Retries never weaken the pin or leave rejected bytes behind."""
+    import threading
+
+    attempts = {COUNT_KEY: 0}
     source = tmp_path / "source.bin"
     source.write_bytes(REAL_BYTES)
     destination = tmp_path / DOWNLOAD_DESTINATION_NAME
     state = model_manager.DownloadState(model_id=DOWNLOAD_STATE_MODEL_ID)
 
+    original_urlopen = urllib_request.urlopen
+
+    def counted_urlopen(request: object, timeout: int = 60):
+        attempts[COUNT_KEY] += 1
+        return original_urlopen(request, timeout=timeout)
+
+    monkeypatch.setattr(urllib_request, "urlopen", counted_urlopen)
     with pytest.raises(ModelIntegrityError):
         model_manager._download_file(
             source.as_uri(),
@@ -998,6 +1167,54 @@ def test_download_file_does_not_retry_hash_b4fa3(tmp_path: Path) -> None:
             HELLO_SHA256,
         )
 
+    assert attempts[COUNT_KEY] == 3
+    assert state.downloaded_bytes == 0
+    assert not destination.exists()
+
+
+def test_download_file_retries_a_silent_short_response(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """EOF before Content-Length is a retryable transfer, not a valid file."""
+    import threading
+
+    attempts = {COUNT_KEY: 0}
+
+    class FakeResponse:
+        def __init__(self, payload: bytes) -> None:
+            self._buffer = io.BytesIO(payload)
+            self.headers = {"Content-Length": str(len(REAL_BYTES))}
+
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+        def read(self, size: int) -> bytes:
+            return self._buffer.read(size)
+
+    def fake_urlopen(request: object, timeout: int = 60) -> FakeResponse:
+        attempts[COUNT_KEY] += 1
+        payload = REAL_BYTES[:3] if attempts[COUNT_KEY] == 1 else REAL_BYTES
+        return FakeResponse(payload)
+
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(urllib_request, "urlopen", fake_urlopen)
+    destination = tmp_path / DOWNLOAD_DESTINATION_NAME
+    state = model_manager.DownloadState(model_id=DOWNLOAD_STATE_MODEL_ID)
+
+    digest = model_manager._download_file(
+        "https://example.invalid/model.bin",
+        destination,
+        state,
+        threading.Event(),
+        DOWNLOAD_DESTINATION_NAME,
+    )
+
+    assert attempts[COUNT_KEY] == 2
+    assert digest == _sha256(REAL_BYTES)
+    assert destination.read_bytes() == REAL_BYTES
     assert state.downloaded_bytes == len(REAL_BYTES)
 
 

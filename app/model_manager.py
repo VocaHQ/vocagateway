@@ -8,7 +8,7 @@ import shutil
 import tarfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from functools import partial
 from http import client as http_client
@@ -51,10 +51,7 @@ _SHA256_PATTERN = re.compile(r"\A[0-9a-f]{64}\Z")
 
 _MAX_NETWORK_ATTEMPTS = 3
 _RETRY_BACKOFF_SECONDS = 2.0
-# Transport-level failures only. A hash mismatch is deliberately excluded: it
-# is retried by the user, not automatically, since a mismatch can mean the
-# host is compromised and silently re-trying could mask that rather than
-# surface it.
+MAX_PARALLEL_FILE_DOWNLOADS = 4
 _RETRYABLE_NETWORK_ERRORS = (
     TimeoutError,
     ConnectionError,
@@ -69,6 +66,8 @@ def _call_with_retries[ActionResult](
     *,
     on_retry: Callable[[], None] | None = None,
     attempts: int = _MAX_NETWORK_ATTEMPTS,
+    retryable_errors: tuple[type[BaseException], ...] = _RETRYABLE_NETWORK_ERRORS,
+    retry_delay: Callable[[BaseException, int], float] | None = None,
 ) -> ActionResult:
     """Call *action* up to *attempts* times, retrying transport failures.
 
@@ -80,12 +79,15 @@ def _call_with_retries[ActionResult](
     for attempt in range(1, attempts + 1):
         try:
             return action()
-        except _RETRYABLE_NETWORK_ERRORS:
+        except retryable_errors as error:
             if on_retry is not None:
                 on_retry()
             if attempt == attempts:
                 raise
-            time.sleep(_RETRY_BACKOFF_SECONDS * attempt)
+            delay = _RETRY_BACKOFF_SECONDS * attempt
+            if retry_delay is not None:
+                delay = retry_delay(error, attempt)
+            time.sleep(delay)
     raise AssertionError("unreachable")  # pragma: no cover
 
 
@@ -147,6 +149,50 @@ class _DownloadHandle:
     state: DownloadState
     cancel: threading.Event
     task: asyncio.Task[None] | None = field(default=None)
+
+
+@dataclass(slots=True)
+class _DownloadBatch:
+    downloads: tuple[Callable[[], Awaitable[None]], ...]
+    download_handle: _DownloadHandle
+    semaphore: asyncio.Semaphore = field(
+        default_factory=lambda: asyncio.Semaphore(MAX_PARALLEL_FILE_DOWNLOADS)
+    )
+
+    async def run(self) -> None:
+        """Wait for every worker to stop before reporting a folder failure."""
+        outcomes = await asyncio.gather(
+            *(self._run_one(download) for download in self.downloads),
+            return_exceptions=True,
+        )
+        failure = self._first_failure(outcomes)
+        if failure is not None:
+            raise failure
+        if any(isinstance(outcome, DownloadCancelled) for outcome in outcomes):
+            raise DownloadCancelled
+
+    async def _run_one(self, download: Callable[[], Awaitable[None]]) -> None:
+        try:
+            await self._run_bounded(download)
+        except Exception:
+            self.download_handle.cancel.set()
+            raise
+
+    async def _run_bounded(self, download: Callable[[], Awaitable[None]]) -> None:
+        async with self.semaphore:
+            if self.download_handle.cancel.is_set():
+                raise DownloadCancelled
+            await download()
+
+    def _first_failure(self, outcomes: list[None | BaseException]) -> Exception | None:
+        return next(
+            (
+                outcome
+                for outcome in outcomes
+                if isinstance(outcome, Exception) and not isinstance(outcome, DownloadCancelled)
+            ),
+            None,
+        )
 
 
 class ModelManager:
@@ -383,7 +429,7 @@ class ModelManager:
         partial_dir = final_dir.with_name(f"{final_dir.name}{PARTIAL_DIRECTORY_SUFFIX}")
         extraction_dir = final_dir.with_name(f"{final_dir.name}.extracting")
         archive_path = final_dir.with_name(f"{final_dir.name}.download")
-        _clear_staging_directory(partial_dir)
+        shutil.rmtree(partial_dir, ignore_errors=True)
         _remove_tree(extraction_dir)
         archive_path.unlink(missing_ok=True)
         try:
@@ -465,14 +511,18 @@ class ModelManager:
                 for name in model.required_files
                 if (entry := available.get(name)) is not None
             )
-            await asyncio.gather(
-                *(
-                    self._download_required_file(
-                        model, partial_dir, download_handle, name, available
-                    )
-                    for name in model.required_files
+            downloads = tuple(
+                partial(
+                    self._download_required_file,
+                    model,
+                    partial_dir,
+                    download_handle,
+                    name,
+                    available,
                 )
+                for name in model.required_files
             )
+            await _DownloadBatch(downloads, download_handle).run()
             missing = [name for name in model.required_files if not (partial_dir / name).is_file()]
             if missing:
                 raise RuntimeError(_missing_model_files_message(missing))
@@ -590,12 +640,11 @@ class ModelManager:
         _remove_tree(partial_dir)
         partial_dir.mkdir(parents=True, exist_ok=True)
         try:
-            await asyncio.gather(
-                *(
-                    self._download_repo_file(model, partial_dir, download_handle, entry)
-                    for entry in files
-                )
+            downloads = tuple(
+                partial(self._download_repo_file, model, partial_dir, download_handle, entry)
+                for entry in files
             )
+            await _DownloadBatch(downloads, download_handle).run()
             if download_handle.cancel.is_set():
                 raise DownloadCancelled
             final_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -856,13 +905,17 @@ def _download_file(
     before raising, so a rejected download cannot be left behind for an engine
     to load later.
 
-    A dropped connection or read timeout mid-stream is retried a few times
-    (see `_call_with_retries`) rather than surfaced immediately, since it can
-    otherwise produce a truncated file that fails SHA-256 verification for a
-    reason that has nothing to do with the source's integrity.
+    A dropped connection, short response, or checksum mismatch is retried a
+    few times against the exact same expected digest. A persistent mismatch is
+    still rejected; retrying can only accept bytes that satisfy the pin.
     """
     download = _DownloadAttempt(url, destination, state, cancel, display_name, expected_sha256)
-    return _call_with_retries(download.run, on_retry=download.rollback)
+    return _call_with_retries(
+        download.run,
+        on_retry=download.rollback,
+        retryable_errors=(*_RETRYABLE_NETWORK_ERRORS, ModelIntegrityError),
+        retry_delay=download.retry_delay,
+    )
 
 
 @dataclass
@@ -874,9 +927,11 @@ class _DownloadAttempt:
     display_name: str
     expected_sha256: str | None
     bytes_this_attempt: int = 0
+    response_size: int | None = None
 
     def run(self) -> str:
         self.bytes_this_attempt = 0
+        self.response_size = None
         request = urllib_request.Request(self.url, headers={"User-Agent": USER_AGENT})
         digest = hashlib.sha256()
         with urllib_request.urlopen(request, timeout=60) as response:
@@ -885,17 +940,27 @@ class _DownloadAttempt:
             self.state.current_file = self.display_name or self.destination.name
             with self.destination.open("wb") as output:
                 self._write_response(response, output, digest)
+        self._verify_response_size()
         actual = digest.hexdigest()
         self._verify_digest(actual)
         return actual
 
     def rollback(self) -> None:
-        self.state.downloaded_bytes -= self.bytes_this_attempt
+        self.destination.unlink(missing_ok=True)
+        self.state.downloaded_bytes = max(0, self.state.downloaded_bytes - self.bytes_this_attempt)
+
+    def retry_delay(self, error: BaseException, attempt: int) -> float:
+        """Retry a checksum mismatch immediately; back off for network failures."""
+        if isinstance(error, ModelIntegrityError):
+            return 0
+        return _RETRY_BACKOFF_SECONDS * attempt
 
     def _set_total_bytes(self, response: Any) -> None:
         length = response.headers.get("Content-Length")
-        if self.state.total_bytes is None and length and length.isdigit():
-            self.state.total_bytes = int(length)
+        if length and length.isdigit():
+            self.response_size = int(length)
+            if self.state.total_bytes is None:
+                self.state.total_bytes = self.response_size
 
     def _write_response(self, response: Any, output: Any, digest: Any) -> None:
         chunk = response.read(CHUNK_SIZE)
@@ -907,6 +972,12 @@ class _DownloadAttempt:
             self.bytes_this_attempt += len(chunk)
             self.state.downloaded_bytes += len(chunk)
             chunk = response.read(CHUNK_SIZE)
+
+    def _verify_response_size(self) -> None:
+        if self.response_size is None or self.bytes_this_attempt == self.response_size:
+            return
+        missing = max(0, self.response_size - self.bytes_this_attempt)
+        raise http_client.IncompleteRead(b"", missing)
 
     def _verify_digest(self, actual: str) -> None:
         if self.expected_sha256 is None or actual == self.expected_sha256:
@@ -924,10 +995,6 @@ def _directory_size(path: Path) -> int:
 
 def _remove_tree(path: Path) -> None:
     shutil.rmtree(path, ignore_errors=True)
-
-
-def _clear_staging_directory(path: Path) -> None:
-    _remove_tree(path)
 
 
 def _missing_model_files_message(missing: list[str]) -> str:
