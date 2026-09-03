@@ -17,6 +17,10 @@ from app.schemas import (
 from app.templating import render
 
 MAXIMUM_COMMIT_SUBJECT_LENGTH = 64
+DETAIL_KEY = "detail"
+LABEL_KEY = "label"
+VALUE_KEY = "value"
+CSS_KEY = "css"
 
 
 def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> str:
@@ -141,7 +145,7 @@ def _dependencies_panel(dependencies: list[DependencyStatus]) -> str:
             {
                 "name": dependency.name,
                 "available": dependency.available,
-                "detail": dependency.path or dependency.install_hint or "—",
+                DETAIL_KEY: dependency.path or dependency.install_hint or "—",
             }
             for dependency in ordered
         ],
@@ -321,47 +325,47 @@ def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessS
     queued = metrics.queue_depth
     metric_cards = [
         {
-            "label": "Uptime",
-            "value": _format_uptime(metrics.uptime_seconds),
-            "detail": "This process",
-            "css": "",
+            LABEL_KEY: "Uptime",
+            VALUE_KEY: _format_uptime(metrics.uptime_seconds),
+            DETAIL_KEY: "This process",
+            CSS_KEY: "",
         },
         {
-            "label": "Succeeded",
-            "value": str(ok),
-            "detail": "Completed transcriptions",
-            "css": "success",
+            LABEL_KEY: "Succeeded",
+            VALUE_KEY: str(ok),
+            DETAIL_KEY: "Completed transcriptions",
+            CSS_KEY: "success",
         },
         {
-            "label": "Failed",
-            "value": str(bad),
-            "detail": failed_detail,
-            "css": "failure" if bad else "",
+            LABEL_KEY: "Failed",
+            VALUE_KEY: str(bad),
+            DETAIL_KEY: failed_detail,
+            CSS_KEY: "failure" if bad else "",
         },
         {
-            "label": "Avg latency",
-            "value": average_latency if metrics.average_latency_ms is not None else "—",
-            "detail": latency_detail,
-            "css": "",
+            LABEL_KEY: "Avg latency",
+            VALUE_KEY: average_latency if metrics.average_latency_ms is not None else "—",
+            DETAIL_KEY: latency_detail,
+            CSS_KEY: "",
         },
         {
-            "label": "Last inference",
-            "value": inference_value,
-            "detail": inference_detail,
-            "css": "",
+            LABEL_KEY: "Last inference",
+            VALUE_KEY: inference_value,
+            DETAIL_KEY: inference_detail,
+            CSS_KEY: "",
         },
-        {"label": "Real-time factor", "value": rtf_value, "detail": rtf_detail, "css": ""},
+        {LABEL_KEY: "Real-time factor", VALUE_KEY: rtf_value, DETAIL_KEY: rtf_detail, CSS_KEY: ""},
         {
-            "label": "Model cache",
-            "value": warmup_label,
-            "detail": warmup_detail,
-            "css": readiness.warmup_state,
+            LABEL_KEY: "Model cache",
+            VALUE_KEY: warmup_label,
+            DETAIL_KEY: warmup_detail,
+            CSS_KEY: readiness.warmup_state,
         },
         {
-            "label": "Workload",
-            "value": f"{queued} queued",
-            "detail": f"{active} of {limit} active",
-            "css": "",
+            LABEL_KEY: "Workload",
+            VALUE_KEY: f"{queued} queued",
+            DETAIL_KEY: f"{active} of {limit} active",
+            CSS_KEY: "",
         },
     ]
     history = metrics.history

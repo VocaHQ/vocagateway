@@ -10,6 +10,10 @@ from pathlib import Path
 
 MACOS = "macOS"
 APPLE_SILICON = "Apple silicon"
+ARM64_ARCHITECTURE = "arm64"
+UTF8_ENCODING = "utf-8"
+KEY_VALUE_SEPARATOR = ":"
+DEVICE_DIRECTORY_NAME = "device"
 
 # Engines that cannot run on every host, and the requirement the WebUI shows.
 # The desktop-app adapters are the strictest: Handy ships for macOS, and VocaMac
@@ -60,7 +64,7 @@ def detect_system(
         arch=arch,
         chip=chip or arch,
         ram_gb=ram_gb,
-        is_apple_silicon=is_mac and arch == "arm64",
+        is_apple_silicon=is_mac and arch == ARM64_ARCHITECTURE,
         ffmpeg_path=shutil.which("ffmpeg"),
         whisper_cpp_path=(
             str(whisper_binary) if whisper_binary.is_file() else shutil.which("whisper-cli")
@@ -94,7 +98,7 @@ def engine_runs_here(engine: str) -> bool:
     return engine_runs_on(
         engine,
         is_mac=is_mac,
-        is_apple_silicon=is_mac and platform.machine() == "arm64",
+        is_apple_silicon=is_mac and platform.machine() == ARM64_ARCHITECTURE,
     )
 
 
@@ -132,7 +136,7 @@ def _ram_gb(is_mac: bool) -> float:
         return 0.0
     detected_bytes = pages * page_size
     try:
-        memory_limit = Path("/sys/fs/cgroup/memory.max").read_text(encoding="utf-8").strip()
+        memory_limit = Path("/sys/fs/cgroup/memory.max").read_text(encoding=UTF8_ENCODING).strip()
         if memory_limit != "max":
             detected_bytes = min(detected_bytes, int(memory_limit))
     except (OSError, ValueError):
@@ -142,9 +146,9 @@ def _ram_gb(is_mac: bool) -> float:
 
 def _linux_cpu_brand() -> str:
     try:
-        for line in Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
-            if line.lower().startswith(("model name", "hardware")) and ":" in line:
-                return line.split(":", 1)[1].strip()
+        for line in Path("/proc/cpuinfo").read_text(encoding=UTF8_ENCODING).splitlines():
+            if line.lower().startswith(("model name", "hardware")) and KEY_VALUE_SEPARATOR in line:
+                return line.split(KEY_VALUE_SEPARATOR, 1)[1].strip()
     except OSError:
         pass
     return platform.processor() or platform.machine()
@@ -153,7 +157,7 @@ def _linux_cpu_brand() -> str:
 def _effective_cpu_count(logical_cpus: int) -> float:
     limits = [float(logical_cpus)]
     try:
-        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text(encoding="utf-8").split()[:2]
+        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text(encoding=UTF8_ENCODING).split()[:2]
         if quota != "max" and int(period) > 0:
             limits.append(max(0.1, int(quota) / int(period)))
     except (OSError, ValueError):
@@ -163,7 +167,7 @@ def _effective_cpu_count(logical_cpus: int) -> float:
         Path("/sys/fs/cgroup/cpuset/cpuset.cpus"),
     ):
         try:
-            count = _count_cpu_set(candidate.read_text(encoding="utf-8").strip())
+            count = _count_cpu_set(candidate.read_text(encoding=UTF8_ENCODING).strip())
         except (OSError, ValueError):
             continue
         if count:
@@ -190,7 +194,7 @@ def _is_containerized() -> bool:
     if Path("/.dockerenv").exists() or os.environ.get("CONTAINER"):
         return True
     try:
-        cgroup = Path("/proc/1/cgroup").read_text(encoding="utf-8").lower()
+        cgroup = Path("/proc/1/cgroup").read_text(encoding=UTF8_ENCODING).lower()
     except OSError:
         return False
     return any(marker in cgroup for marker in ("docker", "containerd", "kubepods", "podman"))
@@ -199,7 +203,7 @@ def _is_containerized() -> bool:
 def _accelerators(is_mac: bool, arch: str) -> tuple[str, ...]:
     """Capability labels for the WebUI. Prefer named GPUs when tools are present."""
     accelerator_labels: list[str] = ["CPU"]
-    if is_mac and arch == "arm64":
+    if is_mac and arch == ARM64_ARCHITECTURE:
         accelerator_labels.append("Metal / Core ML")
     nvidia = _nvidia_gpu_labels()
     if nvidia:
@@ -216,7 +220,7 @@ def _accelerators(is_mac: bool, arch: str) -> tuple[str, ...]:
         Path("/dev/dri/renderD128").exists()
         and not nvidia
         and not amd
-        and not (is_mac and arch == "arm64")
+        and not (is_mac and arch == ARM64_ARCHITECTURE)
     ):
         accelerator_labels.append("Vulkan / VAAPI device")
     return tuple(accelerator_labels)
@@ -327,9 +331,9 @@ def _rocm_gpu_labels() -> list[str]:
     labels: list[str] = []
     for line in command_result.stdout.splitlines():
         # Typical: "GPU[0] : Card series: Radeon RX 7900 XTX"
-        if ":" not in line or "GPU[" not in line.upper():
+        if KEY_VALUE_SEPARATOR not in line or "GPU[" not in line.upper():
             continue
-        name = line.split(":", 1)[1].strip()
+        name = line.split(KEY_VALUE_SEPARATOR, 1)[1].strip()
         for prefix in ("Card series:", "Card model:", "Device Name:"):
             if name.startswith(prefix):
                 name = name[len(prefix) :].strip()
@@ -348,11 +352,11 @@ def _drm_amd_labels() -> list[str]:
     for card in sorted(root.glob("card[0-9]*")):
         if "-" in card.name:
             continue
-        vendor_path = card / "device" / "vendor"
-        label_path = card / "device" / "label"
-        uevent_path = card / "device" / "uevent"
+        vendor_path = card / DEVICE_DIRECTORY_NAME / "vendor"
+        label_path = card / DEVICE_DIRECTORY_NAME / "label"
+        uevent_path = card / DEVICE_DIRECTORY_NAME / "uevent"
         try:
-            vendor = vendor_path.read_text(encoding="utf-8").strip().lower()
+            vendor = vendor_path.read_text(encoding=UTF8_ENCODING).strip().lower()
         except OSError:
             continue
         # 0x1002 is AMD
@@ -360,10 +364,10 @@ def _drm_amd_labels() -> list[str]:
             continue
         name = ""
         with contextlib.suppress(OSError):
-            name = label_path.read_text(encoding="utf-8").strip()
+            name = label_path.read_text(encoding=UTF8_ENCODING).strip()
         if not name:
             try:
-                for line in uevent_path.read_text(encoding="utf-8").splitlines():
+                for line in uevent_path.read_text(encoding=UTF8_ENCODING).splitlines():
                     if line.startswith("PCI_ID=") or line.startswith("DRIVER="):
                         continue
                     if line.startswith("MODALIAS="):
@@ -372,18 +376,22 @@ def _drm_amd_labels() -> list[str]:
                 pass
         # product_name is common on some stacks
         for candidate in (
-            card / "device" / "product_name",
-            card / "device" / "marketing_name",
+            card / DEVICE_DIRECTORY_NAME / "product_name",
+            card / DEVICE_DIRECTORY_NAME / "marketing_name",
         ):
             if name:
                 break
             try:
-                name = candidate.read_text(encoding="utf-8").strip()
+                name = candidate.read_text(encoding=UTF8_ENCODING).strip()
             except OSError:
                 continue
         if not name:
             try:
-                device_id = (card / "device" / "device").read_text(encoding="utf-8").strip()
+                device_id = (
+                    (card / DEVICE_DIRECTORY_NAME / DEVICE_DIRECTORY_NAME)
+                    .read_text(encoding=UTF8_ENCODING)
+                    .strip()
+                )
                 name = f"device {device_id}"
             except OSError:
                 name = card.name
@@ -399,9 +407,9 @@ def _cpu_features(is_mac: bool) -> tuple[str, ...]:
         raw = " ".join((_sysctl("machdep.cpu.features"), _sysctl("machdep.cpu.leaf7_features")))
     else:
         try:
-            raw = Path("/proc/cpuinfo").read_text(encoding="utf-8")
+            raw = Path("/proc/cpuinfo").read_text(encoding=UTF8_ENCODING)
         except OSError:
             raw = ""
-    lowered = set(raw.lower().replace(":", " ").split())
+    lowered = set(raw.lower().replace(KEY_VALUE_SEPARATOR, " ").split())
     wanted = ("avx", "avx2", "avx512f", "fma", "neon", "asimd")
     return tuple(feature.upper() for feature in wanted if feature in lowered)

@@ -32,6 +32,9 @@ MAXIMUM_DOWNLOAD_ERROR_LENGTH = 600
 USER_AGENT = "vocagateway-gateway/0.2"
 HF_BASE_URL = "https://huggingface.co"
 DEFAULT_HF_REVISION = "main"
+DOWNLOADING_STATUS = "downloading"
+PARTIAL_DIRECTORY_SUFFIX = ".partial"
+COMPLETED_STATUS = "completed"
 # `?expand=true` is what makes the tree API report each file's SHA-256, but it
 # also shrinks the page size from 1000 to 50 and starts sending rel="next".
 # Every listing must therefore be paged to completion — a repo like
@@ -114,7 +117,7 @@ class UnknownModelError(Exception):
 @dataclass(slots=True)
 class DownloadState:
     model_id: str
-    status: str = "downloading"  # downloading | completed | failed | cancelled
+    status: str = DOWNLOADING_STATUS  # downloading | completed | failed | cancelled
     downloaded_bytes: int = 0
     total_bytes: int | None = None
     current_file: str = ""
@@ -265,14 +268,14 @@ class ModelManager:
 
     def cancel_download(self, model_id: str) -> bool:
         download_handle = self._downloads.get(model_id)
-        if download_handle is None or download_handle.state.status != "downloading":
+        if download_handle is None or download_handle.state.status != DOWNLOADING_STATUS:
             return False
         download_handle.cancel.set()
         return True
 
     def delete(self, model_id: str) -> bool:
         download_handle = self._downloads.get(model_id)
-        if download_handle is not None and download_handle.state.status == "downloading":
+        if download_handle is not None and download_handle.state.status == DOWNLOADING_STATUS:
             raise DownloadInProgressError(model_id)
         path = self._path_for_id(model_id)
         if path is None or not path.exists():
@@ -292,7 +295,7 @@ class ModelManager:
         runner: Any,
     ) -> DownloadState:
         existing = self._downloads.get(model_id)
-        if existing is not None and existing.state.status == "downloading":
+        if existing is not None and existing.state.status == DOWNLOADING_STATUS:
             raise DownloadInProgressError(model_id)
         download_handle = _DownloadHandle(
             state=DownloadState(model_id=model_id), cancel=threading.Event()
@@ -340,7 +343,7 @@ class ModelManager:
         if not model.archive_url or not model.archive_root or not model.required_files:
             raise UnknownModelError(f"Archive metadata is incomplete for {model.id}.")
         final_dir = self.model_path(model)
-        partial_dir = final_dir.with_name(final_dir.name + ".partial")
+        partial_dir = final_dir.with_name(final_dir.name + PARTIAL_DIRECTORY_SUFFIX)
         extraction_dir = final_dir.with_name(final_dir.name + ".extracting")
         archive_path = final_dir.with_name(final_dir.name + ".download")
         shutil.rmtree(partial_dir, ignore_errors=True)
@@ -389,11 +392,11 @@ class ModelManager:
             final_dir.parent.mkdir(parents=True, exist_ok=True)
             shutil.rmtree(final_dir, ignore_errors=True)
             partial_dir.replace(final_dir)
-            download_handle.state.status = "completed"
+            download_handle.state.status = COMPLETED_STATUS
         finally:
             archive_path.unlink(missing_ok=True)
             shutil.rmtree(extraction_dir, ignore_errors=True)
-            if download_handle.state.status != "completed":
+            if download_handle.state.status != COMPLETED_STATUS:
                 shutil.rmtree(partial_dir, ignore_errors=True)
 
     async def _run_sherpa_huggingface_download(
@@ -411,7 +414,7 @@ class ModelManager:
         if not model.huggingface_repo or not model.required_files:
             raise UnknownModelError(f"Hugging Face metadata is incomplete for {model.id}.")
         final_dir = self.model_path(model)
-        partial_dir = final_dir.with_name(final_dir.name + ".partial")
+        partial_dir = final_dir.with_name(final_dir.name + PARTIAL_DIRECTORY_SUFFIX)
         shutil.rmtree(partial_dir, ignore_errors=True)
         partial_dir.mkdir(parents=True, exist_ok=True)
         try:
@@ -454,16 +457,16 @@ class ModelManager:
             final_dir.parent.mkdir(parents=True, exist_ok=True)
             shutil.rmtree(final_dir, ignore_errors=True)
             partial_dir.replace(final_dir)
-            download_handle.state.status = "completed"
+            download_handle.state.status = COMPLETED_STATUS
         finally:
-            if download_handle.state.status != "completed":
+            if download_handle.state.status != COMPLETED_STATUS:
                 shutil.rmtree(partial_dir, ignore_errors=True)
 
     async def _run_moonshine_download(
         self, model: CatalogModel, download_handle: _DownloadHandle
     ) -> None:
         final_dir = self.model_path(model)
-        partial_dir = final_dir.with_name(final_dir.name + ".partial")
+        partial_dir = final_dir.with_name(final_dir.name + PARTIAL_DIRECTORY_SUFFIX)
         shutil.rmtree(partial_dir, ignore_errors=True)
         partial_dir.mkdir(parents=True, exist_ok=True)
         download_handle.state.total_bytes = model.size_bytes
@@ -491,9 +494,9 @@ class ModelManager:
             final_dir.parent.mkdir(parents=True, exist_ok=True)
             shutil.rmtree(final_dir, ignore_errors=True)
             partial_dir.replace(final_dir)
-            download_handle.state.status = "completed"
+            download_handle.state.status = COMPLETED_STATUS
         finally:
-            if download_handle.state.status != "completed":
+            if download_handle.state.status != COMPLETED_STATUS:
                 shutil.rmtree(partial_dir, ignore_errors=True)
 
     async def _run_single_file(
@@ -504,7 +507,7 @@ class ModelManager:
         expected_sha256: str | None = None,
     ) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
-        partial = destination.with_name(destination.name + ".partial")
+        partial = destination.with_name(destination.name + PARTIAL_DIRECTORY_SUFFIX)
         try:
             await asyncio.to_thread(
                 _download_file,
@@ -518,9 +521,9 @@ class ModelManager:
             if download_handle.cancel.is_set():
                 raise DownloadCancelled
             partial.replace(destination)
-            download_handle.state.status = "completed"
+            download_handle.state.status = COMPLETED_STATUS
         finally:
-            if download_handle.state.status != "completed":
+            if download_handle.state.status != COMPLETED_STATUS:
                 partial.unlink(missing_ok=True)
 
     async def _run_huggingface_download(
@@ -535,7 +538,7 @@ class ModelManager:
             raise UnknownModelError(f"No model files found in {model.huggingface_repo}.")
         download_handle.state.total_bytes = sum(entry.size_bytes for entry in files)
         final_dir = self.model_path(model)
-        partial_dir = final_dir.with_name(final_dir.name + ".partial")
+        partial_dir = final_dir.with_name(final_dir.name + PARTIAL_DIRECTORY_SUFFIX)
         shutil.rmtree(partial_dir, ignore_errors=True)
         partial_dir.mkdir(parents=True, exist_ok=True)
         try:
@@ -559,9 +562,9 @@ class ModelManager:
             final_dir.parent.mkdir(parents=True, exist_ok=True)
             shutil.rmtree(final_dir, ignore_errors=True)
             partial_dir.replace(final_dir)
-            download_handle.state.status = "completed"
+            download_handle.state.status = COMPLETED_STATUS
         finally:
-            if download_handle.state.status != "completed":
+            if download_handle.state.status != COMPLETED_STATUS:
                 shutil.rmtree(partial_dir, ignore_errors=True)
 
     def _by_key(self, key: str, engine: str) -> CatalogModel | None:
