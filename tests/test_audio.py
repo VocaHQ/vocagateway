@@ -8,6 +8,10 @@ import pytest
 from app.audio import FFmpegNormalizer
 from app.errors import InvalidAudioError, SilentAudioError
 
+MAXIMUM_RECORDING_DURATION_SECONDS = 120
+NORMALIZED_SAMPLE_RATE_HZ = 16_000
+SILENT_AUDIO_FRAME_COUNT = 8_000
+
 
 async def test_ffmpeg_normalizes_real_audio(
     tmp_path: Path,
@@ -16,9 +20,11 @@ async def test_ffmpeg_normalizes_real_audio(
     source = tmp_path / "source.wav"
     destination = tmp_path / "normalized.wav"
     source.write_bytes(audio_bytes)
-    result = await FFmpegNormalizer().normalize(source, destination, 120)
-    with wave.open(str(result), "rb") as normalized:
-        assert normalized.getframerate() == 16000
+    operation_result = await FFmpegNormalizer().normalize(
+        source, destination, MAXIMUM_RECORDING_DURATION_SECONDS
+    )
+    with wave.open(str(operation_result), "rb") as normalized:
+        assert normalized.getframerate() == NORMALIZED_SAMPLE_RATE_HZ
         assert normalized.getnchannels() == 1
 
 
@@ -26,7 +32,9 @@ async def test_ffmpeg_rejects_invalid_audio(tmp_path: Path) -> None:
     source = tmp_path / "invalid.m4a"
     source.write_bytes(b"not audio" * 100)
     with pytest.raises(InvalidAudioError):
-        await FFmpegNormalizer().normalize(source, tmp_path / "output.wav", 120)
+        await FFmpegNormalizer().normalize(
+            source, tmp_path / "output.wav", MAXIMUM_RECORDING_DURATION_SECONDS
+        )
 
 
 async def test_silence_is_rejected(tmp_path: Path) -> None:
@@ -34,7 +42,9 @@ async def test_silence_is_rejected(tmp_path: Path) -> None:
     with wave.open(str(source), "wb") as output:
         output.setnchannels(1)
         output.setsampwidth(2)
-        output.setframerate(16000)
-        output.writeframes(b"\0\0" * 8000)
+        output.setframerate(NORMALIZED_SAMPLE_RATE_HZ)
+        output.writeframes(b"\0\0" * SILENT_AUDIO_FRAME_COUNT)
     with pytest.raises(SilentAudioError):
-        await FFmpegNormalizer().normalize(source, tmp_path / "output.wav", 120)
+        await FFmpegNormalizer().normalize(
+            source, tmp_path / "output.wav", MAXIMUM_RECORDING_DURATION_SECONDS
+        )

@@ -8,6 +8,10 @@ from pytest import CaptureFixture, MonkeyPatch
 
 from app import cli
 
+ARGV_ATTRIBUTE = "sys.argv"
+TOKEN_COMMAND_NAME = "vocagateway-token"
+PLAIN_ARGUMENT = "--plain"
+
 
 def _isolate_home(monkeypatch: MonkeyPatch, tmp_path: Path) -> Path:
     home = tmp_path / "home"
@@ -33,7 +37,7 @@ def test_token_plain_prints_only_the_secret(
 ) -> None:
     home = _isolate_home(monkeypatch, tmp_path)
     secret = _write_token(home)
-    monkeypatch.setattr("sys.argv", ["vocagateway-token", "--plain"])
+    monkeypatch.setattr(ARGV_ATTRIBUTE, [TOKEN_COMMAND_NAME, PLAIN_ARGUMENT])
 
     cli.token()
 
@@ -46,21 +50,21 @@ def test_token_reads_env_override(
     _isolate_home(monkeypatch, tmp_path)
     secret = "env-token-with-at-least-thirty-two-chars-ok"
     monkeypatch.setenv("VOCAGATEWAY_TOKEN", secret)
-    monkeypatch.setattr("sys.argv", ["vocagateway-token", "--plain"])
+    monkeypatch.setattr(ARGV_ATTRIBUTE, [TOKEN_COMMAND_NAME, PLAIN_ARGUMENT])
 
     cli.token()
 
     assert capsys.readouterr().out == secret + "\n"
 
 
-def test_token_blank_token_file_env_falls_back_to_default(
+def test_token_blank_token_file_env_falls_b_aa(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     home = _isolate_home(monkeypatch, tmp_path)
     secret = _write_token(home)
     # Same rule as Settings.from_env / the old just recipe: blank means unset.
     monkeypatch.setenv("VOCAGATEWAY_TOKEN_FILE", "   ")
-    monkeypatch.setattr("sys.argv", ["vocagateway-token", "--plain"])
+    monkeypatch.setattr(ARGV_ATTRIBUTE, [TOKEN_COMMAND_NAME, PLAIN_ARGUMENT])
 
     cli.token()
 
@@ -71,7 +75,7 @@ def test_token_missing_file_exits(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     _isolate_home(monkeypatch, tmp_path)
-    monkeypatch.setattr("sys.argv", ["vocagateway-token", "--plain"])
+    monkeypatch.setattr(ARGV_ATTRIBUTE, [TOKEN_COMMAND_NAME, PLAIN_ARGUMENT])
 
     with pytest.raises(SystemExit) as exc:
         cli.token()
@@ -86,7 +90,7 @@ def test_token_tty_prints_pairing_qr(
     home = _isolate_home(monkeypatch, tmp_path)
     secret = _write_token(home)
     monkeypatch.setenv("VOCAGATEWAY_PUBLIC_URL", "http://192.168.1.20:8765")
-    monkeypatch.setattr("sys.argv", ["vocagateway-token"])
+    monkeypatch.setattr(ARGV_ATTRIBUTE, [TOKEN_COMMAND_NAME])
     monkeypatch.setattr("sys.stdout.isatty", lambda: True)
 
     cli.token()
@@ -98,7 +102,7 @@ def test_token_tty_prints_pairing_qr(
     assert any(ch in out for ch in ("█", "▀", "▄", "#", "*"))
 
 
-def test_token_tty_prefers_saved_webui_pairing_url(
+def test_token_tty_prefers_saved_webui_pair_cd3e2(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     home = _isolate_home(monkeypatch, tmp_path)
@@ -111,7 +115,7 @@ def test_token_tty_prefers_saved_webui_pairing_url(
     )
     # Env discovery would prefer LAN; saved WebUI choice must win (Overview card).
     monkeypatch.setenv("VOCAGATEWAY_PUBLIC_URL", "http://192.168.1.20:8765")
-    monkeypatch.setattr("sys.argv", ["vocagateway-token"])
+    monkeypatch.setattr(ARGV_ATTRIBUTE, [TOKEN_COMMAND_NAME])
     monkeypatch.setattr("sys.stdout.isatty", lambda: True)
 
     cli.token()
@@ -127,7 +131,7 @@ def test_token_tty_without_gateway_warns(
 ) -> None:
     home = _isolate_home(monkeypatch, tmp_path)
     secret = _write_token(home)
-    monkeypatch.setattr("sys.argv", ["vocagateway-token"])
+    monkeypatch.setattr(ARGV_ATTRIBUTE, [TOKEN_COMMAND_NAME])
     monkeypatch.setattr("sys.stdout.isatty", lambda: True)
     monkeypatch.setattr("app.cli.default_pairing_url", lambda _port, **_kwargs: None)
 

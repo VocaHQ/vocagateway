@@ -6,6 +6,13 @@ from app.catalog import CatalogModel
 from app.context import GatewayContext
 from app.system import detect_system, engine_runs_on
 
+CATALOG_MODEL_ATTRIBUTES = (
+    ("moonshine", "moonshine_model"),
+    ("sherpa-onnx", "sherpa_model"),
+    ("mlx-audio", "mlx_audio_model"),
+)
+PATH_MODEL_ATTRIBUTES = ("whisper_model", "whisperkit_model", "faster_whisper_model")
+
 
 def engine_id(ctx: GatewayContext) -> str:
     if ctx.engine_manager is not None:
@@ -41,18 +48,14 @@ def active_model_path(ctx: GatewayContext) -> Path | None:
     if ctx.engine_manager is None:
         return None
     config = ctx.engine_manager.runtime_config
-    if config.engine == "moonshine":
-        return ctx.manager.installed_path(config.moonshine_model)
-    if config.engine == "sherpa-onnx" and config.sherpa_model:
-        return ctx.manager.installed_path(config.sherpa_model)
-    if config.engine == "mlx-audio" and config.mlx_audio_model:
-        return ctx.manager.installed_path(config.mlx_audio_model)
-    if config.whisper_model:
-        return Path(config.whisper_model)
-    if config.whisperkit_model:
-        return Path(config.whisperkit_model)
-    if config.faster_whisper_model:
-        return Path(config.faster_whisper_model)
+    for engine_name, attribute_name in CATALOG_MODEL_ATTRIBUTES:
+        if config.engine == engine_name:
+            model_id = getattr(config, attribute_name)
+            return ctx.manager.installed_path(model_id) if model_id else None
+    for attribute_name in PATH_MODEL_ATTRIBUTES:
+        model_path = getattr(config, attribute_name)
+        if model_path:
+            return Path(model_path)
     return None
 
 

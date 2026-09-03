@@ -8,6 +8,14 @@ from pathlib import Path
 import httpx
 import pytest
 from conftest import TOKEN, FakeNormalizer
+from starlette.status import (
+    HTTP_200_OK,
+    HTTP_401_UNAUTHORIZED,
+    HTTP_404_NOT_FOUND,
+    HTTP_409_CONFLICT,
+    HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+    HTTP_422_UNPROCESSABLE_CONTENT,
+)
 
 from app import engine_state
 from app import engines as engines_module
@@ -18,13 +26,47 @@ from app.model_manager import ModelManager
 from app.runtime_config import RuntimeConfig
 
 MAC_ONLY = frozenset({"vocamac", "handy", "whisperkit", "mlx-audio"})
+TINY_MODEL_SIZE_BYTES = 11
+GATEWAY_PORT = 8765
+ASYNC_POLL_SECONDS = 0.02
+MAXIMUM_DOWNLOAD_POLL_ATTEMPTS = 200
+TEST_AUDIO_BYTES = b"x" * MAXIMUM_DOWNLOAD_POLL_ATTEMPTS
+MAXIMUM_FILTERED_MODEL_SIZE_BYTES = 800_000_000
+TINY_MODEL_ID = "whisper.cpp:ggml-tiny.bin"
+WHISPER_CPP_ENGINE = "whisper.cpp"
+ADMIN_STATUS_PATH = "/v1/admin/status"
+ADMIN_TOKENS_PATH = "/v1/admin/tokens"
+ADMIN_MODELS_PATH = "/v1/admin/models"
+ADMIN_CONFIG_PATH = "/v1/admin/config"
+SETTINGS_PARTIAL_PATH = "/ui/partials/settings"
+MODEL_ID_KEY = "id"
+LABEL_KEY = "label"
+ERROR_KEY = "error"
+ERROR_CODE_KEY = "code"
+ENGINE_KEY = "engine"
+AUTO_ENGINE = "auto"
+SHERPA_ONNX_ENGINE = "sherpa-onnx"
+METRICS_KEY = "metrics"
+STATE_KEY = "state"
+NOT_INSTALLED_STATE = "not_installed"
+INSTALLED_STATE = "installed"
+INSTALLED_ONLY_FILTER = "installed_only"
+MODEL_CARD_CLASS = 'class="model-card"'
+HINDI_LANGUAGE_CODE = "hi"
+LANGUAGE_CODES_KEY = "language_codes"
+ENGLISH_LANGUAGE_CODE = "en"
+HINDI_LANGUAGE = "Hindi"
+MODELS_LIST_PARTIAL_PATH = "/ui/partials/models-list"
+LANGUAGE_KEY = "language"
+NETWORK_INTERFACE_NOTICE = "Listening on every network interface"
+MODELS_LANGUAGE_HINT_CLASS = "models-language-hint"
 
 TINY = CatalogModel(
-    id="whisper.cpp:ggml-tiny.bin",
-    engine="whisper.cpp",
+    id=TINY_MODEL_ID,
+    engine=WHISPER_CPP_ENGINE,
     key="ggml-tiny.bin",
     label="Test Tiny",
-    size_bytes=11,
+    size_bytes=TINY_MODEL_SIZE_BYTES,
     languages="Multilingual",
     quality="Fastest",
     minimum_ram_gb=4,
@@ -77,18 +119,18 @@ def auth() -> dict[str, str]:
 
 async def test_admin_endpoints_require_token(admin_client: httpx.AsyncClient) -> None:
     for path in (
-        "/v1/admin/status",
+        ADMIN_STATUS_PATH,
         "/v1/admin/diagnostics",
-        "/v1/admin/tokens",
-        "/v1/admin/models",
-        "/v1/admin/config",
+        ADMIN_TOKENS_PATH,
+        ADMIN_MODELS_PATH,
+        ADMIN_CONFIG_PATH,
         "/ui/partials/overview",
         "/ui/partials/models",
-        "/ui/partials/settings",
+        SETTINGS_PARTIAL_PATH,
         "/ui/partials/about",
     ):
         response = await admin_client.get(path)
-        assert response.status_code == 401, path
+        assert response.status_code == HTTP_401_UNAUTHORIZED, path
 
 
 @pytest.mark.parametrize(
@@ -108,7 +150,7 @@ async def test_admin_endpoints_require_token(admin_client: httpx.AsyncClient) ->
 async def test_authorization_header_forms(
     admin_client: httpx.AsyncClient, header: str, expected: int
 ) -> None:
-    response = await admin_client.get("/v1/admin/status", headers={"Authorization": header})
+    response = await admin_client.get(ADMIN_STATUS_PATH, headers={"Authorization": header})
     assert response.status_code == expected, header
 
 
@@ -129,63 +171,63 @@ async def test_openapi_documents_the_bearer_scheme(admin_settings: Settings) -> 
             "description": schema["components"]["securitySchemes"]["Bearer token"]["description"],
         }
     }
-    operation = schema["paths"]["/v1/admin/status"]["get"]
+    operation = schema["paths"][ADMIN_STATUS_PATH]["get"]
     assert operation["security"] == [{"Bearer token": []}]
     # The hand-rolled header parameter is what used to show up instead, as a
     # free-text box that silently sent an unusable request.
     assert "parameters" not in operation
 
 
-async def test_tokens_list_starts_with_only_the_bootstrap_entry(
+async def test_tokens_list_starts_with_only_the_b_aa(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
-    response = await admin_client.get("/v1/admin/tokens", headers=auth)
-    assert response.status_code == 200
+    response = await admin_client.get(ADMIN_TOKENS_PATH, headers=auth)
+    assert response.status_code == HTTP_200_OK
     entries = response.json()
     assert entries == [
         {
-            "id": "bootstrap",
-            "label": "Bootstrap token (VOCAGATEWAY_TOKEN / token file)",
+            MODEL_ID_KEY: "bootstrap",
+            LABEL_KEY: "Bootstrap token (VOCAGATEWAY_TOKEN / token file)",
             "created_at": None,
             "revocable": False,
         }
     ]
 
 
-async def test_created_device_token_authenticates_and_can_be_revoked(
+async def test_created_device_token_authenticates_a04c2(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
-    created = await admin_client.post("/v1/admin/tokens", headers=auth, json={"label": "Pixel 6a"})
-    assert created.status_code == 200
+    created = await admin_client.post(ADMIN_TOKENS_PATH, headers=auth, json={LABEL_KEY: "Pixel 6a"})
+    assert created.status_code == HTTP_200_OK
     payload = created.json()
-    assert payload["label"] == "Pixel 6a"
+    assert payload[LABEL_KEY] == "Pixel 6a"
     device_auth = {"Authorization": f"Bearer {payload['token']}"}
 
     # The new device token authenticates on its own, independent of the bootstrap token.
-    status = await admin_client.get("/v1/admin/status", headers=device_auth)
-    assert status.status_code == 200
+    status = await admin_client.get(ADMIN_STATUS_PATH, headers=device_auth)
+    assert status.status_code == HTTP_200_OK
 
-    listed = await admin_client.get("/v1/admin/tokens", headers=auth)
-    ids = {entry["id"]: entry for entry in listed.json()}
-    assert payload["id"] in ids
-    assert ids[payload["id"]]["revocable"] is True
+    listed = await admin_client.get(ADMIN_TOKENS_PATH, headers=auth)
+    ids = {entry[MODEL_ID_KEY]: entry for entry in listed.json()}
+    assert payload[MODEL_ID_KEY] in ids
+    assert ids[payload[MODEL_ID_KEY]]["revocable"] is True
 
     revoked = await admin_client.delete(f"/v1/admin/tokens/{payload['id']}", headers=auth)
-    assert revoked.status_code == 200
+    assert revoked.status_code == HTTP_200_OK
     assert revoked.json() == {"revoked": True}
 
     # Revoking one device token never touches the bootstrap token or other clients.
-    still_ok = await admin_client.get("/v1/admin/status", headers=auth)
-    assert still_ok.status_code == 200
-    now_rejected = await admin_client.get("/v1/admin/status", headers=device_auth)
-    assert now_rejected.status_code == 401
+    still_ok = await admin_client.get(ADMIN_STATUS_PATH, headers=auth)
+    assert still_ok.status_code == HTTP_200_OK
+    now_rejected = await admin_client.get(ADMIN_STATUS_PATH, headers=device_auth)
+    assert now_rejected.status_code == HTTP_401_UNAUTHORIZED
 
 
-async def test_revoking_unknown_token_returns_404(
+async def test_revoking_unknown_token_returns_number(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.delete("/v1/admin/tokens/does-not-exist", headers=auth)
-    assert response.status_code == 404
+    assert response.status_code == HTTP_404_NOT_FOUND
     assert response.json() == {"revoked": False}
 
 
@@ -193,21 +235,21 @@ async def test_bootstrap_token_cannot_be_revoked(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.delete("/v1/admin/tokens/bootstrap", headers=auth)
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "bootstrap_token_not_revocable"
+    assert response.status_code == HTTP_409_CONFLICT
+    assert response.json()[ERROR_KEY][ERROR_CODE_KEY] == "bootstrap_token_not_revocable"
 
 
-async def test_diagnostics_bundle_is_downloadable_and_redacted(
+async def test_diagnostics_bundle_is_downloadable_aaaa(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.get("/v1/admin/diagnostics", headers=auth)
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     assert response.headers["content-disposition"].startswith(
         'attachment; filename="vocagateway-diagnostics-'
     )
     payload = response.json()
-    assert payload["engine"]["id"] == "auto"
-    assert payload["config"]["engine"] == "auto"
+    assert payload[ENGINE_KEY][MODEL_ID_KEY] == AUTO_ENGINE
+    assert payload["config"][ENGINE_KEY] == AUTO_ENGINE
     assert "never_included" in payload and payload["never_included"]
     assert TOKEN not in response.text
 
@@ -215,10 +257,10 @@ async def test_diagnostics_bundle_is_downloadable_and_redacted(
 async def test_status_reports_system_and_setup(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
-    response = await admin_client.get("/v1/admin/status", headers=auth)
-    assert response.status_code == 200
+    response = await admin_client.get(ADMIN_STATUS_PATH, headers=auth)
+    assert response.status_code == HTTP_200_OK
     payload = response.json()
-    assert payload["engine"]["id"] == "auto"
+    assert payload[ENGINE_KEY][MODEL_ID_KEY] == AUTO_ENGINE
     assert payload["system"]["arch"]
     assert {dependency["name"] for dependency in payload["dependencies"]} == {
         "FFmpeg",
@@ -228,15 +270,15 @@ async def test_status_reports_system_and_setup(
         "VocaMac app",
         "faster-whisper",
         "Moonshine Voice",
-        "sherpa-onnx",
+        SHERPA_ONNX_ENGINE,
         "MLX Audio",
     }
     assert payload["setup"]["token_configured"] is True
     assert payload["setup"]["model_installed"] is False
     assert payload["bind_host"] == "0.0.0.0"
-    assert payload["port"] == 8765
-    assert payload["metrics"] == {
-        "uptime_seconds": payload["metrics"]["uptime_seconds"],
+    assert payload["port"] == GATEWAY_PORT
+    assert payload[METRICS_KEY] == {
+        "uptime_seconds": payload[METRICS_KEY]["uptime_seconds"],
         "queue_depth": 0,
         "active_transcriptions": 0,
         "concurrency_limit": 1,
@@ -251,22 +293,22 @@ async def test_status_reports_system_and_setup(
         "audio_duration_ms": None,
         "real_time_factor": None,
         "peak_memory_mb": None,
-        "history": payload["metrics"]["history"],
+        "history": payload[METRICS_KEY]["history"],
     }
-    assert isinstance(payload["metrics"]["history"], list)
+    assert isinstance(payload[METRICS_KEY]["history"], list)
     assert payload["readiness"]["warmup_state"] == "pending"
 
 
 async def test_models_list_contains_catalog(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
-    response = await admin_client.get("/v1/admin/models", headers=auth)
-    assert response.status_code == 200
-    entries = {entry["id"]: entry for entry in response.json()}
-    assert "whisper.cpp:ggml-tiny.bin" in entries
-    assert entries["whisper.cpp:ggml-tiny.bin"]["state"] == "not_installed"
-    assert entries["whisper.cpp:ggml-tiny.bin"]["family"] == "Whisper"
-    assert entries["whisper.cpp:ggml-tiny.bin"]["description"]
+    response = await admin_client.get(ADMIN_MODELS_PATH, headers=auth)
+    assert response.status_code == HTTP_200_OK
+    entries = {entry[MODEL_ID_KEY]: entry for entry in response.json()}
+    assert TINY_MODEL_ID in entries
+    assert entries[TINY_MODEL_ID][STATE_KEY] == NOT_INSTALLED_STATE
+    assert entries[TINY_MODEL_ID]["family"] == "Whisper"
+    assert entries[TINY_MODEL_ID]["description"]
 
 
 async def test_download_select_and_delete_flow(
@@ -274,43 +316,43 @@ async def test_download_select_and_delete_flow(
     auth: dict[str, str],
     admin_settings: Settings,
 ) -> None:
-    model_id = "whisper.cpp:ggml-tiny.bin"
+    model_id = TINY_MODEL_ID
 
     missing = await admin_client.post(f"/v1/admin/models/{model_id}/select", headers=auth)
-    assert missing.status_code == 404
+    assert missing.status_code == HTTP_404_NOT_FOUND
 
     started = await admin_client.post(f"/v1/admin/models/{model_id}/download", headers=auth)
-    assert started.status_code == 200
+    assert started.status_code == HTTP_200_OK
 
     duplicate = await admin_client.post(f"/v1/admin/models/{model_id}/download", headers=auth)
-    assert duplicate.status_code == 409
+    assert duplicate.status_code == HTTP_409_CONFLICT
 
-    for _ in range(200):
+    for _ in range(MAXIMUM_DOWNLOAD_POLL_ATTEMPTS):
         entries = {
-            entry["id"]: entry
-            for entry in (await admin_client.get("/v1/admin/models", headers=auth)).json()
+            entry[MODEL_ID_KEY]: entry
+            for entry in (await admin_client.get(ADMIN_MODELS_PATH, headers=auth)).json()
         }
-        if entries[model_id]["state"] == "installed":
+        if entries[model_id][STATE_KEY] == INSTALLED_STATE:
             break
-        await asyncio.sleep(0.02)
-    assert entries[model_id]["state"] == "installed"
+        await asyncio.sleep(ASYNC_POLL_SECONDS)
+    assert entries[model_id][STATE_KEY] == INSTALLED_STATE
 
     selected = await admin_client.post(f"/v1/admin/models/{model_id}/select", headers=auth)
-    assert selected.status_code == 200
-    assert selected.json()["engine"]["id"] == "whisper.cpp"
+    assert selected.status_code == HTTP_200_OK
+    assert selected.json()[ENGINE_KEY][MODEL_ID_KEY] == WHISPER_CPP_ENGINE
 
     saved = RuntimeConfig.load(admin_settings.config_path)
-    assert saved.engine == "whisper.cpp"
+    assert saved.engine == WHISPER_CPP_ENGINE
     assert saved.whisper_model and saved.whisper_model.endswith("ggml-tiny.bin")
 
     entries = {
-        entry["id"]: entry
-        for entry in (await admin_client.get("/v1/admin/models", headers=auth)).json()
+        entry[MODEL_ID_KEY]: entry
+        for entry in (await admin_client.get(ADMIN_MODELS_PATH, headers=auth)).json()
     }
     assert entries[model_id]["active"] is True
 
     deleted = await admin_client.delete(f"/v1/admin/models/{model_id}", headers=auth)
-    assert deleted.status_code == 200
+    assert deleted.status_code == HTTP_200_OK
     saved = RuntimeConfig.load(admin_settings.config_path)
     assert saved.whisper_model is None
 
@@ -318,61 +360,61 @@ async def test_download_select_and_delete_flow(
 async def test_models_list_installed_only_filter(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
-    model_id = "whisper.cpp:ggml-tiny.bin"
+    model_id = TINY_MODEL_ID
 
     before = await admin_client.get(
-        "/v1/admin/models", params={"installed_only": "true"}, headers=auth
+        ADMIN_MODELS_PATH, params={INSTALLED_ONLY_FILTER: "true"}, headers=auth
     )
-    assert before.status_code == 200
-    assert model_id not in {entry["id"] for entry in before.json()}
+    assert before.status_code == HTTP_200_OK
+    assert model_id not in {entry[MODEL_ID_KEY] for entry in before.json()}
 
     started = await admin_client.post(f"/v1/admin/models/{model_id}/download", headers=auth)
-    assert started.status_code == 200
+    assert started.status_code == HTTP_200_OK
 
-    for _ in range(200):
+    for _ in range(MAXIMUM_DOWNLOAD_POLL_ATTEMPTS):
         filtered = {
-            entry["id"]: entry
+            entry[MODEL_ID_KEY]: entry
             for entry in (
                 await admin_client.get(
-                    "/v1/admin/models", params={"installed_only": "true"}, headers=auth
+                    ADMIN_MODELS_PATH, params={INSTALLED_ONLY_FILTER: "true"}, headers=auth
                 )
             ).json()
         }
         if model_id in filtered:
             break
-        await asyncio.sleep(0.02)
-    assert filtered[model_id]["state"] == "installed"
-    assert all(entry["state"] == "installed" for entry in filtered.values())
+        await asyncio.sleep(ASYNC_POLL_SECONDS)
+    assert filtered[model_id][STATE_KEY] == INSTALLED_STATE
+    assert all(entry[STATE_KEY] == INSTALLED_STATE for entry in filtered.values())
 
 
-async def test_ui_select_preserves_installed_only_filter(
+async def test_ui_select_preserves_installed_only_aaaaa(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
-    model_id = "whisper.cpp:ggml-tiny.bin"
+    model_id = TINY_MODEL_ID
 
     await admin_client.post(f"/v1/admin/models/{model_id}/download", headers=auth)
     entries: dict[str, dict[str, object]] = {}
-    for _ in range(200):
+    for _ in range(MAXIMUM_DOWNLOAD_POLL_ATTEMPTS):
         entries = {
-            entry["id"]: entry
-            for entry in (await admin_client.get("/v1/admin/models", headers=auth)).json()
+            entry[MODEL_ID_KEY]: entry
+            for entry in (await admin_client.get(ADMIN_MODELS_PATH, headers=auth)).json()
         }
-        if entries[model_id]["state"] == "installed":
+        if entries[model_id][STATE_KEY] == INSTALLED_STATE:
             break
-        await asyncio.sleep(0.02)
-    assert entries[model_id]["state"] == "installed"
+        await asyncio.sleep(ASYNC_POLL_SECONDS)
+    assert entries[model_id][STATE_KEY] == INSTALLED_STATE
 
     selected = await admin_client.post(
         f"/ui/partials/models/{model_id}/select",
         headers=auth,
-        data={"installed_only": "true"},
+        data={INSTALLED_ONLY_FILTER: "true"},
     )
-    assert selected.status_code == 200
-    assert 'class="model-card"' in selected.text
+    assert selected.status_code == HTTP_200_OK
+    assert MODEL_CARD_CLASS in selected.text
     assert "No models downloaded yet" not in selected.text
 
 
-def test_language_filter_answers_which_model_should_i_use() -> None:
+def test_language_filter_answers_which_mode_f8f45() -> None:
     """The filter exists to invert the question people actually ask. Driven off
     the real catalog, since the stub the admin fixtures use has one model."""
     from app.catalog import DEFAULT_CATALOG, language_names
@@ -381,62 +423,62 @@ def test_language_filter_answers_which_model_should_i_use() -> None:
 
     entries = [
         AdminModelEntry(
-            id=m.id,
-            engine=m.engine,
-            label=m.label,
-            size_bytes=m.size_bytes,
-            languages=m.languages,
-            quality=m.quality,
-            family=m.family,
-            description=m.description,
-            source=m.source,
-            state="not_installed",
+            id=model.id,
+            engine=model.engine,
+            label=model.label,
+            size_bytes=model.size_bytes,
+            languages=model.languages,
+            quality=model.quality,
+            family=model.family,
+            description=model.description,
+            source=model.source,
+            state=NOT_INSTALLED_STATE,
             active=False,
             recommended=False,
-            detects_language_automatically=m.detects_language_automatically,
-            language_names=language_names(m.language_codes),
-            language_codes=list(m.language_codes),
+            detects_language_automatically=model.detects_language_automatically,
+            language_names=language_names(model.language_codes),
+            language_codes=list(model.language_codes),
         )
-        for m in DEFAULT_CATALOG
+        for model in DEFAULT_CATALOG
     ]
 
-    hindi = [e for e in entries if _model_covers(e, "hi")]
+    hindi = [entry for entry in entries if _model_covers(entry, HINDI_LANGUAGE_CODE)]
     assert hindi, "Hindi must match something"
     assert len(hindi) < len(entries), "the filter has to actually narrow the list"
     # Both the auto-detecting recogniser and the pinnable Whisper builds appear,
     # so the badge is what tells them apart rather than their absence.
-    assert any("dolphin" in e.id for e in hindi)
-    assert any(e.engine == "whisper.cpp" for e in hindi)
+    assert any("dolphin" in entry.id for entry in hindi)
+    assert any(entry.engine == WHISPER_CPP_ENGINE for entry in hindi)
     # An English-only build must not surface under Hindi.
-    assert not any(e.id.endswith(".en.bin") for e in hindi)
+    assert not any(entry.id.endswith(".en.bin") for entry in hindi)
 
     # A model with no declared languages (an imported one) matches everything
     # rather than disappearing from every filter.
-    unlabelled = entries[0].model_copy(update={"language_codes": []})
-    assert _model_covers(unlabelled, "hi") and _model_covers(unlabelled, "yo")
+    unlabelled = entries[0].model_copy(update={LANGUAGE_CODES_KEY: []})
+    assert _model_covers(unlabelled, HINDI_LANGUAGE_CODE) and _model_covers(unlabelled, "yo")
 
-    english = [e for e in entries if _model_covers(e, "en")]
-    assert any(e.id.endswith(".en.bin") for e in english)
+    english = [entry for entry in entries if _model_covers(entry, ENGLISH_LANGUAGE_CODE)]
+    assert any(entry.id.endswith(".en.bin") for entry in english)
 
     # Moonshine carries its language in `language_code`, not `language_codes`.
     # Leaving the tuple empty made every English Moonshine match "covers
     # everything", so they all turned up under Hindi.
-    assert not any(e.engine == "moonshine" and e.id != "moonshine:hi" for e in hindi)
-    assert any(e.engine == "moonshine" for e in english)
+    assert not any(entry.engine == "moonshine" and entry.id != "moonshine:hi" for entry in hindi)
+    assert any(entry.engine == "moonshine" for entry in english)
 
     # Odia is real but Whisper-less: only Dolphin covers it, which
     # is exactly why the phone clients do not offer it as a choice.
-    odia = [e for e in entries if _model_covers(e, "or")]
-    assert odia and all(e.detects_language_automatically for e in odia)
+    odia = [entry for entry in entries if _model_covers(entry, "or")]
+    assert odia and all(entry.detects_language_automatically for entry in odia)
 
 
-def test_language_filter_offers_only_languages_some_model_covers() -> None:
+def test_language_filter_offers_only_langua_b4011() -> None:
     from app.fragments.models import _language_filter_options
 
     options = _language_filter_options()
     codes = {code for code, _ in options}
     names = {name for _, name in options}
-    assert "hi" in codes and "Hindi" in names
+    assert HINDI_LANGUAGE_CODE in codes and HINDI_LANGUAGE in names
     assert "ta" in codes and "Tamil" in names
     # Odia is Dolphin-only, which is still a model, so it belongs here even
     # though the phone clients deliberately do not offer it.
@@ -455,32 +497,36 @@ def test_multi_select_filters_combine_with_and_or() -> None:
     # Drive off catalog fields without a live gateway: pure predicate checks.
     entries = [
         AdminModelEntry(
-            id=m.id,
-            engine=m.engine,
-            label=m.label,
-            size_bytes=m.size_bytes,
-            languages=m.languages,
-            quality=m.quality,
-            family=m.family,
-            description=m.description,
-            source=m.source,
-            state="not_installed",
+            id=model.id,
+            engine=model.engine,
+            label=model.label,
+            size_bytes=model.size_bytes,
+            languages=model.languages,
+            quality=model.quality,
+            family=model.family,
+            description=model.description,
+            source=model.source,
+            state=NOT_INSTALLED_STATE,
             active=False,
             recommended=False,
-            language_codes=list(m.language_codes),
+            language_codes=list(model.language_codes),
         )
-        for m in DEFAULT_CATALOG
+        for model in DEFAULT_CATALOG
     ]
 
     # OR across languages.
-    hi_or_yue = [e for e in entries if model_covers(e, "hi") or model_covers(e, "yue")]
+    hi_or_yue = [
+        entry
+        for entry in entries
+        if model_covers(entry, HINDI_LANGUAGE_CODE) or model_covers(entry, "yue")
+    ]
     assert hi_or_yue and len(hi_or_yue) < len(entries)
 
     # Size cap is a hard upper bound.
     cap = SIZE_FILTER_CAPS["300mb"]
-    under = [e for e in entries if e.size_bytes <= cap]
-    assert under and all(e.size_bytes <= cap for e in under)
-    assert any(e.size_bytes > cap for e in entries)
+    under = [entry for entry in entries if entry.size_bytes <= cap]
+    assert under and all(entry.size_bytes <= cap for entry in under)
+    assert any(entry.size_bytes > cap for entry in entries)
 
     # filtered_model_entries wiring is covered by the API tests below; keep the
     # helper import live so a rename fails here.
@@ -493,26 +539,29 @@ async def test_ui_actions_preserve_the_language_filter(
     """Downloading or selecting must not silently reset the view, the same
     guarantee the installed-only toggle already makes."""
     listed = await admin_client.get(
-        "/ui/partials/models-list", params={"language": "hi"}, headers=auth
+        MODELS_LIST_PARTIAL_PATH, params={LANGUAGE_KEY: HINDI_LANGUAGE_CODE}, headers=auth
     )
-    assert listed.status_code == 200
+    assert listed.status_code == HTTP_200_OK
 
     # The stub catalog's only model is multilingual Whisper, so it covers Hindi.
-    assert 'class="model-card"' in listed.text
+    assert MODEL_CARD_CLASS in listed.text
 
     filtered_out = await admin_client.get(
-        "/ui/partials/models-list", params={"language": "yue"}, headers=auth
+        MODELS_LIST_PARTIAL_PATH, params={LANGUAGE_KEY: "yue"}, headers=auth
     )
-    assert "Cantonese" in filtered_out.text or 'class="model-card"' in filtered_out.text
+    assert "Cantonese" in filtered_out.text or MODEL_CARD_CLASS in filtered_out.text
 
 
-async def test_admin_models_api_accepts_the_language_filter(
+async def test_admin_models_api_accepts_the_langu_a(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
-    response = await admin_client.get("/v1/admin/models", params={"language": "hi"}, headers=auth)
-    assert response.status_code == 200
+    response = await admin_client.get(
+        ADMIN_MODELS_PATH, params={LANGUAGE_KEY: HINDI_LANGUAGE_CODE}, headers=auth
+    )
+    assert response.status_code == HTTP_200_OK
     assert all(
-        "hi" in entry["language_codes"] or not entry["language_codes"] for entry in response.json()
+        HINDI_LANGUAGE_CODE in entry[LANGUAGE_CODES_KEY] or not entry[LANGUAGE_CODES_KEY]
+        for entry in response.json()
     )
 
 
@@ -521,35 +570,35 @@ async def test_admin_models_api_accepts_multi_filters(
 ) -> None:
     # Repeated query keys for multi-select family + language; size cap optional.
     response = await admin_client.get(
-        "/v1/admin/models",
+        ADMIN_MODELS_PATH,
         params=[
-            ("language", "en"),
-            ("language", "hi"),
+            (LANGUAGE_KEY, ENGLISH_LANGUAGE_CODE),
+            (LANGUAGE_KEY, HINDI_LANGUAGE_CODE),
             ("max_size", "800mb"),
         ],
         headers=auth,
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     body = response.json()
     assert body
     for entry in body:
-        codes = entry["language_codes"]
-        assert not codes or "en" in codes or "hi" in codes
-        assert entry["size_bytes"] <= 800_000_000
+        codes = entry[LANGUAGE_CODES_KEY]
+        assert not codes or ENGLISH_LANGUAGE_CODE in codes or HINDI_LANGUAGE_CODE in codes
+        assert entry["size_bytes"] <= MAXIMUM_FILTERED_MODEL_SIZE_BYTES
 
 
 async def test_models_ui_filter_panel_is_multi_select(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     page = await admin_client.get("/ui/partials/models", headers=auth)
-    assert page.status_code == 200
+    assert page.status_code == HTTP_200_OK
     assert 'id="models-filter-form"' in page.text
     assert 'id="models-layout"' in page.text
     assert 'class="models-filter"' in page.text or 'class="models-filter ' in page.text
     assert 'id="filter-rail-toggle"' in page.text
     assert 'name="family"' in page.text
-    assert 'name="language"' in page.text
-    assert 'name="engine"' in page.text
+    assert f'name="{LANGUAGE_KEY}"' in page.text
+    assert f'name="{ENGINE_KEY}"' in page.text
     assert 'name="max_size"' in page.text
     assert 'name="recommended_only"' in page.text
     assert "Fits this machine" in page.text
@@ -559,42 +608,42 @@ async def test_models_list_accepts_cleared_filters(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     """Clear filters sends empty bools; must not 422."""
-    cleared = await admin_client.get("/ui/partials/models-list", headers=auth)
-    assert cleared.status_code == 200
-    assert 'class="family-tile"' in cleared.text or 'class="model-card"' in cleared.text
+    cleared = await admin_client.get(MODELS_LIST_PARTIAL_PATH, headers=auth)
+    assert cleared.status_code == HTTP_200_OK
+    assert 'class="family-tile"' in cleared.text or MODEL_CARD_CLASS in cleared.text
 
     empty_bools = await admin_client.get(
-        "/ui/partials/models-list",
-        params={"installed_only": "", "recommended_only": ""},
+        MODELS_LIST_PARTIAL_PATH,
+        params={INSTALLED_ONLY_FILTER: "", "recommended_only": ""},
         headers=auth,
     )
-    assert empty_bools.status_code == 200
-    assert 'class="family-tile"' in empty_bools.text or 'class="model-card"' in empty_bools.text
+    assert empty_bools.status_code == HTTP_200_OK
+    assert 'class="family-tile"' in empty_bools.text or MODEL_CARD_CLASS in empty_bools.text
 
 
-async def test_unknown_model_download_404(
+async def test_unknown_model_download_number(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.post(
         "/v1/admin/models/whisper.cpp:missing.bin/download", headers=auth
     )
-    assert response.status_code == 404
+    assert response.status_code == HTTP_404_NOT_FOUND
 
 
 async def test_config_update_persists_engine(
     admin_client: httpx.AsyncClient, auth: dict[str, str], admin_settings: Settings
 ) -> None:
-    invalid = await admin_client.put("/v1/admin/config", headers=auth, json={"engine": "cloud"})
-    assert invalid.status_code == 422
+    invalid = await admin_client.put(ADMIN_CONFIG_PATH, headers=auth, json={ENGINE_KEY: "cloud"})
+    assert invalid.status_code == HTTP_422_UNPROCESSABLE_CONTENT
 
     updated = await admin_client.put(
-        "/v1/admin/config", headers=auth, json={"engine": "sherpa-onnx"}
+        ADMIN_CONFIG_PATH, headers=auth, json={ENGINE_KEY: SHERPA_ONNX_ENGINE}
     )
-    assert updated.status_code == 200
-    assert RuntimeConfig.load(admin_settings.config_path).engine == "sherpa-onnx"
+    assert updated.status_code == HTTP_200_OK
+    assert RuntimeConfig.load(admin_settings.config_path).engine == SHERPA_ONNX_ENGINE
 
 
-async def test_mac_only_engines_are_hidden_and_rejected_on_other_hosts(
+async def test_mac_only_engines_are_hidden_and_re_aaa(
     admin_client: httpx.AsyncClient,
     auth: dict[str, str],
     admin_settings: Settings,
@@ -603,55 +652,55 @@ async def test_mac_only_engines_are_hidden_and_rejected_on_other_hosts(
     monkeypatch.setattr(engine_state, "engine_runs_on", lambda engine, **_: engine not in MAC_ONLY)
     monkeypatch.setattr(engines_module, "engine_runs_here", lambda engine: engine not in MAC_ONLY)
 
-    config = await admin_client.get("/v1/admin/config", headers=auth)
-    settings_html = (await admin_client.get("/ui/partials/settings", headers=auth)).text
-    rejected = await admin_client.put("/v1/admin/config", headers=auth, json={"engine": "vocamac"})
+    config = await admin_client.get(ADMIN_CONFIG_PATH, headers=auth)
+    settings_html = (await admin_client.get(SETTINGS_PARTIAL_PATH, headers=auth)).text
+    rejected = await admin_client.put(ADMIN_CONFIG_PATH, headers=auth, json={ENGINE_KEY: "vocamac"})
 
     assert set(config.json()["available_engines"]).isdisjoint(MAC_ONLY)
     assert "VocaMac app" not in settings_html
     assert "Handy app" not in settings_html
-    assert rejected.status_code == 422
-    assert rejected.json()["error"]["code"] == "invalid_engine"
-    assert "Apple silicon" in rejected.json()["error"]["message"]
+    assert rejected.status_code == HTTP_422_UNPROCESSABLE_CONTENT
+    assert rejected.json()[ERROR_KEY][ERROR_CODE_KEY] == "invalid_engine"
+    assert "Apple silicon" in rejected.json()[ERROR_KEY]["message"]
     assert RuntimeConfig.load(admin_settings.config_path).engine != "vocamac"
 
 
-async def test_mac_only_engines_are_labelled_with_their_host(
+async def test_mac_only_engines_are_labelled_with_aaaa(
     admin_client: httpx.AsyncClient, auth: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(engine_state, "engine_runs_on", lambda engine, **_: True)
 
-    settings_html = (await admin_client.get("/ui/partials/settings", headers=auth)).text
+    settings_html = (await admin_client.get(SETTINGS_PARTIAL_PATH, headers=auth)).text
 
     assert "VocaMac app (Apple silicon only)" in settings_html
     assert "Handy app (macOS only)" in settings_html
     assert "sherpa-onnx</option>" in settings_html
 
 
-async def test_ui_config_update_switches_engine_and_renders_a_fragment(
+async def test_ui_config_update_switches_engine_a_abe0c(
     admin_client: httpx.AsyncClient, auth: dict[str, str], admin_settings: Settings
 ) -> None:
     response = await admin_client.put(
         "/ui/partials/config",
         headers=auth,
-        data={"engine": "sherpa-onnx", "compute_device": "cpu", "cpu_threads": "2"},
+        data={ENGINE_KEY: SHERPA_ONNX_ENGINE, "compute_device": "cpu", "cpu_threads": "2"},
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     assert "Engine preference saved." in response.text
     assert 'id="engine-pill"' in response.text
-    assert RuntimeConfig.load(admin_settings.config_path).engine == "sherpa-onnx"
+    assert RuntimeConfig.load(admin_settings.config_path).engine == SHERPA_ONNX_ENGINE
 
 
-async def test_ui_config_update_rejects_an_invalid_engine(
+async def test_ui_config_update_rejects_an_invali_aaaaa(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.put(
         "/ui/partials/config",
         headers=auth,
-        data={"engine": "cloud"},
+        data={ENGINE_KEY: "cloud"},
     )
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "invalid_engine"
+    assert response.status_code == HTTP_422_UNPROCESSABLE_CONTENT
+    assert response.json()[ERROR_KEY][ERROR_CODE_KEY] == "invalid_engine"
 
 
 async def test_custom_download_rejects_bad_url(
@@ -662,13 +711,13 @@ async def test_custom_download_rejects_bad_url(
         headers=auth,
         json={"url": "https://example.com/not-a-model.txt"},
     )
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "invalid_model_url"
+    assert response.status_code == HTTP_422_UNPROCESSABLE_CONTENT
+    assert response.json()[ERROR_KEY][ERROR_CODE_KEY] == "invalid_model_url"
 
 
 async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[str, str]) -> None:
     overview = await admin_client.get("/ui/partials/overview", headers=auth)
-    assert overview.status_code == 200
+    assert overview.status_code == HTTP_200_OK
     assert "Live operations" in overview.text
     assert 'hx-get="/ui/partials/operations"' in overview.text
     assert "Succeeded" in overview.text
@@ -686,7 +735,7 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     assert 'class="libraries-card"' in overview.text or "libraries-card" in overview.text
     assert 'class="lib-tile' in overview.text
     assert "FFmpeg" in overview.text
-    assert "sherpa-onnx" in overview.text
+    assert SHERPA_ONNX_ENGINE in overview.text
     assert "Installed" in overview.text or "Missing" in overview.text
     # Old dense table layout should not return.
     assert "Path / install" not in overview.text
@@ -696,70 +745,70 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     assert "0.0.0.0:8765" not in overview.text
     assert "http://127.0.0.1:8765/" not in overview.text
     # Exposure warning is a top-of-app banner, not mid-Overview copy.
-    assert "Listening on every network interface" not in overview.text
+    assert NETWORK_INTERFACE_NOTICE not in overview.text
 
     models = await admin_client.get("/ui/partials/models", headers=auth)
-    assert models.status_code == 200
+    assert models.status_code == HTTP_200_OK
     assert "Test Tiny" in models.text
-    assert 'class="model-card"' in models.text
+    assert MODEL_CARD_CLASS in models.text
     assert 'hx-trigger="every 1500ms"' not in models.text
     assert 'hx-post="/ui/partials/models/whisper.cpp%3Aggml-tiny.bin/download"' in models.text
 
-    settings = await admin_client.get("/ui/partials/settings", headers=auth)
-    assert settings.status_code == 200
+    settings = await admin_client.get(SETTINGS_PARTIAL_PATH, headers=auth)
+    assert settings.status_code == HTTP_200_OK
     assert "Speech engine" in settings.text
     assert "exposure-panel" not in settings.text
     assert "Device tokens" in settings.text
     assert "Bootstrap token (VOCAGATEWAY_TOKEN / token file)" in settings.text
 
     banner = await admin_client.get("/ui/partials/exposure-banner", headers=auth)
-    assert banner.status_code == 200
+    assert banner.status_code == HTTP_200_OK
     assert "exposure-banner" in banner.text
-    assert "Listening on every network interface" in banner.text
+    assert NETWORK_INTERFACE_NOTICE in banner.text
     assert "Dismiss for 24 hours" in banner.text
     assert "&times;" in banner.text or "×" in banner.text
 
     pair = await admin_client.get("/ui/partials/test", headers=auth)
-    assert pair.status_code == 200
+    assert pair.status_code == HTTP_200_OK
     assert "exposure-panel" in pair.text
-    assert "Listening on every network interface" in pair.text
+    assert NETWORK_INTERFACE_NOTICE in pair.text
     # Once, at page end — never stacked by pairing-card HTMX swaps.
-    assert pair.text.count("Listening on every network interface") == 1
+    assert pair.text.count(NETWORK_INTERFACE_NOTICE) == 1
     assert pair.text.count('id="pairing-exposure-panel"') == 1
     assert pair.text.index('id="test-card"') < pair.text.index('id="pairing-exposure-panel"')
 
     # Token/url pairing partials must not re-emit the exposure panel.
     pairing_only = await admin_client.get("/ui/partials/pairing", headers=auth)
-    assert pairing_only.status_code == 200
+    assert pairing_only.status_code == HTTP_200_OK
     assert "exposure-panel" not in pairing_only.text
-    assert "Listening on every network interface" not in pairing_only.text
+    assert NETWORK_INTERFACE_NOTICE not in pairing_only.text
 
     tokens = await admin_client.get("/ui/partials/tokens", headers=auth)
-    assert tokens.status_code == 200
+    assert tokens.status_code == HTTP_200_OK
     assert 'id="tokens-card"' in tokens.text
 
     created = await admin_client.post(
-        "/ui/partials/tokens", headers=auth, data={"label": "Kanishk's iPhone"}
+        "/ui/partials/tokens", headers=auth, data={LABEL_KEY: "Kanishk's iPhone"}
     )
-    assert created.status_code == 200
+    assert created.status_code == HTTP_200_OK
     assert "New secret for Kanishk&#39;s iPhone" in created.text
     assert 'id="new-token-value"' in created.text
     assert "Regenerate</button>" in created.text
 
     operations = await admin_client.get("/ui/partials/operations", headers=auth)
-    assert operations.status_code == 200
+    assert operations.status_code == HTTP_200_OK
     assert "0 queued" in operations.text
     assert "Latency" in operations.text
 
     pill = await admin_client.get("/ui/partials/engine-pill", headers=auth)
-    assert pill.status_code == 200
+    assert pill.status_code == HTTP_200_OK
     assert "engine-pill" in pill.text
     assert "engine-popover" in pill.text
     assert "0.0.0.0:8765" in pill.text
     assert "http://127.0.0.1:8765/" in pill.text
 
     about = await admin_client.get("/ui/partials/about", headers=auth)
-    assert about.status_code == 200
+    assert about.status_code == HTTP_200_OK
     _assert_about_surface(about.text)
 
 
@@ -837,7 +886,7 @@ def _assert_about_surface(html: str) -> None:
 
 async def test_webui_shell_is_public(admin_client: httpx.AsyncClient) -> None:
     response = await admin_client.get("/")
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     assert "htmx.min.js" in response.text
     assert 'data-tab="about"' in response.text
     assert 'hx-get="/ui/partials/about"' in response.text
@@ -858,8 +907,8 @@ async def test_webui_shell_is_public(admin_client: httpx.AsyncClient) -> None:
 async def test_private_responses_are_not_cached(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
-    response = await admin_client.get("/v1/admin/status", headers=auth)
-    assert response.status_code == 200
+    response = await admin_client.get(ADMIN_STATUS_PATH, headers=auth)
+    assert response.status_code == HTTP_200_OK
     assert response.headers["cache-control"] == "no-store"
 
 
@@ -867,7 +916,7 @@ async def test_recorder_ui_shows_limit_and_copy_action(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     response = await admin_client.get("/ui/partials/test", headers=auth)
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     assert 'data-maximum-seconds="120"' in response.text
     assert 'id="record-timer"' in response.text
     assert 'id="copy-transcript"' in response.text
@@ -886,7 +935,7 @@ def test_model_cards_name_their_languages() -> None:
     from app.schemas import AdminModelEntry
 
     def card(model_id: str) -> str:
-        model = next(m for m in DEFAULT_CATALOG if m.id == model_id)
+        model = next(model for model in DEFAULT_CATALOG if model.id == model_id)
         entry = AdminModelEntry(
             id=model.id,
             engine=model.engine,
@@ -897,7 +946,7 @@ def test_model_cards_name_their_languages() -> None:
             family=model.family,
             description=model.description,
             source=model.source,
-            state="not_installed",
+            state=NOT_INSTALLED_STATE,
             active=False,
             recommended=False,
             detects_language_automatically=model.detects_language_automatically,
@@ -922,7 +971,7 @@ def test_model_cards_name_their_languages() -> None:
 
     dolphin = card("sherpa-onnx:dolphin-small-ctc-int8")
     assert "+36 more" in dolphin.split("</summary>")[0]
-    assert "Hindi" in dolphin and "Bengali" in dolphin and "Tamil" in dolphin
+    assert HINDI_LANGUAGE in dolphin and "Bengali" in dolphin and "Tamil" in dolphin
     assert 'class="badge auto-language"' in dolphin
     assert "picks the language itself" in dolphin
     assert 'class="model-language-note' in dolphin
@@ -931,11 +980,11 @@ def test_model_cards_name_their_languages() -> None:
     # rather than leaking a bare "af, am, be" at the reader.
     whisper = card("whisper.cpp:ggml-large-v3-turbo.bin")
     assert "+96 more" in whisper.split("</summary>")[0]
-    assert "Afrikaans" in whisper and "Hindi" in whisper
+    assert "Afrikaans" in whisper and HINDI_LANGUAGE in whisper
     assert 'class="model-language-chip">Afrikaans</span>' in whisper
     assert "badge auto-language" not in whisper
 
-    # An English-only build carries just "en", and gets no disclosure at all —
+    # An English-only build carries just ENGLISH_LANGUAGE_CODE, and gets no disclosure at all —
     # its "English only" summary already says everything a list would.
     english_only = card("whisper.cpp:ggml-tiny.en.bin")
     assert "model-languages" not in english_only
@@ -949,7 +998,7 @@ def test_model_cards_name_their_languages() -> None:
     assert "model-more" not in parakeet
 
 
-async def test_recorder_offers_every_language_a_client_can_request(
+async def test_recorder_offers_every_language_a_c_ca791(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
     """The Test tab must not be narrower than the mobile pickers.
@@ -964,8 +1013,26 @@ async def test_recorder_offers_every_language_a_client_can_request(
     select = response.text.split('<select id="test-language">')[1].split("</select>")[0]
 
     assert re.findall(r'<option value="([a-z]+)"', select) == [
-        "auto", "ar", "as", "bn", "nl", "en", "fr", "de", "gu", "hi",
-        "it", "ja", "kn", "ko", "ml", "zh", "mr", "ne", "pl", "pt",
+        AUTO_ENGINE,
+        "ar",
+        "as",
+        "bn",
+        "nl",
+        ENGLISH_LANGUAGE_CODE,
+        "fr",
+        "de",
+        "gu",
+        HINDI_LANGUAGE_CODE,
+        "it",
+        "ja",
+        "kn",
+        "ko",
+        "ml",
+        "zh",
+        "mr",
+        "ne",
+        "pl",
+        "pt",
         "pa", "ru", "es", "ta", "te", "uk", "ur", "vi",
     ]  # fmt: skip
 
@@ -980,18 +1047,18 @@ async def test_test_transcription_endpoint(
         headers={**authorization, "Content-Type": "audio/wav"},
         content=audio_bytes,
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     payload = response.json()
     assert payload["transcript"] == "hello from the local model"
-    assert payload["engine"] == "fake-local-model"
+    assert payload[ENGINE_KEY] == "fake-local-model"
     assert payload["duration_ms"] >= 0
     assert payload["normalization_ms"] >= 0
     assert payload["inference_ms"] >= 0
     assert "real_time_factor" in payload
     assert payload["peak_memory_mb"] > 0
 
-    status = await client.get("/v1/admin/status", headers=authorization)
-    metrics = status.json()["metrics"]
+    status = await client.get(ADMIN_STATUS_PATH, headers=authorization)
+    metrics = status.json()[METRICS_KEY]
     assert metrics["successful_transcriptions"] == 1
     assert metrics["failed_transcriptions"] == 0
     assert metrics["queue_depth"] == 0
@@ -999,18 +1066,18 @@ async def test_test_transcription_endpoint(
     assert metrics["last_latency_ms"] == payload["duration_ms"]
 
 
-async def test_test_transcription_rejects_unsupported_type(
+async def test_test_transcription_rejects_unsuppo_f97c8(
     client: httpx.AsyncClient, authorization: dict[str, str]
 ) -> None:
     response = await client.post(
         "/v1/admin/test-transcription",
         headers={**authorization, "Content-Type": "text/plain"},
-        content=b"x" * 200,
+        content=TEST_AUDIO_BYTES,
     )
-    assert response.status_code == 415
+    assert response.status_code == HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
 
-def test_a_filtered_list_warns_which_models_suit_dictation() -> None:
+def test_a_filtered_list_warns_which_models_dfdf9() -> None:
     """Every auto-detecting model tested returned the wrong writing system on a
     short phrase, and dictation is mostly short phrases. A list mixing both kinds
     has to say which half to trust."""
@@ -1021,27 +1088,29 @@ def test_a_filtered_list_warns_which_models_suit_dictation() -> None:
 
     entries = [
         AdminModelEntry(
-            id=m.id, engine=m.engine, label=m.label, size_bytes=m.size_bytes,
-            languages=m.languages, quality=m.quality, family=m.family,
-            description=m.description, source=m.source, state="not_installed",
+            id=model.id, engine=model.engine, label=model.label, size_bytes=model.size_bytes,
+            languages=model.languages, quality=model.quality, family=model.family,
+            description=model.description, source=model.source, state=NOT_INSTALLED_STATE,
             active=False, recommended=False,
-            detects_language_automatically=m.detects_language_automatically,
-            language_names=language_names(m.language_codes),
-            language_codes=list(m.language_codes),
+            detects_language_automatically=model.detects_language_automatically,
+            language_names=language_names(model.language_codes),
+            language_codes=list(model.language_codes),
         )
-        for m in DEFAULT_CATALOG
+        for model in DEFAULT_CATALOG
     ]  # fmt: skip
 
-    hindi = [e for e in entries if _model_covers(e, "hi")]
-    rendered = models_list_fragment(hindi, languages=["hi"])
-    assert "models-language-hint" in rendered
+    hindi = [entry for entry in entries if _model_covers(entry, HINDI_LANGUAGE_CODE)]
+    rendered = models_list_fragment(hindi, languages=[HINDI_LANGUAGE_CODE])
+    assert MODELS_LANGUAGE_HINT_CLASS in rendered
     # Still accepts the legacy single-string kwarg.
-    assert "models-language-hint" in models_list_fragment(hindi, language="hi")
+    assert MODELS_LANGUAGE_HINT_CLASS in models_list_fragment(hindi, language=HINDI_LANGUAGE_CODE)
     assert "wrong script" in rendered
-    assert "Hindi" in rendered
+    assert HINDI_LANGUAGE in rendered
 
     # No hint when there is nothing to choose between.
-    only_auto = [e for e in hindi if e.detects_language_automatically]
-    assert "models-language-hint" not in models_list_fragment(only_auto, language="hi")
+    only_auto = [entry for entry in hindi if entry.detects_language_automatically]
+    assert MODELS_LANGUAGE_HINT_CLASS not in models_list_fragment(
+        only_auto, language=HINDI_LANGUAGE_CODE
+    )
     # And never on the unfiltered catalog, where it would just be noise.
-    assert "models-language-hint" not in models_list_fragment(entries)
+    assert MODELS_LANGUAGE_HINT_CLASS not in models_list_fragment(entries)

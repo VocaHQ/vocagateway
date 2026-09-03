@@ -7,6 +7,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
+_KEEP_AUDIO: object = object()
+
 
 @dataclass(slots=True)
 class StoredSession:
@@ -22,13 +24,34 @@ class StoredSession:
     updated_at: datetime
 
 
+def _connect(database_path: Path) -> sqlite3.Connection:
+    connection = sqlite3.connect(database_path, timeout=10)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def _from_row(row: sqlite3.Row) -> StoredSession:
+    return StoredSession(
+        session_id=UUID(row["session_id"]),
+        job_id=row["job_id"],
+        state=row["state"],
+        language=row["language"],
+        style=row["style"],
+        audio_name=row["audio_name"],
+        transcript=row["transcript"],
+        error_code=row["error_code"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]),
+    )
+
+
 class SessionRepository:
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
 
     def initialize(self) -> None:
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as connection:
+        with _connect(self.database_path) as connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS sessions (
@@ -51,7 +74,7 @@ class SessionRepository:
         if existing is not None:
             return existing
         now = datetime.now(UTC)
-        with self._connect() as connection:
+        with _connect(self.database_path) as connection:
             connection.execute(
                 """
                 INSERT OR IGNORE INTO sessions
@@ -67,36 +90,33 @@ class SessionRepository:
                     now.isoformat(),
                 ),
             )
-        result = self.get(session_id)
-        if result is None:
+        created_session = self.get(session_id)
+        if created_session is None:
             raise RuntimeError("Session creation failed")
-        return result
+        return created_session
 
     def get(self, session_id: UUID) -> StoredSession | None:
-        with self._connect() as connection:
+        with _connect(self.database_path) as connection:
             row = connection.execute(
                 "SELECT * FROM sessions WHERE session_id = ?", (str(session_id),)
             ).fetchone()
-        return self._from_row(row) if row else None
+        return _from_row(row) if row else None
 
     def update(
         self,
         session_id: UUID,
         *,
         state: str,
-        audio_name: str | None = None,
+        audio_name: str | None | object = _KEEP_AUDIO,
         transcript: str | None = None,
         error_code: str | None = None,
-        preserve_audio_name: bool = True,
     ) -> StoredSession:
         current = self.get(session_id)
         if current is None:
             raise KeyError(session_id)
-        chosen_audio = (
-            current.audio_name if preserve_audio_name and audio_name is None else audio_name
-        )
+        chosen_audio = current.audio_name if audio_name is _KEEP_AUDIO else audio_name
         now = datetime.now(UTC)
-        with self._connect() as connection:
+        with _connect(self.database_path) as connection:
             connection.execute(
                 """
                 UPDATE sessions
@@ -112,43 +132,23 @@ class SessionRepository:
                     str(session_id),
                 ),
             )
-        result = self.get(session_id)
-        if result is None:
+        updated_session = self.get(session_id)
+        if updated_session is None:
             raise RuntimeError("Session update failed")
-        return result
+        return updated_session
 
     def delete(self, session_id: UUID) -> StoredSession | None:
         current = self.get(session_id)
         if current is None:
             return None
-        with self._connect() as connection:
+        with _connect(self.database_path) as connection:
             connection.execute("DELETE FROM sessions WHERE session_id = ?", (str(session_id),))
         return current
 
     def expired(self, retention_hours: int) -> list[StoredSession]:
         cutoff = datetime.now(UTC) - timedelta(hours=retention_hours)
-        with self._connect() as connection:
+        with _connect(self.database_path) as connection:
             rows = connection.execute(
                 "SELECT * FROM sessions WHERE updated_at < ?", (cutoff.isoformat(),)
             ).fetchall()
-        return [self._from_row(row) for row in rows]
-
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path, timeout=10)
-        connection.row_factory = sqlite3.Row
-        return connection
-
-    @staticmethod
-    def _from_row(row: sqlite3.Row) -> StoredSession:
-        return StoredSession(
-            session_id=UUID(row["session_id"]),
-            job_id=row["job_id"],
-            state=row["state"],
-            language=row["language"],
-            style=row["style"],
-            audio_name=row["audio_name"],
-            transcript=row["transcript"],
-            error_code=row["error_code"],
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"]),
-        )
+        return [_from_row(row) for row in rows]

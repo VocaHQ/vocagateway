@@ -9,192 +9,77 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from app.config import Settings
-from app.engines import EngineProvider
-from app.errors import (
-    APIProblem,
-    EngineUnavailableError,
-    InvalidAudioError,
-    LanguageUnsupportedError,
-    SilentAudioError,
-    TranscriptionProcessError,
+from starlette import status
+
+from app import config, engines, errors, metrics, scripts, storage, text_styles
+from app.models.base import (
+    AudioNormalizer,
+    EngineTranscription,
+    TranscriptionEngine,
+    TranscriptionOptions,
 )
-from app.metrics import PipelineTiming, RuntimeMetrics
-from app.models.base import AudioNormalizer, EngineTranscription, TranscriptionOptions
-from app.scripts import transcript_matches_language
-from app.storage import SessionRepository, StoredSession
-from app.text_styles import apply_writing_style
+
+TRANSCRIPTION_SLOT_TIMEOUT_SECONDS = 0.05
+FAILED_SESSION_STATE = "failed"
+_MILLISECONDS_PER_SECOND = 1000
+_DARWIN_RSS_DIVISOR = 1024 * 1024
+_LINUX_RSS_DIVISOR = 1024
+
+
+@dataclass(frozen=True, slots=True)
+class AdhocTranscription:
+    transcript: str
+    engine: str
+    timing: metrics.PipelineTiming
 
 
 class TranscriptionService:
     def __init__(
         self,
-        settings: Settings,
-        repository: SessionRepository,
-        engine_provider: EngineProvider,
+        settings: config.Settings,
+        repository: storage.SessionRepository,
+        engine_provider: engines.EngineProvider,
         normalizer: AudioNormalizer,
     ) -> None:
         self.settings = settings
         self.repository = repository
-        self.engine_provider = engine_provider
-        self.normalizer = normalizer
         self.upload_dir = settings.data_dir / "audio"
         self.normalized_dir = settings.data_dir / "normalized"
+        self.metrics = metrics.RuntimeMetrics(settings.maximum_concurrent_transcriptions)
+        self._engine_provider = engine_provider
+        self._normalizer = normalizer
         self._transcription_slots = asyncio.Semaphore(settings.maximum_concurrent_transcriptions)
-        self.metrics = RuntimeMetrics(settings.maximum_concurrent_transcriptions)
 
-    async def finish(self, session_id: UUID) -> StoredSession:
+    async def finish(self, session_id: UUID) -> storage.StoredSession:
         stored = self.require(session_id)
         if stored.state == "completed":
             return stored
         if stored.audio_name is None:
-            raise APIProblem(409, "audio_missing", "Upload audio before finishing the session.")
+            raise errors.APIProblem(
+                status.HTTP_409_CONFLICT,
+                "audio_missing",
+                "Upload audio before finishing the session.",
+            )
         if stored.state == "transcribing":
-            raise APIProblem(
-                409,
+            raise errors.APIProblem(
+                status.HTTP_409_CONFLICT,
                 "transcription_in_progress",
                 "Transcription is already in progress.",
             )
-
-        source = self._safe_audio_path(stored.audio_name)
         await self._acquire_transcription_slot()
-
-        normalized = self.normalized_dir / f"{session_id}.wav"
-        started = time.monotonic()
-        normalization_ms = 0
-        try:
-            self.repository.update(session_id, state="transcribing")
-            normalization_started = time.monotonic()
-            await self.normalizer.normalize(
-                source, normalized, self.settings.maximum_duration_seconds
-            )
-            normalization_ms = _elapsed_ms(normalization_started)
-            audio_duration_ms = _wav_duration_ms(normalized)
-            engine = self.engine_provider.current()
-            inference_started = time.monotonic()
-            raw_result = await engine.transcribe(
-                normalized,
-                TranscriptionOptions(language=stored.language, style=stored.style),
-            )
-            outcome = _engine_outcome(raw_result, inference_started)
-            raw = outcome.text
-            _require_matching_script(raw, stored.language)
-            transcript = apply_writing_style(raw, stored.style, stored.language)
-            completed = self.repository.update(
-                session_id,
-                state="completed",
-                transcript=transcript,
-                error_code=None,
-                audio_name=None if self.settings.delete_successful_audio else stored.audio_name,
-                preserve_audio_name=not self.settings.delete_successful_audio,
-            )
-            if self.settings.delete_successful_audio:
-                source.unlink(missing_ok=True)
-            total_ms = _elapsed_ms(started)
-            engine_name = (await engine.health()).name
-            self.metrics.succeeded(
-                total_ms,
-                _pipeline_timing(
-                    total_ms,
-                    normalization_ms,
-                    outcome,
-                    audio_duration_ms,
-                    engine_name,
-                ),
-            )
-            return completed
-        except SilentAudioError as error:
-            self.metrics.failed(_elapsed_ms(started))
-            self.repository.update(session_id, state="failed", error_code="silent_audio")
-            raise APIProblem(422, "silent_audio", str(error)) from error
-        except InvalidAudioError as error:
-            self.metrics.failed(_elapsed_ms(started))
-            self.repository.update(session_id, state="failed", error_code="invalid_audio")
-            raise APIProblem(422, "invalid_audio", str(error)) from error
-        except EngineUnavailableError as error:
-            self.metrics.failed(_elapsed_ms(started))
-            self.repository.update(session_id, state="failed", error_code="engine_unavailable")
-            raise APIProblem(503, "engine_unavailable", str(error), recoverable=True) from error
-        except LanguageUnsupportedError as error:
-            # Before the general handler below: this is a `TranscriptionProcessError`,
-            # but retrying replays the same language against the same model, so the
-            # audio is discarded rather than kept for a Retry that cannot succeed.
-            self.metrics.failed(_elapsed_ms(started))
-            self.repository.update(session_id, state="failed", error_code="language_unsupported")
-            raise APIProblem(422, "language_unsupported", str(error)) from error
-        except TranscriptionProcessError as error:
-            self.metrics.failed(_elapsed_ms(started))
-            self.repository.update(session_id, state="failed", error_code="transcription_failed")
-            raise APIProblem(502, "transcription_failed", str(error), recoverable=True) from error
-        except Exception:
-            # Leave the session retryable: stuck "transcribing" rejects finish
-            # and is not in the retry allow-list (failed/uploaded/completed).
-            self.metrics.failed(_elapsed_ms(started))
-            self.repository.update(session_id, state="failed", error_code="internal_error")
-            raise
-        finally:
-            normalized.unlink(missing_ok=True)
-            self._transcription_slots.release()
-            self.metrics.finished()
+        return await _SessionJob(self, stored).run()
 
     async def transcribe_adhoc(self, source: Path, language: str) -> AdhocTranscription:
         """One-shot transcription for the WebUI test recorder (no session stored)."""
         await self._acquire_transcription_slot()
-        normalized = self.normalized_dir / f"adhoc-{uuid4()}.wav"
-        started = time.monotonic()
-        normalization_ms = 0
-        try:
-            normalization_started = time.monotonic()
-            await self.normalizer.normalize(
-                source, normalized, self.settings.maximum_duration_seconds
-            )
-            normalization_ms = _elapsed_ms(normalization_started)
-            audio_duration_ms = _wav_duration_ms(normalized)
-            engine = self.engine_provider.current()
-            inference_started = time.monotonic()
-            raw_result = await engine.transcribe(
-                normalized, TranscriptionOptions(language=language, style="raw")
-            )
-            outcome = _engine_outcome(raw_result, inference_started)
-            _require_matching_script(outcome.text, language)
-            name = (await engine.health()).name
-            duration_ms = _elapsed_ms(started)
-            timing = _pipeline_timing(
-                duration_ms,
-                normalization_ms,
-                outcome,
-                audio_duration_ms,
-                name,
-            )
-            self.metrics.succeeded(duration_ms, timing)
-            return AdhocTranscription(outcome.text.strip(), name, timing)
-        except SilentAudioError as error:
-            self.metrics.failed(_elapsed_ms(started))
-            raise APIProblem(422, "silent_audio", str(error)) from error
-        except InvalidAudioError as error:
-            self.metrics.failed(_elapsed_ms(started))
-            raise APIProblem(422, "invalid_audio", str(error)) from error
-        except EngineUnavailableError as error:
-            self.metrics.failed(_elapsed_ms(started))
-            raise APIProblem(503, "engine_unavailable", str(error), recoverable=True) from error
-        except LanguageUnsupportedError as error:
-            self.metrics.failed(_elapsed_ms(started))
-            raise APIProblem(422, "language_unsupported", str(error)) from error
-        except TranscriptionProcessError as error:
-            self.metrics.failed(_elapsed_ms(started))
-            raise APIProblem(502, "transcription_failed", str(error), recoverable=True) from error
-        except Exception:
-            self.metrics.failed(_elapsed_ms(started))
-            raise
-        finally:
-            normalized.unlink(missing_ok=True)
-            self._transcription_slots.release()
-            self.metrics.finished()
+        return await _AdhocJob(self, source, language).run()
 
-    def require(self, session_id: UUID) -> StoredSession:
+    def require(self, session_id: UUID) -> storage.StoredSession:
         session = self.repository.get(session_id)
         if session is None:
-            raise APIProblem(404, "session_not_found", "The session does not exist.")
+            raise errors.APIProblem(
+                status.HTTP_404_NOT_FOUND, "session_not_found", "The session does not exist."
+            )
         return session
 
     def delete(self, session_id: UUID) -> bool:
@@ -202,7 +87,7 @@ class TranscriptionService:
         if session is None:
             return False
         if session.audio_name:
-            self._safe_audio_path(session.audio_name).unlink(missing_ok=True)
+            _Pipeline.safe_audio_path(self.upload_dir, session.audio_name).unlink(missing_ok=True)
         (self.normalized_dir / f"{session_id}.wav").unlink(missing_ok=True)
         return True
 
@@ -215,103 +100,323 @@ class TranscriptionService:
     async def _acquire_transcription_slot(self) -> None:
         self.metrics.queued()
         try:
-            await asyncio.wait_for(self._transcription_slots.acquire(), timeout=0.05)
+            await asyncio.wait_for(
+                self._transcription_slots.acquire(), timeout=TRANSCRIPTION_SLOT_TIMEOUT_SECONDS
+            )
         except TimeoutError as error:
-            self.metrics.rejected()
-            raise APIProblem(
-                503,
+            self.metrics.dequeued(rejected=True)
+            raise errors.APIProblem(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
                 "engine_overloaded",
                 "The local transcription engine is busy.",
                 recoverable=True,
             ) from error
         except BaseException:
-            self.metrics.cancelled()
+            self.metrics.dequeued()
             raise
         self.metrics.started()
 
-    def _safe_audio_path(self, audio_name: str) -> Path:
+
+class _TranscriptGuard:
+    @classmethod
+    def require_matching_script(cls, text: str, language: str) -> None:
+        """Refuse a transcript written in the wrong alphabet.
+
+        Models that detect the language themselves can return fluent text in a
+        language nobody asked for — Dolphin turns a short Hindi phrase into Cyrillic.
+        Inserting that at the cursor is worse than failing, because it looks like a
+        real transcript. Raised as `LanguageUnsupportedError` so it carries the same
+        non-retryable `language_unsupported` code the clients already explain.
+        """
+        if scripts.transcript_matches_language(text, language):
+            return
+        raise errors.LanguageUnsupportedError(
+            f"The model transcribed this as a different language than {language}. "
+            "It detects the language itself and misread a short recording; try "
+            "speaking a full sentence, or choose a model that supports this language."
+        )
+
+    @classmethod
+    def conservative_cleanup(cls, text: str) -> str:
+        """Backward-compatible name for the original clean transcript mode."""
+        return text_styles.apply_writing_style(text, "clean")
+
+
+class _Pipeline:
+    @classmethod
+    def elapsed_ms(cls, started: float) -> int:
+        return max(0, int((time.monotonic() - started) * _MILLISECONDS_PER_SECOND))
+
+    @classmethod
+    def safe_audio_path(cls, upload_dir: Path, audio_name: str) -> Path:
         if Path(audio_name).name != audio_name:
-            raise APIProblem(500, "invalid_storage_reference", "Stored audio reference is invalid.")
-        return self.upload_dir / audio_name
+            raise errors.APIProblem(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "invalid_storage_reference",
+                "Stored audio reference is invalid.",
+            )
+        return upload_dir / audio_name
+
+    @classmethod
+    def engine_outcome(
+        cls,
+        engine_result: str | EngineTranscription,
+        inference_started: float,
+    ) -> EngineTranscription:
+        if isinstance(engine_result, EngineTranscription):
+            return engine_result
+        return EngineTranscription(
+            text=engine_result, inference_ms=cls.elapsed_ms(inference_started)
+        )
+
+    @classmethod
+    def wav_duration_ms(cls, path: Path) -> int:
+        try:
+            with wave.open(str(path), "rb") as source:
+                frames = source.getnframes()
+                frame_rate = source.getframerate()
+        except (OSError, EOFError, wave.Error):
+            return 0
+        return round(frames * _MILLISECONDS_PER_SECOND / frame_rate) if frame_rate else 0
+
+    @classmethod
+    def timing(
+        cls,
+        total_ms: int,
+        normalization_ms: int,
+        outcome: EngineTranscription,
+        audio_duration_ms: int,
+        engine: str,
+    ) -> metrics.PipelineTiming:
+        inference_ms = outcome.inference_ms
+        rtf = round(inference_ms / audio_duration_ms, 3) if audio_duration_ms else None
+        return metrics.PipelineTiming(
+            total_ms=total_ms,
+            normalization_ms=normalization_ms,
+            model_load_ms=outcome.model_load_ms,
+            inference_ms=inference_ms,
+            audio_duration_ms=audio_duration_ms,
+            real_time_factor=rtf,
+            engine=engine,
+            peak_memory_mb=cls.peak_memory_mb(),
+        )
+
+    @classmethod
+    def peak_memory_mb(cls) -> float | None:
+        try:
+            usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        except (OSError, ValueError):
+            return None
+        divisor = _DARWIN_RSS_DIVISOR if platform.system() == "Darwin" else _LINUX_RSS_DIVISOR
+        return round(usage / divisor, 1)
+
+    @classmethod
+    def mapped_failure(
+        cls,
+        error: Exception,
+        runtime_metrics: metrics.RuntimeMetrics,
+        started: float,
+    ) -> Exception:
+        runtime_metrics.record_result(cls.elapsed_ms(started), success=False)
+        for error_type, code, status_code, recoverable in _KNOWN_FAILURES:
+            if isinstance(error, error_type):
+                problem = errors.APIProblem(status_code, code, str(error), recoverable=recoverable)
+                problem.__cause__ = error
+                return problem
+        return error
 
 
-def _require_matching_script(text: str, language: str) -> None:
-    """Refuse a transcript written in the wrong alphabet.
-
-    Models that detect the language themselves can return fluent text in a
-    language nobody asked for — Dolphin turns a short Hindi phrase into Cyrillic.
-    Inserting that at the cursor is worse than failing, because it looks like a
-    real transcript. Raised as `LanguageUnsupportedError` so it carries the same
-    non-retryable `language_unsupported` code the clients already explain.
-    """
-    if transcript_matches_language(text, language):
-        return
-    raise LanguageUnsupportedError(
-        f"The model transcribed this as a different language than {language}. "
-        "It detects the language itself and misread a short recording; try "
-        "speaking a full sentence, or choose a model that supports this language."
-    )
-
-
-def conservative_cleanup(text: str) -> str:
-    """Backward-compatible name for the original clean transcript mode."""
-    return apply_writing_style(text, "clean")
-
-
-def _elapsed_ms(started: float) -> int:
-    return max(0, int((time.monotonic() - started) * 1000))
+# Subclass-first so SilentAudioError is not swallowed by InvalidAudioError,
+# and LanguageUnsupportedError is not swallowed by TranscriptionProcessError.
+_FailureRow = tuple[type[Exception], str, int, bool]
+_KNOWN_FAILURES: tuple[_FailureRow, ...] = (
+    (errors.SilentAudioError, "silent_audio", status.HTTP_422_UNPROCESSABLE_CONTENT, False),
+    (errors.InvalidAudioError, "invalid_audio", status.HTTP_422_UNPROCESSABLE_CONTENT, False),
+    (
+        errors.EngineUnavailableError,
+        "engine_unavailable",
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        True,
+    ),
+    (
+        errors.LanguageUnsupportedError,
+        "language_unsupported",
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
+        False,
+    ),
+    (errors.TranscriptionProcessError, "transcription_failed", status.HTTP_502_BAD_GATEWAY, True),
+)
 
 
-@dataclass(frozen=True, slots=True)
-class AdhocTranscription:
-    transcript: str
-    engine: str
-    timing: PipelineTiming
+class _EnginePass:
+    def __init__(self, service: TranscriptionService, language: str, style: str) -> None:
+        self.service = service
+        self.language = language
+        self.style = style
+
+    async def run(
+        self, source: Path, normalized: Path
+    ) -> tuple[EngineTranscription, int, TranscriptionEngine]:
+        normalization_started = time.monotonic()
+        await self.service._normalizer.normalize(
+            source, normalized, self.service.settings.maximum_duration_seconds
+        )
+        normalization_ms = _Pipeline.elapsed_ms(normalization_started)
+        outcome, engine = await self._infer(normalized)
+        return outcome, normalization_ms, engine
+
+    async def _infer(self, normalized: Path) -> tuple[EngineTranscription, TranscriptionEngine]:
+        engine = self.service._engine_provider.current()
+        inference_started = time.monotonic()
+        raw_result = await engine.transcribe(
+            normalized,
+            TranscriptionOptions(language=self.language, style=self.style),
+        )
+        return _Pipeline.engine_outcome(raw_result, inference_started), engine
 
 
-def _engine_outcome(
-    result: str | EngineTranscription,
-    inference_started: float,
-) -> EngineTranscription:
-    if isinstance(result, EngineTranscription):
-        return result
-    return EngineTranscription(text=result, inference_ms=_elapsed_ms(inference_started))
+class _SessionJob:
+    def __init__(self, service: TranscriptionService, stored: storage.StoredSession) -> None:
+        self.service = service
+        self.stored = stored
+
+    async def run(self) -> storage.StoredSession:
+        session_id = self.stored.session_id
+        normalized = self.service.normalized_dir / f"{session_id}.wav"
+        started = time.monotonic()
+        try:
+            return await self._complete(normalized, started)
+        except Exception as error:
+            mapped = self._fail(error, started)
+            if mapped is error:
+                raise
+            raise mapped from error
+        finally:
+            self._release(normalized)
+
+    async def _complete(self, normalized: Path, started: float) -> storage.StoredSession:
+        self.service.repository.update(self.stored.session_id, state="transcribing")
+        source = _Pipeline.safe_audio_path(self.service.upload_dir, self.stored.audio_name or "")
+        outcome, normalization_ms, engine = await _EnginePass(
+            self.service, self.stored.language, self.stored.style
+        ).run(source, normalized)
+        _TranscriptGuard.require_matching_script(outcome.text, self.stored.language)
+        completed = self._persist(source, outcome.text)
+        await self._record_success(engine, started, normalization_ms, outcome, normalized)
+        return completed
+
+    def _persist(self, source: Path, raw: str) -> storage.StoredSession:
+        stored = self.stored
+        transcript = text_styles.apply_writing_style(raw, stored.style, stored.language)
+        keep_audio = stored.audio_name
+        if self.service.settings.delete_successful_audio:
+            keep_audio = None
+        completed = self.service.repository.update(
+            stored.session_id,
+            state="completed",
+            transcript=transcript,
+            error_code=None,
+            audio_name=keep_audio,
+        )
+        if self.service.settings.delete_successful_audio:
+            source.unlink(missing_ok=True)
+        return completed
+
+    async def _record_success(
+        self,
+        engine: TranscriptionEngine,
+        started: float,
+        normalization_ms: int,
+        outcome: EngineTranscription,
+        normalized: Path,
+    ) -> None:
+        total_ms = _Pipeline.elapsed_ms(started)
+        engine_name = (await engine.health()).name
+        self.service.metrics.record_result(
+            total_ms,
+            success=True,
+            timing=_Pipeline.timing(
+                total_ms,
+                normalization_ms,
+                outcome,
+                _Pipeline.wav_duration_ms(normalized),
+                engine_name,
+            ),
+        )
+
+    def _fail(self, error: Exception, started: float) -> Exception:
+        mapped = _Pipeline.mapped_failure(error, self.service.metrics, started)
+        code = mapped.code if isinstance(mapped, errors.APIProblem) else "internal_error"
+        # Leave unknown failures retryable: stuck "transcribing" rejects finish
+        # and is not in the retry allow-list (failed/uploaded/completed).
+        if isinstance(mapped, errors.APIProblem) and mapped.code == "language_unsupported":
+            # Retrying replays the same language against the same model.
+            code = "language_unsupported"
+        self.service.repository.update(
+            self.stored.session_id, state=FAILED_SESSION_STATE, error_code=code
+        )
+        return mapped
+
+    def _release(self, normalized: Path) -> None:
+        normalized.unlink(missing_ok=True)
+        self.service._transcription_slots.release()
+        self.service.metrics.finished()
 
 
-def _wav_duration_ms(path: Path) -> int:
-    try:
-        with wave.open(str(path), "rb") as source:
-            frame_rate = source.getframerate()
-            return round(source.getnframes() * 1000 / frame_rate) if frame_rate else 0
-    except (OSError, EOFError, wave.Error):
-        return 0
+class _AdhocJob:
+    def __init__(self, service: TranscriptionService, source: Path, language: str) -> None:
+        self.service = service
+        self.source = source
+        self.language = language
+
+    async def run(self) -> AdhocTranscription:
+        normalized = self.service.normalized_dir / f"adhoc-{uuid4()}.wav"
+        started = time.monotonic()
+        try:
+            return await self._complete(normalized, started)
+        except Exception as error:
+            mapped = self._fail(error, started)
+            if mapped is error:
+                raise
+            raise mapped from error
+        finally:
+            self._release(normalized)
+
+    async def _complete(self, normalized: Path, started: float) -> AdhocTranscription:
+        outcome, normalization_ms, engine = await _EnginePass(
+            self.service, self.language, "raw"
+        ).run(self.source, normalized)
+        _TranscriptGuard.require_matching_script(outcome.text, self.language)
+        return await self._success(engine, outcome, normalization_ms, normalized, started)
+
+    async def _success(
+        self,
+        engine: TranscriptionEngine,
+        outcome: EngineTranscription,
+        normalization_ms: int,
+        normalized: Path,
+        started: float,
+    ) -> AdhocTranscription:
+        name = (await engine.health()).name
+        duration_ms = _Pipeline.elapsed_ms(started)
+        timing = _Pipeline.timing(
+            duration_ms,
+            normalization_ms,
+            outcome,
+            _Pipeline.wav_duration_ms(normalized),
+            name,
+        )
+        self.service.metrics.record_result(duration_ms, success=True, timing=timing)
+        return AdhocTranscription(outcome.text.strip(), name, timing)
+
+    def _fail(self, error: Exception, started: float) -> Exception:
+        return _Pipeline.mapped_failure(error, self.service.metrics, started)
+
+    def _release(self, normalized: Path) -> None:
+        normalized.unlink(missing_ok=True)
+        self.service._transcription_slots.release()
+        self.service.metrics.finished()
 
 
-def _pipeline_timing(
-    total_ms: int,
-    normalization_ms: int,
-    outcome: EngineTranscription,
-    audio_duration_ms: int,
-    engine: str,
-) -> PipelineTiming:
-    inference_ms = outcome.inference_ms
-    rtf = round(inference_ms / audio_duration_ms, 3) if audio_duration_ms else None
-    return PipelineTiming(
-        total_ms=total_ms,
-        normalization_ms=normalization_ms,
-        model_load_ms=outcome.model_load_ms,
-        inference_ms=inference_ms,
-        audio_duration_ms=audio_duration_ms,
-        real_time_factor=rtf,
-        engine=engine,
-        peak_memory_mb=_peak_memory_mb(),
-    )
-
-
-def _peak_memory_mb() -> float | None:
-    try:
-        usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    except (OSError, ValueError):
-        return None
-    divisor = 1024 * 1024 if platform.system() == "Darwin" else 1024
-    return round(usage / divisor, 1)
+_require_matching_script = _TranscriptGuard.require_matching_script
+conservative_cleanup = _TranscriptGuard.conservative_cleanup

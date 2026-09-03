@@ -18,19 +18,19 @@ class APIProblem(Exception):
 
 
 class InvalidAudioError(Exception):
-    pass
+    """The uploaded audio cannot be processed."""
 
 
 class SilentAudioError(InvalidAudioError):
-    pass
+    """The uploaded audio contains no usable speech."""
 
 
 class EngineUnavailableError(Exception):
-    pass
+    """The selected transcription engine is unavailable."""
 
 
 class TranscriptionProcessError(Exception):
-    pass
+    """The transcription engine failed while processing audio."""
 
 
 class LanguageUnsupportedError(TranscriptionProcessError):

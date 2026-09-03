@@ -6,24 +6,27 @@ from app.errors import LanguageUnsupportedError
 from app.scripts import transcript_matches_language
 from app.service import _require_matching_script
 
+HINDI_LANGUAGE_CODE = "hi"
+ENGLISH_LANGUAGE_CODE = "en"
+
 
 def test_the_dolphin_cyrillic_bug_is_rejected() -> None:
     """The exact failure this guard exists for: dictating "नमस्ते" in Hindi to
     Dolphin returns "насте" — fluent, confident, and in the wrong alphabet."""
-    assert transcript_matches_language("насте", "hi") is False
+    assert transcript_matches_language("насте", HINDI_LANGUAGE_CODE) is False
     with pytest.raises(LanguageUnsupportedError, match="different language"):
-        _require_matching_script("насте", "hi")
+        _require_matching_script("насте", HINDI_LANGUAGE_CODE)
 
 
-def test_transliteration_into_another_script_is_rejected() -> None:
+def test_transliteration_into_another_scrip_aa() -> None:
     """A model under evaluation rendered "send me the report by Friday" in Arabic
     script. A presence test let it through on the single stray Latin "o" in
     "رoرت", which is why the check is proportional rather than binary."""
     transliterated = "ل سند مي  رoرت بي فريداي"
     assert "o" in transliterated  # the character that used to rescue it
-    assert transcript_matches_language(transliterated, "en") is False
+    assert transcript_matches_language(transliterated, ENGLISH_LANGUAGE_CODE) is False
     with pytest.raises(LanguageUnsupportedError):
-        _require_matching_script(transliterated, "en")
+        _require_matching_script(transliterated, ENGLISH_LANGUAGE_CODE)
 
 
 def test_code_switching_is_never_rejected() -> None:
@@ -37,8 +40,8 @@ def test_code_switching_is_never_rejected() -> None:
         "मैं report Friday तक send करूंगा",
         "ठीक है OK",
     ):
-        assert transcript_matches_language(text, "hi") is True
-        _require_matching_script(text, "hi")
+        assert transcript_matches_language(text, HINDI_LANGUAGE_CODE) is True
+        _require_matching_script(text, HINDI_LANGUAGE_CODE)
 
 
 def test_uncertain_cases_pass_rather_than_fail() -> None:
@@ -46,8 +49,8 @@ def test_uncertain_cases_pass_rather_than_fail() -> None:
     would reject good transcripts."""
     assert transcript_matches_language("anything at all", "auto") is True
     assert transcript_matches_language("anything at all", "zz") is True  # unknown code
-    assert transcript_matches_language("", "hi") is True
-    assert transcript_matches_language("1,200 $45 —", "hi") is True  # no letters
+    assert transcript_matches_language("", HINDI_LANGUAGE_CODE) is True
+    assert transcript_matches_language("1,200 $45 —", HINDI_LANGUAGE_CODE) is True  # no letters
     # Chinese and Japanese share Han characters, so CJK is deliberately lenient.
     assert transcript_matches_language("私は元気です", "zh") is True
 
@@ -55,11 +58,11 @@ def test_uncertain_cases_pass_rather_than_fail() -> None:
 @pytest.mark.parametrize(
     ("text", "language"),
     [
-        ("मैं ठीक हूँ", "en"),
-        ("hello there", "hi"),
+        ("मैं ठीक हूँ", ENGLISH_LANGUAGE_CODE),
+        ("hello there", HINDI_LANGUAGE_CODE),
         ("आज", "bn"),
         ("The quick brown fox", "ru"),
-        ("مرحبا", "hi"),
+        ("مرحبا", HINDI_LANGUAGE_CODE),
     ],
 )
 def test_wrong_script_is_rejected(text: str, language: str) -> None:
@@ -69,13 +72,13 @@ def test_wrong_script_is_rejected(text: str, language: str) -> None:
 @pytest.mark.parametrize(
     ("text", "language"),
     [
-        ("मैं कल बाजार जाऊंगा", "hi"),
+        ("मैं कल बाजार जाऊंगा", HINDI_LANGUAGE_CODE),
         ("আমি ভালো আছি", "bn"),
         ("நான் நன்றாக இருக்கிறேன்", "ta"),
         ("私は元気です", "ja"),
         ("집에 갔어요", "ko"),
         ("ผมสบายดี", "th"),
-        ("The quick brown fox", "en"),
+        ("The quick brown fox", ENGLISH_LANGUAGE_CODE),
         ("Здравствуйте", "ru"),
         ("مان ٺيڪ آهيان", "sd"),
     ],
@@ -91,8 +94,8 @@ def test_every_client_language_can_be_judged() -> None:
     from app.scripts import expected_scripts
 
     client_languages = [
-        "en", "es", "ar", "ja", "ko", "zh", "uk", "ru", "vi", "fr", "de", "it",
-        "pt", "nl", "pl", "hi", "bn", "mr", "te", "ta", "gu", "ur", "kn", "ml",
+        ENGLISH_LANGUAGE_CODE, "es", "ar", "ja", "ko", "zh", "uk", "ru", "vi", "fr", "de", "it",
+        "pt", "nl", "pl", HINDI_LANGUAGE_CODE, "bn", "mr", "te", "ta", "gu", "ur", "kn", "ml",
         "pa", "as", "ne",
     ]  # fmt: skip
     unjudgeable = [code for code in client_languages if not expected_scripts(code)]
@@ -113,9 +116,7 @@ def test_every_client_language_can_be_judged() -> None:
         ("Сәлеметсіз бе", "kk", "Kazakh Cyrillic"),
     ],
 )
-def test_languages_written_in_two_scripts_accept_either(
-    text: str, language: str, script: str
-) -> None:
+def test_languages_written_in_two_scripts_a_aaa(text: str, language: str, script: str) -> None:
     """A guard that rejects transcripts must not be wrong about a language's
     writing system. Holding Serbian to one alphabet would throw away half the
     country's writing, and a false rejection destroys a good dictation."""

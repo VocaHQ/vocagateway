@@ -16,14 +16,39 @@ import pytest
 from conftest import TOKEN, FakeEngine, FakeNormalizer
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.status import (
+    HTTP_200_OK,
+    HTTP_401_UNAUTHORIZED,
+    HTTP_409_CONFLICT,
+    HTTP_503_SERVICE_UNAVAILABLE,
+)
 from starlette.websockets import WebSocketDisconnect
 
 from app.config import Settings
 from app.main import create_app
 
+AUTHORIZATION_HEADER = "Authorization"
+ADMIN_STATUS_PATH = "/v1/admin/status"
+
 # Reachable without a credential by design: the phone polls health before it
 # has been paired, and container orchestrators probe liveness with no secret.
 PUBLIC_PATHS = frozenset({"/health", "/health/live", "/health/ready"})
+MINIMUM_VALID_TOKEN_BYTES = 48
+ONE_BYTE_SHORT_TOKEN_BYTES = 47
+MINIMUM_PROTECTED_ROUTE_COUNT = 25
+
+
+async def _assert_unauthorized_route(client: httpx.AsyncClient, method: str, path: str) -> None:
+    response = await client.request(method.upper(), path)
+    assert response.status_code == HTTP_401_UNAUTHORIZED, f"{method.upper()} {path}"
+    assert response.json()["error"]["code"] == "unauthorized"
+
+
+def _auth_header(token: str) -> dict[str, str]:
+    return {AUTHORIZATION_HEADER: f"Bearer {token}"}
+
+
+WEBSOCKET_UNAUTHORIZED_CODE = 4401
 
 
 @pytest.fixture
@@ -66,7 +91,7 @@ def websocket_close_code(client: TestClient, header: str | None) -> int | None:
     accepted socket (which then closes 4409 for this non-streaming engine)
     means the credential passed.
     """
-    headers = {"Authorization": header} if header is not None else {}
+    headers = {AUTHORIZATION_HEADER: header} if header is not None else {}
     try:
         with client.websocket_connect("/v1/stream", headers=headers):
             return None
@@ -82,11 +107,14 @@ def websocket_close_code(client: TestClient, header: str | None) -> int | None:
     [
         pytest.param(b"Bearer \xe9", id="latin1-e-acute"),
         pytest.param(b"Bearer \xff", id="latin1-high-byte"),
-        pytest.param(b"Bearer " + b"x" * 47 + b"\xe9", id="right-length-wrong-bytes"),
+        pytest.param(
+            b"Bearer " + b"x" * ONE_BYTE_SHORT_TOKEN_BYTES + b"\xe9",
+            id="right-length-wrong-bytes",
+        ),
         pytest.param(b"\xe9", id="no-scheme"),
     ],
 )
-async def test_non_ascii_credential_is_rejected_rather_than_crashing(
+async def test_non_ascii_credential_is_rejected_r_aa(
     auth_client: httpx.AsyncClient, raw: bytes
 ) -> None:
     """A high byte in the header must be a 401, never a 500.
@@ -96,20 +124,20 @@ async def test_non_ascii_credential_is_rejected_rather_than_crashing(
     as `str` therefore let any unauthenticated client turn every authenticated
     route into a 500 with a stack trace, just by sending one high byte.
     """
-    response = await auth_client.get("/v1/admin/status", headers=[(b"authorization", raw)])
-    assert response.status_code == 401
+    response = await auth_client.get(ADMIN_STATUS_PATH, headers=[(b"authorization", raw)])
+    assert response.status_code == HTTP_401_UNAUTHORIZED
     assert response.json()["error"]["code"] == "unauthorized"
 
 
-async def test_rejection_never_echoes_the_supplied_credential(
+async def test_rejection_never_echoes_the_supplie_aaa(
     auth_client: httpx.AsyncClient,
 ) -> None:
     """A 401 body must not reflect the attempt back into logs or proxies."""
-    wrong = "wrong-" + ("y" * 48)
+    wrong = "wrong-" + ("y" * MINIMUM_VALID_TOKEN_BYTES)
     response = await auth_client.get(
-        "/v1/admin/status", headers={"Authorization": f"Bearer {wrong}"}
+        ADMIN_STATUS_PATH, headers={AUTHORIZATION_HEADER: f"Bearer {wrong}"}
     )
-    assert response.status_code == 401
+    assert response.status_code == HTTP_401_UNAUTHORIZED
     assert wrong not in response.text
     assert TOKEN not in response.text
 
@@ -117,7 +145,7 @@ async def test_rejection_never_echoes_the_supplied_credential(
 # ------------------------------------------------------- the protected surface
 
 
-async def test_no_documented_route_answers_without_a_token(
+async def test_no_documented_route_answers_withou_aaaa(
     auth_app: FastAPI, auth_client: httpx.AsyncClient
 ) -> None:
     """Guard against a new router shipping without `require_token`.
@@ -134,14 +162,16 @@ async def test_no_documented_route_answers_without_a_token(
             continue
         # Path params are irrelevant: the security dependency is solved before
         # any path/query/body validation, so a placeholder still yields 401.
-        concrete = path.replace("{session_id}", "x").replace("{model_id}", "x")
-        concrete = concrete.replace("{token_id}", "x")
         for method in operations:
-            response = await auth_client.request(method.upper(), concrete)
-            assert response.status_code == 401, f"{method.upper()} {path}"
-            assert response.json()["error"]["code"] == "unauthorized"
+            await _assert_unauthorized_route(
+                auth_client,
+                method,
+                path.replace("{session_id}", "x")
+                .replace("{model_id}", "x")
+                .replace("{token_id}", "x"),
+            )
             checked += 1
-    assert checked > 25
+    assert checked > MINIMUM_PROTECTED_ROUTE_COUNT
 
 
 async def test_public_routes_answer_without_a_token(
@@ -150,7 +180,7 @@ async def test_public_routes_answer_without_a_token(
     """The complement of the test above: these must not regress into 401."""
     for path in sorted(PUBLIC_PATHS):
         response = await auth_client.get(path)
-        assert response.status_code in {200, 503}, path
+        assert response.status_code in {HTTP_200_OK, HTTP_503_SERVICE_UNAVAILABLE}, path
         assert TOKEN not in response.text, path
 
 
@@ -170,7 +200,7 @@ async def test_public_routes_answer_without_a_token(
     ],
 )
 def test_websocket_rejects_bad_credentials(sync_client: TestClient, header: str | None) -> None:
-    assert websocket_close_code(sync_client, header) == 4401
+    assert websocket_close_code(sync_client, header) == WEBSOCKET_UNAUTHORIZED_CODE
 
 
 @pytest.mark.parametrize(
@@ -185,11 +215,11 @@ def test_websocket_rejects_bad_credentials(sync_client: TestClient, header: str 
         pytest.param(f"BEARER {TOKEN}", id="uppercase-scheme"),
     ],
 )
-def test_websocket_accepts_the_scheme_http_accepts(sync_client: TestClient, header: str) -> None:
+def test_websocket_accepts_the_scheme_http_aaaaa(sync_client: TestClient, header: str) -> None:
     assert websocket_close_code(sync_client, header) is None
 
 
-def test_websocket_and_http_agree_on_every_header_form(sync_client: TestClient) -> None:
+def test_websocket_and_http_agree_on_every_d806a(sync_client: TestClient) -> None:
     """The two code paths must never diverge on what counts as authenticated."""
     forms = [
         f"Bearer {TOKEN}",
@@ -203,27 +233,27 @@ def test_websocket_and_http_agree_on_every_header_form(sync_client: TestClient) 
     ]
     for header in forms:
         http_ok = (
-            sync_client.get("/v1/admin/status", headers={"Authorization": header}).status_code
-            != 401
+            sync_client.get(ADMIN_STATUS_PATH, headers={AUTHORIZATION_HEADER: header}).status_code
+            != HTTP_401_UNAUTHORIZED
         )
         socket_ok = websocket_close_code(sync_client, header) is None
         assert http_ok == socket_ok, header
 
 
-def test_websocket_accepts_a_device_token_until_it_is_revoked(
+def test_websocket_accepts_a_device_token_u_b7078(
     sync_client: TestClient,
 ) -> None:
-    auth = {"Authorization": f"Bearer {TOKEN}"}
+    auth = {AUTHORIZATION_HEADER: f"Bearer {TOKEN}"}
     created = sync_client.post("/v1/admin/tokens", headers=auth, json={"label": "Pixel 6a"})
-    assert created.status_code == 200
+    assert created.status_code == HTTP_200_OK
     device = created.json()
     device_header = f"Bearer {device['token']}"
 
     assert websocket_close_code(sync_client, device_header) is None
 
     revoked = sync_client.delete(f"/v1/admin/tokens/{device['id']}", headers=auth)
-    assert revoked.status_code == 200
-    assert websocket_close_code(sync_client, device_header) == 4401
+    assert revoked.status_code == HTTP_200_OK
+    assert websocket_close_code(sync_client, device_header) == WEBSOCKET_UNAUTHORIZED_CODE
     # Revoking a device never disturbs the bootstrap credential.
     assert websocket_close_code(sync_client, f"Bearer {TOKEN}") is None
 
@@ -231,36 +261,39 @@ def test_websocket_accepts_a_device_token_until_it_is_revoked(
 # ------------------------------------------------- device token lifecycle
 
 
-async def test_rotating_a_device_token_invalidates_the_previous_secret(
+async def test_rotating_a_device_token_invalidate_a(
     auth_client: httpx.AsyncClient,
 ) -> None:
-    auth = {"Authorization": f"Bearer {TOKEN}"}
-    created = await auth_client.post("/v1/admin/tokens", headers=auth, json={"label": "Old phone"})
+    created = await auth_client.post(
+        "/v1/admin/tokens", headers=_auth_header(TOKEN), json={"label": "Old phone"}
+    )
     original = created.json()["token"]
     token_id = created.json()["id"]
 
-    rotated = await auth_client.post(f"/v1/admin/tokens/{token_id}/rotate", headers=auth)
-    assert rotated.status_code == 200
+    rotated = await auth_client.post(
+        f"/v1/admin/tokens/{token_id}/rotate", headers=_auth_header(TOKEN)
+    )
+    assert rotated.status_code == HTTP_200_OK
     replacement = rotated.json()["token"]
     assert replacement != original
     assert rotated.json()["id"] == token_id
 
-    old = await auth_client.get("/v1/admin/status", headers={"Authorization": f"Bearer {original}"})
-    assert old.status_code == 401
-    new = await auth_client.get(
-        "/v1/admin/status", headers={"Authorization": f"Bearer {replacement}"}
-    )
-    assert new.status_code == 200
+    assert (
+        await auth_client.get(ADMIN_STATUS_PATH, headers=_auth_header(original))
+    ).status_code == HTTP_401_UNAUTHORIZED
+    assert (
+        await auth_client.get(ADMIN_STATUS_PATH, headers=_auth_header(replacement))
+    ).status_code == HTTP_200_OK
 
 
-async def test_bootstrap_token_cannot_be_rotated_through_the_api(
+async def test_bootstrap_token_cannot_be_rotated_aa(
     auth_client: httpx.AsyncClient,
 ) -> None:
     """It lives in a file or the environment; rotating it here would be theatre."""
-    auth = {"Authorization": f"Bearer {TOKEN}"}
+    auth = {AUTHORIZATION_HEADER: f"Bearer {TOKEN}"}
     response = await auth_client.post("/v1/admin/tokens/bootstrap/rotate", headers=auth)
-    assert response.status_code == 409
+    assert response.status_code == HTTP_409_CONFLICT
     assert response.json()["error"]["code"] == "bootstrap_token_not_rotatable"
 
-    still_works = await auth_client.get("/v1/admin/status", headers=auth)
-    assert still_works.status_code == 200
+    still_works = await auth_client.get(ADMIN_STATUS_PATH, headers=auth)
+    assert still_works.status_code == HTTP_200_OK

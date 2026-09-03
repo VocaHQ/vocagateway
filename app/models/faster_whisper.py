@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import asyncio
-import importlib.util
 import os
 import time
+from importlib import util as importlib_util
 from pathlib import Path
 from typing import Any
 
 from app.errors import EngineUnavailableError, TranscriptionProcessError
 from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
+from app.runtime_config import AUTO_ENGINE
+
+TRANSCRIPTION_TIMEOUT_SECONDS = 180
+MAXIMUM_ERROR_MESSAGE_LENGTH = 240
 
 
 class FasterWhisperEngine:
@@ -18,8 +22,8 @@ class FasterWhisperEngine:
         self,
         model_path: Path | None,
         *,
-        device: str = "auto",
-        compute_type: str = "auto",
+        device: str = AUTO_ENGINE,
+        compute_type: str = AUTO_ENGINE,
         cpu_threads: int = 0,
     ) -> None:
         self.model_path = model_path
@@ -31,7 +35,7 @@ class FasterWhisperEngine:
         self._inference_lock = asyncio.Lock()
 
     async def health(self) -> EngineHealth:
-        package_ready = importlib.util.find_spec("faster_whisper") is not None
+        package_ready = importlib_util.find_spec("faster_whisper") is not None
         model_ready = self.model_path is not None and (self.model_path / "model.bin").is_file()
         model_name = self.model_path.name if self.model_path else "no-model-selected"
         return EngineHealth(
@@ -40,10 +44,10 @@ class FasterWhisperEngine:
         )
 
     async def warmup(self) -> int:
-        if not (await self.health()).ready:
+        if not (await self.health()).ready or self.model_path is None:
             return 0
         await self._ensure_model()
-        return _directory_size(self.model_path) if self.model_path else 0
+        return self._directory_size(self.model_path)
 
     async def transcribe(
         self, audio_path: Path, options: TranscriptionOptions
@@ -54,30 +58,14 @@ class FasterWhisperEngine:
                 "extra and select a downloaded faster-whisper model."
             )
         async with self._inference_lock:
-            load_started = time.monotonic()
+            start_time = time.monotonic()
             model, loaded_now = await self._ensure_model()
-            model_load_ms = _elapsed_ms(load_started) if loaded_now else 0
-            inference_started = time.monotonic()
-            try:
-                transcript = await asyncio.wait_for(
-                    asyncio.to_thread(self._transcribe_sync, model, audio_path, options),
-                    timeout=180,
-                )
-            except TimeoutError as error:
-                raise TranscriptionProcessError(
-                    "faster-whisper transcription timed out."
-                ) from error
-            except Exception as error:
-                raise TranscriptionProcessError(
-                    f"faster-whisper failed: {str(error)[-240:]}"
-                ) from error
-            inference_ms = _elapsed_ms(inference_started)
-            if not transcript:
-                raise TranscriptionProcessError("faster-whisper returned an empty transcript.")
+            load_ms = _elapsed_ms(start_time) if loaded_now else 0
+            inf_time = time.monotonic()
             return EngineTranscription(
-                text=transcript,
-                model_load_ms=model_load_ms,
-                inference_ms=inference_ms,
+                text=await _run_inference(model, audio_path, options),
+                model_load_ms=load_ms,
+                inference_ms=_elapsed_ms(inf_time),
             )
 
     async def _ensure_model(self) -> tuple[Any, bool]:
@@ -95,55 +83,76 @@ class FasterWhisperEngine:
         from faster_whisper import WhisperModel
 
         device = _resolved_device(self.device)
-        compute_type = _resolved_compute_type(self.compute_type, device)
-        threads = self.cpu_threads or max(1, min(os.cpu_count() or 1, 8))
+        comp_type = _resolved_compute_type(self.compute_type, device)
+        cpu_total = os.cpu_count() or 1
+        default_threads = min(cpu_total, 8)
+        threads = self.cpu_threads or max(1, default_threads)
         return WhisperModel(
             str(self.model_path),
             device=device,
-            compute_type=compute_type,
+            compute_type=comp_type,
             cpu_threads=threads,
             num_workers=1,
             local_files_only=True,
         )
 
-    @staticmethod
-    def _transcribe_sync(model: Any, audio_path: Path, options: TranscriptionOptions) -> str:
-        segments, _ = model.transcribe(
-            str(audio_path),
-            language=None if options.language == "auto" else options.language,
-            beam_size=1,
-            best_of=1,
-            temperature=0,
-            condition_on_previous_text=False,
-            vad_filter=False,
+    def _directory_size(self, path: Path) -> int:
+        total = 0
+        for entry in path.rglob("*"):
+            if entry.is_file():
+                total += entry.stat().st_size
+        return total
+
+
+async def _run_inference(model: Any, audio_path: Path, options: TranscriptionOptions) -> str:
+    try:
+        transcript = await asyncio.wait_for(
+            asyncio.to_thread(_extract_text, model, audio_path, options),
+            timeout=TRANSCRIPTION_TIMEOUT_SECONDS,
         )
-        return " ".join(
-            segment.text.strip() for segment in segments if segment.text.strip()
-        ).strip()
+    except TimeoutError as error:
+        raise TranscriptionProcessError("faster-whisper transcription timed out.") from error
+    except Exception as error:
+        detail = str(error)[-MAXIMUM_ERROR_MESSAGE_LENGTH:]
+        raise TranscriptionProcessError(f"faster-whisper failed: {detail}") from error
+    if not transcript:
+        raise TranscriptionProcessError("faster-whisper returned an empty transcript.")
+    return transcript
 
 
-def _resolved_device(value: str) -> str:
-    if value in {"cpu", "cuda"}:
-        return value
+def _extract_text(model: Any, audio_path: Path, options: TranscriptionOptions) -> str:
+    segments, _ = model.transcribe(
+        str(audio_path),
+        language=None if options.language == AUTO_ENGINE else options.language,
+        beam_size=1,
+        best_of=1,
+        temperature=0,
+        condition_on_previous_text=False,
+        vad_filter=False,
+    )
+    valid_texts = [segment.text.strip() for segment in segments if segment.text.strip()]
+    return " ".join(valid_texts).strip()
+
+
+def _has_cuda() -> bool:
     try:
         import ctranslate2
-
-        if ctranslate2.get_cuda_device_count() > 0:
-            return "cuda"
     except (ImportError, RuntimeError):
-        pass
-    return "cpu"
+        return False
+    return bool(ctranslate2.get_cuda_device_count() > 0)
 
 
-def _resolved_compute_type(value: str, device: str) -> str:
-    if value != "auto":
-        return value
+def _resolved_device(configured_device: str) -> str:
+    if configured_device in {"cpu", "cuda"}:
+        return configured_device
+    return "cuda" if _has_cuda() else "cpu"
+
+
+def _resolved_compute_type(configured_type: str, device: str) -> str:
+    if configured_type != AUTO_ENGINE:
+        return configured_type
     return "float16" if device == "cuda" else "int8"
 
 
 def _elapsed_ms(started: float) -> int:
     return max(0, int((time.monotonic() - started) * 1000))
-
-
-def _directory_size(path: Path) -> int:
-    return sum(file.stat().st_size for file in path.rglob("*") if file.is_file())

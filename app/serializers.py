@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.metrics import MetricsSnapshot
+from app.metrics import MetricsSnapshot, PipelineTiming
 from app.schemas import (
     AdminModelEntry,
     MetricsHistoryPoint,
@@ -36,12 +36,7 @@ def metrics_status(metrics: MetricsSnapshot) -> OperationalMetricsStatus:
         rejected_transcriptions=metrics.rejected_transcriptions,
         average_latency_ms=metrics.average_latency_ms,
         last_latency_ms=metrics.last_latency_ms,
-        normalization_ms=pipeline.normalization_ms if pipeline else None,
-        model_load_ms=pipeline.model_load_ms if pipeline else None,
-        inference_ms=pipeline.inference_ms if pipeline else None,
-        audio_duration_ms=pipeline.audio_duration_ms if pipeline else None,
-        real_time_factor=pipeline.real_time_factor if pipeline else None,
-        peak_memory_mb=pipeline.peak_memory_mb if pipeline else None,
+        **_pipeline_metrics(pipeline),
         history=[
             MetricsHistoryPoint(
                 uptime_seconds=point.uptime_seconds,
@@ -56,8 +51,24 @@ def metrics_status(metrics: MetricsSnapshot) -> OperationalMetricsStatus:
     )
 
 
+def _pipeline_metrics(pipeline: PipelineTiming | None) -> dict[str, int | float | None]:
+    """Serialize optional pipeline timing fields without repeating its guard."""
+    metric_names = (
+        "normalization_ms",
+        "model_load_ms",
+        "inference_ms",
+        "audio_duration_ms",
+        "real_time_factor",
+        "peak_memory_mb",
+    )
+    if pipeline is None:
+        return dict.fromkeys(metric_names)
+    return {metric_name: getattr(pipeline, metric_name) for metric_name in metric_names}
+
+
 def joined_stream_lines(lines: dict[int, str]) -> str:
-    return " ".join(lines[key] for key in sorted(lines) if lines[key]).strip()
+    ordered_lines = (line for _, line in sorted(lines.items()) if line)
+    return " ".join(ordered_lines).strip()
 
 
 def model_covers(entry: AdminModelEntry, language: str) -> bool:

@@ -6,11 +6,16 @@ from pathlib import Path
 from app.models.base import TranscriptionOptions
 from app.models.handy import HandyEngine
 
+EXECUTABLE_FILE_MODE = 0o700
+UTF8_ENCODING = "utf-8"
+HANDY_BINARY_NAME = "handy"
+CACHE_DIRECTORY_NAME = "cache"
+
 
 def _write_selected_model(settings_file: Path, model: str) -> None:
     settings_file.write_text(
         json.dumps({"settings": {"selected_model": model}}),
-        encoding="utf-8",
+        encoding=UTF8_ENCODING,
     )
 
 
@@ -22,62 +27,64 @@ def _write_downloaded_model(cache: Path, model: str) -> Path:
     return model_path
 
 
-async def test_handy_adapter_uses_downloaded_model_and_parses_json(
+def _write_handy_binary(tmp_path: Path, script: str) -> Path:
+    binary = tmp_path / HANDY_BINARY_NAME
+    binary.write_text(script, encoding=UTF8_ENCODING)
+    binary.chmod(EXECUTABLE_FILE_MODE)
+    return binary
+
+
+def _write_audio(tmp_path: Path) -> Path:
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"audio")
+    return audio
+
+
+async def test_handy_adapter_uses_downloaded_mode_aa(
     tmp_path: Path,
 ) -> None:
     model = "owner/repository/model.gguf"
-    binary = tmp_path / "handy"
-    binary.write_text(
-        "#!/bin/sh\nprintf '%s\\n' '{\"text\":\"private local result\"}'\n",
-        encoding="utf-8",
+    binary = _write_handy_binary(
+        tmp_path, "#!/bin/sh\nprintf '%s\\n' '{\"text\":\"private local result\"}'\n"
     )
-    binary.chmod(0o700)
-    model_path = (
-        tmp_path / "cache" / "models--owner--repository" / "snapshots" / "revision" / "model.gguf"
-    )
-    model_path.parent.mkdir(parents=True)
-    model_path.write_bytes(b"model")
-    audio = tmp_path / "audio.wav"
-    audio.write_bytes(b"audio")
+    _write_downloaded_model(tmp_path / CACHE_DIRECTORY_NAME, model)
+    audio = _write_audio(tmp_path)
 
-    engine = HandyEngine(binary, model, huggingface_cache=tmp_path / "cache")
-    health = await engine.health()
-    transcript = await engine.transcribe(
-        audio,
-        TranscriptionOptions(language="auto", style="raw"),
+    engine = HandyEngine(binary, model, huggingface_cache=tmp_path / CACHE_DIRECTORY_NAME)
+
+    assert (await engine.health()).ready is True
+    assert (await engine.health()).name == f"handy:{model}"
+    assert await engine.transcribe(audio, TranscriptionOptions(language="auto", style="raw")) == (
+        "private local result"
     )
 
-    assert health.ready is True
-    assert health.name == f"handy:{model}"
-    assert transcript == "private local result"
 
-
-async def test_handy_health_is_false_when_model_is_not_downloaded(
+async def test_handy_health_is_false_when_model_i_f7f57(
     tmp_path: Path,
 ) -> None:
-    binary = tmp_path / "handy"
-    binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    binary.chmod(0o700)
+    binary = tmp_path / HANDY_BINARY_NAME
+    binary.write_text("#!/bin/sh\nexit 0\n", encoding=UTF8_ENCODING)
+    binary.chmod(EXECUTABLE_FILE_MODE)
     engine = HandyEngine(
         binary,
         "owner/repository/missing.gguf",
-        huggingface_cache=tmp_path / "cache",
+        huggingface_cache=tmp_path / CACHE_DIRECTORY_NAME,
     )
     assert (await engine.health()).ready is False
 
 
-async def test_handy_reports_an_unavailable_model_selected_in_the_app(tmp_path: Path) -> None:
+async def test_handy_reports_an_unavailable_model_e479e(tmp_path: Path) -> None:
     selected = "owner/repository/missing.gguf"
     settings_file = tmp_path / "settings_store.json"
     _write_selected_model(settings_file, selected)
-    binary = tmp_path / "handy"
-    binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    binary.chmod(0o700)
+    binary = tmp_path / HANDY_BINARY_NAME
+    binary.write_text("#!/bin/sh\nexit 0\n", encoding=UTF8_ENCODING)
+    binary.chmod(EXECUTABLE_FILE_MODE)
 
     engine = HandyEngine(
         binary,
         settings_file=settings_file,
-        huggingface_cache=tmp_path / "cache",
+        huggingface_cache=tmp_path / CACHE_DIRECTORY_NAME,
     )
 
     health = await engine.health()
@@ -85,70 +92,54 @@ async def test_handy_reports_an_unavailable_model_selected_in_the_app(tmp_path: 
     assert health.name == f"handy:{selected}"
 
 
-async def test_handy_retries_empty_primary_result_with_downloaded_fallback(
+async def test_handy_retries_empty_primary_result_e08a0(
     tmp_path: Path,
 ) -> None:
     primary = "owner/primary/primary.gguf"
     fallback = "owner/fallback/fallback.gguf"
-    binary = tmp_path / "handy"
-    binary.write_text(
+    binary = _write_handy_binary(
+        tmp_path,
         "#!/bin/sh\n"
         'case "$*" in\n'
         "  *primary.gguf*) printf '%s\\n' '{\"text\":\"\"}' ;;\n"
         "  *) printf '%s\\n' '{\"text\":\"fallback result\"}' ;;\n"
         "esac\n",
-        encoding="utf-8",
     )
-    binary.chmod(0o700)
-    for model in (primary, fallback):
-        owner, repository, filename = model.split("/")
-        model_path = (
-            tmp_path
-            / "cache"
-            / f"models--{owner}--{repository}"
-            / "snapshots"
-            / "revision"
-            / filename
-        )
-        model_path.parent.mkdir(parents=True)
-        model_path.write_bytes(b"model")
-    audio = tmp_path / "audio.wav"
-    audio.write_bytes(b"audio")
+    _write_downloaded_model(tmp_path / CACHE_DIRECTORY_NAME, primary)
+    _write_downloaded_model(tmp_path / CACHE_DIRECTORY_NAME, fallback)
+    audio = _write_audio(tmp_path)
 
     engine = HandyEngine(
         binary,
         primary,
         fallback_model=fallback,
-        huggingface_cache=tmp_path / "cache",
+        huggingface_cache=tmp_path / CACHE_DIRECTORY_NAME,
     )
 
-    transcript = await engine.transcribe(
-        audio,
-        TranscriptionOptions(language="auto", style="raw"),
+    assert await engine.transcribe(audio, TranscriptionOptions(language="auto", style="raw")) == (
+        "fallback result"
     )
 
-    assert transcript == "fallback result"
 
-
-async def test_handy_follows_the_model_selected_in_the_app_without_restart(
+async def test_handy_follows_the_model_selected_i_aaa(
     tmp_path: Path,
 ) -> None:
     first = "owner/first/first.gguf"
     second = "owner/second/second.gguf"
     settings_file = tmp_path / "settings_store.json"
-    binary = tmp_path / "handy"
+    binary = tmp_path / HANDY_BINARY_NAME
     binary.write_text(
         '#!/bin/sh\nprintf \'%s\\n\' "$*" > "$0.args"\nprintf \'%s\\n\' \'{"text":"result"}\'\n',
-        encoding="utf-8",
+        encoding=UTF8_ENCODING,
     )
-    binary.chmod(0o700)
+    binary.chmod(EXECUTABLE_FILE_MODE)
     for model in (first, second):
-        _write_downloaded_model(tmp_path / "cache", model)
+        _write_downloaded_model(tmp_path / CACHE_DIRECTORY_NAME, model)
     _write_selected_model(settings_file, first)
     engine = HandyEngine(
         binary,
         settings_file=settings_file,
-        huggingface_cache=tmp_path / "cache",
+        huggingface_cache=tmp_path / CACHE_DIRECTORY_NAME,
     )
 
     assert (await engine.health()).name == f"handy:{first}"
@@ -161,28 +152,25 @@ async def test_handy_follows_the_model_selected_in_the_app_without_restart(
         await engine.transcribe(audio, TranscriptionOptions(language="auto", style="raw"))
         == "result"
     )
-    arguments = (tmp_path / "handy.args").read_text(encoding="utf-8")
+    arguments = (tmp_path / "handy.args").read_text(encoding=UTF8_ENCODING)
     assert f"--model {second}" in arguments
 
 
-async def test_handy_explicit_model_override_does_not_follow_the_app(
+async def test_handy_explicit_model_override_does_c5495(
     tmp_path: Path,
 ) -> None:
     configured = "owner/configured/configured.gguf"
     selected = "owner/selected/selected.gguf"
     settings_file = tmp_path / "settings_store.json"
-    binary = tmp_path / "handy"
-    binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    binary.chmod(0o700)
-    for model in (configured, selected):
-        _write_downloaded_model(tmp_path / "cache", model)
+    _write_downloaded_model(tmp_path / CACHE_DIRECTORY_NAME, configured)
+    _write_downloaded_model(tmp_path / CACHE_DIRECTORY_NAME, selected)
     _write_selected_model(settings_file, selected)
 
     engine = HandyEngine(
-        binary,
+        _write_handy_binary(tmp_path, "#!/bin/sh\nexit 0\n"),
         configured,
         settings_file=settings_file,
-        huggingface_cache=tmp_path / "cache",
+        huggingface_cache=tmp_path / CACHE_DIRECTORY_NAME,
     )
 
     assert (await engine.health()).name == f"handy:{configured}"

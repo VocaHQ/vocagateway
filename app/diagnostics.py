@@ -14,16 +14,19 @@ NEVER_INCLUDED: tuple[str, ...] = (
 )
 
 
-def redact_home_path(value: str) -> str:
+def redact_home_path(path_value: str) -> str:
     """Replace an absolute home-directory prefix with `~` for safer sharing."""
     home = str(Path.home())
-    if home and (value == home or value.startswith(home + "/")):
-        return "~" + value[len(home) :]
-    return value
+    if home and (path_value == home or path_value.startswith(f"{home}/")):
+        redacted_suffix = path_value[len(home) :]
+        return f"~{redacted_suffix}"
+    return path_value
 
 
-def _redact_optional_path(value: str | None) -> str | None:
-    return redact_home_path(value) if value is not None else None
+def _redact_optional_path(path_value: str | None) -> str | None:
+    if path_value is None:
+        return None
+    return redact_home_path(path_value)
 
 
 def build_diagnostics_bundle(

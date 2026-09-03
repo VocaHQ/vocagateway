@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-import importlib.util
 import json
+from importlib import util as importlib_util
 from pathlib import Path
 from typing import Any
 
 SCRIPT_PATH = Path(__file__).resolve().parent.parent / "scripts" / "harvest-model-pins.py"
+SHA256_DIGEST_LENGTH = 64
+WRONG_XET_DIGEST = "2" * SHA256_DIGEST_LENGTH
 
 
 def _load_module():
-    spec = importlib.util.spec_from_file_location("harvest_model_pins", SCRIPT_PATH)
+    spec = importlib_util.spec_from_file_location("harvest_model_pins", SCRIPT_PATH)
     assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
+    module = importlib_util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
@@ -31,7 +33,27 @@ class _FakeResponse:
         return json.dumps(self._payload).encode()
 
 
-def test_single_file_digest_comes_from_the_tree_api_not_a_head_request(monkeypatch) -> None:
+class _SingleFileRequester:
+    def __init__(self, hf_base_url: str, real_sha256: str) -> None:
+        self._hf_base_url = hf_base_url
+        self._real_sha256 = real_sha256
+
+    def __call__(self, url: str, method: str = "GET") -> _FakeResponse:
+        if method == "HEAD":
+            raise AssertionError(
+                "harvest() must not issue a HEAD request for a Hugging Face "
+                "resolve URL -- that is the bug this test guards against"
+            )
+        if url == f"{self._hf_base_url}/api/models/octocat/demo":
+            return _FakeResponse({"sha": "deadbeef" * 8})
+        if "/tree/" in url:
+            return _FakeResponse(
+                [{"type": "file", "path": "model.bin", "lfs": {"oid": self._real_sha256}}]
+            )
+        raise AssertionError(f"unexpected URL in test: {url}")
+
+
+def test_single_file_digest_comes_from_the_aa(monkeypatch) -> None:
     """Reproduces the exact bug this script shipped with: a repo migrated to
     Hugging Face's Xet storage backend makes `HEAD /{repo}/resolve/{rev}/{file}`
     302 to a Xet CDN host, and `urlopen` follows that redirect by default. The
@@ -43,23 +65,9 @@ def test_single_file_digest_comes_from_the_tree_api_not_a_head_request(monkeypat
     from the tree API's `lfs.oid`, which the redirect can't touch."""
     module = _load_module()
 
-    real_sha256 = "1" * 64
-    xet_hash_a_head_request_would_wrongly_read = "2" * 64
+    real_sha256 = "1" * SHA256_DIGEST_LENGTH
 
-    def fake_request(url: str, method: str = "GET") -> _FakeResponse:
-        if method == "HEAD":
-            raise AssertionError(
-                "harvest() must not issue a HEAD request for a Hugging Face "
-                "resolve URL -- that is the bug this test guards against"
-            )
-        if url == f"{module.HF_BASE_URL}/api/models/octocat/demo":
-            return _FakeResponse({"sha": "deadbeef" * 8})
-        if "/tree/" in url:
-            return _FakeResponse(
-                [{"type": "file", "path": "model.bin", "lfs": {"oid": real_sha256}}]
-            )
-        raise AssertionError(f"unexpected URL in test: {url}")
-
+    fake_request = _SingleFileRequester(module.HF_BASE_URL, real_sha256)
     monkeypatch.setattr(module, "_request", fake_request)
 
     model = module.CatalogModel(
@@ -78,4 +86,4 @@ def test_single_file_digest_comes_from_the_tree_api_not_a_head_request(monkeypat
 
     assert record is not None
     assert record["sha256"] == real_sha256
-    assert record["sha256"] != xet_hash_a_head_request_would_wrongly_read
+    assert record["sha256"] != WRONG_XET_DIGEST

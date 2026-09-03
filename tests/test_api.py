@@ -6,11 +6,34 @@ from uuid import uuid4
 import httpx
 import pytest
 from conftest import TOKEN, FakeEngine, FakeNormalizer
+from starlette.status import (
+    HTTP_200_OK,
+    HTTP_401_UNAUTHORIZED,
+    HTTP_404_NOT_FOUND,
+    HTTP_413_CONTENT_TOO_LARGE,
+    HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+    HTTP_422_UNPROCESSABLE_CONTENT,
+    HTTP_503_SERVICE_UNAVAILABLE,
+)
 
 from app.config import Settings
 from app.errors import LanguageUnsupportedError
 from app.main import create_app
 from app.models.base import EngineHealth, TranscriptionOptions
+
+TEST_AUDIO_SIZE = 200
+TEST_AUDIO_BYTES = b"x" * TEST_AUDIO_SIZE
+OVERSIZED_AUDIO_SIZE = 20_001
+OVERSIZED_AUDIO_BYTES = b"x" * OVERSIZED_AUDIO_SIZE
+SESSIONS_API_PATH = "/v1/sessions"
+CLIENT_SESSION_ID_KEY = "client_session_id"
+STYLE_KEY = "style"
+CONTENT_TYPE_HEADER = "Content-Type"
+WAV_CONTENT_TYPE = "audio/wav"
+STATUS_KEY = "status"
+LANGUAGES_KEY = "languages"
+JOB_ID_KEY = "job_id"
+TRANSCRIPT_KEY = "transcript"
 
 
 class UnreadyEngine:
@@ -30,7 +53,7 @@ class WrongLanguageEngine:
         )
 
 
-async def test_unsupported_language_is_reported_as_permanent(
+async def test_unsupported_language_is_reported_a_d68a4(
     settings: Settings, authorization: dict[str, str], audio_bytes: bytes
 ) -> None:
     """A language the loaded model cannot serve must not look like a transient fault.
@@ -38,23 +61,26 @@ async def test_unsupported_language_is_reported_as_permanent(
     The clients decide whether to keep audio for Retry from this code, and no
     number of retries will make an English-only model transcribe Hindi.
     """
-    app = create_app(settings, engine=WrongLanguageEngine(), normalizer=FakeNormalizer())
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://gateway") as client:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(
+            app=create_app(settings, engine=WrongLanguageEngine(), normalizer=FakeNormalizer())
+        ),
+        base_url="http://gateway",
+    ) as client:
         session_id = uuid4()
         await client.post(
-            "/v1/sessions",
+            SESSIONS_API_PATH,
             headers=authorization,
-            json={"client_session_id": str(session_id), "language": "hi", "style": "raw"},
+            json={CLIENT_SESSION_ID_KEY: str(session_id), "language": "hi", STYLE_KEY: "raw"},
         )
         await client.put(
             f"/v1/sessions/{session_id}/audio",
-            headers={**authorization, "Content-Type": "audio/wav"},
+            headers={**authorization, CONTENT_TYPE_HEADER: WAV_CONTENT_TYPE},
             content=audio_bytes,
         )
         finished = await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
 
-        assert finished.status_code == 422
+        assert finished.status_code == HTTP_422_UNPROCESSABLE_CONTENT
         error = finished.json()["error"]
         assert error["code"] == "language_unsupported"
         assert error["recoverable"] is False
@@ -64,19 +90,19 @@ async def test_unsupported_language_is_reported_as_permanent(
         assert session.json()["error_code"] == "language_unsupported"
 
 
-async def test_health_is_public_and_separates_engine_readiness(
+async def test_health_is_public_and_separates_eng_aa(
     client: httpx.AsyncClient, fake_engine: FakeEngine
 ) -> None:
     response = await client.get("/health")
-    assert response.status_code == 200
+    assert response.status_code == HTTP_200_OK
     assert response.json() == {
-        "status": "ok",
+        STATUS_KEY: "ok",
         "engine_ready": True,
         "engine": "fake-local-model",
         "streaming_supported": False,
         # A stub engine has no catalog entry, so the gateway makes no claim and
         # clients keep every language selectable.
-        "languages": [],
+        LANGUAGES_KEY: [],
         "detects_language_automatically": False,
     }
 
@@ -84,24 +110,24 @@ async def test_health_is_public_and_separates_engine_readiness(
     readiness = await client.get("/health/ready")
     repeated = await client.get("/health")
 
-    assert liveness.status_code == 200
-    assert liveness.json()["status"] == "ok"
+    assert liveness.status_code == HTTP_200_OK
+    assert liveness.json()[STATUS_KEY] == "ok"
     assert liveness.json()["uptime_seconds"] >= 0
-    assert readiness.status_code == 200
-    assert readiness.json()["status"] == "ready"
+    assert readiness.status_code == HTTP_200_OK
+    assert readiness.json()[STATUS_KEY] == "ready"
     assert readiness.json()["engine"] == "fake-local-model"
-    assert repeated.status_code == 200
+    assert repeated.status_code == HTTP_200_OK
     assert fake_engine.health_calls == 1
 
 
 async def test_private_endpoints_require_bearer_token(client: httpx.AsyncClient) -> None:
     response = await client.get("/v1/models")
-    assert response.status_code == 401
+    assert response.status_code == HTTP_401_UNAUTHORIZED
     assert response.json()["error"]["code"] == "unauthorized"
     assert TOKEN not in response.text
 
 
-async def test_readiness_can_fail_without_failing_liveness(tmp_path) -> None:
+async def test_readiness_can_fail_without_failing_ca0a7(tmp_path) -> None:
     settings = Settings(
         token=TOKEN,
         data_dir=tmp_path,
@@ -115,119 +141,122 @@ async def test_readiness_can_fail_without_failing_liveness(tmp_path) -> None:
         liveness = await test_client.get("/health/live")
         readiness = await test_client.get("/health/ready")
 
-    assert liveness.status_code == 200
-    assert readiness.status_code == 503
-    assert readiness.json()["status"] == "not_ready"
+    assert liveness.status_code == HTTP_200_OK
+    assert readiness.status_code == HTTP_503_SERVICE_UNAVAILABLE
+    assert readiness.json()[STATUS_KEY] == "not_ready"
     assert readiness.json()["engine"] == "missing-model"
 
 
-async def test_complete_flow_is_idempotent_and_deletes_successful_audio(
+async def test_complete_flow_is_idempotent_and_de_aaa(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
     audio_bytes: bytes,
 ) -> None:
     session_id = uuid4()
-    payload = {
-        "client_session_id": str(session_id),
-        "language": "auto",
-        "style": "raw",
-    }
-    created = await client.post("/v1/sessions", headers=authorization, json=payload)
-    repeated = await client.post("/v1/sessions", headers=authorization, json=payload)
-    assert created.status_code == 200
-    assert repeated.json()["job_id"] == created.json()["job_id"]
-
-    uploaded = await client.put(
-        f"/v1/sessions/{session_id}/audio",
-        headers={**authorization, "Content-Type": "audio/wav"},
-        content=audio_bytes,
+    created = await client.post(
+        SESSIONS_API_PATH,
+        headers=authorization,
+        json={CLIENT_SESSION_ID_KEY: str(session_id), "language": "auto", STYLE_KEY: "raw"},
     )
-    assert uploaded.status_code == 200
-    assert uploaded.json()["state"] == "uploaded"
+    repeated = await client.post(
+        SESSIONS_API_PATH,
+        headers=authorization,
+        json={CLIENT_SESSION_ID_KEY: str(session_id), "language": "auto", STYLE_KEY: "raw"},
+    )
+    assert created.status_code == HTTP_200_OK
+    assert repeated.json()[JOB_ID_KEY] == created.json()[JOB_ID_KEY]
+
+    assert (
+        await client.put(
+            f"/v1/sessions/{session_id}/audio",
+            headers={**authorization, CONTENT_TYPE_HEADER: WAV_CONTENT_TYPE},
+            content=audio_bytes,
+        )
+    ).status_code == HTTP_200_OK
 
     finished = await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
     finished_again = await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
-    assert finished.status_code == 200
-    assert finished.json()["transcript"] == "hello from the local model"
-    assert finished_again.json()["transcript"] == finished.json()["transcript"]
-    assert finished_again.json()["job_id"] == finished.json()["job_id"]
+    assert finished.status_code == HTTP_200_OK
+    assert finished.json()[TRANSCRIPT_KEY] == "hello from the local model"
+    assert finished_again.json()[TRANSCRIPT_KEY] == finished.json()[TRANSCRIPT_KEY]
+    assert finished_again.json()[JOB_ID_KEY] == finished.json()[JOB_ID_KEY]
 
 
-async def test_session_accepts_writing_styles_and_rejects_unknown_values(
+async def test_session_accepts_writing_styles_and_aaaa(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
 ) -> None:
     for style in ("formal", "casual", "very_casual", "excited"):
         response = await client.post(
-            "/v1/sessions",
+            SESSIONS_API_PATH,
             headers=authorization,
-            json={"client_session_id": str(uuid4()), "style": style},
+            json={CLIENT_SESSION_ID_KEY: str(uuid4()), STYLE_KEY: style},
         )
-        assert response.status_code == 200
-        assert response.json()["style"] == style
+        assert response.status_code == HTTP_200_OK
+        assert response.json()[STYLE_KEY] == style
 
     invalid = await client.post(
-        "/v1/sessions",
+        SESSIONS_API_PATH,
         headers=authorization,
-        json={"client_session_id": str(uuid4()), "style": "pirate"},
+        json={CLIENT_SESSION_ID_KEY: str(uuid4()), STYLE_KEY: "pirate"},
     )
-    assert invalid.status_code == 422
+    assert invalid.status_code == HTTP_422_UNPROCESSABLE_CONTENT
 
 
-async def test_writing_style_is_applied_to_the_local_transcript(
+async def test_writing_style_is_applied_to_the_lo_aaaaa(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
     audio_bytes: bytes,
 ) -> None:
     session_id = uuid4()
     await client.post(
-        "/v1/sessions",
+        SESSIONS_API_PATH,
         headers=authorization,
-        json={"client_session_id": str(session_id), "style": "formal"},
+        json={CLIENT_SESSION_ID_KEY: str(session_id), STYLE_KEY: "formal"},
     )
     await client.put(
         f"/v1/sessions/{session_id}/audio",
-        headers={**authorization, "Content-Type": "audio/wav"},
+        headers={**authorization, CONTENT_TYPE_HEADER: WAV_CONTENT_TYPE},
         content=audio_bytes,
     )
 
     finished = await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
 
-    assert finished.status_code == 200
-    assert finished.json()["transcript"] == "Hello from the local model."
+    assert finished.status_code == HTTP_200_OK
+    assert finished.json()[TRANSCRIPT_KEY] == "Hello from the local model."
 
 
-async def test_upload_rejects_unsupported_empty_and_oversized_audio(
+async def test_upload_rejects_unsupported_empty_a_f2c1d(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
 ) -> None:
     async def create() -> str:
         session_id = str(uuid4())
         await client.post(
-            "/v1/sessions",
+            SESSIONS_API_PATH,
             headers=authorization,
-            json={"client_session_id": session_id},
+            json={CLIENT_SESSION_ID_KEY: session_id},
         )
         return session_id
 
     unsupported = await client.put(
         f"/v1/sessions/{await create()}/audio",
-        headers={**authorization, "Content-Type": "text/plain"},
-        content=b"x" * 200,
+        headers={**authorization, CONTENT_TYPE_HEADER: "text/plain"},
+        content=TEST_AUDIO_BYTES,
     )
     empty = await client.put(
         f"/v1/sessions/{await create()}/audio",
-        headers={**authorization, "Content-Type": "audio/wav"},
+        headers={**authorization, CONTENT_TYPE_HEADER: WAV_CONTENT_TYPE},
         content=b"x",
     )
     oversized = await client.put(
         f"/v1/sessions/{await create()}/audio",
-        headers={**authorization, "Content-Type": "audio/wav"},
-        content=b"x" * 20_001,
+        headers={**authorization, CONTENT_TYPE_HEADER: WAV_CONTENT_TYPE},
+        content=OVERSIZED_AUDIO_BYTES,
     )
-    assert unsupported.status_code == 415
-    assert empty.status_code == 422
-    assert oversized.status_code == 413
+    assert unsupported.status_code == HTTP_415_UNSUPPORTED_MEDIA_TYPE
+    assert empty.status_code == HTTP_422_UNPROCESSABLE_CONTENT
+    assert oversized.status_code == HTTP_413_CONTENT_TOO_LARGE
 
 
 async def test_delete_is_idempotent(
@@ -236,28 +265,28 @@ async def test_delete_is_idempotent(
 ) -> None:
     session_id = uuid4()
     await client.post(
-        "/v1/sessions",
+        SESSIONS_API_PATH,
         headers=authorization,
-        json={"client_session_id": str(session_id)},
+        json={CLIENT_SESSION_ID_KEY: str(session_id)},
     )
     first = await client.delete(f"/v1/sessions/{session_id}", headers=authorization)
     second = await client.delete(f"/v1/sessions/{session_id}", headers=authorization)
-    assert first.status_code == 200
+    assert first.status_code == HTTP_200_OK
     assert first.json() == {"deleted": True}
-    assert second.status_code == 404
+    assert second.status_code == HTTP_404_NOT_FOUND
     assert second.json() == {"deleted": False}
 
 
-async def test_health_reports_what_the_loaded_model_can_do(
-    settings: Settings, audio_bytes: bytes
-) -> None:
+async def test_health_reports_what_the_loaded_mod_a(settings: Settings, audio_bytes: bytes) -> None:
     """Clients cannot offer a sensible language picker without knowing whether the
     loaded model can be pinned at all. An engine holding a catalog entry reports
     that entry's languages; one that picks its own language says so."""
     from app.catalog import DEFAULT_CATALOG
     from app.models.base import EngineHealth
 
-    dolphin = next(m for m in DEFAULT_CATALOG if m.id == "sherpa-onnx:dolphin-small-ctc-int8")
+    dolphin = next(
+        model for model in DEFAULT_CATALOG if model.id == "sherpa-onnx:dolphin-small-ctc-int8"
+    )
 
     class DolphinLikeEngine:
         catalog_model = dolphin
@@ -274,8 +303,8 @@ async def test_health_reports_what_the_loaded_model_can_do(
         payload = (await client.get("/health")).json()
 
     assert payload["detects_language_automatically"] is True
-    assert "hi" in payload["languages"] and "bn" in payload["languages"]
-    assert "en" not in payload["languages"]  # Dolphin is not trained on English
+    assert "hi" in payload[LANGUAGES_KEY] and "bn" in payload[LANGUAGES_KEY]
+    assert "en" not in payload[LANGUAGES_KEY]  # Dolphin is not trained on English
 
 
 class BoomEngine:
@@ -288,7 +317,7 @@ class BoomEngine:
         raise RuntimeError("engine exploded")
 
 
-async def test_unexpected_finish_error_leaves_session_retryable(
+async def test_unexpected_finish_error_leaves_ses_f5519(
     settings: Settings, authorization: dict[str, str], audio_bytes: bytes
 ) -> None:
     """Bare exceptions must not leave the session stuck in 'transcribing'.
@@ -297,17 +326,18 @@ async def test_unexpected_finish_error_leaves_session_retryable(
     transcription_in_progress, so a stuck transcribing state blocks recovery.
     """
     app = create_app(settings, engine=BoomEngine(), normalizer=FakeNormalizer())
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://gateway") as client:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://gateway"
+    ) as client:
         session_id = uuid4()
         await client.post(
-            "/v1/sessions",
+            SESSIONS_API_PATH,
             headers=authorization,
-            json={"client_session_id": str(session_id), "language": "en", "style": "raw"},
+            json={CLIENT_SESSION_ID_KEY: str(session_id), "language": "en", STYLE_KEY: "raw"},
         )
         await client.put(
             f"/v1/sessions/{session_id}/audio",
-            headers={**authorization, "Content-Type": "audio/wav"},
+            headers={**authorization, CONTENT_TYPE_HEADER: WAV_CONTENT_TYPE},
             content=audio_bytes,
         )
         with pytest.raises(RuntimeError, match="engine exploded"):
@@ -315,6 +345,5 @@ async def test_unexpected_finish_error_leaves_session_retryable(
             await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
 
         session = await client.get(f"/v1/sessions/{session_id}", headers=authorization)
-        body = session.json()
-        assert body["state"] == "failed"
-        assert body["error_code"] == "internal_error"
+        assert session.json()["state"] == "failed"
+        assert session.json()["error_code"] == "internal_error"
