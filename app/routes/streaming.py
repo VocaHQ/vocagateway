@@ -195,6 +195,9 @@ class _StreamSession:
         _StreamPackets.configure(self, start)
         async with self._engine.streaming_lock:
             self._stream = await self._engine.create_stream()
+            configure = getattr(self._engine, "configure_stream", None)
+            if callable(configure):
+                await asyncio.to_thread(configure, self._stream, self._language)
             await self._listen()
 
     async def _listen(self) -> None:

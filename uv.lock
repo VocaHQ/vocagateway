@@ -936,7 +936,7 @@ wheels = [
 
 [[package]]
 name = "moonshine-voice"
-version = "0.1.0"
+version = "0.1.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
@@ -948,11 +948,11 @@ dependencies = [
     { name = "tqdm" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5e/a4/6e128bb0f2fce9993e0ffd8e8b6214d1d7f694f880182339eedbb6f3f375/moonshine_voice-0.1.0-py3-none-macosx_15_0_arm64.whl", hash = "sha256:9c70431836ed805f9ab30adcdfe97018c17b1e932ba7e205fff0562950dc0913", size = 54399781, upload-time = "2026-07-27T21:01:03.631Z" },
-    { url = "https://files.pythonhosted.org/packages/45/99/6157236653594449575de6ef41abce70242c1a5a57c6dbaac408c2f99fe3/moonshine_voice-0.1.0-py3-none-manylinux_2_31_aarch64.manylinux_2_39_aarch64.whl", hash = "sha256:58d5546a656f65061d1d4a376818b08109fe25600a22dfdbbba0179ccb3f0d07", size = 55090195, upload-time = "2026-07-27T23:57:52.377Z" },
-    { url = "https://files.pythonhosted.org/packages/05/08/39d25f1ccc106720eb6122bc7a7ab029ac3c407be0f010a8855056b1f593/moonshine_voice-0.1.0-py3-none-manylinux_2_34_aarch64.whl", hash = "sha256:da54a99587edb987c8755f2c746cab72fada0e67cf847f7edfb8105447f405af", size = 55143464, upload-time = "2026-07-27T21:15:00.875Z" },
-    { url = "https://files.pythonhosted.org/packages/fd/a3/e3c0156664e9505af7b23072c3e947cec3a7ee938764c70424051366c368/moonshine_voice-0.1.0-py3-none-manylinux_2_34_x86_64.whl", hash = "sha256:0f833deb43bad5dcfb4cfd3257b6df83ef9abd3f27be3199622fe41932e8d916", size = 56369045, upload-time = "2026-07-27T21:10:54.822Z" },
-    { url = "https://files.pythonhosted.org/packages/77/78/2e0fb469c6d236eb2782d6129d056a317e75d85efb340680617cebc8d82b/moonshine_voice-0.1.0-py3-none-win_amd64.whl", hash = "sha256:af2b8536ab08c48f33d5b1e126656b05ceae9a8980fc1c95dd70665b0b57c8e7", size = 50534088, upload-time = "2026-07-28T00:49:05.373Z" },
+    { url = "https://files.pythonhosted.org/packages/86/2a/9eca2f000e4990315d18aa360c6eb679417b29252e6307c273bcbef38461/moonshine_voice-0.1.5-py3-none-macosx_15_0_arm64.whl", hash = "sha256:9866b1956d12fff11923ad42f1140bcb314bf05bf8d8576fb7b3aa819ec40e51", size = 18589534, upload-time = "2026-08-24T20:50:28.184Z" },
+    { url = "https://files.pythonhosted.org/packages/23/1c/cb821747b2a7b40216dd576a62d1ebc77d04fab97064efc97fa460f137ed/moonshine_voice-0.1.5-py3-none-manylinux_2_31_aarch64.whl", hash = "sha256:605300afe33eb7920301e73f11e0ea7493770eb655f389ba65be4aa1db8dedd6", size = 18505651, upload-time = "2026-08-24T21:22:03.754Z" },
+    { url = "https://files.pythonhosted.org/packages/56/b3/ca8c6f3eb47498208e92094d68e3dc2a0ce50213fdf980e212f293872455/moonshine_voice-0.1.5-py3-none-manylinux_2_34_aarch64.whl", hash = "sha256:fd9fa38ab58c6a8e64eb43b81b0f491138159c7ce45584bb0736ed7efa539766", size = 18634500, upload-time = "2026-08-24T21:15:04.032Z" },
+    { url = "https://files.pythonhosted.org/packages/a9/9d/228f738b48e0e7cc1de97c3f842b5470c6a3c5f7a0bffbf13c3d00eefb87/moonshine_voice-0.1.5-py3-none-manylinux_2_34_x86_64.whl", hash = "sha256:1ed9e0ccf94be4845d69e7fa862dcf4c8b5801a758796966494c694f48184496", size = 19897307, upload-time = "2026-08-24T21:06:47.113Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/05/ad3457baa56170a13829c98327598a4d99d6cd4bdff8ae59df4c47ebdd11/moonshine_voice-0.1.5-py3-none-win_amd64.whl", hash = "sha256:7fc9a84e827360ddb85c2735f44a1502c5575c27dcb476a2555646cd20a70e9d", size = 16542073, upload-time = "2026-08-24T23:17:38.555Z" },
 ]
 
 [[package]]
@@ -2028,7 +2028,7 @@ requires-dist = [
     { name = "faster-whisper", marker = "extra == 'engines'", specifier = ">=1.2,<2" },
     { name = "jinja2", specifier = ">=3.1,<4" },
     { name = "mlx-audio", extras = ["stt"], marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'apple'", specifier = ">=0.4.6,<0.5" },
-    { name = "moonshine-voice", marker = "extra == 'engines'", specifier = ">=0.1,<0.2" },
+    { name = "moonshine-voice", marker = "extra == 'engines'", specifier = ">=0.1.5,<0.2" },
     { name = "pysbd", specifier = ">=0.3.4,<0.4" },
     { name = "python-multipart", specifier = ">=0.0.9,<1" },
     { name = "qrcode", specifier = ">=7.4,<9" },

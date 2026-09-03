@@ -2,7 +2,7 @@
 
 # Models and languages
 
-Every model in the catalog (58 of them), what it speaks, and which models cover a given language. Generated from `app/catalog.py`, so it always matches the catalog the gateway actually ships.
+Every model in the catalog (65 of them), what it speaks, and which models cover a given language. Generated from `app/catalog.py`, so it always matches the catalog the gateway actually ships.
 
 The WebUI Models tab shows the same information per card, with a language filter. Use this page to pick a model before installing anything.
 
@@ -36,7 +36,9 @@ Portable INT8 CPU models. Run everywhere, including containers.
 | Streaming Zipformer English 20M INT8 | 44 MB | English | streaming | Apache 2.0 |
 | Dolphin Small CTC INT8 | 250 MB | [40 languages](#language-set-40-28c55c73) | auto language | Apache 2.0 |
 | Dolphin Base CTC INT8 | 104 MB | [40 languages](#language-set-40-28c55c73) | auto language | Apache 2.0 |
-| Qwen3-ASR 0.6B INT8 | 987 MB | [11 languages](#language-set-11-66e7cd1f) | auto language | Apache 2.0 |
+| Qwen3-ASR 0.6B INT8 | 987 MB | [30 languages](#language-set-30-b59576aa) | auto language | Apache 2.0 |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | 682 MB | [28 languages](#language-set-28-2630314c) | streaming, auto language | OpenMDW 1.1 |
+| Bengali Streaming Zipformer | 94 MB | Bengali | streaming | Apache 2.0 |
 
 ### faster-whisper
 
@@ -52,6 +54,7 @@ CTranslate2 Whisper. Kept resident; the broad multilingual fallback.
 | faster-whisper Small | 484 MB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
 | Distil-Whisper Small EN | 332 MB | English | — | See model source |
 | Distil-Whisper Medium EN | 789 MB | English | — | See model source |
+| Distil-Whisper Large v3 | 1.52 GB | English | — | MIT |
 
 ### moonshine
 
@@ -59,19 +62,23 @@ Compact dictation models. English tiers support live streaming.
 
 | Model | Download | Languages | Flags | Licence |
 | --- | ---: | --- | --- | --- |
-| Moonshine English Medium Streaming | 304 MB | English | streaming | MIT |
-| Moonshine English Small Streaming | 165 MB | English | streaming | MIT |
-| Moonshine English Tiny Streaming | 52 MB | English | streaming | MIT |
+| Moonshine English Medium Streaming | 269 MB | English | streaming | MIT |
+| Moonshine English Small Streaming | 142 MB | English | streaming | MIT |
+| Moonshine English Tiny Streaming | 45 MB | English | streaming | MIT |
 | Moonshine English Base | 141 MB | English | — | MIT |
 | Moonshine English Tiny | 44 MB | English | — | MIT |
-| Moonshine Spanish | 65 MB | Spanish | personal use | Moonshine Community License |
-| Moonshine Arabic | 141 MB | Arabic | personal use | Moonshine Community License |
-| Moonshine Japanese Base | 141 MB | Japanese | personal use | Moonshine Community License |
-| Moonshine Japanese Tiny | 72 MB | Japanese | personal use | Moonshine Community License |
+| Moonshine Arabic Tiny Streaming | 32 MB | Arabic | streaming | MIT |
+| Moonshine German Small Streaming | 122 MB | German | streaming | MIT |
+| Moonshine German Tiny Streaming | 32 MB | German | streaming | MIT |
+| Moonshine Spanish Small Streaming | 122 MB | Spanish | streaming | MIT |
+| Moonshine Spanish Tiny Streaming | 32 MB | Spanish | streaming | MIT |
+| Moonshine Japanese Small Streaming | 122 MB | Japanese | streaming | MIT |
+| Moonshine Japanese Tiny Streaming | 32 MB | Japanese | streaming | MIT |
+| Moonshine Mandarin Tiny Streaming | 32 MB | Mandarin Chinese | streaming | MIT |
+| Moonshine Tagalog Tiny Streaming | 32 MB | Tagalog | streaming | MIT |
+| Moonshine Vietnamese Tiny Streaming | 32 MB | Vietnamese | streaming | MIT |
 | Moonshine Korean | 72 MB | Korean | personal use | Moonshine Community License |
-| Moonshine Mandarin | 141 MB | Mandarin Chinese | personal use | Moonshine Community License |
 | Moonshine Ukrainian | 141 MB | Ukrainian | personal use | Moonshine Community License |
-| Moonshine Vietnamese | 141 MB | Vietnamese | personal use | Moonshine Community License |
 
 ### whisper.cpp
 
@@ -117,21 +124,13 @@ MLX, **Apple silicon only**. Hidden on Linux and in containers.
 | MLX Whisper Large v3 Turbo 4-bit | 469 MB | [100 languages](#language-set-100-0b8e4ee5) | Apple silicon | MIT |
 | MLX Parakeet TDT 0.6B v3 | 2.51 GB | [25 languages](#language-set-25-94430147) | Apple silicon | CC BY 4.0 |
 | MLX Parakeet TDT 0.6B v2 | 2.47 GB | English | Apple silicon | CC BY 4.0 |
-| MLX Qwen3-ASR 0.6B 4-bit | 713 MB | [11 languages](#language-set-11-66e7cd1f) | Apple silicon | Apache 2.0 |
-| MLX Qwen3-ASR 1.7B 4-bit | 1.61 GB | [11 languages](#language-set-11-66e7cd1f) | Apple silicon | Apache 2.0 |
+| MLX Qwen3-ASR 0.6B 4-bit | 713 MB | [30 languages](#language-set-30-b59576aa) | Apple silicon | Apache 2.0 |
+| MLX Qwen3-ASR 1.7B 4-bit | 1.61 GB | [30 languages](#language-set-30-b59576aa) | Apple silicon | Apache 2.0 |
 | MLX Granite Speech 4.1 2B | 2.38 GB | English | Apple silicon | Apache 2.0 |
 
 ## Language sets
 
 The tables above link here rather than repeating long lists. Each set below is shared verbatim by every model listed with it.
-
-<a id="language-set-11-66e7cd1f"></a>
-
-### 11 languages
-
-Used by: MLX Qwen3-ASR 0.6B 4-bit, MLX Qwen3-ASR 1.7B 4-bit, Qwen3-ASR 0.6B INT8.
-
-English, Mandarin Chinese, Japanese, Korean, Spanish, French, German, Russian, Arabic, Italian, Portuguese.
 
 <a id="language-set-25-94430147"></a>
 
@@ -140,6 +139,22 @@ English, Mandarin Chinese, Japanese, Korean, Spanish, French, German, Russian, A
 Used by: MLX Parakeet TDT 0.6B v3, Parakeet TDT 0.6B v3 INT8.
 
 Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Slovak, Slovenian, Spanish, Swedish, Russian, Ukrainian.
+
+<a id="language-set-28-2630314c"></a>
+
+### 28 languages
+
+Used by: Nemotron 3.5 ASR Streaming 0.6B INT8.
+
+English, Spanish, French, Italian, Portuguese, Dutch, German, Turkish, Russian, Arabic, Hindi, Japanese, Korean, Vietnamese, Ukrainian, Polish, Swedish, Czech, Norwegian, Danish, Bulgarian, Finnish, Croatian, Slovak, Mandarin Chinese, Hungarian, Romanian, Estonian.
+
+<a id="language-set-30-b59576aa"></a>
+
+### 30 languages
+
+Used by: MLX Qwen3-ASR 0.6B 4-bit, MLX Qwen3-ASR 1.7B 4-bit, Qwen3-ASR 0.6B INT8.
+
+English, Mandarin Chinese, Cantonese, Japanese, Korean, Spanish, French, German, Russian, Arabic, Italian, Portuguese, Indonesian, Thai, Vietnamese, Turkish, Hindi, Malay, Dutch, Swedish, Danish, Finnish, Polish, Czech, Filipino, Persian, Greek, Hungarian, Macedonian, Romanian.
 
 <a id="language-set-40-28c55c73"></a>
 
@@ -240,7 +255,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Arabic</strong> (<code>ar</code>) — 24 models</summary>
+<summary><strong>Arabic</strong> (<code>ar</code>) — 25 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -250,9 +265,10 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
 | MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
-| Moonshine Arabic | moonshine | 141 MB | personal use |
+| Moonshine Arabic Tiny Streaming | moonshine | 32 MB | streaming |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
@@ -432,7 +448,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Bengali</strong> (<code>bn</code>) — 20 models</summary>
+<summary><strong>Bengali</strong> (<code>bn</code>) — 21 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -440,6 +456,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| Bengali Streaming Zipformer | sherpa-onnx | 94 MB | streaming |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
@@ -512,7 +529,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Bulgarian</strong> (<code>bg</code>) — 20 models</summary>
+<summary><strong>Bulgarian</strong> (<code>bg</code>) — 21 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -522,6 +539,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -568,7 +586,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Cantonese</strong> (<code>yue</code>) — 19 models</summary>
+<summary><strong>Cantonese</strong> (<code>yue</code>) — 22 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -576,7 +594,10 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | SenseVoice Small INT8 | sherpa-onnx | 240 MB | auto language |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -621,7 +642,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Croatian</strong> (<code>hr</code>) — 20 models</summary>
+<summary><strong>Croatian</strong> (<code>hr</code>) — 21 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -631,6 +652,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -649,7 +671,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Czech</strong> (<code>cs</code>) — 20 models</summary>
+<summary><strong>Czech</strong> (<code>cs</code>) — 24 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -657,8 +679,12 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -677,7 +703,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Danish</strong> (<code>da</code>) — 20 models</summary>
+<summary><strong>Danish</strong> (<code>da</code>) — 24 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -685,8 +711,12 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -705,7 +735,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Dutch</strong> (<code>nl</code>) — 20 models</summary>
+<summary><strong>Dutch</strong> (<code>nl</code>) — 24 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -713,8 +743,12 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -733,7 +767,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>English</strong> (<code>en</code>) — 46 models</summary>
+<summary><strong>English</strong> (<code>en</code>) — 48 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -745,6 +779,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Small EN | faster-whisper | 484 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | Distil-Whisper Medium EN | faster-whisper | 789 MB | — |
+| Distil-Whisper Large v3 | faster-whisper | 1.52 GB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
 | MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
@@ -752,15 +787,16 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | MLX Parakeet TDT 0.6B v2 | mlx-audio | 2.47 GB | Apple silicon |
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
 | Moonshine English Tiny | moonshine | 44 MB | — |
-| Moonshine English Tiny Streaming | moonshine | 52 MB | streaming |
+| Moonshine English Tiny Streaming | moonshine | 45 MB | streaming |
 | Moonshine English Base | moonshine | 141 MB | — |
-| Moonshine English Small Streaming | moonshine | 165 MB | streaming |
-| Moonshine English Medium Streaming | moonshine | 304 MB | streaming |
+| Moonshine English Small Streaming | moonshine | 142 MB | streaming |
+| Moonshine English Medium Streaming | moonshine | 269 MB | streaming |
 | Streaming Zipformer English 20M INT8 | sherpa-onnx | 44 MB | streaming |
 | Canary 180M Flash English INT8 | sherpa-onnx | 210 MB | — |
 | SenseVoice Small INT8 | sherpa-onnx | 240 MB | auto language |
 | Parakeet TDT 0.6B v2 INT8 | sherpa-onnx | 661 MB | — |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny EN | whisper.cpp | 75 MB | — |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
@@ -787,7 +823,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Estonian</strong> (<code>et</code>) — 20 models</summary>
+<summary><strong>Estonian</strong> (<code>et</code>) — 21 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -797,6 +833,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -841,17 +878,20 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Filipino</strong> (<code>fil</code>) — 2 models</summary>
+<summary><strong>Filipino</strong> (<code>fil</code>) — 5 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 
 </details>
 
 <details>
-<summary><strong>Finnish</strong> (<code>fi</code>) — 20 models</summary>
+<summary><strong>Finnish</strong> (<code>fi</code>) — 24 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -859,8 +899,12 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -879,7 +923,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>French</strong> (<code>fr</code>) — 23 models</summary>
+<summary><strong>French</strong> (<code>fr</code>) — 24 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -891,6 +935,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
@@ -962,7 +1007,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>German</strong> (<code>de</code>) — 23 models</summary>
+<summary><strong>German</strong> (<code>de</code>) — 26 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -973,7 +1018,10 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
 | MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
+| Moonshine German Tiny Streaming | moonshine | 32 MB | streaming |
+| Moonshine German Small Streaming | moonshine | 122 MB | streaming |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
@@ -993,7 +1041,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Greek</strong> (<code>el</code>) — 20 models</summary>
+<summary><strong>Greek</strong> (<code>el</code>) — 23 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1001,8 +1049,11 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -1153,7 +1204,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Hindi</strong> (<code>hi</code>) — 20 models</summary>
+<summary><strong>Hindi</strong> (<code>hi</code>) — 24 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1161,8 +1212,12 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -1181,7 +1236,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Hungarian</strong> (<code>hu</code>) — 20 models</summary>
+<summary><strong>Hungarian</strong> (<code>hu</code>) — 24 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1189,8 +1244,12 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -1235,35 +1294,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Indonesian</strong> (<code>id</code>) — 20 models</summary>
-
-| Model | Engine | Download | Flags |
-| --- | --- | ---: | --- |
-| faster-whisper Tiny | faster-whisper | 75 MB | — |
-| faster-whisper Base | faster-whisper | 145 MB | — |
-| faster-whisper Small | faster-whisper | 484 MB | — |
-| MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
-| Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
-| Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
-| whisper.cpp Tiny | whisper.cpp | 75 MB | — |
-| whisper.cpp Base | whisper.cpp | 142 MB | — |
-| whisper.cpp Small | whisper.cpp | 466 MB | — |
-| Whisper Medium Q4 | whisper.cpp | 492 MB | — |
-| Whisper Large v3 Q5 | whisper.cpp | 1.08 GB | — |
-| whisper.cpp Medium | whisper.cpp | 1.50 GB | — |
-| whisper.cpp Large v3 Turbo | whisper.cpp | 1.62 GB | — |
-| whisper.cpp Large v3 | whisper.cpp | 3.00 GB | — |
-| WhisperKit Tiny | whisperkit | 66 MB | — |
-| WhisperKit Base | whisperkit | 145 MB | — |
-| WhisperKit Small (compressed) | whisperkit | 216 MB | — |
-| WhisperKit Small | whisperkit | 484 MB | — |
-| WhisperKit Large v3 Turbo (compressed) | whisperkit | 626 MB | — |
-| WhisperKit Large v3 Turbo | whisperkit | 1.61 GB | — |
-
-</details>
-
-<details>
-<summary><strong>Italian</strong> (<code>it</code>) — 23 models</summary>
+<summary><strong>Indonesian</strong> (<code>id</code>) — 23 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1273,8 +1304,8 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
 | MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
-| MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
-| Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
+| Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
@@ -1294,7 +1325,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Japanese</strong> (<code>ja</code>) — 26 models</summary>
+<summary><strong>Italian</strong> (<code>it</code>) — 24 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1304,11 +1335,44 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
 | MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
-| Moonshine Japanese Tiny | moonshine | 72 MB | personal use |
-| Moonshine Japanese Base | moonshine | 141 MB | personal use |
+| MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
+| Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
+| whisper.cpp Tiny | whisper.cpp | 75 MB | — |
+| whisper.cpp Base | whisper.cpp | 142 MB | — |
+| whisper.cpp Small | whisper.cpp | 466 MB | — |
+| Whisper Medium Q4 | whisper.cpp | 492 MB | — |
+| Whisper Large v3 Q5 | whisper.cpp | 1.08 GB | — |
+| whisper.cpp Medium | whisper.cpp | 1.50 GB | — |
+| whisper.cpp Large v3 Turbo | whisper.cpp | 1.62 GB | — |
+| whisper.cpp Large v3 | whisper.cpp | 3.00 GB | — |
+| WhisperKit Tiny | whisperkit | 66 MB | — |
+| WhisperKit Base | whisperkit | 145 MB | — |
+| WhisperKit Small (compressed) | whisperkit | 216 MB | — |
+| WhisperKit Small | whisperkit | 484 MB | — |
+| WhisperKit Large v3 Turbo (compressed) | whisperkit | 626 MB | — |
+| WhisperKit Large v3 Turbo | whisperkit | 1.61 GB | — |
+
+</details>
+
+<details>
+<summary><strong>Japanese</strong> (<code>ja</code>) — 27 models</summary>
+
+| Model | Engine | Download | Flags |
+| --- | --- | ---: | --- |
+| faster-whisper Tiny | faster-whisper | 75 MB | — |
+| faster-whisper Base | faster-whisper | 145 MB | — |
+| faster-whisper Small | faster-whisper | 484 MB | — |
+| MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
+| Moonshine Japanese Tiny Streaming | moonshine | 32 MB | streaming |
+| Moonshine Japanese Small Streaming | moonshine | 122 MB | streaming |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
 | SenseVoice Small INT8 | sherpa-onnx | 240 MB | auto language |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
@@ -1466,7 +1530,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Korean</strong> (<code>ko</code>) — 25 models</summary>
+<summary><strong>Korean</strong> (<code>ko</code>) — 26 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1480,6 +1544,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
 | SenseVoice Small INT8 | sherpa-onnx | 240 MB | auto language |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
@@ -1671,7 +1736,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Macedonian</strong> (<code>mk</code>) — 18 models</summary>
+<summary><strong>Macedonian</strong> (<code>mk</code>) — 21 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1679,6 +1744,9 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -1723,7 +1791,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Malay</strong> (<code>ms</code>) — 20 models</summary>
+<summary><strong>Malay</strong> (<code>ms</code>) — 23 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1731,8 +1799,11 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -1805,7 +1876,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Mandarin Chinese</strong> (<code>zh</code>) — 26 models</summary>
+<summary><strong>Mandarin Chinese</strong> (<code>zh</code>) — 27 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1815,10 +1886,11 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
 | MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
-| Moonshine Mandarin | moonshine | 141 MB | personal use |
+| Moonshine Mandarin Tiny Streaming | moonshine | 32 MB | streaming |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
 | SenseVoice Small INT8 | sherpa-onnx | 240 MB | auto language |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
@@ -1949,7 +2021,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Norwegian</strong> (<code>no</code>) — 18 models</summary>
+<summary><strong>Norwegian</strong> (<code>no</code>) — 19 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1957,6 +2029,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -2065,7 +2138,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Persian</strong> (<code>fa</code>) — 20 models</summary>
+<summary><strong>Persian</strong> (<code>fa</code>) — 23 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -2073,8 +2146,11 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -2093,35 +2169,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Polish</strong> (<code>pl</code>) — 20 models</summary>
-
-| Model | Engine | Download | Flags |
-| --- | --- | ---: | --- |
-| faster-whisper Tiny | faster-whisper | 75 MB | — |
-| faster-whisper Base | faster-whisper | 145 MB | — |
-| faster-whisper Small | faster-whisper | 484 MB | — |
-| MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
-| MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
-| Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
-| whisper.cpp Tiny | whisper.cpp | 75 MB | — |
-| whisper.cpp Base | whisper.cpp | 142 MB | — |
-| whisper.cpp Small | whisper.cpp | 466 MB | — |
-| Whisper Medium Q4 | whisper.cpp | 492 MB | — |
-| Whisper Large v3 Q5 | whisper.cpp | 1.08 GB | — |
-| whisper.cpp Medium | whisper.cpp | 1.50 GB | — |
-| whisper.cpp Large v3 Turbo | whisper.cpp | 1.62 GB | — |
-| whisper.cpp Large v3 | whisper.cpp | 3.00 GB | — |
-| WhisperKit Tiny | whisperkit | 66 MB | — |
-| WhisperKit Base | whisperkit | 145 MB | — |
-| WhisperKit Small (compressed) | whisperkit | 216 MB | — |
-| WhisperKit Small | whisperkit | 484 MB | — |
-| WhisperKit Large v3 Turbo (compressed) | whisperkit | 626 MB | — |
-| WhisperKit Large v3 Turbo | whisperkit | 1.61 GB | — |
-
-</details>
-
-<details>
-<summary><strong>Portuguese</strong> (<code>pt</code>) — 23 models</summary>
+<summary><strong>Polish</strong> (<code>pl</code>) — 24 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -2133,6 +2181,39 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
+| whisper.cpp Tiny | whisper.cpp | 75 MB | — |
+| whisper.cpp Base | whisper.cpp | 142 MB | — |
+| whisper.cpp Small | whisper.cpp | 466 MB | — |
+| Whisper Medium Q4 | whisper.cpp | 492 MB | — |
+| Whisper Large v3 Q5 | whisper.cpp | 1.08 GB | — |
+| whisper.cpp Medium | whisper.cpp | 1.50 GB | — |
+| whisper.cpp Large v3 Turbo | whisper.cpp | 1.62 GB | — |
+| whisper.cpp Large v3 | whisper.cpp | 3.00 GB | — |
+| WhisperKit Tiny | whisperkit | 66 MB | — |
+| WhisperKit Base | whisperkit | 145 MB | — |
+| WhisperKit Small (compressed) | whisperkit | 216 MB | — |
+| WhisperKit Small | whisperkit | 484 MB | — |
+| WhisperKit Large v3 Turbo (compressed) | whisperkit | 626 MB | — |
+| WhisperKit Large v3 Turbo | whisperkit | 1.61 GB | — |
+
+</details>
+
+<details>
+<summary><strong>Portuguese</strong> (<code>pt</code>) — 24 models</summary>
+
+| Model | Engine | Download | Flags |
+| --- | --- | ---: | --- |
+| faster-whisper Tiny | faster-whisper | 75 MB | — |
+| faster-whisper Base | faster-whisper | 145 MB | — |
+| faster-whisper Small | faster-whisper | 484 MB | — |
+| MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
+| MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
+| Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
@@ -2180,7 +2261,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Romanian</strong> (<code>ro</code>) — 20 models</summary>
+<summary><strong>Romanian</strong> (<code>ro</code>) — 24 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -2188,8 +2269,12 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -2208,7 +2293,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Russian</strong> (<code>ru</code>) — 27 models</summary>
+<summary><strong>Russian</strong> (<code>ru</code>) — 28 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -2224,6 +2309,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | GigaAM v3 RNNT Russian | sherpa-onnx | 230 MB | — |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
@@ -2375,7 +2461,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Slovak</strong> (<code>sk</code>) — 20 models</summary>
+<summary><strong>Slovak</strong> (<code>sk</code>) — 21 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -2385,6 +2471,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -2457,7 +2544,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Spanish</strong> (<code>es</code>) — 24 models</summary>
+<summary><strong>Spanish</strong> (<code>es</code>) — 26 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -2468,8 +2555,10 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
 | MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
-| Moonshine Spanish | moonshine | 65 MB | personal use |
+| Moonshine Spanish Tiny Streaming | moonshine | 32 MB | streaming |
+| Moonshine Spanish Small Streaming | moonshine | 122 MB | streaming |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
@@ -2543,7 +2632,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Swedish</strong> (<code>sv</code>) — 20 models</summary>
+<summary><strong>Swedish</strong> (<code>sv</code>) — 24 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -2551,8 +2640,12 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -2571,7 +2664,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Tagalog</strong> (<code>tl</code>) — 20 models</summary>
+<summary><strong>Tagalog</strong> (<code>tl</code>) — 21 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -2579,6 +2672,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| Moonshine Tagalog Tiny Streaming | moonshine | 32 MB | streaming |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
@@ -2709,7 +2803,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Thai</strong> (<code>th</code>) — 20 models</summary>
+<summary><strong>Thai</strong> (<code>th</code>) — 23 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -2717,8 +2811,11 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -2763,7 +2860,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Turkish</strong> (<code>tr</code>) — 18 models</summary>
+<summary><strong>Turkish</strong> (<code>tr</code>) — 22 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -2771,6 +2868,10 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -2815,7 +2916,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Ukrainian</strong> (<code>uk</code>) — 21 models</summary>
+<summary><strong>Ukrainian</strong> (<code>uk</code>) — 22 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -2826,6 +2927,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | MLX Parakeet TDT 0.6B v3 | mlx-audio | 2.51 GB | Apple silicon |
 | Moonshine Ukrainian | moonshine | 141 MB | personal use |
 | Parakeet TDT 0.6B v3 INT8 | sherpa-onnx | 672 MB | — |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -2910,7 +3012,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Vietnamese</strong> (<code>vi</code>) — 21 models</summary>
+<summary><strong>Vietnamese</strong> (<code>vi</code>) — 25 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -2918,9 +3020,13 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Base | faster-whisper | 145 MB | — |
 | faster-whisper Small | faster-whisper | 484 MB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
-| Moonshine Vietnamese | moonshine | 141 MB | personal use |
+| MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
+| MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
+| Moonshine Vietnamese Tiny Streaming | moonshine | 32 MB | streaming |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
+| Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
+| Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |

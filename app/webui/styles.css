@@ -2267,6 +2267,11 @@ html[data-theme="dark"] .filter-toggle:has(input:checked) { color: var(--accent)
   border-color: #f0b4ae;
   background: var(--error-wash);
 }
+.badge.retired {
+  color: var(--error);
+  border-color: #f0b4ae;
+  background: var(--error-wash);
+}
 
 /* ------------------------------------------------------------------- controls */
 
