@@ -52,10 +52,12 @@ jobs:
             timeout: 40
             smoke: true
             reclaim-disk: false
+            build_jobs: 4
           - accel: vulkan
             timeout: 40
             smoke: false
             reclaim-disk: false
+            build_jobs: 4
           # The CUDA devel base plus the object files for ggml's whole spread of
           # virtual and real architectures do not fit alongside the runner's
           # preinstalled toolchains.
@@ -63,6 +65,7 @@ jobs:
             timeout: 90
             smoke: false
             reclaim-disk: true
+            build_jobs: 3
     name: build (${{ matrix.accel }})
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -97,6 +100,7 @@ jobs:
           docker buildx build \
             --tag "vocagateway:test-${ACCEL}" \
             --build-arg "ACCEL=${ACCEL}" \
+            --build-arg "BUILD_JOBS=${BUILD_JOBS}" \
             --build-arg VOCAGATEWAY_GIT_COMMIT="${GITHUB_SHA}" \
             --cache-from "type=gha,scope=gateway-${ACCEL}" \
             --cache-to "type=gha,mode=max,scope=gateway-${ACCEL}" \
@@ -104,6 +108,7 @@ jobs:
             .
         env:
           ACCEL: ${{ matrix.accel }}
+          BUILD_JOBS: ${{ matrix.build_jobs }}
           SMOKE: ${{ matrix.smoke }}
 
       # Everything below is the cpu image only. It is what a laptop build was

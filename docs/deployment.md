@@ -284,11 +284,12 @@ VOCAGATEWAY_WHISPER_CMAKE_EXTRA=-DCMAKE_CUDA_ARCHITECTURES=89-real
 VOCAGATEWAY_WHISPER_CMAKE_EXTRA=-DGGML_BLAS=OFF
 ```
 
-`VOCAGATEWAY_BUILD_JOBS` caps how many compile jobs run at once; blank means one
-per core. The cuda image is the one that needs it: nvcc instantiates a great many
-templates and each job can want most of a gigabyte, so on a small builder an
-uncapped build is OOM-killed partway through and reports only `Error 137`. Budget
-roughly one job per 2 GB of builder memory — an 8 GB machine wants
+`VOCAGATEWAY_BUILD_JOBS` caps how many compile jobs run at once; blank is
+resolved to the builder's CPU count. The explicit default is important because
+CMake otherwise lets Make interpret a bare `--parallel` as unlimited jobs. The
+cuda image is the usual reason to set a lower value: nvcc instantiates a great
+many templates and each job can want most of a gigabyte. Budget roughly one job
+per 2 GB of builder memory — an 8 GB machine normally wants
 `VOCAGATEWAY_BUILD_JOBS=3`.
 
 OpenBLAS stays on by default because it measurably earns its place. On arm64

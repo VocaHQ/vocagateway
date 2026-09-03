@@ -89,11 +89,12 @@ ARG WHISPER_CPP_VERSION
 #     portable virtual+real spread ggml picks; much faster nvcc, smaller binary
 #   -DGGML_BLAS=OFF                      drop OpenBLAS from the CPU image
 ARG WHISPER_CMAKE_EXTRA=""
-# Empty means "one job per core". nvcc instantiates a lot of templates and each
-# job can want most of a gigabyte, so the CUDA build is the one that runs a
-# constrained builder out of memory — `cmake --build --parallel` with no cap
-# turns that into an Error 137 partway through, not a clean diagnostic. An 8 GB
-# builder wants BUILD_JOBS=3 or so for ACCEL=cuda.
+# Empty means "one job per core". The explicit fallback below matters: passing
+# `--parallel` without a value delegates to the native build tool, and Make
+# interprets bare `-j` as unlimited concurrency. That can launch every ggml CPU
+# variant at once and take the whole builder down before CMake can report an
+# out-of-memory error. nvcc is especially hungry, so an 8 GB builder normally
+# wants BUILD_JOBS=3 or less for ACCEL=cuda.
 ARG BUILD_JOBS=""
 WORKDIR /src
 RUN curl --fail --location --show-error \
@@ -131,7 +132,8 @@ RUN --mount=type=cache,id=ccache-${ACCEL},target=/root/.cache/ccache \
       -DWHISPER_BUILD_EXAMPLES=ON \
       ${WHISPER_ACCEL_CMAKE} \
       ${WHISPER_CMAKE_EXTRA} \
-    && cmake --build build --config Release --parallel ${BUILD_JOBS}
+    && cmake --build build --config Release \
+      --parallel "${BUILD_JOBS:-$(nproc)}"
 
 # Sort the build output the way the runtime expects it: the linked libraries
 # onto the loader path, the dlopen'd backends into GGML_BACKEND_DIR. Only

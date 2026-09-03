@@ -16,8 +16,8 @@ x-gateway-build-args: &gateway-build-args
   # docs/deployment.md — the common one is
   # VOCAGATEWAY_WHISPER_CMAKE_EXTRA=-DCMAKE_CUDA_ARCHITECTURES=89-real
   WHISPER_CMAKE_EXTRA: ${VOCAGATEWAY_WHISPER_CMAKE_EXTRA:-}
-  # Blank means one compile job per core. Lower it if a build is killed for
-  # memory — the cuda one is the hungry one.
+  # Blank is resolved to the builder's CPU count. Lower it if a build is killed
+  # for memory — the cuda one is the hungry one.
   BUILD_JOBS: ${VOCAGATEWAY_BUILD_JOBS:-}
 
 x-gateway-environment: &gateway-environment
