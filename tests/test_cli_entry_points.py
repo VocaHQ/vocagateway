@@ -23,6 +23,13 @@ DEPRECATED_ALIASES = {
 }
 
 
+def _expected_scripts() -> dict[str, str]:
+    return {
+        **PRIMARY_SCRIPTS,
+        **{alias: PRIMARY_SCRIPTS[primary] for alias, primary in DEPRECATED_ALIASES.items()},
+    }
+
+
 def _pyproject_scripts() -> dict[str, str]:
     root = Path(__file__).resolve().parents[1]
     payload = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
@@ -43,9 +50,6 @@ def test_installed_entry_points_resolve_pri_dca7a() -> None:
     """Require the editable/venv install so `uv run` / console scripts work."""
     console = entry_points().select(group="console_scripts")
     by_name = {ep.name: ep for ep in console}
-    expected = dict(PRIMARY_SCRIPTS)
-    for alias, primary in DEPRECATED_ALIASES.items():
-        expected[alias] = PRIMARY_SCRIPTS[primary]
-    for name, target in expected.items():
+    for name, target in _expected_scripts().items():
         assert name in by_name, f"missing console script: {name}"
         assert f"{by_name[name].module}:{by_name[name].attr}" == target
