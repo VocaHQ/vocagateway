@@ -234,9 +234,9 @@ def test_no_style_ever_erases_a_transcript_aaa() -> None:
     languages = sorted(set(_PUNCTUATION_BY_LANGUAGE) | {"en", "auto", "ko", THAI_LANGUAGE})
     for language in languages:
         for style in SUPPORTED_WRITING_STYLES:
-            for sample in samples:
-                styled = apply_writing_style(sample, style, language)
-                assert styled.strip(), f"{language}/{style} erased {sample!r}"
+            assert all(
+                apply_writing_style(sample, style, language).strip() for sample in samples
+            ), f"{language}/{style} erased a sample"
 
 
 def test_a_language_pysbd_lacks_still_gets_styled() -> None:
