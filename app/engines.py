@@ -1,53 +1,282 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import MappingProxyType
 from typing import Protocol
 
-from app.catalog import (
-    ENGINE_FASTER_WHISPER,
-    ENGINE_MLX_AUDIO,
-    ENGINE_MOONSHINE,
-    ENGINE_SHERPA_ONNX,
-    ENGINE_WHISPER_CPP,
-    ENGINE_WHISPERKIT,
-    CatalogModel,
+from app import catalog, config, model_manager, runtime_config, system
+from app.models import (
+    base,
+    faster_whisper,
+    handy,
+    mlx_audio,
+    moonshine,
+    sherpa_onnx,
+    vocamac,
+    whisper_cpp,
 )
-from app.config import Settings
-from app.model_manager import ModelManager
-from app.models.base import EngineHealth, TranscriptionEngine
-from app.models.faster_whisper import FasterWhisperEngine
-from app.models.handy import HandyEngine
-from app.models.mlx_audio import MLXAudioEngine
-from app.models.moonshine import MoonshineEngine
-from app.models.sherpa_onnx import SherpaOnnxEngine
-from app.models.vocamac import VocaMacEngine
-from app.models.whisper_cpp import WhisperCppEngine
 from app.models.whisperkit import WhisperKitEngine
-from app.runtime_config import AUTO_ENGINE, VALID_ENGINES, RuntimeConfig
-from app.system import engine_requirement, engine_runs_here
 
-MAXIMUM_CPU_THREADS = 256
+ENGINE_VOCAMAC = "vocamac"
+ENGINE_HANDY = "handy"
+engine_runs_here = system.engine_runs_here
+engine_requirement = system.engine_requirement
+
+_MODEL_ATTRS = MappingProxyType(
+    {
+        catalog.ENGINE_SHERPA_ONNX: "sherpa_model",
+        catalog.ENGINE_MLX_AUDIO: "mlx_audio_model",
+        catalog.ENGINE_WHISPERKIT: "whisperkit_model",
+        catalog.ENGINE_FASTER_WHISPER: "faster_whisper_model",
+    }
+)
 
 
 class EngineProvider(Protocol):
-    def current(self) -> TranscriptionEngine: ...
+    def current(self) -> base.TranscriptionEngine: ...
 
 
 class StaticEngineProvider:
     """Wraps a fixed engine (used by tests and the cleanup CLI)."""
 
-    def __init__(self, engine: TranscriptionEngine) -> None:
+    def __init__(self, engine: base.TranscriptionEngine) -> None:
         self._engine = engine
 
-    def current(self) -> TranscriptionEngine:
+    def current(self) -> base.TranscriptionEngine:
         return self._engine
 
 
-def close_engine(engine: TranscriptionEngine) -> None:
+def close_engine(engine: base.TranscriptionEngine) -> None:
     """Release optional persistent resources owned by an engine."""
     close = getattr(engine, "close", None)
     if callable(close):
         close()
+
+
+class _ModelPathResolver:
+    def __init__(
+        self,
+        settings: config.Settings,
+        model_mgr: model_manager.ModelManager,
+    ) -> None:
+        self.settings = settings
+        self.model_manager = model_mgr
+
+    def resolve_path(self, engine: str, rc: runtime_config.RuntimeConfig) -> Path | None:
+        configured = rc.whisper_model
+        if engine == catalog.ENGINE_WHISPERKIT:
+            configured = rc.whisperkit_model
+        elif engine == catalog.ENGINE_FASTER_WHISPER:
+            configured = rc.faster_whisper_model
+        if configured:
+            return Path(configured)
+        installed = [model for model in self.model_manager.installed() if model.engine == engine]
+        if installed:
+            chosen = (
+                min(installed, key=lambda model: model.size_bytes)
+                if engine == catalog.ENGINE_FASTER_WHISPER
+                else max(installed, key=lambda model: model.size_bytes)
+            )
+            return chosen.path
+        return self.settings.whisper_model if engine == catalog.ENGINE_WHISPER_CPP else None
+
+    def catalog_selection(
+        self, model_id: str | None, engine: str
+    ) -> tuple[Path | None, catalog.CatalogModel | None]:
+        if model_id:
+            return (
+                self.model_manager.installed_path(model_id),
+                self.model_manager.catalog_model(model_id),
+            )
+        installed = [model for model in self.model_manager.installed() if model.engine == engine]
+        if not installed:
+            return None, None
+        chosen = min(installed, key=lambda model: model.size_bytes)
+        return chosen.path, self.model_manager.catalog_model(chosen.id)
+
+    def apply_model(self, rc: runtime_config.RuntimeConfig, model_id: str, path_str: str) -> None:
+        prefix = model_id.split(":", 1)[0]
+        if prefix == catalog.ENGINE_MOONSHINE:
+            cat_model = self.model_manager.catalog_model(model_id)
+            if cat_model is None:
+                raise KeyError(model_id)
+            rc.engine = catalog.ENGINE_MOONSHINE
+            rc.moonshine_model = model_id
+            rc.moonshine_language = cat_model.language_code or "en"
+            return
+        rc.engine = prefix if prefix in runtime_config.VALID_ENGINES else catalog.ENGINE_WHISPER_CPP
+        named = {catalog.ENGINE_SHERPA_ONNX, catalog.ENGINE_MLX_AUDIO}
+        model_ref = model_id if prefix in named else path_str
+        setattr(rc, _MODEL_ATTRS.get(prefix, "whisper_model"), model_ref)
+
+    def forget_if_active(
+        self, rc: runtime_config.RuntimeConfig, model_id: str, path_str: str
+    ) -> bool:
+        changed = False
+        if model_id == rc.moonshine_model and rc.engine == catalog.ENGINE_MOONSHINE:
+            rc.moonshine_model = "moonshine:en"
+            rc.engine = runtime_config.AUTO_ENGINE
+            changed = True
+        if rc.whisper_model == path_str:
+            rc.whisper_model = None
+            changed = True
+        if rc.whisperkit_model == path_str:
+            rc.whisperkit_model = None
+            changed = True
+        if rc.faster_whisper_model == path_str:
+            rc.faster_whisper_model = None
+            changed = True
+        if model_id == rc.sherpa_model and rc.engine == catalog.ENGINE_SHERPA_ONNX:
+            rc.sherpa_model = None
+            rc.engine = runtime_config.AUTO_ENGINE
+            changed = True
+        if model_id == rc.mlx_audio_model and rc.engine == catalog.ENGINE_MLX_AUDIO:
+            rc.mlx_audio_model = None
+            rc.engine = runtime_config.AUTO_ENGINE
+            changed = True
+        return changed
+
+    def resolve_auto(self, rc: runtime_config.RuntimeConfig) -> base.TranscriptionEngine:
+        voc = vocamac.VocaMacEngine(
+            self.settings.whisperkit_binary,
+            self.settings.vocamac_model,
+            app_path=self.settings.vocamac_app,
+        )
+        if voc.is_available():
+            return voc
+        if self.settings.handy_binary.is_file():
+            return handy.HandyEngine(
+                self.settings.handy_binary,
+                self.settings.handy_model,
+                fallback_model=self.settings.handy_fallback_model,
+            )
+        return self._resolve_fallback(rc)
+
+    def _resolve_fallback(self, rc: runtime_config.RuntimeConfig) -> base.TranscriptionEngine:
+        wk_p = self.resolve_path(catalog.ENGINE_WHISPERKIT, rc)
+        if wk_p is not None:
+            return WhisperKitEngine(self.settings.whisperkit_binary, wk_p)
+        mlx_sel = self.catalog_selection(rc.mlx_audio_model, catalog.ENGINE_MLX_AUDIO)
+        if mlx_sel[0] is not None:
+            return mlx_audio.MLXAudioEngine(mlx_sel[0], mlx_sel[1])
+        shp_sel = self.catalog_selection(rc.sherpa_model, catalog.ENGINE_SHERPA_ONNX)
+        if shp_sel[0] is not None:
+            return sherpa_onnx.SherpaOnnxEngine(shp_sel[0], shp_sel[1], cpu_threads=rc.cpu_threads)
+        fw_p = self.resolve_path(catalog.ENGINE_FASTER_WHISPER, rc)
+        if fw_p is not None:
+            return faster_whisper.FasterWhisperEngine(
+                fw_p,
+                device=rc.compute_device,
+                compute_type=rc.compute_type,
+                cpu_threads=rc.cpu_threads,
+            )
+        cpp_p = self.resolve_path(catalog.ENGINE_WHISPER_CPP, rc) or self.settings.whisper_model
+        return whisper_cpp.WhisperCppEngine(self.settings.whisper_binary, cpp_p)
+
+
+class _EngineBuilder:
+    def __init__(
+        self,
+        settings: config.Settings,
+        model_mgr: model_manager.ModelManager,
+    ) -> None:
+        self.settings = settings
+        self.model_manager = model_mgr
+        self.resolver = _ModelPathResolver(settings, model_mgr)
+
+    def build(self, rc: runtime_config.RuntimeConfig) -> base.TranscriptionEngine:
+        engine_name = self.settings.engine
+        if engine_name == runtime_config.AUTO_ENGINE:
+            engine_name = rc.engine or runtime_config.AUTO_ENGINE
+        if engine_name == runtime_config.AUTO_ENGINE:
+            return self.resolver.resolve_auto(rc)
+        return self._build_named(engine_name, rc)
+
+    def swap(
+        self,
+        previous: base.TranscriptionEngine,
+        rc: runtime_config.RuntimeConfig,
+        config_path: Path,
+    ) -> base.TranscriptionEngine:
+        rc.save(config_path)
+        new_engine = self.build(rc)
+        close_engine(previous)
+        return new_engine
+
+    def validate(self, engine: str, device: str, compute_type: str, cpu_threads: int) -> None:
+        err = self._check_error(engine) or self._check_perf(device, compute_type, cpu_threads)
+        if err:
+            raise ValueError(err)
+
+    def _check_error(self, engine: str) -> str | None:
+        if engine not in runtime_config.VALID_ENGINES:
+            valid_names = ", ".join(runtime_config.VALID_ENGINES)
+            return f"Engine must be one of: {valid_names}."
+        if not engine_runs_here(engine):
+            requirement = engine_requirement(engine)
+            return f"The {engine} engine runs only on {requirement}."
+        return None
+
+    def _check_perf(self, device: str, compute_type: str, cpu_threads: int) -> str | None:
+        if device not in {runtime_config.AUTO_ENGINE, "cpu", "cuda"}:
+            return "Invalid compute device."
+        valid_compute = {
+            runtime_config.AUTO_ENGINE,
+            "int8",
+            "int8_float16",
+            "float16",
+            "float32",
+        }
+        if compute_type not in valid_compute:
+            return "Invalid compute type."
+        if not 0 <= cpu_threads <= runtime_config.MAXIMUM_CPU_THREADS:
+            return "CPU threads must be between 0 and 256."
+        return None
+
+    def _build_named(
+        self, engine: str, rc: runtime_config.RuntimeConfig
+    ) -> base.TranscriptionEngine:
+        if engine in {ENGINE_VOCAMAC, ENGINE_HANDY}:
+            return (
+                vocamac.VocaMacEngine(
+                    self.settings.whisperkit_binary,
+                    self.settings.vocamac_model,
+                    app_path=self.settings.vocamac_app,
+                )
+                if engine == ENGINE_VOCAMAC
+                else handy.HandyEngine(
+                    self.settings.handy_binary,
+                    self.settings.handy_model,
+                    fallback_model=self.settings.handy_fallback_model,
+                )
+            )
+        if engine in {catalog.ENGINE_SHERPA_ONNX, catalog.ENGINE_MLX_AUDIO}:
+            sherpa = engine == catalog.ENGINE_SHERPA_ONNX
+            model_id = rc.sherpa_model if sherpa else rc.mlx_audio_model
+            sel = self.resolver.catalog_selection(model_id, engine)
+            return (
+                sherpa_onnx.SherpaOnnxEngine(sel[0], sel[1], cpu_threads=rc.cpu_threads)
+                if sherpa
+                else mlx_audio.MLXAudioEngine(sel[0], sel[1])
+            )
+        if engine == catalog.ENGINE_MOONSHINE:
+            path = self.model_manager.installed_path(rc.moonshine_model)
+            return moonshine.MoonshineEngine(path, rc.moonshine_language)
+        if engine == catalog.ENGINE_FASTER_WHISPER:
+            return faster_whisper.FasterWhisperEngine(
+                self.resolver.resolve_path(engine, rc),
+                device=rc.compute_device,
+                compute_type=rc.compute_type,
+                cpu_threads=rc.cpu_threads,
+            )
+        path = self.resolver.resolve_path(engine, rc)
+        return (
+            WhisperKitEngine(self.settings.whisperkit_binary, path)
+            if engine == catalog.ENGINE_WHISPERKIT
+            else whisper_cpp.WhisperCppEngine(
+                self.settings.whisper_binary, path or self.settings.whisper_model
+            )
+        )
 
 
 class EngineManager:
@@ -55,326 +284,75 @@ class EngineManager:
 
     def __init__(
         self,
-        settings: Settings,
-        runtime_config: RuntimeConfig,
+        settings: config.Settings,
+        runtime_config: runtime_config.RuntimeConfig,
         config_path: Path,
-        model_manager: ModelManager,
+        model_manager: model_manager.ModelManager,
     ) -> None:
         self.settings = settings
         self.runtime_config = runtime_config
         self.config_path = config_path
         self.model_manager = model_manager
-        self._engine = self._build()
+        self._builder = _EngineBuilder(settings, model_manager)
+        self._engine = self._builder.build(runtime_config)
 
-    def current(self) -> TranscriptionEngine:
+    def current(self) -> base.TranscriptionEngine:
         return self._engine
 
-    async def health(self) -> EngineHealth:
+    async def health(self) -> base.EngineHealth:
         return await self._engine.health()
 
     def select_model(self, model_id: str) -> None:
         path = self.model_manager.installed_path(model_id)
         if path is None:
             raise KeyError(model_id)
-        if model_id.startswith(f"{ENGINE_WHISPERKIT}:"):
-            self.runtime_config.engine = ENGINE_WHISPERKIT
-            self.runtime_config.whisperkit_model = str(path)
-        elif model_id.startswith(f"{ENGINE_FASTER_WHISPER}:"):
-            self.runtime_config.engine = ENGINE_FASTER_WHISPER
-            self.runtime_config.faster_whisper_model = str(path)
-        elif model_id.startswith(f"{ENGINE_MOONSHINE}:"):
-            catalog_model = self.model_manager.catalog_model(model_id)
-            if catalog_model is None:
-                raise KeyError(model_id)
-            self.runtime_config.engine = ENGINE_MOONSHINE
-            self.runtime_config.moonshine_model = model_id
-            self.runtime_config.moonshine_language = catalog_model.language_code or "en"
-        elif model_id.startswith(f"{ENGINE_SHERPA_ONNX}:"):
-            self.runtime_config.engine = ENGINE_SHERPA_ONNX
-            self.runtime_config.sherpa_model = model_id
-        elif model_id.startswith(f"{ENGINE_MLX_AUDIO}:"):
-            self.runtime_config.engine = ENGINE_MLX_AUDIO
-            self.runtime_config.mlx_audio_model = model_id
-        else:
-            self.runtime_config.engine = ENGINE_WHISPER_CPP
-            self.runtime_config.whisper_model = str(path)
-        self._apply()
+        self._builder.resolver.apply_model(self.runtime_config, model_id, str(path))
+        self._engine = self._builder.swap(self._engine, self.runtime_config, self.config_path)
 
     def forget_if_active(self, model_id: str) -> None:
-        """Clear the model override if it points at the given model (e.g. before delete)."""
         path = self.model_manager.installed_path(model_id)
         if path is None:
             return
-        changed = False
-        if (
-            model_id == self.runtime_config.moonshine_model
-            and self.runtime_config.engine == ENGINE_MOONSHINE
-        ):
-            # moonshine_model is `str`, not `str | None` — unlike sherpa_model and
-            # mlx_audio_model below — because moonshine:en is kept as a permanent
-            # catalog entry for exactly this fallback (see app/catalog.py). Reset to
-            # it instead of None so a deleted model doesn't linger as a dangling id.
-            self.runtime_config.moonshine_model = "moonshine:en"
-            self.runtime_config.engine = AUTO_ENGINE
-            changed = True
-        if self.runtime_config.whisper_model == str(path):
-            self.runtime_config.whisper_model = None
-            changed = True
-        if self.runtime_config.whisperkit_model == str(path):
-            self.runtime_config.whisperkit_model = None
-            changed = True
-        if self.runtime_config.faster_whisper_model == str(path):
-            self.runtime_config.faster_whisper_model = None
-            changed = True
-        if (
-            model_id == self.runtime_config.sherpa_model
-            and self.runtime_config.engine == ENGINE_SHERPA_ONNX
-        ):
-            self.runtime_config.sherpa_model = None
-            self.runtime_config.engine = AUTO_ENGINE
-            changed = True
-        if (
-            model_id == self.runtime_config.mlx_audio_model
-            and self.runtime_config.engine == ENGINE_MLX_AUDIO
-        ):
-            self.runtime_config.mlx_audio_model = None
-            self.runtime_config.engine = AUTO_ENGINE
-            changed = True
-        if changed:
-            self._apply()
-
-    def set_engine(self, engine: str) -> None:
-        self.configure(
-            engine,
-            self.runtime_config.compute_device,
-            self.runtime_config.compute_type,
-            self.runtime_config.cpu_threads,
-        )
+        if self._builder.resolver.forget_if_active(self.runtime_config, model_id, str(path)):
+            self._engine = self._builder.swap(self._engine, self.runtime_config, self.config_path)
 
     def configure(
         self,
         engine: str,
-        device: str,
-        compute_type: str,
-        cpu_threads: int,
+        device: str | None = None,
+        compute_type: str | None = None,
+        cpu_threads: int | None = None,
     ) -> None:
-        """Validate and persist an engine/performance update atomically."""
-        if engine not in VALID_ENGINES:
-            raise ValueError(f"Engine must be one of: {', '.join(VALID_ENGINES)}.")
-        if not engine_runs_here(engine):
-            raise ValueError(f"The {engine} engine runs only on {engine_requirement(engine)}.")
-        if device not in {AUTO_ENGINE, "cpu", "cuda"}:
-            raise ValueError("Invalid compute device.")
-        if compute_type not in {AUTO_ENGINE, "int8", "int8_float16", "float16", "float32"}:
-            raise ValueError("Invalid compute type.")
-        if not 0 <= cpu_threads <= MAXIMUM_CPU_THREADS:
-            raise ValueError("CPU threads must be between 0 and 256.")
-        self.runtime_config.engine = engine
-        self.runtime_config.compute_device = device
-        self.runtime_config.compute_type = compute_type
-        self.runtime_config.cpu_threads = cpu_threads
-        if engine != ENGINE_WHISPER_CPP:
-            self.runtime_config.whisper_model = None
-        if engine != ENGINE_WHISPERKIT:
-            self.runtime_config.whisperkit_model = None
-        if engine != ENGINE_FASTER_WHISPER:
-            self.runtime_config.faster_whisper_model = None
-        if engine != ENGINE_SHERPA_ONNX:
-            self.runtime_config.sherpa_model = None
-        if engine != ENGINE_MLX_AUDIO:
-            self.runtime_config.mlx_audio_model = None
-        self._apply()
+        rc = self.runtime_config
+        dev = rc.compute_device if device is None else device
+        ctype = rc.compute_type if compute_type is None else compute_type
+        threads = rc.cpu_threads if cpu_threads is None else cpu_threads
+        self._builder.validate(engine, dev, ctype, threads)
+        rc.engine = engine
+        rc.compute_device = dev
+        rc.compute_type = ctype
+        rc.cpu_threads = threads
+        if engine != catalog.ENGINE_WHISPER_CPP:
+            rc.whisper_model = None
+        if engine != catalog.ENGINE_WHISPERKIT:
+            rc.whisperkit_model = None
+        if engine != catalog.ENGINE_FASTER_WHISPER:
+            rc.faster_whisper_model = None
+        if engine != catalog.ENGINE_SHERPA_ONNX:
+            rc.sherpa_model = None
+        if engine != catalog.ENGINE_MLX_AUDIO:
+            rc.mlx_audio_model = None
+        self._engine = self._builder.swap(self._engine, rc, self.config_path)
 
     def update_performance(self, device: str, compute_type: str, cpu_threads: int) -> None:
         self.configure(self.runtime_config.engine, device, compute_type, cpu_threads)
 
-    def _apply(self) -> None:
-        self.runtime_config.save(self.config_path)
-        previous = self._engine
-        self._engine = self._build()
-        close_engine(previous)
-
-    def _build(self) -> TranscriptionEngine:
-        return build_engine(self.settings, self.runtime_config, self.model_manager)
+    set_engine = configure
 
 
 def build_engine(
-    settings: Settings,
-    runtime_config: RuntimeConfig,
-    model_manager: ModelManager,
-) -> TranscriptionEngine:
-    # A non-auto VOCAGATEWAY_ENGINE is an operator force-flag and must win over
-    # whatever the WebUI last persisted (including the default AUTO_ENGINE written
-    # into config.json). When the env is auto, honour the runtime choice.
-    engine = (
-        settings.engine if settings.engine != AUTO_ENGINE else runtime_config.engine or AUTO_ENGINE
-    )
-    if engine == "vocamac":
-        return _vocamac_engine(settings)
-    if engine == "handy":
-        return HandyEngine(
-            settings.handy_binary,
-            settings.handy_model,
-            fallback_model=settings.handy_fallback_model,
-        )
-    if engine == ENGINE_WHISPERKIT:
-        return WhisperKitEngine(
-            settings.whisperkit_binary,
-            _whisperkit_model_path(runtime_config, model_manager),
-        )
-    if engine == ENGINE_FASTER_WHISPER:
-        return FasterWhisperEngine(
-            _faster_whisper_model_path(runtime_config, model_manager),
-            device=runtime_config.compute_device,
-            compute_type=runtime_config.compute_type,
-            cpu_threads=runtime_config.cpu_threads,
-        )
-    if engine == ENGINE_MOONSHINE:
-        return MoonshineEngine(
-            _moonshine_model_path(runtime_config, model_manager),
-            runtime_config.moonshine_language,
-        )
-    if engine == ENGINE_SHERPA_ONNX:
-        model_path, catalog_model = _catalog_model_selection(
-            runtime_config.sherpa_model,
-            ENGINE_SHERPA_ONNX,
-            model_manager,
-            prefer_small=True,
-        )
-        return SherpaOnnxEngine(
-            model_path,
-            catalog_model,
-            cpu_threads=runtime_config.cpu_threads,
-        )
-    if engine == ENGINE_MLX_AUDIO:
-        model_path, catalog_model = _catalog_model_selection(
-            runtime_config.mlx_audio_model,
-            ENGINE_MLX_AUDIO,
-            model_manager,
-            prefer_small=True,
-        )
-        return MLXAudioEngine(model_path, catalog_model)
-    if engine == ENGINE_WHISPER_CPP:
-        return WhisperCppEngine(
-            settings.whisper_binary,
-            _whisper_cpp_model_path(settings, runtime_config, model_manager),
-        )
-    # auto: prefer what is actually usable on this machine
-    vocamac = _vocamac_engine(settings)
-    if vocamac.is_available():
-        return vocamac
-    if settings.handy_binary.is_file():
-        return HandyEngine(
-            settings.handy_binary,
-            settings.handy_model,
-            fallback_model=settings.handy_fallback_model,
-        )
-    whisperkit_path = _whisperkit_model_path(runtime_config, model_manager)
-    if whisperkit_path is not None:
-        return WhisperKitEngine(settings.whisperkit_binary, whisperkit_path)
-    mlx_path, mlx_model = _catalog_model_selection(
-        runtime_config.mlx_audio_model,
-        ENGINE_MLX_AUDIO,
-        model_manager,
-        prefer_small=True,
-    )
-    if mlx_path is not None:
-        return MLXAudioEngine(mlx_path, mlx_model)
-    sherpa_path, sherpa_model = _catalog_model_selection(
-        runtime_config.sherpa_model,
-        ENGINE_SHERPA_ONNX,
-        model_manager,
-        prefer_small=True,
-    )
-    if sherpa_path is not None:
-        return SherpaOnnxEngine(
-            sherpa_path,
-            sherpa_model,
-            cpu_threads=runtime_config.cpu_threads,
-        )
-    faster_whisper_path = _faster_whisper_model_path(runtime_config, model_manager)
-    if faster_whisper_path is not None:
-        return FasterWhisperEngine(
-            faster_whisper_path,
-            device=runtime_config.compute_device,
-            compute_type=runtime_config.compute_type,
-            cpu_threads=runtime_config.cpu_threads,
-        )
-    return WhisperCppEngine(
-        settings.whisper_binary,
-        _whisper_cpp_model_path(settings, runtime_config, model_manager),
-    )
-
-
-def _vocamac_engine(settings: Settings) -> VocaMacEngine:
-    return VocaMacEngine(
-        settings.whisperkit_binary,
-        settings.vocamac_model,
-        app_path=settings.vocamac_app,
-    )
-
-
-def _whisper_cpp_model_path(
-    settings: Settings,
-    runtime_config: RuntimeConfig,
-    model_manager: ModelManager,
-) -> Path:
-    if runtime_config.whisper_model:
-        return Path(runtime_config.whisper_model)
-    installed = [model for model in model_manager.installed() if model.engine == ENGINE_WHISPER_CPP]
-    if installed:
-        return max(installed, key=lambda model: model.size_bytes).path
-    return settings.whisper_model
-
-
-def _whisperkit_model_path(
-    runtime_config: RuntimeConfig,
-    model_manager: ModelManager,
-) -> Path | None:
-    if runtime_config.whisperkit_model:
-        return Path(runtime_config.whisperkit_model)
-    installed = [model for model in model_manager.installed() if model.engine == ENGINE_WHISPERKIT]
-    if installed:
-        return max(installed, key=lambda model: model.size_bytes).path
-    return None
-
-
-def _faster_whisper_model_path(
-    runtime_config: RuntimeConfig,
-    model_manager: ModelManager,
-) -> Path | None:
-    if runtime_config.faster_whisper_model:
-        return Path(runtime_config.faster_whisper_model)
-    installed = [
-        model for model in model_manager.installed() if model.engine == ENGINE_FASTER_WHISPER
-    ]
-    if installed:
-        return min(installed, key=lambda model: model.size_bytes).path
-    return None
-
-
-def _moonshine_model_path(
-    runtime_config: RuntimeConfig,
-    model_manager: ModelManager,
-) -> Path | None:
-    model_id = runtime_config.moonshine_model
-    return model_manager.installed_path(model_id)
-
-
-def _catalog_model_selection(
-    configured_model_id: str | None,
-    engine: str,
-    model_manager: ModelManager,
-    *,
-    prefer_small: bool,
-) -> tuple[Path | None, CatalogModel | None]:
-    if configured_model_id:
-        return (
-            model_manager.installed_path(configured_model_id),
-            model_manager.catalog_model(configured_model_id),
-        )
-    installed = [model for model in model_manager.installed() if model.engine == engine]
-    if not installed:
-        return None, None
-    chosen = (min if prefer_small else max)(installed, key=lambda model: model.size_bytes)
-    return chosen.path, model_manager.catalog_model(chosen.id)
+    settings: config.Settings,
+    runtime_config: runtime_config.RuntimeConfig,
+    model_manager: model_manager.ModelManager,
+) -> base.TranscriptionEngine:
+    return _EngineBuilder(settings, model_manager).build(runtime_config)
