@@ -33,6 +33,7 @@ REMEDIATED_FILES: tuple[str, ...] = (
     "app/engines.py",
     "app/routes/admin_models.py",
     "app/fragments/models.py",
+    "app/text_styles.py",
     "tests/conftest.py",
     "tests/test_readiness.py",
     "tests/test_harvest_model_pins.py",

@@ -3,20 +3,17 @@ from __future__ import annotations
 import re
 import threading
 from dataclasses import dataclass
+from types import MappingProxyType
 
 import pysbd
 import tldextract
 from pysbd.languages import LANGUAGE_CODES
 
-SUPPORTED_WRITING_STYLES = frozenset({"raw", "clean", "formal", "casual", "very_casual", "excited"})
+SUPPORTED_WRITING_STYLES = frozenset(("raw", "clean", "formal", "casual", "very_casual", "excited"))
 
-# ---------------------------------------------------------------------------
-# Language-dependent punctuation
-#
-# Sentence and clause marks are not universal. Assuming "." and "," turned
-# Japanese into an unstyled passthrough with a stray EXCLAMATION_MARK appended, and inserted
-# Latin commas into Arabic.
-# ---------------------------------------------------------------------------
+_UNIVERSAL_TERMINATORS = ".!?\u3002\uff01\uff1f\u0964\u06d4\u104b\u17d4\u0f0d\u061f"
+EXCLAMATION_MARK = "!"
+QUESTION_MARK = "?"
 
 
 @dataclass(frozen=True)
@@ -27,140 +24,105 @@ class Punctuation:
     question: str
     terminators: str
     segmentation_language: str
-    # CJK does not put a space between sentences.
     join: str
 
     def __post_init__(self) -> None:
-        # A model that picks its own language leaks that language's punctuation
-        # into another script: Dolphin ends a Hindi sentence with the CJK "。".
-        # Recognising every sentence mark stops a second terminator being
-        # appended to text that already ended — the visible bug was "。।" — and
-        # lets the segmenter see the boundary. Only `terminator`, the mark that
-        # gets *written*, stays language-specific.
         merged = self.terminators + _UNIVERSAL_TERMINATORS
         object.__setattr__(self, "terminators", "".join(dict.fromkeys(merged)))
 
+    def with_segmentation_language(self, code: str) -> Punctuation:
+        if code == self.segmentation_language:
+            return self
+        return Punctuation(
+            self.terminator,
+            self.separator,
+            self.exclamation,
+            self.question,
+            self.terminators,
+            code,
+            self.join,
+        )
 
-# Every sentence-ending mark any catalog model is capable of emitting.
-_UNIVERSAL_TERMINATORS = ".!?\u3002\uff01\uff1f\u0964\u06d4\u104b\u17d4\u0f0d\u061f"
-EXCLAMATION_MARK = "!"
-QUESTION_MARK = "?"
+    def ensure_terminator(self, text: str) -> str:
+        if text and text[-1] not in self.terminators:
+            return f"{text}{self.terminator}"
+        return text
 
 
 _LATIN = Punctuation(".", ",", EXCLAMATION_MARK, QUESTION_MARK, ".!?", "en", " ")
 _CJK = Punctuation("。", "、", "！", "？", "。！？.!?", "ja", "")
 _ARABIC = Punctuation(".", "،", EXCLAMATION_MARK, "؟", ".!?؟", "ar", " ")
 _URDU = Punctuation("۔", "،", EXCLAMATION_MARK, "؟", "۔.!?؟", "ur", " ")
-
-# Indic scripts end a sentence with the danda "।" (U+0964), not a full stop, and
-# use the Latin comma, question mark and exclamation mark. Both the danda and "."
-# are accepted as terminators, because a model trained on mixed corpora emits
-# either — recognising only one of them appended a second terminator to text that
-# already had one, and hid every sentence boundary from the segmenter.
 _DANDA = Punctuation("।", ",", EXCLAMATION_MARK, QUESTION_MARK, "।.!?", "hi", " ")
-# Dravidian scripts and modern Gujarati write the full stop instead, but still
-# have to recognise a danda the model may have produced.
 _INDIC_LATIN = Punctuation(".", ",", EXCLAMATION_MARK, QUESTION_MARK, "।.!?", "en", " ")
-
-# Thai and Lao mark a sentence end with a space and nothing else. The empty
-# terminator means "append nothing"; `_casual` guards against it explicitly,
-# because dropping a zero-length terminator would truncate the whole transcript.
 _UNTERMINATED = Punctuation("", " ", EXCLAMATION_MARK, QUESTION_MARK, "!?", "th", " ")
-# Southeast and Central Asian scripts with their own sentence marks.
 _BURMESE = Punctuation("။", "၊", EXCLAMATION_MARK, QUESTION_MARK, "။.!?", "my", " ")
 _KHMER = Punctuation("។", ",", EXCLAMATION_MARK, QUESTION_MARK, "។.!?", "km", " ")
 _TIBETAN = Punctuation("།", "།", EXCLAMATION_MARK, QUESTION_MARK, "།.!?", "bo", " ")
 
+_PUNCTUATION_BY_LANGUAGE = MappingProxyType(
+    {
+        "ja": _CJK,
+        "zh": _CJK,
+        "yue": _CJK,
+        "ar": _ARABIC,
+        "fa": _ARABIC,
+        "ps": _ARABIC,
+        "ur": _URDU,
+        "hi": _DANDA,
+        "mr": _DANDA.with_segmentation_language("mr"),
+        "ne": _DANDA.with_segmentation_language("ne"),
+        "sa": _DANDA.with_segmentation_language("sa"),
+        "bn": _DANDA.with_segmentation_language("bn"),
+        "as": _DANDA.with_segmentation_language("as"),
+        "pa": _DANDA.with_segmentation_language("pa"),
+        "or": _DANDA.with_segmentation_language("or"),
+        "kok": _DANDA.with_segmentation_language("kok"),
+        "mai": _DANDA.with_segmentation_language("mai"),
+        "brx": _DANDA.with_segmentation_language("brx"),
+        "doi": _DANDA.with_segmentation_language("doi"),
+        "ta": _INDIC_LATIN.with_segmentation_language("ta"),
+        "te": _INDIC_LATIN.with_segmentation_language("te"),
+        "kn": _INDIC_LATIN.with_segmentation_language("kn"),
+        "ml": _INDIC_LATIN.with_segmentation_language("ml"),
+        "gu": _INDIC_LATIN.with_segmentation_language("gu"),
+        "si": _INDIC_LATIN.with_segmentation_language("si"),
+        "sd": _URDU.with_segmentation_language("sd"),
+        "ks": _URDU.with_segmentation_language("ks"),
+        "ug": _ARABIC.with_segmentation_language("ug"),
+        "th": _UNTERMINATED,
+        "lo": _UNTERMINATED.with_segmentation_language("lo"),
+        "my": _BURMESE,
+        "km": _KHMER,
+        "bo": _TIBETAN,
+    }
+)
 
-def _replace_segmentation_language(base: Punctuation, code: str) -> Punctuation:
-    if code == base.segmentation_language:
-        return base
-    return Punctuation(
-        base.terminator,
-        base.separator,
-        base.exclamation,
-        base.question,
-        base.terminators,
-        code,
-        base.join,
-    )
-
-
-_PUNCTUATION_BY_LANGUAGE = {
-    "ja": _CJK,
-    "zh": _CJK,
-    "yue": _CJK,
-    "ar": _ARABIC,
-    "fa": _ARABIC,
-    "ps": _ARABIC,
-    "ur": _URDU,
-    # pysbd covers Hindi and Marathi; the rest fall back to splitting on a
-    # terminator run, which is all a danda-delimited sentence needs anyway.
-    "hi": _DANDA,
-    "mr": _replace_segmentation_language(_DANDA, "mr"),
-    "ne": _replace_segmentation_language(_DANDA, "ne"),
-    "sa": _replace_segmentation_language(_DANDA, "sa"),
-    "bn": _replace_segmentation_language(_DANDA, "bn"),
-    "as": _replace_segmentation_language(_DANDA, "as"),
-    "pa": _replace_segmentation_language(_DANDA, "pa"),
-    "or": _replace_segmentation_language(_DANDA, "or"),
-    "kok": _replace_segmentation_language(_DANDA, "kok"),
-    "mai": _replace_segmentation_language(_DANDA, "mai"),
-    "brx": _replace_segmentation_language(_DANDA, "brx"),
-    "doi": _replace_segmentation_language(_DANDA, "doi"),
-    "ta": _replace_segmentation_language(_INDIC_LATIN, "ta"),
-    "te": _replace_segmentation_language(_INDIC_LATIN, "te"),
-    "kn": _replace_segmentation_language(_INDIC_LATIN, "kn"),
-    "ml": _replace_segmentation_language(_INDIC_LATIN, "ml"),
-    "gu": _replace_segmentation_language(_INDIC_LATIN, "gu"),
-    # Modern Sinhala writes the full stop; the traditional kunddaliya is not used.
-    "si": _replace_segmentation_language(_INDIC_LATIN, "si"),
-    # Perso-Arabic scripts follow Urdu rather than Arabic: they end on "۔".
-    "sd": _replace_segmentation_language(_URDU, "sd"),
-    "ks": _replace_segmentation_language(_URDU, "ks"),
-    "ug": _replace_segmentation_language(_ARABIC, "ug"),
-    "th": _UNTERMINATED,
-    "lo": _replace_segmentation_language(_UNTERMINATED, "lo"),
-    "my": _BURMESE,
-    "km": _KHMER,
-    "bo": _TIBETAN,
-}
-
-# Used when the caller says "auto", which is the default, so the script has to
-# be inferred from the transcript itself.
 _CJK_MARKS = "。、！？"
 _ARABIC_MARKS = "،؟"
 
 
-def _resolve_punctuation(language: str, text: str) -> Punctuation:
-    code = language.lower().split("-")[0]
-    known = _PUNCTUATION_BY_LANGUAGE.get(code)
-    if known is not None:
-        return known
-    if code not in ("auto", ""):
-        return _replace_segmentation_language(_LATIN, code)
-    if any(mark in text for mark in _CJK_MARKS):
-        return _CJK
-    if any(mark in text for mark in _ARABIC_MARKS):
-        return _ARABIC
-    if "۔" in text:
-        return _URDU
-    # Auto matters more than usual here: several models detect the language
-    # themselves, so a Hindi transcript often arrives with the language still
-    # set to Automatic.
-    if "।" in text:
-        return _DANDA
-    return _LATIN
+class _PunctuationRegistry:
+    @classmethod
+    def resolve(cls, language: str, text: str) -> Punctuation:
+        code = language.lower().split("-")[0]
+        known = _PUNCTUATION_BY_LANGUAGE.get(code)
+        if known is not None:
+            return known
+        if code not in ("auto", ""):
+            return _LATIN.with_segmentation_language(code)
+        return cls._infer_from_text(text)
 
+    @classmethod
+    def _infer_from_text(cls, text: str) -> Punctuation:
+        if any(mark in text for mark in _CJK_MARKS):
+            return _CJK
+        if any(mark in text for mark in _ARABIC_MARKS):
+            return _ARABIC
+        if "۔" in text:
+            return _URDU
+        return _DANDA if "।" in text else _LATIN
 
-# ---------------------------------------------------------------------------
-# Protected spans
-#
-# Punctuation inside a price, time, decimal, address or contraction carries
-# meaning. These spans are masked before any transform and restored afterwards,
-# so no style can corrupt them. Sentence-ending abbreviations such as "Dr." are
-# deliberately not listed here: pysbd already knows them, per language.
-# ---------------------------------------------------------------------------
 
 _PLACEHOLDER_START = ""
 _PLACEHOLDER_END = ""
@@ -185,257 +147,245 @@ _PROTECTED = re.compile(
 )
 
 _ADDRESS = re.compile(rf"^(?:{_SCHEME_URL}|{_EMAIL})$")
-
-# The Public Suffix List snapshot bundled with tldextract. Network lookups are
-# disabled so a local gateway never stalls on a suffix refresh.
 _SUFFIXES = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None)
 
 
-def _is_real_domain(candidate: str) -> bool:
-    host = candidate.split("/", 1)[0]
-    suffix = host.rsplit(".", 1)[-1]
-    # ".it" and ".in" are real country domains, so "I went home.It was fine"
-    # would otherwise be read as an address. Transcribed hosts are lower case.
-    if not suffix.islower():
-        return False
-    return bool(_SUFFIXES(host).suffix)
+class _SpanProtector:
+    @classmethod
+    def is_real_domain(cls, candidate: str) -> bool:
+        host = candidate.split("/", 1)[0]
+        suffix = host.rsplit(".", 1)[-1]
+        if not suffix.islower():
+            return False
+        return bool(_SUFFIXES(host).suffix)
 
+    @classmethod
+    def protect(cls, text: str) -> tuple[str, list[str]]:
+        tokens: list[str] = []
+        masked_text = _PROTECTED.sub(lambda match: cls._capture_match(match, tokens), text)
+        return masked_text, tokens
 
-def _protect(text: str) -> tuple[str, list[str]]:
-    tokens: list[str] = []
+    @classmethod
+    def restore(cls, text: str, tokens: list[str]) -> str:
+        if not tokens:
+            return text
+        return _PLACEHOLDER.sub(lambda match: cls._restore_match(match, tokens), text)
 
-    def capture(match: re.Match[str]) -> str:
+    @classmethod
+    def lower_outside_placeholders(cls, text: str) -> str:
+        pieces: list[str] = []
+        position = 0
+        for match in _PLACEHOLDER.finditer(text):
+            pieces.append(text[position : match.start()].lower())
+            pieces.append(match.group(0))
+            position = match.end()
+        pieces.append(text[position:].lower())
+        return "".join(pieces)
+
+    @classmethod
+    def sanitize_tokens(cls, tokens: list[str], style: str) -> list[str]:
+        if style != "very_casual":
+            return tokens
+        return [token if _ADDRESS.match(token) else token.lower() for token in tokens]
+
+    @classmethod
+    def _capture_match(cls, match: re.Match[str], tokens: list[str]) -> str:
         span = match.group(0)
-        if match.lastgroup == "domain" and not _is_real_domain(span):
+        if match.lastgroup == "domain" and not cls.is_real_domain(span):
             return span
         tokens.append(span)
-        return f"{_PLACEHOLDER_START}{len(tokens) - 1}{_PLACEHOLDER_END}"
+        token_index = len(tokens) - 1
+        return f"{_PLACEHOLDER_START}{token_index}{_PLACEHOLDER_END}"
 
-    return _PROTECTED.sub(capture, text), tokens
+    @classmethod
+    def _restore_match(cls, match: re.Match[str], tokens: list[str]) -> str:
+        token_index = int(match.group(1))
+        return tokens[token_index]
 
-
-def _restore(text: str, tokens: list[str]) -> str:
-    if not tokens:
-        return text
-    return _PLACEHOLDER.sub(lambda match: tokens[int(match.group(1))], text)
-
-
-# ---------------------------------------------------------------------------
-# Sentence segmentation
-# ---------------------------------------------------------------------------
 
 _SEGMENTERS = threading.local()
-# Cheap probe: with no boundary inside the text there is nothing to segment, so
-# a single-sentence dictation never pays for the segmenter at all. CJK needs the
-# whitespace to be optional because it runs sentences together without a space;
-# requiring it elsewhere keeps "example.com" style text on the fast path.
-_BREAK_CACHE: dict[str, re.Pattern[str]] = {}
 
 
-def _internal_break_pattern(punctuation: Punctuation) -> re.Pattern[str]:
-    key = punctuation.terminators + "|" + punctuation.join
-    cached = _BREAK_CACHE.get(key)
-    if cached is None:
-        marks = re.escape(punctuation.terminators)
-        gap = r"\s*" if punctuation.join == "" else r"\s+"
-        cached = re.compile(rf"[{marks}]{gap}\S")
-        _BREAK_CACHE[key] = cached
-    return cached
+class _SegmenterEngine:
+    _break_cache: dict[str, re.Pattern[str]] = {}
 
+    @classmethod
+    def internal_break_pattern(cls, punctuation: Punctuation) -> re.Pattern[str]:
+        key = f"{punctuation.terminators}|{punctuation.join}"
+        cached = cls._break_cache.get(key)
+        if cached is None:
+            marks = re.escape(punctuation.terminators)
+            gap = r"\s*" if punctuation.join == "" else r"\s+"
+            cached = re.compile(rf"[{marks}]{gap}\S")
+            cls._break_cache[key] = cached
+        return cached
 
-def _segmenter(code: str) -> pysbd.Segmenter:
-    cache = getattr(_SEGMENTERS, "cache", None)
-    if cache is None:
-        cache = {}
-        _SEGMENTERS.cache = cache
-    segmenter = cache.get(code)
-    if segmenter is None:
-        # Instances are cached per thread; pysbd keeps per-call state internally
-        # and sharing one across threads is not worth the risk.
-        segmenter = pysbd.Segmenter(language=code, clean=False)
-        cache[code] = segmenter
-    return segmenter
+    @classmethod
+    def segmenter(cls, code: str) -> pysbd.Segmenter:
+        cache = getattr(_SEGMENTERS, "cache", None)
+        if cache is None:
+            cache = {}
+            _SEGMENTERS.cache = cache
+        cached_seg = cache.get(code)
+        if cached_seg is None:
+            cached_seg = pysbd.Segmenter(language=code, clean=False)
+            cache[code] = cached_seg
+        return cached_seg
 
+    @classmethod
+    def split_on_terminators(cls, text: str, punctuation: Punctuation) -> list[str]:
+        boundary = re.compile(rf"[{re.escape(punctuation.terminators)}]+\s+")
+        sentences: list[str] = []
+        start = 0
+        for match in boundary.finditer(text):
+            sentences.append(text[start : match.end()])
+            start = match.end()
+        if start < len(text):
+            sentences.append(text[start:])
+        return sentences or [text]
 
-def _segment(text: str, punctuation: Punctuation) -> list[str]:
-    if not _internal_break_pattern(punctuation).search(text):
-        return [text]
-    code = punctuation.segmentation_language
-    if code in LANGUAGE_CODES:
-        sentences = [str(sentence) for sentence in _segmenter(code).segment(text)]
-        if sentences and "".join(sentences) == text:
-            return sentences
-    return _split_on_terminators(text, punctuation)
+    @classmethod
+    def segment(cls, text: str, punctuation: Punctuation) -> list[str]:
+        if not cls.internal_break_pattern(punctuation).search(text):
+            return [text]
+        code = punctuation.segmentation_language
+        if code in LANGUAGE_CODES:
+            sentences = [str(sentence) for sentence in cls.segmenter(code).segment(text)]
+            if sentences and "".join(sentences) == text:
+                return sentences
+        return cls.split_on_terminators(text, punctuation)
 
-
-def _split_on_terminators(text: str, punctuation: Punctuation) -> list[str]:
-    """Fallback for languages pysbd does not cover, such as Korean. It has no
-    abbreviation knowledge, so it only splits on a terminator run."""
-    boundary = re.compile(rf"[{re.escape(punctuation.terminators)}]+\s+")
-    sentences: list[str] = []
-    start = 0
-    for match in boundary.finditer(text):
-        sentences.append(text[start : match.end()])
-        start = match.end()
-    if start < len(text):
-        sentences.append(text[start:])
-    return sentences or [text]
-
-
-# ---------------------------------------------------------------------------
-# Styles
-# ---------------------------------------------------------------------------
 
 _FIRST_LETTER = re.compile(r"^([\"'“‘(\[]*)([^\W\d_])")
 
 
-def apply_writing_style(text: str, style: str, language: str = "auto") -> str:
-    """Format a local transcript without changing its words or meaning.
+class _SentenceCaser:
+    _sentence_start_cache: dict[str, re.Pattern[str]] = {}
 
-    Every style is presentation only: casing, spacing and sentence punctuation.
-    No word is ever added, removed or substituted, and protected spans such as
-    numbers, times, URLs, email addresses and contractions come back exactly as
-    the model produced them.
-    """
+    @classmethod
+    def capitalize(cls, text: str) -> str:
+        return _FIRST_LETTER.sub(cls._capitalize_first_match, text, count=1)
+
+    @classmethod
+    def sentence_start_pattern(cls, punctuation: Punctuation) -> re.Pattern[str]:
+        cached = cls._sentence_start_cache.get(punctuation.terminators)
+        if cached is None:
+            marks = re.escape(punctuation.terminators)
+            cached = re.compile(rf"(^|[{marks}]\s*)([\"'“‘(\[]*)([^\W\d_])")
+            cls._sentence_start_cache[punctuation.terminators] = cached
+        return cached
+
+    @classmethod
+    def capitalize_sentence_starts(cls, text: str, punctuation: Punctuation) -> str:
+        return cls.sentence_start_pattern(punctuation).sub(
+            cls._capitalize_match,
+            text,
+        )
+
+    @classmethod
+    def split_terminator(cls, sentence: str, punctuation: Punctuation) -> tuple[str, str]:
+        body = sentence.strip()
+        has_terminator = bool(body and body[-1] in punctuation.terminators)
+        if has_terminator and not body.endswith(".."):
+            return body[:-1], body[-1]
+        return body, ""
+
+    @classmethod
+    def normalize_spacing(cls, text: str, punctuation: Punctuation) -> str:
+        normalized_text = re.sub(r"\s+", " ", text).strip()
+        marks = re.escape(f"{punctuation.terminators}{punctuation.separator};:")
+        return re.sub(rf"\s+([{marks}])", r"\1", normalized_text)
+
+    @classmethod
+    def _capitalize_first_match(cls, match: re.Match[str]) -> str:
+        prefix = match.group(1)
+        letter = match.group(2).upper()
+        return f"{prefix}{letter}"
+
+    @classmethod
+    def _capitalize_match(cls, match: re.Match[str]) -> str:
+        lead, bracket, char = match.groups()
+        return f"{lead}{bracket}{char.upper()}"
+
+
+class _StyleApplier:
+    @classmethod
+    def formal(cls, text: str, punctuation: Punctuation) -> str:
+        capitalized = _SentenceCaser.capitalize_sentence_starts(text, punctuation)
+        return punctuation.ensure_terminator(capitalized)
+
+    @classmethod
+    def casual(cls, text: str, punctuation: Punctuation) -> str:
+        formatted = _SentenceCaser.capitalize_sentence_starts(text, punctuation)
+        drop_term = bool(
+            punctuation.terminator
+            and formatted.endswith(punctuation.terminator)
+            and not formatted.endswith("..")
+        )
+        if drop_term:
+            return formatted[: -len(punctuation.terminator)]
+        return formatted
+
+    @classmethod
+    def very_casual(cls, sentences: list[str], punctuation: Punctuation) -> str:
+        last_index = len(sentences) - 1
+        parts = [
+            cls._casual_segment(sent, punctuation, idx == last_index)
+            for idx, sent in enumerate(sentences)
+        ]
+        return _SpanProtector.lower_outside_placeholders(
+            punctuation.join.join(part for part in parts if part)
+        )
+
+    @classmethod
+    def excited(cls, sentences: list[str], punctuation: Punctuation) -> str:
+        parts = [cls._excited_segment(sent, punctuation) for sent in sentences]
+        return punctuation.join.join(part for part in parts if part)
+
+    @classmethod
+    def format_style(cls, style: str, text: str, punctuation: Punctuation) -> str:
+        normalized = _SentenceCaser.normalize_spacing(text, punctuation)
+        if style == "clean":
+            return punctuation.ensure_terminator(normalized)
+        if style == "formal":
+            return cls.formal(normalized, punctuation)
+        if style == "casual":
+            return cls.casual(normalized, punctuation)
+        sentences = _SegmenterEngine.segment(normalized, punctuation)
+        if style == "very_casual":
+            return cls.very_casual(sentences, punctuation)
+        return cls.excited(sentences, punctuation)
+
+    @classmethod
+    def _casual_segment(cls, sentence: str, punct: Punctuation, is_last: bool) -> str:
+        body, term = _SentenceCaser.split_terminator(sentence, punct)
+        if not body:
+            return ""
+        if is_last:
+            return body
+        if term in ("", punct.terminator):
+            return f"{body}{punct.separator}"
+        return f"{body}{term}"
+
+    @classmethod
+    def _excited_segment(cls, sentence: str, punct: Punctuation) -> str:
+        body, term = _SentenceCaser.split_terminator(sentence, punct)
+        if not body:
+            return ""
+        mark = term if term == punct.question else punct.exclamation
+        return f"{_SentenceCaser.capitalize(body)}{mark}"
+
+
+def apply_writing_style(text: str, style: str, language: str = "auto") -> str:
     if style == "raw":
         return text.strip()
     if style not in SUPPORTED_WRITING_STYLES:
         raise ValueError(f"Unsupported writing style: {style}")
 
-    punctuation = _resolve_punctuation(language, text)
-    masked, tokens = _protect(text)
-    normalized = _normalize_spacing(masked, punctuation)
-
-    if style == "clean":
-        formatted_text = _ensure_terminator(normalized, punctuation)
-    elif style == "formal":
-        formatted_text = _formal(normalized, punctuation)
-    elif style == "casual":
-        formatted_text = _casual(normalized, punctuation)
-    else:
-        # Only the styles that rewrite sentence terminators need real
-        # boundaries; getting them wrong turns "Dr. Smith" into "Dr! Smith".
-        # Formal and casual leave terminators alone, so they skip the cost.
-        sentences = _segment(normalized, punctuation)
-        if style == "very_casual":
-            formatted_text = _very_casual(sentences, punctuation)
-        else:
-            formatted_text = _excited(sentences, punctuation)
-
-    if style == "very_casual":
-        tokens = [token if _ADDRESS.match(token) else token.lower() for token in tokens]
-    return _restore(formatted_text, tokens)
-
-
-def _normalize_spacing(text: str, punctuation: Punctuation) -> str:
-    normalized_text = re.sub(r"\s+", " ", text).strip()
-    marks = re.escape(punctuation.terminators + punctuation.separator + ";:")
-    return re.sub(rf"\s+([{marks}])", r"\1", normalized_text)
-
-
-def _capitalize(text: str) -> str:
-    return _FIRST_LETTER.sub(
-        lambda match: match.group(1) + match.group(2).upper(),
-        text,
-        count=1,
+    protected = _SpanProtector.protect(text)
+    return _SpanProtector.restore(
+        _StyleApplier.format_style(
+            style, protected[0], _PunctuationRegistry.resolve(language, text)
+        ),
+        _SpanProtector.sanitize_tokens(protected[1], style),
     )
-
-
-def _split_terminator(sentence: str, punctuation: Punctuation) -> tuple[str, str]:
-    """Return the sentence body and its terminator, keeping an ellipsis with the
-    body because it is deliberate rather than a sentence end."""
-    body = sentence.strip()
-    if body and body[-1] in punctuation.terminators and not body.endswith(".."):
-        return body[:-1], body[-1]
-    return body, ""
-
-
-def _ensure_terminator(text: str, punctuation: Punctuation) -> str:
-    if text and text[-1] not in punctuation.terminators:
-        return text + punctuation.terminator
-    return text
-
-
-_SENTENCE_START_CACHE: dict[str, re.Pattern[str]] = {}
-
-
-def _sentence_start_pattern(punctuation: Punctuation) -> re.Pattern[str]:
-    cached = _SENTENCE_START_CACHE.get(punctuation.terminators)
-    if cached is None:
-        marks = re.escape(punctuation.terminators)
-        cached = re.compile(rf"(^|[{marks}]\s*)([\"'“‘(\[]*)([^\W\d_])")
-        _SENTENCE_START_CACHE[punctuation.terminators] = cached
-    return cached
-
-
-def _capitalize_sentence_starts(text: str, punctuation: Punctuation) -> str:
-    """Safe without real segmentation: capitalising after an abbreviation is a
-    no-op because the following word is already a capitalised name, and acronyms
-    are masked before this runs."""
-    return _sentence_start_pattern(punctuation).sub(
-        lambda match: match.group(1) + match.group(2) + match.group(3).upper(),
-        text,
-    )
-
-
-def _formal(text: str, punctuation: Punctuation) -> str:
-    return _ensure_terminator(_capitalize_sentence_starts(text, punctuation), punctuation)
-
-
-def _casual(text: str, punctuation: Punctuation) -> str:
-    """Sentence structure is preserved; only a closing full stop is dropped, the
-    way a dictated message is usually typed. A question mark or an exclamation
-    carries meaning and stays."""
-    formatted_text = _capitalize_sentence_starts(text, punctuation)
-    # The empty-terminator guard is load-bearing, not defensive: Thai and Lao end
-    # sentences with nothing at all, and `"text".endswith("")` is True while
-    # `result[:-0]` is the empty string, so an unguarded drop erases the transcript.
-    if (
-        punctuation.terminator
-        and formatted_text.endswith(punctuation.terminator)
-        and not formatted_text.endswith("..")
-    ):
-        return formatted_text[: -len(punctuation.terminator)]
-    return formatted_text
-
-
-def _very_casual(sentences: list[str], punctuation: Punctuation) -> str:
-    """Everything runs together in lower case. Joining with the clause separator
-    is safe here precisely because nothing keeps its capital."""
-    parts = []
-    for index, sentence in enumerate(sentences):
-        body, terminator = _split_terminator(sentence, punctuation)
-        if not body:
-            continue
-        if index == len(sentences) - 1:
-            parts.append(body)
-        elif terminator in ("", punctuation.terminator):
-            parts.append(body + punctuation.separator)
-        else:
-            # A question or an exclamation carries meaning worth keeping.
-            parts.append(body + terminator)
-    return _lower_outside_placeholders(punctuation.join.join(parts))
-
-
-def _excited(sentences: list[str], punctuation: Punctuation) -> str:
-    parts = []
-    for sentence in sentences:
-        body, terminator = _split_terminator(sentence, punctuation)
-        if not body:
-            continue
-        if terminator == punctuation.question:
-            parts.append(_capitalize(body) + terminator)
-        else:
-            parts.append(_capitalize(body) + punctuation.exclamation)
-    return punctuation.join.join(parts)
-
-
-def _lower_outside_placeholders(text: str) -> str:
-    pieces: list[str] = []
-    position = 0
-    for match in _PLACEHOLDER.finditer(text):
-        pieces.append(text[position : match.start()].lower())
-        pieces.append(match.group(0))
-        position = match.end()
-    pieces.append(text[position:].lower())
-    return "".join(pieces)
