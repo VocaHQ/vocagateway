@@ -4,7 +4,6 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from typing import Any
 
 from app.errors import EngineUnavailableError, TranscriptionProcessError
 from app.models.base import EngineHealth, TranscriptionOptions
@@ -44,14 +43,19 @@ class HandyEngine:
         selected_model = (
             available_models[0] if available_models else app_selected_model or "no-model-selected"
         )
-        ready = self.binary.is_file() and os.access(self.binary, os.X_OK) and bool(available_models)
+        is_executable = self.binary.is_file() and os.access(self.binary, os.X_OK)
+        ready = is_executable and bool(available_models)
         return EngineHealth(
             ready=ready,
             name=f"handy:{selected_model}",
         )
 
     async def warmup(self) -> int:
-        paths = [path for model in self._downloaded_models() if (path := self._model_path(model))]
+        paths = [
+            path
+            for model in self._downloaded_models()
+            if (path := _model_path(self.huggingface_cache, model))
+        ]
         if not paths or not (await self.health()).ready:
             return 0
         return await asyncio.to_thread(prefetch_model_paths, paths)
@@ -62,10 +66,14 @@ class HandyEngine:
             raise EngineUnavailableError(
                 "Handy, its selected model, or the downloaded model file is unavailable."
             )
+        models = list(self._downloaded_models())
         last_error: TranscriptionProcessError | None = None
-        for model in self._downloaded_models():
+        index = 0
+        while index < len(models):
+            candidate_model = models[index]
+            index += 1
             try:
-                return await self._transcribe_with_model(audio_path, model)
+                return await self._transcribe_with_model(audio_path, candidate_model)
             except TranscriptionProcessError as error:
                 last_error = error
         if last_error is not None:
@@ -78,8 +86,9 @@ class HandyEngine:
             "--transcribe-file",
             str(audio_path),
             "--json",
+            "--model",
+            model,
         ]
-        arguments.extend(["--model", model])
         process = await asyncio.create_subprocess_exec(
             *arguments,
             stdout=asyncio.subprocess.PIPE,
@@ -94,53 +103,65 @@ class HandyEngine:
             await process.wait()
             raise TranscriptionProcessError("Handy transcription timed out.") from error
         if process.returncode != 0:
-            message = stderr.decode("utf-8", errors="replace").strip().splitlines()
-            detail = (
-                message[-1][:MAXIMUM_ERROR_MESSAGE_LENGTH] if message else "unknown Handy error"
-            )
-            raise TranscriptionProcessError(f"Handy exited unsuccessfully: {detail}")
-        try:
-            payload: dict[str, Any] = json.loads(stdout)
-            transcript = payload["text"]
-        except (json.JSONDecodeError, KeyError, TypeError) as error:
-            raise TranscriptionProcessError(
-                "Handy returned an invalid transcription response."
-            ) from error
-        if not isinstance(transcript, str) or not transcript.strip():
-            raise TranscriptionProcessError("Handy returned an empty transcript.")
-        return transcript.strip()
+            raise TranscriptionProcessError(_format_handy_error(stderr))
+        return _parse_handy_output(stdout)
 
     def _downloaded_models(self) -> list[str]:
         models: list[str] = []
         selected_model = self._selected_model()
         for model in (selected_model, self.fallback_model):
-            if model and model not in models and self._model_is_downloaded(model):
+            is_downloaded = _model_path(self.huggingface_cache, model) is not None
+            if model and model not in models and is_downloaded:
                 models.append(model)
         return models
 
     def _selected_model(self) -> str | None:
-        return self.model or self._read_selected_model()
+        return self.model or _read_selected_model(self.settings_file)
 
-    def _read_selected_model(self) -> str | None:
-        try:
-            payload = json.loads(self.settings_file.read_text(encoding="utf-8"))
-            selected = payload["settings"]["selected_model"]
-        except (OSError, json.JSONDecodeError, KeyError, TypeError):
-            return None
-        return selected if isinstance(selected, str) and selected else None
 
-    def _model_is_downloaded(self, model: str) -> bool:
-        return self._model_path(model) is not None
+def _parse_handy_output(stdout: bytes) -> str:
+    try:
+        payload = json.loads(stdout)
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise TranscriptionProcessError(
+            "Handy returned an invalid transcription response."
+        ) from error
+    if not isinstance(payload, dict):
+        raise TranscriptionProcessError("Handy returned an invalid transcription response.")
+    transcript = payload.get("text")
+    if not isinstance(transcript, str) or not transcript.strip():
+        raise TranscriptionProcessError("Handy returned an empty transcript.")
+    return transcript.strip()
 
-    def _model_path(self, model: str) -> Path | None:
-        components = model.split("/")
-        if len(components) < 3:
-            return None
-        repository = "/".join(components[:-1])
-        filename = components[-1]
-        cache_name = "models--" + repository.replace("/", "--")
-        snapshots = self.huggingface_cache / cache_name / "snapshots"
-        return next(
-            (candidate for candidate in snapshots.glob(f"*/{filename}") if candidate.is_file()),
-            None,
-        )
+
+def _format_handy_error(stderr: bytes) -> str:
+    lines = stderr.decode("utf-8", errors="replace").strip().splitlines()
+    detail = lines[-1][:MAXIMUM_ERROR_MESSAGE_LENGTH] if lines else "unknown Handy error"
+    return f"Handy exited unsuccessfully: {detail}"
+
+
+def _read_selected_model(settings_path: Path) -> str | None:
+    try:
+        payload = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if isinstance(payload, dict):
+        settings_dict = payload.get("settings")
+        if isinstance(settings_dict, dict):
+            selected = settings_dict.get("selected_model")
+            if isinstance(selected, str) and selected:
+                return selected
+    return None
+
+
+def _model_path(cache_dir: Path, model: str | None) -> Path | None:
+    if not model:
+        return None
+    components = model.split("/")
+    if len(components) < 3:
+        return None
+    repo_slug = "/".join(components[:-1]).replace("/", "--")
+    snapshots = cache_dir / f"models--{repo_slug}" / "snapshots"
+    filename = components[-1]
+    pattern = f"*/{filename}"
+    return next((candidate for candidate in snapshots.glob(pattern) if candidate.is_file()), None)

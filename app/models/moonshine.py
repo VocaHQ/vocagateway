@@ -9,30 +9,26 @@ from importlib import util as importlib_util
 from pathlib import Path
 from typing import Any
 
-from app.errors import (
-    EngineUnavailableError,
-    LanguageUnsupportedError,
-    TranscriptionProcessError,
-)
+from app import errors
 from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
 
 MODEL_METADATA = ".vocagateway-model.json"
-STREAMING_ARCHITECTURES = {2, 3, 4, 5}
+STREAMING_ARCHITECTURES = frozenset((2, 3, 4, 5))
 TRANSCRIPTION_TIMEOUT_SECONDS = 120
 MAXIMUM_ERROR_MESSAGE_LENGTH = 240
 PCM_SAMPLE_SCALE = 32_768.0
 STREAM_UPDATE_INTERVAL_SECONDS = 0.35
-LANGUAGE_ALIASES = {
-    "ar": {"ar", "ar-SA"},
-    "en": {"en", "en-US", "en-GB"},
-    "es": {"es", "es-ES", "es-MX"},
-    "ja": {"ja", "ja-JP"},
-    "ko": {"ko", "ko-KR"},
-    "uk": {"uk", "uk-UA"},
-    "vi": {"vi", "vi-VN"},
-    "zh": {"zh", "zh-CN", "zh-TW", "cmn"},
-}
-NON_LATIN_LANGUAGES = {"ar", "ja", "ko", "zh"}
+LANGUAGE_ALIASES = (
+    ("ar", frozenset(("ar", "ar-SA"))),
+    ("en", frozenset(("en", "en-US", "en-GB"))),
+    ("es", frozenset(("es", "es-ES", "es-MX"))),
+    ("ja", frozenset(("ja", "ja-JP"))),
+    ("ko", frozenset(("ko", "ko-KR"))),
+    ("uk", frozenset(("uk", "uk-UA"))),
+    ("vi", frozenset(("vi", "vi-VN"))),
+    ("zh", frozenset(("zh", "zh-CN", "zh-TW", "cmn"))),
+)
+NON_LATIN_LANGUAGES = frozenset(("ar", "ja", "ko", "zh"))
 
 
 class MoonshineEngine:
@@ -45,13 +41,10 @@ class MoonshineEngine:
         self._load_lock = asyncio.Lock()
         self._inference_lock = asyncio.Lock()
         self._metadata = _read_metadata(model_root)
+        self.supports_streaming: bool = self._metadata.get("model_arch") in STREAMING_ARCHITECTURES
         # The package owns mutable decoder state, so batch and streaming jobs
         # must never share the persistent transcriber concurrently.
         self.streaming_lock = self._inference_lock
-
-    @property
-    def supports_streaming(self) -> bool:
-        return self._metadata.get("model_arch") in STREAMING_ARCHITECTURES
 
     async def health(self) -> EngineHealth:
         package_ready = importlib_util.find_spec("moonshine_voice") is not None
@@ -65,47 +58,35 @@ class MoonshineEngine:
         )
 
     async def warmup(self) -> int:
-        if not (await self.health()).ready:
+        if not (await self.health()).ready or not self.model_root:
             return 0
         await self._ensure_transcriber()
-        return _directory_size(self.model_root) if self.model_root else 0
+        total = 0
+        for entry in self.model_root.rglob("*"):
+            if entry.is_file():
+                total += entry.stat().st_size
+        return total
 
     async def transcribe(
         self, audio_path: Path, options: TranscriptionOptions
     ) -> EngineTranscription:
-        aliases = LANGUAGE_ALIASES.get(self.language, {self.language})
-        if options.language != "auto" and options.language not in aliases:
-            raise LanguageUnsupportedError(
-                f"The selected Moonshine model supports {self.language}; "
-                f"choose {self.language}, Auto, or another model."
-            )
+        _check_language(self.language, options.language)
         if not (await self.health()).ready:
-            raise EngineUnavailableError(
+            raise errors.EngineUnavailableError(
                 "Moonshine or its selected model is unavailable. Install the engines extra and "
                 "download a compatible Moonshine model."
             )
         async with self._inference_lock:
-            load_started = time.monotonic()
+            start_time = time.monotonic()
             transcriber, loaded_now = await self._ensure_transcriber()
-            model_load_ms = _elapsed_ms(load_started) if loaded_now else 0
-            inference_started = time.monotonic()
-            try:
-                text = await asyncio.wait_for(
-                    asyncio.to_thread(_batch_transcribe, transcriber, audio_path),
-                    timeout=TRANSCRIPTION_TIMEOUT_SECONDS,
-                )
-            except TimeoutError as error:
-                raise TranscriptionProcessError("Moonshine transcription timed out.") from error
-            except Exception as error:
-                raise TranscriptionProcessError(
-                    f"Moonshine failed: {str(error)[-MAXIMUM_ERROR_MESSAGE_LENGTH:]}"
-                ) from error
-            if not text:
-                raise TranscriptionProcessError("Moonshine returned an empty transcript.")
+            load_ms = 0
+            if loaded_now:
+                load_ms = max(0, int((time.monotonic() - start_time) * 1000))
+            inf_time = time.monotonic()
             return EngineTranscription(
-                text=text,
-                model_load_ms=model_load_ms,
-                inference_ms=_elapsed_ms(inference_started),
+                text=await _run_moonshine_inference(transcriber, audio_path),
+                model_load_ms=load_ms,
+                inference_ms=max(0, int((time.monotonic() - inf_time) * 1000)),
             )
 
     async def create_stream(self) -> Any:
@@ -123,7 +104,7 @@ class MoonshineEngine:
 
     def _load_transcriber_sync(self) -> Any:
         if self.model_root is None:
-            raise EngineUnavailableError("No Moonshine model is selected.")
+            raise errors.EngineUnavailableError("No Moonshine model is selected.")
         metadata = self._metadata
         from moonshine_voice import ModelArch, Transcriber
 
@@ -136,44 +117,68 @@ class MoonshineEngine:
         )
 
 
+def _check_language(model_lang: str, requested: str) -> None:
+    aliases_dict = dict(LANGUAGE_ALIASES)
+    aliases = aliases_dict.get(model_lang, frozenset((model_lang,)))
+    if requested != "auto" and requested not in aliases:
+        raise errors.LanguageUnsupportedError(
+            f"The selected Moonshine model supports {model_lang}; "
+            f"choose {model_lang}, Auto, or another model."
+        )
+
+
+async def _run_moonshine_inference(transcriber: Any, audio_path: Path) -> str:
+    try:
+        text = await asyncio.wait_for(
+            asyncio.to_thread(_batch_transcribe, transcriber, audio_path),
+            timeout=TRANSCRIPTION_TIMEOUT_SECONDS,
+        )
+    except TimeoutError as error:
+        raise errors.TranscriptionProcessError("Moonshine transcription timed out.") from error
+    except Exception as error:
+        detail = str(error)[-MAXIMUM_ERROR_MESSAGE_LENGTH:]
+        raise errors.TranscriptionProcessError(f"Moonshine failed: {detail}") from error
+    if not text:
+        raise errors.TranscriptionProcessError("Moonshine returned an empty transcript.")
+    return text
+
+
 def _read_metadata(model_root: Path | None) -> dict[str, Any]:
     if model_root is None:
         return {}
+    metadata_file = model_root / MODEL_METADATA
     try:
-        payload: object = json.loads((model_root / MODEL_METADATA).read_text(encoding="utf-8"))
-        return payload if isinstance(payload, dict) else {}
-    except (OSError, json.JSONDecodeError):
+        raw_text = metadata_file.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
         return {}
+    try:
+        payload = json.loads(raw_text)
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _read_wave_pcm(audio_path: Path) -> tuple[int, array[int]]:
+    with wave.open(str(audio_path), "rb") as source:
+        channels = source.getnchannels()
+        if source.getsampwidth() != 2:
+            raise ValueError("Moonshine expects normalized 16-bit PCM WAV audio.")
+        sample_rate = source.getframerate()
+        samples = array("h", source.readframes(source.getnframes()))
+    if channels > 1:
+        samples = array("h", samples[::channels])
+    return sample_rate, samples
 
 
 def _batch_transcribe(transcriber: Any, audio_path: Path) -> str:
-    with wave.open(str(audio_path), "rb") as source:
-        channels = source.getnchannels()
-        sample_width = source.getsampwidth()
-        sample_rate = source.getframerate()
-        frames = source.readframes(source.getnframes())
-    if sample_width != 2:
-        raise ValueError("Moonshine expects normalized 16-bit PCM WAV audio.")
-    samples = array("h")
-    samples.frombytes(frames)
-    if channels > 1:
-        samples = array("h", samples[::channels])
+    sample_rate, samples = _read_wave_pcm(audio_path)
     floats = [sample / PCM_SAMPLE_SCALE for sample in samples]
     transcript = transcriber.transcribe_without_streaming(floats, sample_rate)
-    return " ".join(line.text.strip() for line in transcript.lines if line.text.strip()).strip()
+    lines = [line.text.strip() for line in transcript.lines if line.text.strip()]
+    return " ".join(lines).strip()
 
 
 def _start_stream(transcriber: Any) -> Any:
     stream = transcriber.create_stream(update_interval=STREAM_UPDATE_INTERVAL_SECONDS)
     stream.start()
     return stream
-
-
-def _directory_size(path: Path) -> int:
-    return sum(
-        nested_path.stat().st_size for nested_path in path.rglob("*") if nested_path.is_file()
-    )
-
-
-def _elapsed_ms(started: float) -> int:
-    return max(0, int((time.monotonic() - started) * 1000))
