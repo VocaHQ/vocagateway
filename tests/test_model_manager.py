@@ -86,6 +86,12 @@ def _assert_download_completed(manager: ModelManager, model_id: str) -> None:
     assert state is not None and state.status == COMPLETED_STATUS
 
 
+def _download_total_bytes(manager: ModelManager, model_id: str) -> int:
+    state = manager.download_state(model_id)
+    assert state is not None
+    return state.total_bytes or 0
+
+
 TINY_FILE = CatalogModel(
     id=WHISPER_CPP_TINY_ID,
     engine=WHISPER_CPP_ENGINE,
@@ -533,17 +539,18 @@ async def test_sherpa_huggingface_download_fetche_e896d(
         ],
     )
 
-    state = manager.start_download(catalog_model.id)
+    manager.start_download(catalog_model.id)
     await asyncio.wait_for(_wait_finished(manager, catalog_model.id), timeout=5)
 
-    assert state.status == COMPLETED_STATUS
-    assert state.total_bytes == REQUIRED_REPOSITORY_FILE_SIZE_BYTES
+    _assert_download_completed(manager, catalog_model.id)
+    assert _download_total_bytes(manager, catalog_model.id) == REQUIRED_REPOSITORY_FILE_SIZE_BYTES
     installed = manager.installed_path(catalog_model.id)
     assert installed is not None
     assert (installed / SHERPA_MODEL_NAME).read_bytes() == b"onnx-bytes"
     assert not (installed / "README.md").exists()
-    metadata = (installed / MODEL_METADATA_NAME).read_text(encoding="utf-8")
-    assert '"model_type": "nemo_ctc"' in metadata
+    assert '"model_type": "nemo_ctc"' in (installed / MODEL_METADATA_NAME).read_text(
+        encoding="utf-8"
+    )
     assert not (manager.models_dir / SHERPA_ONNX_ENGINE / "gigaam-test.partial").exists()
 
 
