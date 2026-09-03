@@ -12,7 +12,7 @@ from starlette.status import (
 )
 
 from app.admin_queries import filtered_model_entries, model_entries
-from app.context import GatewayContext, GatewayContextDependency, get_context, require_token
+from app.context import GatewayContext, GatewayContextDependency, require_token
 from app.errors import APIProblem
 from app.fragments.engine import engine_pill_oob
 from app.fragments.models import models_fragment, models_list_fragment
@@ -55,6 +55,9 @@ FamilyF = Annotated[list[str] | None, Form()]
 EngineF = Annotated[list[str] | None, Form()]
 BoolQ = Annotated[bool, BeforeValidator(_loose_bool), Query()]
 BoolF = Annotated[bool, BeforeValidator(_loose_bool), Form()]
+MaxSizeForm = Annotated[str, Form()]
+CustomUrlForm = Annotated[str, Form()]
+CustomDigestForm = Annotated[str, Form()]
 
 
 def _models_list_html(
@@ -94,13 +97,13 @@ def _models_list_html(
 
 @router.get("/v1/admin/models", response_model=list[AdminModelEntry])
 async def get_admin_models(
+    ctx: GatewayContextDependency,
     installed_only: BoolQ = False,
     language: LanguageQ = None,
     family: FamilyQ = None,
     engine: EngineQ = None,
     max_size: str = "",
     recommended_only: BoolQ = False,
-    ctx: GatewayContext = Depends(get_context),
 ) -> list[AdminModelEntry]:
     return filtered_model_entries(
         ctx,
@@ -199,13 +202,13 @@ async def ui_models(ctx: GatewayContextDependency) -> HTMLResponse:
 
 @router.get("/ui/partials/models-list", response_class=HTMLResponse)
 async def ui_models_list(
+    ctx: GatewayContextDependency,
     installed_only: BoolQ = False,
     language: LanguageQ = None,
     family: FamilyQ = None,
     engine: EngineQ = None,
     max_size: str = "",
     recommended_only: BoolQ = False,
-    ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     return _models_list_html(
         ctx,
@@ -221,13 +224,13 @@ async def ui_models_list(
 @router.post("/ui/partials/models/{model_id}/download", response_class=HTMLResponse)
 async def ui_start_download(
     model_id: str,
+    ctx: GatewayContextDependency,
     installed_only: BoolF = False,
     language: LanguageF = None,
     family: FamilyF = None,
     engine: EngineF = None,
-    max_size: str = Form(""),
+    max_size: MaxSizeForm = "",
     recommended_only: BoolF = False,
-    ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     try:
         ctx.manager.start_download(model_id)
@@ -252,15 +255,15 @@ async def ui_start_download(
 
 @router.post("/ui/partials/models/custom", response_class=HTMLResponse)
 async def ui_custom_download(
-    url: str = Form(...),
-    sha256: str = Form(""),
+    url: CustomUrlForm,
+    ctx: GatewayContextDependency,
+    sha256: CustomDigestForm = "",
     installed_only: BoolF = False,
     language: LanguageF = None,
     family: FamilyF = None,
     engine: EngineF = None,
-    max_size: str = Form(""),
+    max_size: MaxSizeForm = "",
     recommended_only: BoolF = False,
-    ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     try:
         ctx.manager.start_custom_download(url, sha256)
@@ -283,13 +286,13 @@ async def ui_custom_download(
 @router.post("/ui/partials/models/{model_id}/cancel", response_class=HTMLResponse)
 async def ui_cancel_download(
     model_id: str,
+    ctx: GatewayContextDependency,
     installed_only: BoolF = False,
     language: LanguageF = None,
     family: FamilyF = None,
     engine: EngineF = None,
-    max_size: str = Form(""),
+    max_size: MaxSizeForm = "",
     recommended_only: BoolF = False,
-    ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     ctx.manager.cancel_download(model_id)
     return _models_list_html(
@@ -306,13 +309,13 @@ async def ui_cancel_download(
 @router.delete("/ui/partials/models/{model_id}", response_class=HTMLResponse)
 async def ui_delete_model(
     model_id: str,
+    ctx: GatewayContextDependency,
     installed_only: BoolF = False,
     language: LanguageF = None,
     family: FamilyF = None,
     engine: EngineF = None,
-    max_size: str = Form(""),
+    max_size: MaxSizeForm = "",
     recommended_only: BoolF = False,
-    ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     try:
         if ctx.engine_manager is not None:
@@ -336,13 +339,13 @@ async def ui_delete_model(
 @router.post("/ui/partials/models/{model_id}/select", response_class=HTMLResponse)
 async def ui_select_model(
     model_id: str,
+    ctx: GatewayContextDependency,
     installed_only: BoolF = False,
     language: LanguageF = None,
     family: FamilyF = None,
     engine: EngineF = None,
-    max_size: str = Form(""),
+    max_size: MaxSizeForm = "",
     recommended_only: BoolF = False,
-    ctx: GatewayContext = Depends(get_context),
 ) -> HTMLResponse:
     engine_manager = ctx.engine_manager
     if engine_manager is None:
