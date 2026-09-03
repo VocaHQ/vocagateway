@@ -35,7 +35,7 @@ async def test_faster_whisper_keeps_one_model_loaded(
     module.WhisperModel = FakeWhisperModel  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "faster_whisper", module)
     monkeypatch.setattr(
-        "app.models.faster_whisper.importlib.util.find_spec",
+        "app.models.faster_whisper.importlib_util.find_spec",
         lambda _: importlib.machinery.ModuleSpec("faster_whisper", loader=None),
     )
 

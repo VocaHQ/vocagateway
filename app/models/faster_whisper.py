@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import importlib.util
 import os
 import time
+from importlib import util as importlib_util
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +35,7 @@ class FasterWhisperEngine:
         self._inference_lock = asyncio.Lock()
 
     async def health(self) -> EngineHealth:
-        package_ready = importlib.util.find_spec("faster_whisper") is not None
+        package_ready = importlib_util.find_spec("faster_whisper") is not None
         model_ready = self.model_path is not None and (self.model_path / "model.bin").is_file()
         model_name = self.model_path.name if self.model_path else "no-model-selected"
         return EngineHealth(
