@@ -49,7 +49,7 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       # Enforce WPS rules across the complete application package.
-      - run: uv run pytest tests/test_wps_compliance.py
+      - run: uv run flake8 --select=WPS,E999 app
       - run: uv run mypy app
       - run: uv run pytest
       - name: Validate Compose configuration
