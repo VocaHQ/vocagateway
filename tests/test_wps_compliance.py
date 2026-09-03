@@ -38,6 +38,7 @@ REMEDIATED_FILES: tuple[str, ...] = (
     "app/pairing.py",
     "app/routes/transcriptions.py",
     "app/service.py",
+    "app/scripts.py",
     "app/__init__.py",
     "app/build_info.py",
     "app/diagnostics.py",
