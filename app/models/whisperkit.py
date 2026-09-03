@@ -7,12 +7,12 @@ import shutil
 import socket
 import subprocess
 import time
-import urllib.error
-import urllib.request
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from app.errors import EngineUnavailableError, TranscriptionProcessError
 from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
@@ -253,10 +253,10 @@ def _start_server(
                 "The installed WhisperKit CLI does not support persistent serving."
             )
         try:
-            with urllib.request.urlopen(_health_url(server), timeout=1) as response:
+            with urllib_request.urlopen(_health_url(server), timeout=1) as response:
                 if response.status == HTTP_SUCCESS_STATUS:
                     return server
-        except (OSError, urllib.error.URLError):
+        except (OSError, urllib_error.URLError):
             time.sleep(0.1)
     process.terminate()
     try:
@@ -279,23 +279,23 @@ def _server_transcription(
     if language != "auto":
         fields.append(("language", language))
     body = _multipart_body(boundary, fields, audio_path)
-    request = urllib.request.Request(
+    request = urllib_request.Request(
         f"http://127.0.0.1:{server.port}/v1/audio/transcriptions",
         data=body,
         method="POST",
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=TRANSCRIPTION_TIMEOUT_SECONDS) as response:
+        with urllib_request.urlopen(request, timeout=TRANSCRIPTION_TIMEOUT_SECONDS) as response:
             payload: dict[str, Any] = json.load(response)
-    except urllib.error.HTTPError as error:
+    except urllib_error.HTTPError as error:
         detail = error.read().decode("utf-8", errors="replace")[-MAXIMUM_SERVER_ERROR_LENGTH:]
         raise TranscriptionProcessError(
             f"WhisperKit server rejected the audio: {detail or error.reason}"
         ) from error
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise TranscriptionProcessError("WhisperKit returned invalid JSON.") from error
-    except (OSError, urllib.error.URLError) as error:
+    except (OSError, urllib_error.URLError) as error:
         raise _PersistentServerUnavailable("WhisperKit's local server is unreachable.") from error
     transcript = payload.get("text") if isinstance(payload, dict) else None
     if not isinstance(transcript, str):
