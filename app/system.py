@@ -7,6 +7,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 
 MACOS = "macOS"
 APPLE_SILICON = "Apple silicon"
@@ -15,16 +16,20 @@ UTF8_ENCODING = "utf-8"
 KEY_VALUE_SEPARATOR = ":"
 DEVICE_DIRECTORY_NAME = "device"
 DEFAULT_VOCAMAC_APPLICATION_PATH = Path("/Applications/VocaMac.app")
+GIBIBYTE = 1024**3
+MEBIBYTE = 1024
 
 # Engines that cannot run on every host, and the requirement the WebUI shows.
 # The desktop-app adapters are the strictest: Handy ships for macOS, and VocaMac
 # is Apple-silicon-only, so neither exists on Linux or inside a container.
-ENGINE_HOST_REQUIREMENTS = {
-    "vocamac": APPLE_SILICON,
-    "handy": MACOS,
-    "whisperkit": MACOS,
-    "mlx-audio": APPLE_SILICON,
-}
+ENGINE_HOST_REQUIREMENTS = MappingProxyType(
+    {
+        "vocamac": APPLE_SILICON,
+        "handy": MACOS,
+        "whisperkit": MACOS,
+        "mlx-audio": APPLE_SILICON,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,370 +52,442 @@ class SystemInfo:
     cpu_features: tuple[str, ...]
 
 
-def detect_system(
-    *,
-    whisper_binary: Path,
-    whisperkit_binary: str,
-    handy_binary: Path,
-    vocamac_app: Path = DEFAULT_VOCAMAC_APPLICATION_PATH,
-) -> SystemInfo:
-    arch = platform.machine()
-    is_mac = platform.system() == "Darwin"
-    chip = _sysctl("machdep.cpu.brand_string") if is_mac else _linux_cpu_brand()
-    ram_gb = _ram_gb(is_mac)
-    logical_cpus = os.cpu_count() or 1
-    return SystemInfo(
-        os_name=platform.system(),
-        os_version=platform.release(),
-        arch=arch,
-        chip=chip or arch,
-        ram_gb=ram_gb,
-        is_apple_silicon=is_mac and arch == ARM64_ARCHITECTURE,
-        ffmpeg_path=shutil.which("ffmpeg"),
-        whisper_cpp_path=(
-            str(whisper_binary) if whisper_binary.is_file() else shutil.which("whisper-cli")
-        ),
-        whisperkit_cli_path=_resolve_binary(whisperkit_binary),
-        handy_installed=handy_binary.is_file(),
-        vocamac_installed=vocamac_app.exists(),
-        logical_cpus=logical_cpus,
-        effective_cpus=_effective_cpu_count(logical_cpus),
-        containerized=_is_containerized(),
-        accelerators=_accelerators(is_mac, arch),
-        cpu_features=_cpu_features(is_mac),
-    )
+class _EngineHost:
+    @classmethod
+    def requirement(cls, engine: str) -> str | None:
+        """The host an engine needs, or None when it runs anywhere."""
+        return ENGINE_HOST_REQUIREMENTS.get(engine)
 
+    @classmethod
+    def runs_on(cls, engine: str, *, is_mac: bool, is_apple_silicon: bool) -> bool:
+        requirement = ENGINE_HOST_REQUIREMENTS.get(engine)
+        if requirement is None:
+            return True
+        return is_apple_silicon if requirement == APPLE_SILICON else is_mac
 
-def engine_requirement(engine: str) -> str | None:
-    """The host an engine needs, or None when it runs anywhere."""
-    return ENGINE_HOST_REQUIREMENTS.get(engine)
-
-
-def engine_runs_on(engine: str, *, is_mac: bool, is_apple_silicon: bool) -> bool:
-    requirement = ENGINE_HOST_REQUIREMENTS.get(engine)
-    if requirement is None:
-        return True
-    return is_apple_silicon if requirement == APPLE_SILICON else is_mac
-
-
-def engine_runs_here(engine: str) -> bool:
-    """The same check for the running host, without a full `detect_system` probe."""
-    is_mac = platform.system() == "Darwin"
-    return engine_runs_on(
-        engine,
-        is_mac=is_mac,
-        is_apple_silicon=is_mac and platform.machine() == ARM64_ARCHITECTURE,
-    )
-
-
-def _resolve_binary(binary: str) -> str | None:
-    candidate = Path(binary).expanduser()
-    if candidate.is_file():
-        return str(candidate)
-    return shutil.which(binary)
-
-
-def _sysctl(key: str) -> str:
-    try:
-        command_result = subprocess.run(
-            ["sysctl", "-n", key],
-            capture_output=True,
-            text=True,
-            timeout=2,
-            check=False,
+    @classmethod
+    def runs_here(cls, engine: str) -> bool:
+        """The same check for the running host, without a full `detect_system` probe."""
+        is_mac = platform.system() == "Darwin"
+        return cls.runs_on(
+            engine,
+            is_mac=is_mac,
+            is_apple_silicon=is_mac and platform.machine() == ARM64_ARCHITECTURE,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        return ""
-    return command_result.stdout.strip() if command_result.returncode == 0 else ""
+
+    @classmethod
+    def drm_labels(cls) -> list[str]:
+        root = Path("/sys/class/drm")
+        if not root.is_dir():
+            return []
+        labels: list[str] = []
+        seen: set[str] = set()
+        for card in sorted(root.glob("card[0-9]*")):
+            label = cls._drm_card_label(card)
+            if label and label not in seen:
+                seen.add(label)
+                labels.append(label)
+        return labels
+
+    @classmethod
+    def _drm_card_label(cls, card: Path) -> str:
+        if "-" in card.name:
+            return ""
+        device = card / DEVICE_DIRECTORY_NAME
+        if not cls._is_amd_vendor(device / "vendor"):
+            return ""
+        name = cls._drm_product_name(device, card.name)
+        if name.upper().startswith("AMD"):
+            return name
+        return f"AMD {name}"
+
+    @classmethod
+    def _is_amd_vendor(cls, vendor_path: Path) -> bool:
+        try:
+            vendor = vendor_path.read_text(encoding=UTF8_ENCODING).strip().lower()
+        except OSError:
+            return False
+        return vendor in {"0x1002", "1002"}
+
+    @classmethod
+    def _drm_product_name(cls, device: Path, fallback: str) -> str:
+        for candidate in (device / "label", device / "product_name", device / "marketing_name"):
+            try:
+                name = candidate.read_text(encoding=UTF8_ENCODING).strip()
+            except OSError:
+                name = ""
+            if name:
+                return name
+        try:
+            device_id = (device / DEVICE_DIRECTORY_NAME).read_text(encoding=UTF8_ENCODING).strip()
+        except OSError:
+            return fallback
+        return f"device {device_id}" if device_id else fallback
 
 
-def _ram_gb(is_mac: bool) -> float:
-    if is_mac:
-        raw = _sysctl("hw.memsize")
-        return round(int(raw) / (1024**3), 1) if raw.isdigit() else 0.0
-    try:
-        pages = os.sysconf("SC_PHYS_PAGES")
-        page_size = os.sysconf("SC_PAGE_SIZE")
-    except (OSError, ValueError):
-        return 0.0
-    if not isinstance(pages, int) or not isinstance(page_size, int):
-        return 0.0
-    detected_bytes = pages * page_size
-    try:
-        memory_limit = Path("/sys/fs/cgroup/memory.max").read_text(encoding=UTF8_ENCODING).strip()
-        if memory_limit != "max":
-            detected_bytes = min(detected_bytes, int(memory_limit))
-    except (OSError, ValueError):
-        pass
-    return round(detected_bytes / (1024**3), 1)
+class _SysProbe:
+    @classmethod
+    def resolve_binary(cls, binary: str) -> str | None:
+        candidate = Path(binary).expanduser()
+        if candidate.is_file():
+            return str(candidate)
+        return shutil.which(binary)
 
+    @classmethod
+    def sysctl(cls, key: str) -> str:
+        try:
+            command_result = subprocess.run(
+                ["sysctl", "-n", key],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        if command_result.returncode != 0:
+            return ""
+        return command_result.stdout.strip()
 
-def _linux_cpu_brand() -> str:
-    try:
-        for line in Path("/proc/cpuinfo").read_text(encoding=UTF8_ENCODING).splitlines():
+    @classmethod
+    def ram_gb(cls, is_mac: bool) -> float:
+        if is_mac:
+            raw = cls.sysctl("hw.memsize")
+            if raw.isdigit():
+                return round(int(raw) / GIBIBYTE, 1)
+            return 0
+        return cls._linux_ram_gb()
+
+    @classmethod
+    def linux_cpu_brand(cls) -> str:
+        try:
+            lines = Path("/proc/cpuinfo").read_text(encoding=UTF8_ENCODING).splitlines()
+        except OSError:
+            return platform.processor() or platform.machine()
+        for line in lines:
             if line.lower().startswith(("model name", "hardware")) and KEY_VALUE_SEPARATOR in line:
                 return line.split(KEY_VALUE_SEPARATOR, 1)[1].strip()
-    except OSError:
-        pass
-    return platform.processor() or platform.machine()
+        return platform.processor() or platform.machine()
+
+    @classmethod
+    def is_containerized(cls) -> bool:
+        if Path("/.dockerenv").exists() or os.environ.get("CONTAINER"):
+            return True
+        try:
+            cgroup = Path("/proc/1/cgroup").read_text(encoding=UTF8_ENCODING).lower()
+        except OSError:
+            return False
+        return any(marker in cgroup for marker in ("docker", "containerd", "kubepods", "podman"))
+
+    @classmethod
+    def _linux_ram_gb(cls) -> float:
+        try:
+            pages = os.sysconf("SC_PHYS_PAGES")
+        except (OSError, ValueError):
+            return 0
+        try:
+            page_size = os.sysconf("SC_PAGE_SIZE")
+        except (OSError, ValueError):
+            return 0
+        if not isinstance(pages, int) or not isinstance(page_size, int):
+            return 0
+        detected_bytes = pages * page_size
+        with contextlib.suppress(OSError, ValueError):
+            memory_limit = Path("/sys/fs/cgroup/memory.max").read_text(encoding=UTF8_ENCODING)
+            stripped = memory_limit.strip()
+            if stripped != "max":
+                detected_bytes = min(detected_bytes, int(stripped))
+        return round(detected_bytes / GIBIBYTE, 1)
 
 
-def _effective_cpu_count(logical_cpus: int) -> float:
-    limits = [float(logical_cpus)]
-    try:
-        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text(encoding=UTF8_ENCODING).split()[:2]
+class _CpuSets:
+    @classmethod
+    def effective_cpu_count(cls, logical_cpus: int) -> float:
+        limits = [float(logical_cpus)]
+        cls._append_quota(limits)
+        cls._append_cpuset(limits)
+        return round(min(limits), 2)
+
+    @classmethod
+    def _append_quota(cls, limits: list[float]) -> None:
+        try:
+            quota, period = (
+                Path("/sys/fs/cgroup/cpu.max").read_text(encoding=UTF8_ENCODING).split()[:2]
+            )
+        except (OSError, ValueError):
+            return
         if quota != "max" and int(period) > 0:
             limits.append(max(0.1, int(quota) / int(period)))
-    except (OSError, ValueError):
-        pass
-    for candidate in (
-        Path("/sys/fs/cgroup/cpuset.cpus.effective"),
-        Path("/sys/fs/cgroup/cpuset/cpuset.cpus"),
-    ):
+
+    @classmethod
+    def _append_cpuset(cls, limits: list[float]) -> None:
+        for candidate in (
+            Path("/sys/fs/cgroup/cpuset.cpus.effective"),
+            Path("/sys/fs/cgroup/cpuset/cpuset.cpus"),
+        ):
+            count = cls._cpu_set_count(candidate)
+            if count:
+                limits.append(float(count))
+                return
+
+    @classmethod
+    def _cpu_set_count(cls, candidate: Path) -> int:
         try:
-            count = _count_cpu_set(candidate.read_text(encoding=UTF8_ENCODING).strip())
+            return cls._count_cpu_set(candidate.read_text(encoding=UTF8_ENCODING).strip())
         except (OSError, ValueError):
-            continue
-        if count:
-            limits.append(float(count))
-            break
-    return round(min(limits), 2)
+            return 0
 
+    @classmethod
+    def _count_cpu_set(cls, cpu_set_text: str) -> int:
+        return sum(cls._cpu_set_part(part) for part in cpu_set_text.split(","))
 
-def _count_cpu_set(cpu_set_text: str) -> int:
-    count = 0
-    for part in cpu_set_text.split(","):
+    @classmethod
+    def _cpu_set_part(cls, part: str) -> int:
         if not part:
-            continue
-        if "-" in part:
-            start, end = part.split("-", 1)
-            count += max(0, int(end) - int(start) + 1)
-        else:
+            return 0
+        if "-" not in part:
             int(part)
-            count += 1
-    return count
+            return 1
+        start, end = part.split("-", 1)
+        return max(0, int(end) - int(start) + 1)
 
 
-def _is_containerized() -> bool:
-    if Path("/.dockerenv").exists() or os.environ.get("CONTAINER"):
-        return True
-    try:
-        cgroup = Path("/proc/1/cgroup").read_text(encoding=UTF8_ENCODING).lower()
-    except OSError:
-        return False
-    return any(marker in cgroup for marker in ("docker", "containerd", "kubepods", "podman"))
+class _NvidiaGpus:
+    @classmethod
+    def labels(cls) -> list[str]:
+        if not shutil.which("nvidia-smi"):
+            return []
+        try:
+            command_result = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=name,memory.total",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return []
+        if command_result.returncode != 0 or not command_result.stdout.strip():
+            return []
+        return cls._parse(command_result.stdout)
 
+    @classmethod
+    def _parse(cls, stdout: str) -> list[str]:
+        labels: list[str] = []
+        for line in stdout.splitlines():
+            label = cls._line_label(line)
+            if label:
+                labels.append(label)
+        return labels
 
-def _accelerators(is_mac: bool, arch: str) -> tuple[str, ...]:
-    """Capability labels for the WebUI. Prefer named GPUs when tools are present."""
-    accelerator_labels: list[str] = ["CPU"]
-    if is_mac and arch == ARM64_ARCHITECTURE:
-        accelerator_labels.append("Metal / Core ML")
-    nvidia = _nvidia_gpu_labels()
-    if nvidia:
-        accelerator_labels.extend(nvidia)
-    elif Path("/dev/nvidia0").exists() or shutil.which("nvidia-smi"):
-        accelerator_labels.append("NVIDIA CUDA")
-    amd = _amd_gpu_labels()
-    if amd:
-        accelerator_labels.extend(amd)
-    elif Path("/dev/kfd").exists():
-        accelerator_labels.append("AMD ROCm")
-    # Only mention a generic DRM device when no named GPU was found above.
-    if (
-        Path("/dev/dri/renderD128").exists()
-        and not nvidia
-        and not amd
-        and not (is_mac and arch == ARM64_ARCHITECTURE)
-    ):
-        accelerator_labels.append("Vulkan / VAAPI device")
-    return tuple(accelerator_labels)
-
-
-def _nvidia_gpu_labels() -> list[str]:
-    """One label per NVIDIA GPU, e.g. 'NVIDIA GeForce RTX 5080 (16 GB)'."""
-    if not shutil.which("nvidia-smi"):
-        return []
-    try:
-        command_result = subprocess.run(
-            [
-                "nvidia-smi",
-                "--query-gpu=name,memory.total",
-                "--format=csv,noheader,nounits",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=3,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return []
-    if command_result.returncode != 0 or not command_result.stdout.strip():
-        return []
-    labels: list[str] = []
-    for line in command_result.stdout.splitlines():
+    @classmethod
+    def _line_label(cls, line: str) -> str:
         parts = [part.strip() for part in line.split(",")]
         if not parts or not parts[0]:
-            continue
+            return ""
         name = parts[0]
         if not name.upper().startswith("NVIDIA"):
             name = f"NVIDIA {name}"
-        if len(parts) > 1:
-            try:
-                mem_mib = float(parts[1])
-                mem_gb = round(mem_mib / 1024, 1)
-                labels.append(f"{name} ({mem_gb:g} GB)")
-                continue
-            except ValueError:
-                pass
-        labels.append(name)
-    return labels
+        if len(parts) <= 1:
+            return name
+        with contextlib.suppress(ValueError):
+            mem_gb = round(float(parts[1]) / MEBIBYTE, 1)
+            return f"{name} ({mem_gb} GB)"
+        return name
 
 
-def _amd_gpu_labels() -> list[str]:
-    """Best-effort AMD product names from rocm-smi, lspci, or DRM sysfs."""
-    labels = _rocm_gpu_labels()
-    if labels:
+class _AmdGpus:
+    @classmethod
+    def labels(cls) -> list[str]:
+        rocm = cls._rocm()
+        if rocm:
+            return rocm
+        lspci = cls._lspci()
+        if lspci:
+            return lspci
+        return [label for label in _EngineHost.drm_labels() if "device 0x" not in label.lower()]
+
+    @classmethod
+    def _lspci(cls) -> list[str]:
+        if not shutil.which("lspci"):
+            return []
+        try:
+            command_result = subprocess.run(
+                ["lspci", "-mm"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return []
+        if command_result.returncode != 0:
+            return []
+        return cls._lspci_labels(command_result.stdout)
+
+    @classmethod
+    def _rocm(cls) -> list[str]:
+        if not shutil.which("rocm-smi"):
+            return []
+        try:
+            command_result = subprocess.run(
+                ["rocm-smi", "--showproductname"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return []
+        if command_result.returncode != 0:
+            return []
+        return cls._rocm_labels(command_result.stdout)
+
+    @classmethod
+    def _lspci_labels(cls, stdout: str) -> list[str]:
+        labels: list[str] = []
+        for line in stdout.splitlines():
+            label = cls._lspci_line(line)
+            if label and label not in labels:
+                labels.append(label)
         return labels
-    labels = _lspci_gpu_labels(vendor="AMD")
-    if labels:
-        return labels
-    # Sysfs often only has a PCI device id; skip opaque "AMD device 0x...." labels.
-    return [label for label in _drm_amd_labels() if "device 0x" not in label.lower()]
 
-
-def _lspci_gpu_labels(*, vendor: str) -> list[str]:
-    if not shutil.which("lspci"):
-        return []
-    try:
-        command_result = subprocess.run(
-            ["lspci", "-mm"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return []
-    if command_result.returncode != 0:
-        return []
-    labels: list[str] = []
-    vendor_key = vendor.lower()
-    for line in command_result.stdout.splitlines():
-        # lspci -mm: Slot "Class" "Vendor" "Device" ...
+    @classmethod
+    def _lspci_line(cls, line: str) -> str:
         if '"VGA compatible controller"' not in line and '"3D controller"' not in line:
-            continue
-        if vendor_key not in line.lower():
-            continue
-        # Pull the Device field (4th quoted token).
+            return ""
+        if "amd" not in line.lower():
+            return ""
         parts = line.split('"')
-        # ["00:00.0 ", "Class", " ", "Vendor", " ", "Device", ...]
         device = parts[5].strip() if len(parts) > 5 else ""
         if not device:
-            continue
-        label = device if device.upper().startswith(vendor.upper()) else f"{vendor} {device}"
-        if label not in labels:
-            labels.append(label)
-    return labels
+            return ""
+        if device.upper().startswith("AMD"):
+            return device
+        return f"AMD {device}"
 
+    @classmethod
+    def _rocm_labels(cls, stdout: str) -> list[str]:
+        labels: list[str] = []
+        for line in stdout.splitlines():
+            name = cls._rocm_name(line)
+            if name and name not in labels:
+                labels.append(name)
+        return labels
 
-def _rocm_gpu_labels() -> list[str]:
-    if not shutil.which("rocm-smi"):
-        return []
-    try:
-        command_result = subprocess.run(
-            ["rocm-smi", "--showproductname"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return []
-    if command_result.returncode != 0:
-        return []
-    labels: list[str] = []
-    for line in command_result.stdout.splitlines():
-        # Typical: "GPU[0] : Card series: Radeon RX 7900 XTX"
+    @classmethod
+    def _rocm_name(cls, line: str) -> str:
         if KEY_VALUE_SEPARATOR not in line or "GPU[" not in line.upper():
-            continue
+            return ""
         name = line.split(KEY_VALUE_SEPARATOR, 1)[1].strip()
         for prefix in ("Card series:", "Card model:", "Device Name:"):
             if name.startswith(prefix):
                 name = name[len(prefix) :].strip()
-        if name and name not in labels:
-            labels.append(name if name.upper().startswith("AMD") else f"AMD {name}")
-    return labels
+        if not name:
+            return ""
+        if name.upper().startswith("AMD"):
+            return name
+        return f"AMD {name}"
 
 
-def _drm_amd_labels() -> list[str]:
-    """Fallback: product names under /sys/class/drm for AMD PCI devices."""
-    root = Path("/sys/class/drm")
-    if not root.is_dir():
-        return []
-    labels: list[str] = []
-    seen: set[str] = set()
-    for card in sorted(root.glob("card[0-9]*")):
-        if "-" in card.name:
-            continue
-        vendor_path = card / DEVICE_DIRECTORY_NAME / "vendor"
-        label_path = card / DEVICE_DIRECTORY_NAME / "label"
-        uevent_path = card / DEVICE_DIRECTORY_NAME / "uevent"
-        try:
-            vendor = vendor_path.read_text(encoding=UTF8_ENCODING).strip().lower()
-        except OSError:
-            continue
-        # 0x1002 is AMD
-        if vendor not in {"0x1002", "1002"}:
-            continue
-        name = ""
-        with contextlib.suppress(OSError):
-            name = label_path.read_text(encoding=UTF8_ENCODING).strip()
-        if not name:
-            try:
-                for line in uevent_path.read_text(encoding=UTF8_ENCODING).splitlines():
-                    if line.startswith("PCI_ID=") or line.startswith("DRIVER="):
-                        continue
-                    if line.startswith("MODALIAS="):
-                        continue
-            except OSError:
-                pass
-        # product_name is common on some stacks
-        for candidate in (
-            card / DEVICE_DIRECTORY_NAME / "product_name",
-            card / DEVICE_DIRECTORY_NAME / "marketing_name",
-        ):
-            if name:
-                break
-            try:
-                name = candidate.read_text(encoding=UTF8_ENCODING).strip()
-            except OSError:
-                continue
-        if not name:
-            try:
-                device_id = (
-                    (card / DEVICE_DIRECTORY_NAME / DEVICE_DIRECTORY_NAME)
-                    .read_text(encoding=UTF8_ENCODING)
-                    .strip()
+class _HostDetector:
+    @classmethod
+    def detect(
+        cls,
+        *,
+        whisper_binary: Path,
+        whisperkit_binary: str,
+        handy_binary: Path,
+        vocamac_app: Path = DEFAULT_VOCAMAC_APPLICATION_PATH,
+    ) -> SystemInfo:
+        arch = platform.machine()
+        is_mac = platform.system() == "Darwin"
+        chip = (
+            _SysProbe.sysctl("machdep.cpu.brand_string") if is_mac else _SysProbe.linux_cpu_brand()
+        )
+        logical_cpus = os.cpu_count() or 1
+        whisper_cli = (
+            str(whisper_binary) if whisper_binary.is_file() else shutil.which("whisper-cli")
+        )
+        return SystemInfo(
+            os_name=platform.system(),
+            os_version=platform.release(),
+            arch=arch,
+            chip=chip or arch,
+            ram_gb=_SysProbe.ram_gb(is_mac),
+            is_apple_silicon=is_mac and arch == ARM64_ARCHITECTURE,
+            ffmpeg_path=shutil.which("ffmpeg"),
+            whisper_cpp_path=whisper_cli,
+            whisperkit_cli_path=_SysProbe.resolve_binary(whisperkit_binary),
+            handy_installed=handy_binary.is_file(),
+            vocamac_installed=vocamac_app.exists(),
+            logical_cpus=logical_cpus,
+            effective_cpus=_CpuSets.effective_cpu_count(logical_cpus),
+            containerized=_SysProbe.is_containerized(),
+            accelerators=cls._accelerators(is_mac, arch),
+            cpu_features=cls._cpu_features(is_mac),
+        )
+
+    @classmethod
+    def _accelerators(cls, is_mac: bool, arch: str) -> tuple[str, ...]:
+        accelerator_labels: list[str] = ["CPU"]
+        apple = is_mac and arch == ARM64_ARCHITECTURE
+        if apple:
+            accelerator_labels.append("Metal / Core ML")
+        nvidia = _NvidiaGpus.labels()
+        amd = _AmdGpus.labels()
+        cls._extend_named(accelerator_labels, nvidia, amd, apple)
+        return tuple(accelerator_labels)
+
+    @classmethod
+    def _extend_named(
+        cls,
+        labels: list[str],
+        nvidia: list[str],
+        amd: list[str],
+        apple: bool,
+    ) -> None:
+        if nvidia:
+            labels.extend(nvidia)
+        elif Path("/dev/nvidia0").exists() or shutil.which("nvidia-smi"):
+            labels.append("NVIDIA CUDA")
+        if amd:
+            labels.extend(amd)
+        elif Path("/dev/kfd").exists():
+            labels.append("AMD ROCm")
+        has_drm = Path("/dev/dri/renderD128").exists()
+        unnamed = not nvidia and not amd and not apple
+        if has_drm and unnamed:
+            labels.append("Vulkan / VAAPI device")
+
+    @classmethod
+    def _cpu_features(cls, is_mac: bool) -> tuple[str, ...]:
+        if is_mac:
+            raw = " ".join(
+                (
+                    _SysProbe.sysctl("machdep.cpu.features"),
+                    _SysProbe.sysctl("machdep.cpu.leaf7_features"),
                 )
-                name = f"device {device_id}"
-            except OSError:
-                name = card.name
-        label = name if name.upper().startswith("AMD") else f"AMD {name}"
-        if label not in seen:
-            seen.add(label)
-            labels.append(label)
-    return labels
+            )
+        else:
+            raw = cls._linux_cpuinfo()
+        lowered = set(raw.lower().replace(KEY_VALUE_SEPARATOR, " ").split())
+        wanted = ("avx", "avx2", "avx512f", "fma", "neon", "asimd")
+        return tuple(feature.upper() for feature in wanted if feature in lowered)
 
-
-def _cpu_features(is_mac: bool) -> tuple[str, ...]:
-    if is_mac:
-        raw = " ".join((_sysctl("machdep.cpu.features"), _sysctl("machdep.cpu.leaf7_features")))
-    else:
+    @classmethod
+    def _linux_cpuinfo(cls) -> str:
         try:
-            raw = Path("/proc/cpuinfo").read_text(encoding=UTF8_ENCODING)
+            return Path("/proc/cpuinfo").read_text(encoding=UTF8_ENCODING)
         except OSError:
-            raw = ""
-    lowered = set(raw.lower().replace(KEY_VALUE_SEPARATOR, " ").split())
-    wanted = ("avx", "avx2", "avx512f", "fma", "neon", "asimd")
-    return tuple(feature.upper() for feature in wanted if feature in lowered)
+            return ""
+
+
+detect_system = _HostDetector.detect
+engine_requirement = _EngineHost.requirement
+engine_runs_on = _EngineHost.runs_on
+engine_runs_here = _EngineHost.runs_here
