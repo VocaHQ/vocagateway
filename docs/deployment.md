@@ -25,7 +25,7 @@ what to choose, how to keep it running, and how the phone reaches it.
 | --- | --- | --- | --- |
 | Recommended host | Apple silicon Mac | Linux desktop or home server | Linux `amd64`/`arm64` when you want an image |
 | Engines | MLX Audio, WhisperKit, VocaMac, Handy, sherpa-onnx, faster-whisper, Moonshine, `whisper.cpp` | sherpa-onnx, faster-whisper, Moonshine, optional `whisper.cpp` | sherpa-onnx, faster-whisper, Moonshine, `whisper.cpp` |
-| Acceleration | Apple-native MLX and WhisperKit/Core ML paths | Host CPU (Python wheels); CUDA via Docker profiles | INT8 ONNX/OpenBLAS CPU; native CPU, CUDA, or Vulkan profiles |
+| Acceleration | Apple-native MLX and WhisperKit/Core ML paths | Host CPU (Python wheels); CUDA via Docker profiles | Runtime-dispatched CPU backends; CUDA or Vulkan profiles |
 | Performance | Recommended on Mac; no Linux VM | No container overhead on Linux | Slightly more isolation cost; strong for CUDA images |
 | Portability | macOS LaunchAgent | systemd user unit | Reproducible across supported Linux architectures |
 | Persistence | Files below `~/.local/share/vocagateway` | Same as native macOS | Named volume mounted at `/data` |
@@ -257,13 +257,18 @@ a matching supplementary group the open fails with `EACCES`, Vulkan enumerates
 no physical device, and whisper.cpp falls back to Mesa's software rasteriser —
 slower than the plain CPU image, and silent about it.
 
-Compose adds the group for you, but the GID differs per distribution (993 on
-Ubuntu, 104 on Debian). Read the host's and put it in `.env`:
+Compose adds the groups for you, but their GIDs differ per distribution. Inspect
+the render and card nodes, then put the numeric GIDs in `.env`:
 
 ```sh
-stat -c '%g' /dev/dri/renderD128    # e.g. 993
+stat -c '%G %g %n' /dev/dri/renderD128 /dev/dri/card0
 echo 'VOCAGATEWAY_RENDER_GID=993' >> .env
+echo 'VOCAGATEWAY_VIDEO_GID=44' >> .env
 ```
+
+Use the GID reported for `renderD128` as `VOCAGATEWAY_RENDER_GID` and the GID
+reported for `card0` as `VOCAGATEWAY_VIDEO_GID`. A missing `card0` is harmless;
+the render node is the one compute requires.
 
 The Vulkan profile ships the Mesa ICDs, so it covers AMD and Intel GPUs. NVIDIA
 over Vulkan needs the host ICD injected by the Container Toolkit instead; on an
@@ -345,12 +350,18 @@ emulation, which takes tens of minutes. A native arm64 builder — a remote
 buildx node, or a CI runner of that architecture — is the fix; the build's
 ccache and uv cache mounts at least make a repeat run cheap.
 
+Conversely, Docker Desktop on an Apple silicon Mac can validate the Linux arm64
+CPU image but not the Linux amd64 or NVIDIA CUDA paths. Pull requests that touch
+container inputs run the Container GitHub Actions matrix for CPU, CUDA, and
+Vulkan; use that result for cross-platform validation rather than treating one
+local M1 build as coverage of all three variants.
+
 Set `VOCAGATEWAY_IMAGE` in `.env` to use that tag for the `gateway` service.
 It renames what is built; it does not switch Compose to pulling. `up --build`
 still builds locally and applies the tag, so run `docker compose pull` followed
 by `docker compose up --detach --no-build` when you explicitly want the
-registry image. The `native`, `cuda`, and `vulkan` services carry fixed tags and
-ignore the variable.
+registry image. The `gateway-cuda` and `gateway-vulkan` services carry fixed
+tags and ignore the variable.
 
 ## Gateway URL and network placement
 

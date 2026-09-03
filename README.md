@@ -337,7 +337,7 @@ ref under `.git/refs/heads`, checking out a branch rewrites `.git/HEAD`, and
 every way HEAD moves. `.gitignore` already excludes `.envrc`, so it stays on
 your machine.
 
-The `ARG`/`ENV` pair sits after the last `COPY` in each Dockerfile, so a new
+The `ARG`/`ENV` pair sits after the last `COPY` in the Dockerfile, so a new
 commit only invalidates that final metadata layer. Rebuilds stay cached, and the
 `whisper.cpp` compile is never repeated for a commit change alone.
 
@@ -657,7 +657,11 @@ in `.env`:
 | `VOCAGATEWAY_PUBLISH_HOST` | `127.0.0.1` | Host interface published by Docker |
 | `VOCAGATEWAY_PUBLISH_PORT` | `8765` | Host port published by Docker |
 | `VOCAGATEWAY_NETWORK_MODE` | `bridge` | Set to `host` on Linux Docker Engine to share the host's network namespace (ignores `VOCAGATEWAY_PUBLISH_HOST`/`PORT`); not supported by Docker Desktop |
-| `VOCAGATEWAY_IMAGE` | `vocagateway:local` | Tag for the `gateway` service. It does not switch Compose from building to pulling — `up --build` still builds locally and applies the tag. To run a prebuilt image: `docker compose pull` then `up --no-build`. The `native`/`cuda`/`vulkan` services have fixed tags and ignore it |
+| `VOCAGATEWAY_IMAGE` | `vocagateway:local` | Tag for the default CPU `gateway` service. It does not switch Compose from building to pulling — `up --build` still builds locally and applies the tag. To run a prebuilt image: `docker compose pull` then `up --no-build`. The `gateway-cuda` and `gateway-vulkan` services have fixed tags and ignore it |
+| `VOCAGATEWAY_WHISPER_CMAKE_EXTRA` | unset | Extra CMake flags appended to the `whisper.cpp` build; use this for host-specific CUDA architectures or advanced CPU tuning |
+| `VOCAGATEWAY_BUILD_JOBS` | builder CPU count | Maximum concurrent `whisper.cpp` compile jobs; lower it when a memory-constrained build is killed, especially for CUDA |
+| `VOCAGATEWAY_RENDER_GID` | `993` | Host render-group GID added to the Vulkan container; set it from `/dev/dri/renderD128` |
+| `VOCAGATEWAY_VIDEO_GID` | `44` | Host video-group GID added to the Vulkan container when required by the distribution |
 
 Use [`.env.example`](.env.example) as a template and never commit the populated
 `.env` file.
@@ -836,6 +840,13 @@ The CPU image needs no host-specific build: `GGML_CPU_ALL_VARIANTS` compiles a
 ggml CPU backend per micro-architecture and the best one the host reports is
 loaded at startup, so a portable image still runs AVX2/AVX-512 code on x86 and
 dotprod/i8mm code on arm64.
+
+An Apple silicon Docker Desktop build validates only the Linux arm64 CPU path;
+it cannot validate Linux amd64 or an NVIDIA CUDA image. The Container GitHub
+Actions workflow builds CPU, CUDA, and Vulkan separately and smoke-tests the CPU
+image. Treat that matrix as the cross-platform build result. If a local build is
+killed for memory, set `VOCAGATEWAY_BUILD_JOBS` in `.env`; see
+[Tuning the whisper.cpp build](docs/deployment.md#tuning-the-whispercpp-build).
 
 The CUDA profile supports both faster-whisper CUDA and the CUDA `whisper.cpp`
 binary. The Vulkan profile accelerates `whisper.cpp`; faster-whisper remains on

@@ -113,10 +113,17 @@ git; see [Stamping the build commit](../README.md#stamping-the-build-commit).
 | `VOCAGATEWAY_PUBLISH_HOST` | `127.0.0.1` | Host interface Docker publishes |
 | `VOCAGATEWAY_PUBLISH_PORT` | `8765` | Host port Docker publishes |
 | `VOCAGATEWAY_NETWORK_MODE` | `bridge` | Set `host` on Linux Docker Engine only |
-| `VOCAGATEWAY_IMAGE` | `vocagateway:local` | Tag for the `gateway` service. It renames what gets built rather than switching Compose to pulling; use `docker compose pull` then `up --no-build` for a registry image. The `native`/`cuda`/`vulkan` services ignore it |
+| `VOCAGATEWAY_IMAGE` | `vocagateway:local` | Tag for the default CPU `gateway` service. It renames what gets built rather than switching Compose to pulling; use `docker compose pull` then `up --no-build` for a registry image. The `gateway-cuda` and `gateway-vulkan` services ignore it |
+| `VOCAGATEWAY_WHISPER_CMAKE_EXTRA` | unset | Extra CMake flags appended to the image's `whisper.cpp` build |
+| `VOCAGATEWAY_BUILD_JOBS` | builder CPU count | Maximum concurrent `whisper.cpp` compile jobs; lower it when a build is memory constrained |
+| `VOCAGATEWAY_RENDER_GID` | `993` | Host render-group GID added to the Vulkan container |
+| `VOCAGATEWAY_VIDEO_GID` | `44` | Host video-group GID added to the Vulkan container |
 
 Container defaults for data paths are under `/data` (and the token secret under
-`/run/secrets/vocagateway_token`). See the [README configuration table](../README.md#configuration).
+`/run/secrets/vocagateway_token`). The four build and Vulkan values above are
+Compose interpolation inputs, not gateway-process environment variables. See
+[Tuning the whisper.cpp build](deployment.md#tuning-the-whispercpp-build) and
+[Giving the Vulkan container access to the GPU](deployment.md#giving-the-vulkan-container-access-to-the-gpu).
 
 ## Stale names (not read)
 
