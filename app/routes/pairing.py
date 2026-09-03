@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Form, Query, Response
 from fastapi.responses import HTMLResponse
 
-from app.context import GatewayContext, get_context, require_token
+from app.context import GatewayContextDependency, require_token
 from app.pairing import (
     decode_pairing_payload,
     discover_gateway_base_urls,
@@ -20,13 +20,18 @@ from app.pairing_view import (
 )
 
 router = APIRouter(dependencies=[Depends(require_token)])
+OptionalUrlQuery = Annotated[str | None, Query()]
+OptionalTokenIdQuery = Annotated[str | None, Query()]
+PairingLabelForm = Annotated[str, Form(min_length=1, max_length=100)]
+OptionalUrlForm = Annotated[str | None, Form()]
+PairingUrlQuery = Annotated[str, Query()]
 
 
 @router.get("/v1/admin/pairing")
 async def get_pairing(
-    url: str | None = Query(default=None),
-    token_id: str | None = Query(default=None),
-    ctx: GatewayContext = Depends(get_context),
+    ctx: GatewayContextDependency,
+    url: OptionalUrlQuery = None,
+    token_id: OptionalTokenIdQuery = None,
 ) -> dict[str, Any]:
     selected = resolve_pairing_url(ctx, url)
     _, token, _, _ = resolve_pairing_token(ctx, token_id)
@@ -43,9 +48,9 @@ async def get_pairing(
 
 @router.get("/v1/admin/pairing/qr.svg", response_class=Response)
 async def get_pairing_qr(
-    url: str | None = Query(default=None),
-    token_id: str | None = Query(default=None),
-    ctx: GatewayContext = Depends(get_context),
+    ctx: GatewayContextDependency,
+    url: OptionalUrlQuery = None,
+    token_id: OptionalTokenIdQuery = None,
 ) -> Response:
     selected = resolve_pairing_url(ctx, url)
     _, token, _, _ = resolve_pairing_token(ctx, token_id)
@@ -60,18 +65,18 @@ async def get_pairing_qr(
 
 @router.get("/ui/partials/pairing", response_class=HTMLResponse)
 async def ui_pairing(
-    url: str | None = Query(default=None),
-    token_id: str | None = Query(default=None),
-    ctx: GatewayContext = Depends(get_context),
+    ctx: GatewayContextDependency,
+    url: OptionalUrlQuery = None,
+    token_id: OptionalTokenIdQuery = None,
 ) -> HTMLResponse:
     return HTMLResponse(pairing_html(ctx, url, token_id, persist=True))
 
 
 @router.post("/ui/partials/pairing/tokens", response_class=HTMLResponse)
 async def ui_create_pairing_token(
-    label: str = Form(..., min_length=1, max_length=100),
-    url: str | None = Form(default=None),
-    ctx: GatewayContext = Depends(get_context),
+    label: PairingLabelForm,
+    ctx: GatewayContextDependency,
+    url: OptionalUrlForm = None,
 ) -> HTMLResponse:
     record, _ = ctx.token_store.create(label)
     return HTMLResponse(pairing_html(ctx, url, record.id, persist=True))
@@ -80,8 +85,8 @@ async def ui_create_pairing_token(
 @router.post("/ui/partials/pairing/tokens/{token_id}/rotate", response_class=HTMLResponse)
 async def ui_rotate_pairing_token(
     token_id: str,
-    url: str | None = Form(default=None),
-    ctx: GatewayContext = Depends(get_context),
+    ctx: GatewayContextDependency,
+    url: OptionalUrlForm = None,
 ) -> HTMLResponse:
     rotated = ctx.token_store.rotate(token_id)
     resolved_id = rotated[0].id if rotated is not None else token_id
@@ -89,7 +94,5 @@ async def ui_rotate_pairing_token(
 
 
 @router.delete("/ui/partials/pairing", response_class=HTMLResponse)
-async def ui_forget_pairing(
-    url: str = Query(...), ctx: GatewayContext = Depends(get_context)
-) -> HTMLResponse:
+async def ui_forget_pairing(url: PairingUrlQuery, ctx: GatewayContextDependency) -> HTMLResponse:
     return HTMLResponse(forget_pairing_url(ctx, url))
