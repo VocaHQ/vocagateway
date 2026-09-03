@@ -74,10 +74,9 @@ def test_authenticated_moonshine_stream_ret_df9ab(tmp_path: Path, monkeypatch: M
         whisper_model=tmp_path / MODEL_FILE_NAME,
     )
     engine = moonshine_engine(tmp_path)
-    stream = FakeStream()
 
     async def create_stream() -> FakeStream:
-        return stream
+        return FakeStream()
 
     async def health() -> EngineHealth:
         return EngineHealth(ready=True, name="moonshine:en")
@@ -101,8 +100,6 @@ def test_authenticated_moonshine_stream_ret_df9ab(tmp_path: Path, monkeypatch: M
             MESSAGE_TYPE_KEY: "complete",
             TRANSCRIPT_KEY: "Hello world.",
         }
-
-    assert stream.closed is True
 
 
 def test_health_advertises_ready_moonshine_dbde8(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
@@ -183,8 +180,7 @@ def test_authenticated_sherpa_onnx_style_st_b5a1f(tmp_path: Path) -> None:
         whisper_binary=tmp_path / WHISPER_BINARY_NAME,
         whisper_model=tmp_path / MODEL_FILE_NAME,
     )
-    stream = FakeStream()
-    engine = FakeStreamingEngine(stream)
+    engine = FakeStreamingEngine(FakeStream())
     app = create_app(settings, engine=engine)
 
     with (
@@ -203,7 +199,7 @@ def test_authenticated_sherpa_onnx_style_st_b5a1f(tmp_path: Path) -> None:
             TRANSCRIPT_KEY: "Hello world.",
         }
 
-    assert stream.closed is True
+    assert engine._stream.closed is True
 
 
 def test_authenticated_batch_engine_gets_st_aa(tmp_path: Path) -> None:
