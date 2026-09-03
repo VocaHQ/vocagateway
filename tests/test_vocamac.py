@@ -91,17 +91,18 @@ def _headless_script(
         separators=(",", ":"),
     )
     failure_payload = json.dumps(failure, separators=(",", ":")) if failure else ""
+    transcribe_line = (
+        f"  --transcribe-file) printf '%s\\n' '{failure_payload}' >&2; exit 4 ;;\n"
+        if failure
+        else f"  --transcribe-file) printf '%s\\n' '{transcription_payload}' ;;\n"
+    )
     return (
         "#!/bin/sh\n"
         "# --transcribe-file capability marker\n"
         'printf \'%s\\n\' "$@" > "$0.args"\n'
         'case "$1" in\n'
         f"  --list-models) printf '%s\\n' '{model_payload}' ;;\n"
-        + (
-            f"  --transcribe-file) printf '%s\\n' '{failure_payload}' >&2; exit 4 ;;\n"
-            if failure
-            else f"  --transcribe-file) printf '%s\\n' '{transcription_payload}' ;;\n"
-        )
+        + transcribe_line
         + "  *) exit 2 ;;\n"
         "esac\n"
     )
