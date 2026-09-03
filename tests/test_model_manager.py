@@ -112,6 +112,14 @@ def _assert_pins_match_catalog(pins: dict[str, dict[str, object]]) -> None:
             assert normalize_sha256(digest) == digest, f"{model_id}:{name}"
 
 
+def _write_huggingface_fixture(mirror: Path, repository: str) -> None:
+    folder = mirror / repository / "resolve/main"
+    folder.mkdir(parents=True)
+    (folder / SHERPA_MODEL_NAME).write_bytes(b"onnx-bytes")
+    (folder / TOKENS_FILE_NAME).write_text("token")
+    (folder / "README.md").write_text("not needed")
+
+
 TINY_FILE = CatalogModel(
     id=WHISPER_CPP_TINY_ID,
     engine=WHISPER_CPP_ENGINE,
@@ -543,11 +551,7 @@ async def test_sherpa_huggingface_download_fetche_e896d(
     manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(catalog_model,))
 
     mirror = tmp_path / MIRROR_DIRECTORY_NAME
-    folder = mirror / "example/gigaam-repo/resolve/main"
-    folder.mkdir(parents=True)
-    (folder / SHERPA_MODEL_NAME).write_bytes(b"onnx-bytes")
-    (folder / TOKENS_FILE_NAME).write_text("token")
-    (folder / "README.md").write_text("not needed")
+    _write_huggingface_fixture(mirror, "example/gigaam-repo")
     monkeypatch.setattr(model_manager, HUGGINGFACE_BASE_URL_NAME, mirror.as_uri())
     monkeypatch.setattr(
         model_manager,
