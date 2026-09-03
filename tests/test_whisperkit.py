@@ -37,8 +37,7 @@ async def test_whisperkit_keeps_one_native_server_aa(
     model_path = tmp_path / "openai_whisper-small"
     model_path.mkdir()
     (model_path / "config.json").write_text("{}")
-    audio_path = tmp_path / "audio.wav"
-    audio_path.write_bytes(b"audio")
+    (tmp_path / "audio.wav").write_bytes(b"audio")
     process = FakeProcess()
     starts = 0
 
@@ -60,12 +59,13 @@ async def test_whisperkit_keeps_one_native_server_aa(
     monkeypatch.setattr(whisperkit, "_start_server", start_server)
     monkeypatch.setattr(whisperkit, "_server_transcription", transcribe)
 
-    first = await engine.transcribe(audio_path, TranscriptionOptions("en", "raw"))
-    second = await engine.transcribe(audio_path, TranscriptionOptions("en", "raw"))
+    first = await engine.transcribe(tmp_path / "audio.wav", TranscriptionOptions("en", "raw"))
 
     assert isinstance(first, EngineTranscription)
     assert first.text == "persistent native result"
-    assert second.model_load_ms == 0
+    assert (
+        await engine.transcribe(tmp_path / "audio.wav", TranscriptionOptions("en", "raw"))
+    ).model_load_ms == 0
     assert starts == 1
 
     engine.close()

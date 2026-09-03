@@ -17,8 +17,7 @@ async def test_faster_whisper_keeps_one_model_loaded(
     model_path = tmp_path / "tiny.en"
     model_path.mkdir()
     (model_path / "model.bin").write_bytes(b"model")
-    audio_path = tmp_path / "audio.wav"
-    audio_path.write_bytes(b"audio")
+    (tmp_path / "audio.wav").write_bytes(b"audio")
     constructions: list[dict[str, object]] = []
 
     class Segment:
@@ -41,12 +40,13 @@ async def test_faster_whisper_keeps_one_model_loaded(
     )
 
     engine = FasterWhisperEngine(model_path, device="cpu", compute_type="int8", cpu_threads=2)
-    first = await engine.transcribe(audio_path, TranscriptionOptions("en", "raw"))
-    second = await engine.transcribe(audio_path, TranscriptionOptions("en", "raw"))
+    first = await engine.transcribe(tmp_path / "audio.wav", TranscriptionOptions("en", "raw"))
 
     assert isinstance(first, EngineTranscription)
     assert first.text == "persistent result"
-    assert second.model_load_ms == 0
+    assert (
+        await engine.transcribe(tmp_path / "audio.wav", TranscriptionOptions("en", "raw"))
+    ).model_load_ms == 0
     assert constructions == [
         {
             "device": "cpu",
