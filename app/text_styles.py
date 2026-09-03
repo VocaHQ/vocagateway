@@ -14,7 +14,7 @@ SUPPORTED_WRITING_STYLES = frozenset({"raw", "clean", "formal", "casual", "very_
 # Language-dependent punctuation
 #
 # Sentence and clause marks are not universal. Assuming "." and "," turned
-# Japanese into an unstyled passthrough with a stray "!" appended, and inserted
+# Japanese into an unstyled passthrough with a stray EXCLAMATION_MARK appended, and inserted
 # Latin commas into Arabic.
 # ---------------------------------------------------------------------------
 
@@ -42,32 +42,34 @@ class Punctuation:
 
 
 # Every sentence-ending mark any catalog model is capable of emitting.
-_UNIVERSAL_TERMINATORS = ".!?。！？।۔။។།؟"
+_UNIVERSAL_TERMINATORS = ".!?\u3002\uff01\uff1f\u0964\u06d4\u104b\u17d4\u0f0d\u061f"
+EXCLAMATION_MARK = "!"
+QUESTION_MARK = "?"
 
 
-_LATIN = Punctuation(".", ",", "!", "?", ".!?", "en", " ")
+_LATIN = Punctuation(".", ",", EXCLAMATION_MARK, QUESTION_MARK, ".!?", "en", " ")
 _CJK = Punctuation("。", "、", "！", "？", "。！？.!?", "ja", "")
-_ARABIC = Punctuation(".", "،", "!", "؟", ".!?؟", "ar", " ")
-_URDU = Punctuation("۔", "،", "!", "؟", "۔.!?؟", "ur", " ")
+_ARABIC = Punctuation(".", "،", EXCLAMATION_MARK, "؟", ".!?؟", "ar", " ")
+_URDU = Punctuation("۔", "،", EXCLAMATION_MARK, "؟", "۔.!?؟", "ur", " ")
 
 # Indic scripts end a sentence with the danda "।" (U+0964), not a full stop, and
 # use the Latin comma, question mark and exclamation mark. Both the danda and "."
 # are accepted as terminators, because a model trained on mixed corpora emits
 # either — recognising only one of them appended a second terminator to text that
 # already had one, and hid every sentence boundary from the segmenter.
-_DANDA = Punctuation("।", ",", "!", "?", "।.!?", "hi", " ")
+_DANDA = Punctuation("।", ",", EXCLAMATION_MARK, QUESTION_MARK, "।.!?", "hi", " ")
 # Dravidian scripts and modern Gujarati write the full stop instead, but still
 # have to recognise a danda the model may have produced.
-_INDIC_LATIN = Punctuation(".", ",", "!", "?", "।.!?", "en", " ")
+_INDIC_LATIN = Punctuation(".", ",", EXCLAMATION_MARK, QUESTION_MARK, "।.!?", "en", " ")
 
 # Thai and Lao mark a sentence end with a space and nothing else. The empty
 # terminator means "append nothing"; `_casual` guards against it explicitly,
 # because dropping a zero-length terminator would truncate the whole transcript.
-_UNTERMINATED = Punctuation("", " ", "!", "?", "!?", "th", " ")
+_UNTERMINATED = Punctuation("", " ", EXCLAMATION_MARK, QUESTION_MARK, "!?", "th", " ")
 # Southeast and Central Asian scripts with their own sentence marks.
-_BURMESE = Punctuation("။", "၊", "!", "?", "။.!?", "my", " ")
-_KHMER = Punctuation("។", ",", "!", "?", "។.!?", "km", " ")
-_TIBETAN = Punctuation("།", "།", "!", "?", "།.!?", "bo", " ")
+_BURMESE = Punctuation("။", "၊", EXCLAMATION_MARK, QUESTION_MARK, "။.!?", "my", " ")
+_KHMER = Punctuation("។", ",", EXCLAMATION_MARK, QUESTION_MARK, "។.!?", "km", " ")
+_TIBETAN = Punctuation("།", "།", EXCLAMATION_MARK, QUESTION_MARK, "།.!?", "bo", " ")
 
 
 def _replace_segmentation_language(base: Punctuation, code: str) -> Punctuation:
