@@ -12,7 +12,7 @@ from starlette.status import (
 )
 
 from app.admin_queries import filtered_model_entries, model_entries
-from app.context import GatewayContext, get_context, require_token
+from app.context import GatewayContext, GatewayContextDependency, get_context, require_token
 from app.errors import APIProblem
 from app.fragments.engine import engine_pill_oob
 from app.fragments.models import models_fragment, models_list_fragment
@@ -114,9 +114,7 @@ async def get_admin_models(
 
 
 @router.post("/v1/admin/models/{model_id}/download", response_model=DownloadResponse)
-async def start_model_download(
-    model_id: str, ctx: GatewayContext = Depends(get_context)
-) -> DownloadResponse:
+async def start_model_download(model_id: str, ctx: GatewayContextDependency) -> DownloadResponse:
     try:
         state = ctx.manager.start_download(model_id)
     except UnknownModelError as error:
@@ -132,7 +130,7 @@ async def start_model_download(
 
 @router.post("/v1/admin/models/custom", response_model=DownloadResponse)
 async def start_custom_download(
-    body: CustomDownloadRequest, ctx: GatewayContext = Depends(get_context)
+    body: CustomDownloadRequest, ctx: GatewayContextDependency
 ) -> DownloadResponse:
     try:
         state = ctx.manager.start_custom_download(body.url, body.sha256)
@@ -147,9 +145,7 @@ async def start_custom_download(
 
 
 @router.post("/v1/admin/models/{model_id}/cancel", response_model=DownloadResponse)
-async def cancel_model_download(
-    model_id: str, ctx: GatewayContext = Depends(get_context)
-) -> DownloadResponse:
+async def cancel_model_download(model_id: str, ctx: GatewayContextDependency) -> DownloadResponse:
     if not ctx.manager.cancel_download(model_id):
         raise APIProblem(
             HTTP_409_CONFLICT, "download_not_active", "This model is not currently downloading."
@@ -159,7 +155,7 @@ async def cancel_model_download(
 
 @router.delete("/v1/admin/models/{model_id}", response_model=DeleteResponse)
 async def delete_model(
-    model_id: str, response: Response, ctx: GatewayContext = Depends(get_context)
+    model_id: str, response: Response, ctx: GatewayContextDependency
 ) -> DeleteResponse:
     try:
         if ctx.engine_manager is not None:
@@ -175,9 +171,7 @@ async def delete_model(
 
 
 @router.post("/v1/admin/models/{model_id}/select", response_model=SelectModelResponse)
-async def select_model(
-    model_id: str, ctx: GatewayContext = Depends(get_context)
-) -> SelectModelResponse:
+async def select_model(model_id: str, ctx: GatewayContextDependency) -> SelectModelResponse:
     engine_manager = ctx.engine_manager
     if engine_manager is None:
         raise APIProblem(
@@ -199,7 +193,7 @@ async def select_model(
 
 
 @router.get("/ui/partials/models", response_class=HTMLResponse)
-async def ui_models(ctx: GatewayContext = Depends(get_context)) -> HTMLResponse:
+async def ui_models(ctx: GatewayContextDependency) -> HTMLResponse:
     return HTMLResponse(models_fragment(model_entries(ctx)))
 
 
