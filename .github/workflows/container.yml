@@ -1,10 +1,10 @@
 name: Container
 
 # Building the image compiles whisper.cpp from source, which is by far the most
-# expensive thing in CI. Nothing under app/ can break that build — the runtime
-# image only copies the package, it never imports it — so this runs on the files
-# that actually decide whether the image assembles: the Dockerfile and the
-# dependency set it installs.
+# expensive thing in CI. Application behavior is covered by the Quality
+# workflow; this one runs on the container definition and dependency inputs
+# that decide whether the image itself assembles. Its CPU smoke test then proves
+# the installed package starts and serves from that image.
 #
 # One Dockerfile now builds all three accelerator images, so a change to it can
 # break cuda or vulkan while cpu still succeeds. The matrix below builds each

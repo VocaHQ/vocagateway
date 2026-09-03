@@ -207,7 +207,22 @@ ARG ACCEL
 COPY --from=uv /uv /uvx /bin/
 COPY --from=whisper-builder /out/bin/ /usr/local/bin/
 COPY --from=whisper-builder /out/lib/ /usr/local/lib/
-RUN ldconfig
+# A successful compiler exit is not enough: these backends are dlopen'd and no
+# linked target forces them into the runtime image. Fail the build instead of
+# shipping an accelerator tag that silently falls back to CPU. Every image also
+# keeps a CPU backend for unsupported operations and graceful fallback.
+RUN set -eu; \
+    set -- /usr/local/lib/ggml/libggml-cpu*.so; \
+    [ -e "$1" ] || { echo "missing ggml CPU backend" >&2; exit 1; }; \
+    case "${ACCEL}" in \
+      cpu) ;; \
+      cuda) test -e /usr/local/lib/ggml/libggml-cuda.so \
+        || { echo "missing ggml CUDA backend" >&2; exit 1; } ;; \
+      vulkan) test -e /usr/local/lib/ggml/libggml-vulkan.so \
+        || { echo "missing ggml Vulkan backend" >&2; exit 1; } ;; \
+      *) echo "unsupported ACCEL=${ACCEL}" >&2; exit 1 ;; \
+    esac; \
+    ldconfig
 
 WORKDIR /app
 # The uv cache lives on a build cache mount rather than inside the layer: the
