@@ -19,6 +19,10 @@ from app.schemas import CommitStatus
 
 SHA = "0979263b31465a19a6c5fa375ccdd0f2af250ca5"
 FULL_GIT_SHA_LENGTH = 40
+MERGE_SUBJECT = "Merge pull request #10"
+SHORT_SHA = "0979263"
+COMMIT_KEY = "commit"
+BUILD_DEFINITION = "<dt>Build</dt>"
 
 
 @pytest.fixture(autouse=True)
@@ -49,13 +53,13 @@ async def debug_client(
 
 def test_env_overrides_win_over_git(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(SHA_ENV, SHA)
-    monkeypatch.setenv(SUBJECT_ENV, "Merge pull request #10")
+    monkeypatch.setenv(SUBJECT_ENV, MERGE_SUBJECT)
     monkeypatch.setenv(DATE_ENV, "2026-08-11T15:51:01+05:30")
     commit = current_commit()
     assert commit == CommitInfo(
         sha=SHA,
-        short_sha="0979263",
-        subject="Merge pull request #10",
+        short_sha=SHORT_SHA,
+        subject=MERGE_SUBJECT,
         committed_at="2026-08-11T15:51:01+05:30",
     )
 
@@ -96,13 +100,13 @@ def test_commit_detail_shortens_the_subject() -> None:
     detail = _commit_context(
         CommitStatus(
             sha=SHA,
-            short_sha="0979263",
+            short_sha=SHORT_SHA,
             subject="x" * 100,
             committed_at="2026-08-11T15:51:01+05:30",
         )
     )
     assert detail["sha"] == SHA
-    assert "0979263" in detail["text"]
+    assert SHORT_SHA in detail["text"]
     assert "…" in detail["text"]
     assert "2026-08-11" in detail["text"]
 
@@ -111,30 +115,30 @@ async def test_status_and_diagnostics_carry_the_commit(
     debug_client: httpx.AsyncClient, authorization: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv(SHA_ENV, SHA)
-    monkeypatch.setenv(SUBJECT_ENV, "Merge pull request #10")
+    monkeypatch.setenv(SUBJECT_ENV, MERGE_SUBJECT)
     current_commit.cache_clear()
     status = await debug_client.get("/v1/admin/status", headers=authorization)
     assert status.status_code == HTTP_200_OK
-    assert status.json()["commit"] == {
+    assert status.json()[COMMIT_KEY] == {
         "sha": SHA,
-        "short_sha": "0979263",
-        "subject": "Merge pull request #10",
+        "short_sha": SHORT_SHA,
+        "subject": MERGE_SUBJECT,
         "committed_at": None,
     }
     diagnostics = await debug_client.get("/v1/admin/diagnostics", headers=authorization)
     assert diagnostics.status_code == HTTP_200_OK
-    assert diagnostics.json()["commit"]["sha"] == SHA
+    assert diagnostics.json()[COMMIT_KEY]["sha"] == SHA
 
     overview = await debug_client.get("/ui/partials/overview", headers=authorization)
     assert overview.status_code == HTTP_200_OK
     assert "build 0979263" in overview.text
-    assert "<dt>Build</dt>" in overview.text
+    assert BUILD_DEFINITION in overview.text
 
     about = await debug_client.get("/ui/partials/about", headers=authorization)
     assert about.status_code == HTTP_200_OK
-    assert "<dt>Build</dt>" in about.text
-    assert "0979263" in about.text
-    assert "Merge pull request #10" not in about.text
+    assert BUILD_DEFINITION in about.text
+    assert SHORT_SHA in about.text
+    assert MERGE_SUBJECT not in about.text
 
 
 async def test_commit_is_hidden_without_debug(
@@ -142,28 +146,28 @@ async def test_commit_is_hidden_without_debug(
 ) -> None:
     """Debug defaults to off, so a plain deployment names no revision anywhere."""
     monkeypatch.setenv(SHA_ENV, SHA)
-    monkeypatch.setenv(SUBJECT_ENV, "Merge pull request #10")
+    monkeypatch.setenv(SUBJECT_ENV, MERGE_SUBJECT)
     current_commit.cache_clear()
     status = await client.get("/v1/admin/status", headers=authorization)
     assert status.status_code == HTTP_200_OK
-    assert status.json()["commit"] is None
+    assert status.json()[COMMIT_KEY] is None
 
     diagnostics = await client.get("/v1/admin/diagnostics", headers=authorization)
     assert diagnostics.status_code == HTTP_200_OK
-    assert diagnostics.json()["commit"] is None
+    assert diagnostics.json()[COMMIT_KEY] is None
 
     overview = await client.get("/ui/partials/overview", headers=authorization)
     assert overview.status_code == HTTP_200_OK
     # Neither the hero meta line nor a "Build" row in the hardware details, and
     # no stray sha anywhere in the markup.
     assert "build 0979263" not in overview.text
-    assert "<dt>Build</dt>" not in overview.text
+    assert BUILD_DEFINITION not in overview.text
     assert SHA not in overview.text
 
     about = await client.get("/ui/partials/about", headers=authorization)
     assert about.status_code == HTTP_200_OK
-    assert "<dt>Build</dt>" not in about.text
-    assert "0979263" not in about.text
+    assert BUILD_DEFINITION not in about.text
+    assert SHORT_SHA not in about.text
     assert SHA not in about.text
 
 
@@ -179,6 +183,6 @@ def _git_repo(root: Path, *, subject: str) -> None:
     for args in (
         ["init", "--quiet"],
         ["add", "file.txt"],
-        ["commit", "--quiet", "--no-gpg-sign", "--message", subject],
+        [COMMIT_KEY, "--quiet", "--no-gpg-sign", "--message", subject],
     ):
         subprocess.run(["git", *args], cwd=root, env=env, check=True, capture_output=True)
