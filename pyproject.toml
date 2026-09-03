@@ -125,6 +125,9 @@ max-base-classes = 3
 max-decorators = 5
 max-asserts = 5
 max-module-members = 7
+per-file-ignores = [
+  "app/schemas.py: WPS202",
+]
 
 [build-system]
 requires = ["hatchling"]
