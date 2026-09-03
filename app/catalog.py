@@ -309,6 +309,11 @@ def _moonshine(
     minimum_ram_gb: float = 2,
 ) -> CatalogModel:
     english = language == ENGLISH_LANGUAGE_CODE
+    inference_description = (
+        " Uses cached incremental inference while you speak."
+        if supports_streaming
+        else " Uses the fast batch pipeline after recording."
+    )
     return CatalogModel(
         id=f"{ENGINE_MOONSHINE}:{key}",
         engine=ENGINE_MOONSHINE,
@@ -319,14 +324,8 @@ def _moonshine(
         quality=quality,
         minimum_ram_gb=minimum_ram_gb,
         family="Moonshine",
-        description=(
-            f"{architecture} model optimized for private local dictation."
-            + (
-                " Uses cached incremental inference while you speak."
-                if supports_streaming
-                else " Uses the fast batch pipeline after recording."
-            )
-        ),
+        description=f"{architecture} model optimized for private local dictation."
+        + inference_description,
         source="Moonshine Voice",
         marker_file=".vocagateway-model.json",
         language_code=language,
