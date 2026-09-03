@@ -39,14 +39,21 @@ async def test_health_requires_both_the_binary_an_aa(tmp_path: Path) -> None:
     assert health.name == f"whisper.cpp:{model.name}"
 
 
+@pytest.mark.parametrize(
+    ("language", "expected_text", "expect_lang_flag"),
+    [
+        ("en", "private local result", True),
+        (AUTO_LANGUAGE, "auto detected", False),
+    ],
+)
 async def test_transcribe_writes_the_output_stem_aaa(
-    tmp_path: Path,
+    tmp_path: Path, language: str, expected_text: str, expect_lang_flag: bool
 ) -> None:
     binary = tmp_path / WHISPER_BINARY_NAME
     _write_binary(
         binary,
-        """#!/bin/sh
-printf '%s\\n' "$@" > "$0.args"
+        r"""#!/bin/sh
+printf '%s\n' "$@" > "$0.args"
 of=""
 lang=""
 while [ "$#" -gt 0 ]; do
@@ -56,7 +63,11 @@ while [ "$#" -gt 0 ]; do
     *) shift ;;
   esac
 done
-printf '%s' "private local result" > "$of.txt"
+if [ -n "$lang" ]; then
+  printf '%s' "private local result" > "$of.txt"
+else
+  printf '%s' "auto detected" > "$of.txt"
+fi
 """,
     )
     model = tmp_path / MODEL_FILE_NAME
@@ -65,41 +76,16 @@ printf '%s' "private local result" > "$of.txt"
     audio.write_bytes(AUDIO_BYTES)
 
     transcript = await WhisperCppEngine(binary, model).transcribe(
-        audio, TranscriptionOptions("en", RAW_STYLE)
+        audio, TranscriptionOptions(language, RAW_STYLE)
     )
 
-    assert transcript == "private local result"
+    assert transcript == expected_text
     recorded = (tmp_path / "whisper-cli.args").read_text(encoding="utf-8").splitlines()
-    assert recorded[recorded.index("-l") + 1] == "en"
-    assert recorded[recorded.index("-f") + 1] == str(audio)
-
-
-async def test_transcribe_omits_the_language_flag_d8504(tmp_path: Path) -> None:
-    binary = tmp_path / WHISPER_BINARY_NAME
-    _write_binary(
-        binary,
-        """#!/bin/sh
-printf '%s\\n' "$@" > "$0.args"
-of=""
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    -of) of="$2"; shift 2 ;;
-    *) shift ;;
-  esac
-done
-printf '%s' "auto detected" > "$of.txt"
-""",
-    )
-    model = tmp_path / MODEL_FILE_NAME
-    model.write_bytes(MODEL_BYTES)
-    audio = tmp_path / AUDIO_FILE_NAME
-    audio.write_bytes(AUDIO_BYTES)
-
-    engine = WhisperCppEngine(binary, model)
-    transcript = await engine.transcribe(audio, TranscriptionOptions(AUTO_LANGUAGE, RAW_STYLE))
-
-    assert transcript == "auto detected"
-    assert "-l" not in (tmp_path / "whisper-cli.args").read_text(encoding="utf-8").splitlines()
+    if expect_lang_flag:
+        assert recorded[recorded.index("-l") + 1] == language
+        assert recorded[recorded.index("-f") + 1] == str(audio)
+    else:
+        assert "-l" not in recorded
 
 
 async def test_transcribe_raises_when_the_engine_aaaa(tmp_path: Path) -> None:
@@ -152,18 +138,15 @@ printf '' > "$of.txt"
 
 
 async def test_warmup_prefetches_the_model_when_ready(tmp_path: Path) -> None:
+    missing_engine = WhisperCppEngine(tmp_path / "missing-cli", tmp_path / "missing-model.bin")
+    assert await missing_engine.warmup() == 0
+
     binary = tmp_path / WHISPER_BINARY_NAME
     _write_binary(binary, "#!/bin/sh\nexit 0\n")
     model = tmp_path / MODEL_FILE_NAME
     model.write_bytes(b"x" * 1024)
 
-    engine = WhisperCppEngine(binary, model)
-    advised = await engine.warmup()
+    ready_engine = WhisperCppEngine(binary, model)
+    advised = await ready_engine.warmup()
 
     assert advised > 0
-
-
-async def test_warmup_is_a_noop_when_not_ready(tmp_path: Path) -> None:
-    engine = WhisperCppEngine(tmp_path / "missing-cli", tmp_path / "missing-model.bin")
-
-    assert await engine.warmup() == 0

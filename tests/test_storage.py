@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -70,9 +71,7 @@ def test_update_can_overwrite_the_audio_nam_aaaa(repository: SessionRepository) 
     repository.create_or_get(session_id, ENGLISH_LANGUAGE_CODE, RAW_STYLE)
     repository.update(session_id, state="processing", audio_name="first.wav")
 
-    updated = repository.update(
-        session_id, state="processing", audio_name="second.wav", preserve_audio_name=False
-    )
+    updated = repository.update(session_id, state="processing", audio_name="second.wav")
 
     assert updated.audio_name == "second.wav"
 
@@ -118,7 +117,7 @@ def test_expired_only_returns_sessions_past_aa(
     repository.create_or_get(stale_id, ENGLISH_LANGUAGE_CODE, RAW_STYLE)
 
     stale_time = (datetime.now(UTC) - timedelta(hours=STALE_SESSION_AGE_HOURS)).isoformat()
-    with repository._connect() as connection:
+    with sqlite3.connect(repository.database_path) as connection:
         connection.execute(
             "UPDATE sessions SET updated_at = ? WHERE session_id = ?",
             (stale_time, str(stale_id)),

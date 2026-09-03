@@ -37,7 +37,6 @@ async def test_readiness_caches_probes_and_tracks_f8ea4() -> None:
 
     assert first.ready is True
     assert second == first
-    assert engine.health_calls == 3
-    assert engine.warmup_calls == 1
+    assert (engine.health_calls, engine.warmup_calls) == (3, 1)
     assert details.warmup_state == "complete"
     assert details.warmed_bytes == 1024

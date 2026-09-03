@@ -11,47 +11,50 @@ from app.models.base import TranscriptionOptions
 from app.models.moonshine import MoonshineEngine
 
 
-def model_root(tmp_path: Path, model_arch: int) -> Path:
+def _model_root(tmp_path: Path, model_arch: int) -> Path:
     root = tmp_path / f"model-{model_arch}"
     root.mkdir()
     (root / ".vocagateway-model.json").write_text(
-        '{"language":"zh","model_path":"weights","model_arch":' + str(model_arch) + "}",
+        f'{{"language":"zh","model_path":"weights","model_arch":{model_arch}}}',
         encoding="utf-8",
     )
     return root
 
 
+class _FakeModelArch:
+    def __init__(self, specification: object) -> None:
+        self.specification = specification
+
+
+class _FakeTranscriber:
+    captured: dict[str, object] = {}
+
+    def __init__(self, **kwargs: object) -> None:
+        _FakeTranscriber.captured.update(kwargs)
+
+
 def test_streaming_capability_comes_from_mo_aa(tmp_path: Path) -> None:
-    assert MoonshineEngine(model_root(tmp_path, 5), "en").supports_streaming is True
-    assert MoonshineEngine(model_root(tmp_path, 3), "en").supports_streaming is True
-    assert MoonshineEngine(model_root(tmp_path, 1), "zh").supports_streaming is False
+    assert MoonshineEngine(_model_root(tmp_path, 5), "en").supports_streaming is True
+    assert MoonshineEngine(_model_root(tmp_path, 3), "en").supports_streaming is True
+    assert MoonshineEngine(_model_root(tmp_path, 1), "zh").supports_streaming is False
 
 
 def test_non_latin_model_uses_expanded_deco_c79b6(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    captured: dict[str, object] = {}
+    _FakeTranscriber.captured = {}
     module = ModuleType("moonshine_voice")
-
-    class ModelArch:
-        def __init__(self, specification) -> None:
-            self.specification = specification
-
-    class Transcriber:
-        def __init__(self, **kwargs: object) -> None:
-            captured.update(kwargs)
-
-    module.ModelArch = ModelArch  # type: ignore[attr-defined]
-    module.Transcriber = Transcriber  # type: ignore[attr-defined]
+    module.ModelArch = _FakeModelArch  # type: ignore[attr-defined]
+    module.Transcriber = _FakeTranscriber  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "moonshine_voice", module)
 
-    MoonshineEngine(model_root(tmp_path, 1), "zh")._load_transcriber_sync()
+    MoonshineEngine(_model_root(tmp_path, 1), "zh")._load_transcriber_sync()
 
-    assert captured["options"] == {"max_tokens_per_second": "13.0"}
+    assert _FakeTranscriber.captured["options"] == {"max_tokens_per_second": "13.0"}
 
 
 async def test_language_must_match_selected_moons_aaa(tmp_path: Path) -> None:
-    engine = MoonshineEngine(model_root(tmp_path, 1), "zh")
+    engine = MoonshineEngine(_model_root(tmp_path, 1), "zh")
 
     with pytest.raises(LanguageUnsupportedError, match="supports zh"):
         await engine.transcribe(

@@ -5,22 +5,27 @@ from __future__ import annotations
 import tomllib
 from importlib.metadata import entry_points
 from pathlib import Path
+from types import MappingProxyType
 
-PRIMARY_SCRIPTS = {
-    "vocagateway": "app.cli:serve",
-    "vocagateway-status": "app.cli:status",
-    "vocagateway-diagnostics": "app.cli:diagnostics",
-    "vocagateway-cleanup": "app.cli:cleanup",
-    "vocagateway-token": "app.cli:token",
-}
+PRIMARY_SCRIPTS = MappingProxyType(
+    {
+        "vocagateway": "app.cli:serve",
+        "vocagateway-status": "app.cli:status",
+        "vocagateway-diagnostics": "app.cli:diagnostics",
+        "vocagateway-cleanup": "app.cli:cleanup",
+        "vocagateway-token": "app.cli:token",
+    }
+)
 
-DEPRECATED_ALIASES = {
-    "vocaphone-server": "vocagateway",
-    "vocaphone-status": "vocagateway-status",
-    "vocaphone-diagnostics": "vocagateway-diagnostics",
-    "vocaphone-cleanup": "vocagateway-cleanup",
-    "vocaphone-token": "vocagateway-token",
-}
+DEPRECATED_ALIASES = MappingProxyType(
+    {
+        "vocaphone-server": "vocagateway",
+        "vocaphone-status": "vocagateway-status",
+        "vocaphone-diagnostics": "vocagateway-diagnostics",
+        "vocaphone-cleanup": "vocagateway-cleanup",
+        "vocaphone-token": "vocagateway-token",
+    }
+)
 
 
 def _expected_scripts() -> dict[str, str]:

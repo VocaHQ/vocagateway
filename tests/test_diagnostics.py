@@ -2,18 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from app import schemas
 from app.diagnostics import NEVER_INCLUDED, build_diagnostics_bundle, redact_home_path
-from app.schemas import (
-    AdminStatusResponse,
-    ConfigResponse,
-    DependencyStatus,
-    EngineStatus,
-    OperationalMetricsStatus,
-    PathStatus,
-    ReadinessStatus,
-    SetupChecklist,
-    SystemStatus,
-)
 
 TEST_RAM_GB = 16.0
 TEST_LOGICAL_CPU_COUNT = 8
@@ -24,11 +14,15 @@ TEST_LATENCY_MS = 500
 WHISPER_CPP_ENGINE = "whisper.cpp"
 
 
-def _status(paths: PathStatus) -> AdminStatusResponse:
-    return AdminStatusResponse(
+def _status(paths: schemas.PathStatus) -> schemas.AdminStatusResponse:
+    return schemas.AdminStatusResponse(
         version="0.1.0",
-        engine=EngineStatus(id=WHISPER_CPP_ENGINE, name="whisper.cpp:ggml-base.en.bin", ready=True),
-        system=SystemStatus(
+        engine=schemas.EngineStatus(
+            id=WHISPER_CPP_ENGINE,
+            name="whisper.cpp:ggml-base.en.bin",
+            ready=True,
+        ),
+        system=schemas.SystemStatus(
             os="Darwin",
             arch="arm64",
             chip="Apple M2",
@@ -40,18 +34,20 @@ def _status(paths: PathStatus) -> AdminStatusResponse:
             accelerators=["CPU", "Metal/Core ML"],
             cpu_features=[],
         ),
-        dependencies=[DependencyStatus(name="FFmpeg", available=True, path="/usr/bin/ffmpeg")],
+        dependencies=[
+            schemas.DependencyStatus(name="FFmpeg", available=True, path="/usr/bin/ffmpeg")
+        ],
         paths=paths,
         bind_host="0.0.0.0",
         port=TEST_GATEWAY_PORT,
-        setup=SetupChecklist(
+        setup=schemas.SetupChecklist(
             token_configured=True,
             ffmpeg_available=True,
             engine_binary_available=True,
             model_installed=True,
             engine_ready=True,
         ),
-        metrics=OperationalMetricsStatus(
+        metrics=schemas.OperationalMetricsStatus(
             uptime_seconds=TEST_UPTIME_SECONDS,
             queue_depth=0,
             active_transcriptions=0,
@@ -62,12 +58,14 @@ def _status(paths: PathStatus) -> AdminStatusResponse:
             average_latency_ms=TEST_LATENCY_MS,
             last_latency_ms=TEST_LATENCY_MS,
         ),
-        readiness=ReadinessStatus(probe_age_seconds=1.0, warmup_state="complete", warmed_bytes=0),
+        readiness=schemas.ReadinessStatus(
+            probe_age_seconds=1.0, warmup_state="complete", warmed_bytes=0
+        ),
     )
 
 
-def _config() -> ConfigResponse:
-    return ConfigResponse(engine="auto", available_engines=["auto", WHISPER_CPP_ENGINE])
+def _config() -> schemas.ConfigResponse:
+    return schemas.ConfigResponse(engine="auto", available_engines=["auto", WHISPER_CPP_ENGINE])
 
 
 def test_redact_home_path_replaces_home_prefix() -> None:
@@ -83,7 +81,7 @@ def test_redact_home_path_leaves_other_path_aa() -> None:
 def test_build_diagnostics_bundle_redacts_p_aaa() -> None:
     home = str(Path.home())
     status = _status(
-        PathStatus(
+        schemas.PathStatus(
             data_dir=f"{home}/.local/share/vocagateway",
             models_dir=f"{home}/.local/share/vocagateway/models",
             config_file=f"{home}/.config/vocagateway/config.json",
@@ -91,9 +89,15 @@ def test_build_diagnostics_bundle_redacts_p_aaa() -> None:
         )
     )
     bundle = build_diagnostics_bundle(status, _config())
-    assert bundle.paths.data_dir == "~/.local/share/vocagateway"
-    assert bundle.paths.models_dir == "~/.local/share/vocagateway/models"
-    assert bundle.paths.config_file == "~/.config/vocagateway/config.json"
+    assert (
+        bundle.paths.data_dir,
+        bundle.paths.models_dir,
+        bundle.paths.config_file,
+    ) == (
+        "~/.local/share/vocagateway",
+        "~/.local/share/vocagateway/models",
+        "~/.config/vocagateway/config.json",
+    )
     assert bundle.never_included == list(NEVER_INCLUDED)
     dumped = bundle.model_dump_json()
     assert home not in dumped
@@ -107,14 +111,14 @@ def test_build_diagnostics_bundle_redacts_c_a8a1b() -> None:
     ids — both must survive the bundle, but only the paths get redacted."""
     home = str(Path.home())
     status = _status(
-        PathStatus(
+        schemas.PathStatus(
             data_dir=f"{home}/.local/share/vocagateway",
             models_dir=f"{home}/.local/share/vocagateway/models",
             config_file=f"{home}/.config/vocagateway/config.json",
             token_file="~/.config/vocagateway/token",
         )
     )
-    config = ConfigResponse(
+    config = schemas.ConfigResponse(
         engine=WHISPER_CPP_ENGINE,
         available_engines=["auto", WHISPER_CPP_ENGINE],
         whisper_model=f"{home}/.local/share/vocagateway/models/whisper.cpp/ggml-base.en.bin",
