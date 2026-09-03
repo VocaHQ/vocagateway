@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_HANDY_FALLBACK_MODEL = "handy-computer/whisper-base-gguf/whisper-base-Q8_0.gguf"
-WILDCARD_BIND_HOSTS = frozenset({"0.0.0.0", "::"})
+WILDCARD_BIND_HOST = "0.0.0.0"
+WILDCARD_BIND_HOSTS = frozenset({WILDCARD_BIND_HOST, "::"})
 APP_DIR_NAME = "vocagateway"
 DEFAULT_MAXIMUM_UPLOAD_BYTES = 26_214_400
 MINIMUM_TOKEN_LENGTH = 32
@@ -23,7 +24,7 @@ def format_host_port(host: str, port: int) -> str:
 
 def local_webui_url(host: str, port: int) -> str:
     """Return the loopback URL that opens a listener from the same host."""
-    if host == "0.0.0.0":
+    if host == WILDCARD_BIND_HOST:
         host = "127.0.0.1"
     elif host == "::":
         host = "::1"
