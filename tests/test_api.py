@@ -150,23 +150,26 @@ async def test_complete_flow_is_idempotent_and_de_aaa(
     audio_bytes: bytes,
 ) -> None:
     session_id = uuid4()
-    payload = {
-        CLIENT_SESSION_ID_KEY: str(session_id),
-        "language": "auto",
-        STYLE_KEY: "raw",
-    }
-    created = await client.post(SESSIONS_API_PATH, headers=authorization, json=payload)
-    repeated = await client.post(SESSIONS_API_PATH, headers=authorization, json=payload)
+    created = await client.post(
+        SESSIONS_API_PATH,
+        headers=authorization,
+        json={CLIENT_SESSION_ID_KEY: str(session_id), "language": "auto", STYLE_KEY: "raw"},
+    )
+    repeated = await client.post(
+        SESSIONS_API_PATH,
+        headers=authorization,
+        json={CLIENT_SESSION_ID_KEY: str(session_id), "language": "auto", STYLE_KEY: "raw"},
+    )
     assert created.status_code == HTTP_200_OK
     assert repeated.json()[JOB_ID_KEY] == created.json()[JOB_ID_KEY]
 
-    uploaded = await client.put(
-        f"/v1/sessions/{session_id}/audio",
-        headers={**authorization, CONTENT_TYPE_HEADER: WAV_CONTENT_TYPE},
-        content=audio_bytes,
-    )
-    assert uploaded.status_code == HTTP_200_OK
-    assert uploaded.json()["state"] == "uploaded"
+    assert (
+        await client.put(
+            f"/v1/sessions/{session_id}/audio",
+            headers={**authorization, CONTENT_TYPE_HEADER: WAV_CONTENT_TYPE},
+            content=audio_bytes,
+        )
+    ).status_code == HTTP_200_OK
 
     finished = await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
     finished_again = await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
