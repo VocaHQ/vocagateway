@@ -1,168 +1,312 @@
 from __future__ import annotations
 
 from importlib import util as importlib_util
-from typing import Literal
+from types import MappingProxyType
+from typing import Any
 
+from app import schemas
 from app.build_info import current_commit
 from app.catalog import catalog_source_url, language_names, recommended_ids
 from app.context import BOOTSTRAP_TOKEN_ID, TOKEN_FILE_HINT, VERSION, GatewayContext
 from app.engine_state import active_model_path, available_engines, engine_id
-from app.schemas import (
-    AdminModelEntry,
-    AdminStatusResponse,
-    CommitStatus,
-    ConfigResponse,
-    DependencyStatus,
-    DeviceTokenEntry,
-    EngineStatus,
-    PathStatus,
-    ReadinessStatus,
-    SetupChecklist,
-    SystemStatus,
-)
 from app.serializers import metrics_status, model_covers
 from app.system import detect_system
 
 PYTHON_PACKAGE_PATH = "Python package"
 
+SIZE_FILTER_CAPS: MappingProxyType[str, int] = MappingProxyType(
+    {
+        "100mb": 100_000_000,
+        "300mb": 300_000_000,
+        "800mb": 800_000_000,
+        "1500mb": 1_500_000_000,
+    }
+)
 
-async def status_payload(ctx: GatewayContext) -> AdminStatusResponse:
-    settings = ctx.settings
-    system = detect_system(
-        whisper_binary=settings.whisper_binary,
-        whisperkit_binary=settings.whisperkit_binary,
-        handy_binary=settings.handy_binary,
-        vocamac_app=settings.vocamac_app,
-    )
-    is_mac = system.os_name == "Darwin"
-    dependencies = [
-        DependencyStatus(
-            name="FFmpeg",
-            available=system.ffmpeg_path is not None,
-            path=system.ffmpeg_path,
-            install_hint=(
-                "brew install ffmpeg"
-                if is_mac
-                else "Install FFmpeg with your Linux package manager"
+
+class _SystemDependencyHelper:
+    def __init__(self, ctx: GatewayContext) -> None:
+        self.ctx = ctx
+        self.settings = ctx.settings
+        self.system = detect_system(
+            whisper_binary=self.settings.whisper_binary,
+            whisperkit_binary=self.settings.whisperkit_binary,
+            handy_binary=self.settings.handy_binary,
+            vocamac_app=self.settings.vocamac_app,
+        )
+
+    def build_dependencies(self) -> list[schemas.DependencyStatus]:
+        is_mac = self.system.os_name == "Darwin"
+        ffmpeg_hint = (
+            "brew install ffmpeg" if is_mac else "Install FFmpeg with your Linux package manager"
+        )
+        whisper_hint = (
+            "brew install whisper-cpp"
+            if is_mac
+            else "Included in Docker or build whisper.cpp from source"
+        )
+        deps = [
+            schemas.DependencyStatus(
+                name="FFmpeg",
+                available=self.system.ffmpeg_path is not None,
+                path=self.system.ffmpeg_path,
+                install_hint=ffmpeg_hint,
             ),
-        ),
-        DependencyStatus(
-            name="whisper.cpp CLI",
-            available=system.whisper_cpp_path is not None,
-            path=system.whisper_cpp_path,
-            install_hint=(
-                "brew install whisper-cpp"
-                if is_mac
-                else "Included in Docker or build whisper.cpp from source"
+            schemas.DependencyStatus(
+                name="whisper.cpp CLI",
+                available=self.system.whisper_cpp_path is not None,
+                path=self.system.whisper_cpp_path,
+                install_hint=whisper_hint,
             ),
-        ),
-        DependencyStatus(
-            name="faster-whisper",
-            available=importlib_util.find_spec("faster_whisper") is not None,
-            path=PYTHON_PACKAGE_PATH if importlib_util.find_spec("faster_whisper") else None,
-            install_hint="Install vocagateway[engines] or use the Docker image",
-        ),
-        DependencyStatus(
-            name="Moonshine Voice",
-            available=importlib_util.find_spec("moonshine_voice") is not None,
-            path=PYTHON_PACKAGE_PATH if importlib_util.find_spec("moonshine_voice") else None,
-            install_hint="Install vocagateway[engines] or use the Docker image",
-        ),
-        DependencyStatus(
-            name="sherpa-onnx",
-            available=importlib_util.find_spec("sherpa_onnx") is not None,
-            path=PYTHON_PACKAGE_PATH if importlib_util.find_spec("sherpa_onnx") else None,
-            install_hint="Install vocagateway[engines] or use the Docker image",
-        ),
-        DependencyStatus(
-            name="MLX Audio",
-            available=(
-                system.is_apple_silicon and importlib_util.find_spec("mlx_audio") is not None
+        ]
+        deps.extend(self._python_dependencies())
+        deps.extend(self._app_dependencies(is_mac))
+        return deps
+
+    def build_checklist(
+        self, dependencies: list[schemas.DependencyStatus], ready: bool
+    ) -> schemas.SetupChecklist:
+        return schemas.SetupChecklist(
+            token_configured=True,
+            ffmpeg_available=self.system.ffmpeg_path is not None,
+            engine_binary_available=any(dep.available for dep in dependencies[1:]),
+            model_installed=bool(self.ctx.manager.installed())
+            or (self.ctx.engine_manager is not None and ready),
+            engine_ready=ready,
+        )
+
+    def build_commit_status(self) -> schemas.CommitStatus | None:
+        if self.ctx.settings.debug:
+            commit = current_commit()
+            if commit:
+                return schemas.CommitStatus(
+                    sha=commit.sha,
+                    short_sha=commit.short_sha,
+                    subject=commit.subject,
+                    committed_at=commit.committed_at,
+                )
+        return None
+
+    def os_summary(self) -> str:
+        name = self.system.os_name
+        version = self.system.os_version
+        return f"{name} {version}"
+
+    def _python_dependencies(self) -> list[schemas.DependencyStatus]:
+        silicon = self.system.is_apple_silicon
+        mlx_ready = silicon and importlib_util.find_spec("mlx_audio") is not None
+        mlx_hint = (
+            "Install vocagateway[apple]" if silicon else "Available only on Apple-silicon Macs"
+        )
+        return [
+            schemas.DependencyStatus(
+                name="faster-whisper",
+                available=importlib_util.find_spec("faster_whisper") is not None,
+                path=PYTHON_PACKAGE_PATH if importlib_util.find_spec("faster_whisper") else None,
+                install_hint="Install vocagateway[engines] or use the Docker image",
             ),
-            path=(
-                PYTHON_PACKAGE_PATH
-                if system.is_apple_silicon and importlib_util.find_spec("mlx_audio") is not None
-                else None
+            schemas.DependencyStatus(
+                name="Moonshine Voice",
+                available=importlib_util.find_spec("moonshine_voice") is not None,
+                path=PYTHON_PACKAGE_PATH if importlib_util.find_spec("moonshine_voice") else None,
+                install_hint="Install vocagateway[engines] or use the Docker image",
             ),
-            install_hint=(
-                "Install vocagateway[apple]"
-                if system.is_apple_silicon
-                else "Available only on Apple-silicon Macs"
+            schemas.DependencyStatus(
+                name="sherpa-onnx",
+                available=importlib_util.find_spec("sherpa_onnx") is not None,
+                path=PYTHON_PACKAGE_PATH if importlib_util.find_spec("sherpa_onnx") else None,
+                install_hint="Install vocagateway[engines] or use the Docker image",
             ),
-        ),
-        DependencyStatus(
-            name="WhisperKit CLI",
-            available=system.whisperkit_cli_path is not None,
-            path=system.whisperkit_cli_path,
-            install_hint=(
-                "brew install whisperkit-cli" if is_mac else "Available only on Apple platforms"
+            schemas.DependencyStatus(
+                name="MLX Audio",
+                available=mlx_ready,
+                path=PYTHON_PACKAGE_PATH if mlx_ready else None,
+                install_hint=mlx_hint,
             ),
-        ),
-        DependencyStatus(
-            name="Handy app",
-            available=system.handy_installed,
-            path=str(settings.handy_binary) if system.handy_installed else None,
-            install_hint=("https://handy.computer" if is_mac else "Available only on macOS"),
-        ),
-        DependencyStatus(
-            name="VocaMac app",
-            available=system.vocamac_installed,
-            path=str(settings.vocamac_app) if system.vocamac_installed else None,
-            install_hint=(
-                "https://github.com/jatinkrmalik/vocamac"
-                if system.is_apple_silicon
-                else "Available only on Apple silicon Macs"
+        ]
+
+    def _app_dependencies(self, is_mac: bool) -> list[schemas.DependencyStatus]:
+        silicon = self.system.is_apple_silicon
+        wk_hint = "brew install whisperkit-cli" if is_mac else "Available only on Apple platforms"
+        vocamac_hint = (
+            "https://github.com/jatinkrmalik/vocamac"
+            if silicon
+            else "Available only on Apple silicon Macs"
+        )
+        return [
+            schemas.DependencyStatus(
+                name="WhisperKit CLI",
+                available=self.system.whisperkit_cli_path is not None,
+                path=self.system.whisperkit_cli_path,
+                install_hint=wk_hint,
             ),
-        ),
-    ]
+            schemas.DependencyStatus(
+                name="Handy app",
+                available=self.system.handy_installed,
+                path=str(self.settings.handy_binary) if self.system.handy_installed else None,
+                install_hint="https://handy.computer" if is_mac else "Available only on macOS",
+            ),
+            schemas.DependencyStatus(
+                name="VocaMac app",
+                available=self.system.vocamac_installed,
+                path=str(self.settings.vocamac_app) if self.system.vocamac_installed else None,
+                install_hint=vocamac_hint,
+            ),
+        ]
+
+
+_ModelState = tuple[str, float | None, str | None]
+
+
+class _ModelEntryHelper:
+    def __init__(self, ctx: GatewayContext) -> None:
+        self.ctx = ctx
+        self.system = detect_system(
+            whisper_binary=ctx.settings.whisper_binary,
+            whisperkit_binary=ctx.settings.whisperkit_binary,
+            handy_binary=ctx.settings.handy_binary,
+            vocamac_app=ctx.settings.vocamac_app,
+        )
+        self.recommended = recommended_ids(self.system)
+        self.installed = {model.id: model for model in ctx.manager.installed()}
+        self.active_path = active_model_path(ctx)
+
+    def collect_entries(self) -> list[schemas.AdminModelEntry]:
+        catalog_entries = [
+            self.build_entry(model) for model in self.ctx.manager.catalog if self.is_visible(model)
+        ]
+        custom_entries = [
+            self.build_custom_entry(custom)
+            for custom in self.ctx.manager.installed()
+            if custom.id.startswith("custom:")
+        ]
+        return catalog_entries + custom_entries
+
+    def is_visible(self, model: Any) -> bool:
+        if self.system.is_apple_silicon:
+            return True
+        return model.engine != "whisperkit" and not model.apple_silicon_only
+
+    def build_entry(self, model: Any) -> schemas.AdminModelEntry:
+        download = self.ctx.manager.download_state(model.id)
+        inst = self.installed.get(model.id)
+        resolution = self._resolve_state(download, inst)
+        is_active = inst is not None and inst.path == self.active_path
+        return schemas.AdminModelEntry(
+            id=model.id,
+            engine=model.engine,
+            label=model.label,
+            size_bytes=inst.size_bytes if inst else model.size_bytes,
+            languages=model.languages,
+            quality=model.quality,
+            family=model.family,
+            description=model.description,
+            source=model.source,
+            source_url=catalog_source_url(model),
+            supports_streaming=model.supports_streaming,
+            license_name=model.license_name,
+            commercial_use=model.commercial_use,
+            detects_language_automatically=model.detects_language_automatically,
+            language_names=language_names(model.language_codes),
+            language_codes=list(model.language_codes),
+            state=resolution[0],
+            active=is_active,
+            recommended=model.id in self.recommended,
+            progress=resolution[1],
+            downloaded_bytes=download.downloaded_bytes if download else None,
+            total_bytes=download.total_bytes if download else None,
+            error=resolution[2],
+        )
+
+    def build_custom_entry(self, custom: Any) -> schemas.AdminModelEntry:
+        key = custom.key
+        return schemas.AdminModelEntry(
+            id=custom.id,
+            engine=custom.engine,
+            label=f"Custom: {key}",
+            size_bytes=custom.size_bytes,
+            languages="Unknown",
+            quality="Custom",
+            family="Custom Whisper",
+            description="User-provided local model.",
+            source="Local file",
+            state="installed",
+            active=custom.path == self.active_path,
+            recommended=False,
+        )
+
+    def filter_by_criteria(
+        self,
+        entries: list[schemas.AdminModelEntry],
+        language: Any,
+        family: Any,
+        engine: Any,
+        max_size: Any,
+    ) -> list[schemas.AdminModelEntry]:
+        matching = entries
+        if language:
+            codes = [language] if isinstance(language, str) else list(language)
+            matching = [
+                model for model in matching if any(model_covers(model, code) for code in codes)
+            ]
+        if family:
+            fam_set = set([family] if isinstance(family, str) else family)
+            matching = [model for model in matching if model.family in fam_set]
+        if engine:
+            eng_set = set([engine] if isinstance(engine, str) else engine)
+            matching = [model for model in matching if model.engine in eng_set]
+        cap = SIZE_FILTER_CAPS.get(str(max_size).strip().lower())
+        if cap is not None:
+            matching = [model for model in matching if model.size_bytes <= cap]
+        return matching
+
+    def _resolve_state(self, download: Any, inst: Any) -> _ModelState:
+        if download and download.status == "downloading":
+            progress = None
+            if download.total_bytes:
+                progress = round(download.downloaded_bytes / download.total_bytes, 4)
+            return "downloading", progress, None
+        if inst:
+            return "installed", None, None
+        if download and download.status == "failed":
+            return "not_installed", None, download.error
+        return "not_installed", None, None
+
+
+async def status_payload(ctx: GatewayContext) -> schemas.AdminStatusResponse:
+    helper = _SystemDependencyHelper(ctx)
+    dependencies = helper.build_dependencies()
     readiness_details = await ctx.readiness.details()
     state = readiness_details.health
     metrics = ctx.service.metrics.snapshot(sample=True)
-    commit = current_commit() if ctx.settings.debug else None
-    return AdminStatusResponse(
+    return schemas.AdminStatusResponse(
         version=VERSION,
-        commit=(
-            CommitStatus(
-                sha=commit.sha,
-                short_sha=commit.short_sha,
-                subject=commit.subject,
-                committed_at=commit.committed_at,
-            )
-            if commit is not None
-            else None
-        ),
-        engine=EngineStatus(id=engine_id(ctx), name=state.name, ready=state.ready),
-        system=SystemStatus(
-            os=f"{system.os_name} {system.os_version}",
-            arch=system.arch,
-            chip=system.chip,
-            ram_gb=system.ram_gb,
-            is_apple_silicon=system.is_apple_silicon,
-            logical_cpus=system.logical_cpus,
-            effective_cpus=system.effective_cpus,
-            containerized=system.containerized,
-            accelerators=list(system.accelerators),
-            cpu_features=list(system.cpu_features),
+        commit=helper.build_commit_status(),
+        engine=schemas.EngineStatus(id=engine_id(ctx), name=state.name, ready=state.ready),
+        system=schemas.SystemStatus(
+            os=helper.os_summary(),
+            arch=helper.system.arch,
+            chip=helper.system.chip,
+            ram_gb=helper.system.ram_gb,
+            is_apple_silicon=helper.system.is_apple_silicon,
+            logical_cpus=helper.system.logical_cpus,
+            effective_cpus=helper.system.effective_cpus,
+            containerized=helper.system.containerized,
+            accelerators=list(helper.system.accelerators),
+            cpu_features=list(helper.system.cpu_features),
         ),
         dependencies=dependencies,
-        paths=PathStatus(
-            data_dir=str(settings.data_dir),
+        paths=schemas.PathStatus(
+            data_dir=str(ctx.settings.data_dir),
             models_dir=str(ctx.manager.models_dir),
             config_file=str(ctx.config_path),
             token_file=TOKEN_FILE_HINT,
         ),
-        bind_host=settings.bind_host,
-        port=settings.port,
-        setup=SetupChecklist(
-            token_configured=True,
-            ffmpeg_available=system.ffmpeg_path is not None,
-            engine_binary_available=any(dependency.available for dependency in dependencies[1:]),
-            model_installed=bool(ctx.manager.installed())
-            or (ctx.engine_manager is not None and state.ready),
-            engine_ready=state.ready,
-        ),
+        bind_host=ctx.settings.bind_host,
+        port=ctx.settings.port,
+        setup=helper.build_checklist(dependencies, state.ready),
         metrics=metrics_status(metrics),
-        readiness=ReadinessStatus(
+        readiness=schemas.ReadinessStatus(
             probe_age_seconds=round(readiness_details.checked_age_seconds, 3),
             warmup_state=readiness_details.warmup_state,
             warmed_bytes=readiness_details.warmed_bytes,
@@ -170,102 +314,8 @@ async def status_payload(ctx: GatewayContext) -> AdminStatusResponse:
     )
 
 
-def model_entries(ctx: GatewayContext) -> list[AdminModelEntry]:
-    settings = ctx.settings
-    system = detect_system(
-        whisper_binary=settings.whisper_binary,
-        whisperkit_binary=settings.whisperkit_binary,
-        handy_binary=settings.handy_binary,
-        vocamac_app=settings.vocamac_app,
-    )
-    recommended = recommended_ids(system)
-    installed = {model.id: model for model in ctx.manager.installed()}
-    active_path = active_model_path(ctx)
-    entries: list[AdminModelEntry] = []
-    visible_catalog = (
-        model
-        for model in ctx.manager.catalog
-        if (model.engine != "whisperkit" or system.is_apple_silicon)
-        and (not model.apple_silicon_only or system.is_apple_silicon)
-    )
-    for model in visible_catalog:
-        download = ctx.manager.download_state(model.id)
-        installed_model = installed.get(model.id)
-        state: Literal["installed", "downloading", "not_installed"] = "not_installed"
-        progress: float | None = None
-        error: str | None = None
-        if download is not None and download.status == "downloading":
-            state = "downloading"
-            if download.total_bytes:
-                progress = round(download.downloaded_bytes / download.total_bytes, 4)
-        elif installed_model is not None:
-            state = "installed"
-        elif download is not None and download.status == "failed":
-            error = download.error
-        entries.append(
-            AdminModelEntry(
-                id=model.id,
-                engine=model.engine,
-                label=model.label,
-                size_bytes=(installed_model.size_bytes if installed_model else model.size_bytes),
-                languages=model.languages,
-                quality=model.quality,
-                family=model.family,
-                description=model.description,
-                source=model.source,
-                source_url=catalog_source_url(model),
-                supports_streaming=model.supports_streaming,
-                license_name=model.license_name,
-                commercial_use=model.commercial_use,
-                detects_language_automatically=model.detects_language_automatically,
-                language_names=language_names(model.language_codes),
-                language_codes=list(model.language_codes),
-                state=state,
-                active=bool(installed_model and installed_model.path == active_path),
-                recommended=model.id in recommended,
-                progress=progress,
-                downloaded_bytes=download.downloaded_bytes if download else None,
-                total_bytes=(download.total_bytes if download else None),
-                error=error,
-            )
-        )
-    for custom in ctx.manager.installed():
-        if custom.id.startswith("custom:"):
-            entries.append(
-                AdminModelEntry(
-                    id=custom.id,
-                    engine=custom.engine,
-                    label=f"Custom: {custom.key}",
-                    size_bytes=custom.size_bytes,
-                    languages="Unknown",
-                    quality="Custom",
-                    family="Custom Whisper",
-                    description="User-provided local model.",
-                    source="Local file",
-                    state="installed",
-                    active=custom.path == active_path,
-                    recommended=False,
-                )
-            )
-    return entries
-
-
-# Download-size caps for the filter panel (decimal MB, same scale as the UI).
-SIZE_FILTER_CAPS: dict[str, int] = {
-    "100mb": 100_000_000,
-    "300mb": 300_000_000,
-    "800mb": 800_000_000,
-    "1500mb": 1_500_000_000,
-}
-
-
-def _as_str_list(input_values: str | list[str] | None) -> list[str]:
-    """Normalize FastAPI Query/Form values (single string, list, or empty)."""
-    if input_values is None:
-        return []
-    if isinstance(input_values, str):
-        return [input_values] if input_values else []
-    return [entry for entry in input_values if entry]
+def model_entries(ctx: GatewayContext) -> list[schemas.AdminModelEntry]:
+    return _ModelEntryHelper(ctx).collect_entries()
 
 
 def filtered_model_entries(
@@ -273,41 +323,27 @@ def filtered_model_entries(
     installed_only: bool = False,
     language: str | list[str] | None = None,
     family: str | list[str] | None = None,
-    engine: str | list[str] | None = None,
-    max_size: str = "",
-    recommended_only: bool = False,
-) -> list[AdminModelEntry]:
-    """Filter the catalog. Within a multi-select dimension match is OR; across
-    dimensions match is AND. Languages use model_covers (empty codes = match all).
-    """
-    languages = _as_str_list(language)
-    families = _as_str_list(family)
-    engines = _as_str_list(engine)
-    size_cap = SIZE_FILTER_CAPS.get(max_size.strip().lower()) if max_size else None
-
+    **kwargs: Any,
+) -> list[schemas.AdminModelEntry]:
+    helper = _ModelEntryHelper(ctx)
     entries = model_entries(ctx)
     if installed_only:
         entries = [entry for entry in entries if entry.state == "installed"]
-    if languages:
-        entries = [
-            entry for entry in entries if any(model_covers(entry, code) for code in languages)
-        ]
-    if families:
-        allowed = set(families)
-        entries = [entry for entry in entries if entry.family in allowed]
-    if engines:
-        allowed_engines = set(engines)
-        entries = [entry for entry in entries if entry.engine in allowed_engines]
-    if size_cap is not None:
-        entries = [entry for entry in entries if entry.size_bytes <= size_cap]
-    if recommended_only:
+    entries = helper.filter_by_criteria(
+        entries,
+        language=language,
+        family=family,
+        engine=kwargs.get("engine"),
+        max_size=kwargs.get("max_size", ""),
+    )
+    if kwargs.get("recommended_only", False):
         entries = [entry for entry in entries if entry.recommended]
     return entries
 
 
-def token_entries(ctx: GatewayContext) -> list[DeviceTokenEntry]:
+def token_entries(ctx: GatewayContext) -> list[schemas.DeviceTokenEntry]:
     entries = [
-        DeviceTokenEntry(
+        schemas.DeviceTokenEntry(
             id=BOOTSTRAP_TOKEN_ID,
             label="Bootstrap token (VOCAGATEWAY_TOKEN / token file)",
             created_at=None,
@@ -315,7 +351,7 @@ def token_entries(ctx: GatewayContext) -> list[DeviceTokenEntry]:
         )
     ]
     entries.extend(
-        DeviceTokenEntry(
+        schemas.DeviceTokenEntry(
             id=token.id, label=token.label, created_at=token.created_at, revocable=True
         )
         for token in ctx.token_store.all()
@@ -323,20 +359,34 @@ def token_entries(ctx: GatewayContext) -> list[DeviceTokenEntry]:
     return entries
 
 
-def config_response(ctx: GatewayContext) -> ConfigResponse:
-    engine_manager = ctx.engine_manager
-    runtime_config = engine_manager.runtime_config if engine_manager is not None else None
-    return ConfigResponse(
-        engine=runtime_config.engine if runtime_config is not None else "custom",
+def config_response(ctx: GatewayContext) -> schemas.ConfigResponse:
+    rc = ctx.engine_manager.runtime_config if ctx.engine_manager else None
+    if rc:
+        return schemas.ConfigResponse(
+            engine=rc.engine,
+            available_engines=available_engines(ctx),
+            whisper_model=rc.whisper_model,
+            whisperkit_model=rc.whisperkit_model,
+            faster_whisper_model=rc.faster_whisper_model,
+            moonshine_model=rc.moonshine_model,
+            moonshine_language=rc.moonshine_language,
+            sherpa_model=rc.sherpa_model,
+            mlx_audio_model=rc.mlx_audio_model,
+            compute_device=rc.compute_device,
+            compute_type=rc.compute_type,
+            cpu_threads=rc.cpu_threads,
+        )
+    return schemas.ConfigResponse(
+        engine="custom",
         available_engines=available_engines(ctx),
-        whisper_model=(runtime_config.whisper_model if runtime_config else None),
-        whisperkit_model=(runtime_config.whisperkit_model if runtime_config else None),
-        faster_whisper_model=(runtime_config.faster_whisper_model if runtime_config else None),
-        moonshine_model=(runtime_config.moonshine_model if runtime_config else "moonshine:en"),
-        moonshine_language=(runtime_config.moonshine_language if runtime_config else "en"),
-        sherpa_model=(runtime_config.sherpa_model if runtime_config else None),
-        mlx_audio_model=(runtime_config.mlx_audio_model if runtime_config else None),
-        compute_device=(runtime_config.compute_device if runtime_config else "auto"),
-        compute_type=(runtime_config.compute_type if runtime_config else "auto"),
-        cpu_threads=(runtime_config.cpu_threads if runtime_config else 0),
+        whisper_model=None,
+        whisperkit_model=None,
+        faster_whisper_model=None,
+        moonshine_model="moonshine:en",
+        moonshine_language="en",
+        sherpa_model=None,
+        mlx_audio_model=None,
+        compute_device="auto",
+        compute_type="auto",
+        cpu_threads=0,
     )
