@@ -176,6 +176,10 @@ _LATIN_LANGUAGES = frozenset(
 # code-switching keeps far more of the base script than that — Hinglish rarely
 # drops below a third — so this sits well below any real transcript.
 _MINIMUM_EXPECTED_SHARE = 0.15
+# A fixed-script output mode is a stronger promise than an ordinary spoken
+# language. Code-switching is valid Hindi, but any non-Latin letter means the
+# Roman Hinglish contract was not met.
+_STRICT_SCRIPT_LANGUAGES = frozenset(("hinglish_roman",))
 
 
 def _script_of(character: str) -> str:
@@ -202,6 +206,8 @@ def transcript_matches_language(text: str, language: str) -> bool:
     with no letters at all. Otherwise the expected script has to account for at
     least `_MINIMUM_EXPECTED_SHARE` of the letters, which admits code-switching
     while rejecting text transliterated into another writing system entirely.
+    Fixed-script output contracts require every letter to use their declared
+    script.
     """
     if language == "auto":
         return True
@@ -212,4 +218,5 @@ def transcript_matches_language(text: str, language: str) -> bool:
     if not letters:
         return True
     matching = sum(1 for character in letters if _script_of(character) in expected)
-    return matching / len(letters) >= _MINIMUM_EXPECTED_SHARE
+    minimum_share = 1.0 if language.lower() in _STRICT_SCRIPT_LANGUAGES else _MINIMUM_EXPECTED_SHARE
+    return matching / len(letters) >= minimum_share

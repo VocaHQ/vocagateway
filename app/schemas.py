@@ -22,7 +22,7 @@ class CreateSessionRequest(BaseModel):
     language: str = Field(
         default=AUTO_ENGINE,
         max_length=MAXIMUM_LANGUAGE_TAG_LENGTH,
-        pattern=r"^[A-Za-z_-]+$|^auto$",
+        pattern=r"^(?:[A-Za-z-]+|hinglish_roman)$",
     )
     style: Literal[
         "raw",

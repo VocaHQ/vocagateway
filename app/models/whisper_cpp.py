@@ -4,8 +4,9 @@ import asyncio
 import tempfile
 from pathlib import Path
 
+from app import scripts
 from app.catalog import CatalogModel
-from app.errors import EngineUnavailableError, TranscriptionProcessError
+from app.errors import EngineUnavailableError, LanguageUnsupportedError, TranscriptionProcessError
 from app.models.base import EngineHealth, TranscriptionOptions
 from app.models.warmup import prefetch_model_paths
 
@@ -35,16 +36,38 @@ class WhisperCppEngine:
         await self._require_ready()
         with tempfile.TemporaryDirectory(prefix="vocagateway-transcript-") as temporary:
             output_stem = Path(temporary) / "result"
-            language = self.catalog_model.decoder_language_code if self.catalog_model else None
             arguments = _build_arguments(
                 self.binary,
                 self.model,
                 audio_path,
                 output_stem,
-                language or options.language,
+                self._decoder_language(options.language),
             )
             await _execute_whisper_cpp(arguments)
-            return _read_output_text(output_stem.with_suffix(".txt"))
+            transcript = _read_output_text(output_stem.with_suffix(".txt"))
+            self._require_fixed_output_script(transcript)
+            return transcript
+
+    def _decoder_language(self, requested: str) -> str:
+        model = self.catalog_model
+        if model is None or model.decoder_language_code is None:
+            return requested
+        if requested != "auto" and requested not in model.language_codes:
+            supported = ", ".join(model.language_codes)
+            raise LanguageUnsupportedError(
+                f"The selected model supports only {supported}; choose that output mode or Auto."
+            )
+        return model.decoder_language_code
+
+    def _require_fixed_output_script(self, transcript: str) -> None:
+        model = self.catalog_model
+        if model is None or model.decoder_language_code is None or len(model.language_codes) != 1:
+            return
+        output_language = model.language_codes[0]
+        if not scripts.transcript_matches_language(transcript, output_language):
+            raise LanguageUnsupportedError(
+                f"The model did not produce the required {output_language} writing system."
+            )
 
     async def _require_ready(self) -> None:
         health = await self.health()

@@ -53,6 +53,7 @@ class UnavailableEngine:
 
 def test_audio_form_accepts_roman_hinglish_output_contract() -> None:
     assert _AudioForm.language("hinglish_roman") == "hinglish_roman"
+    assert _AudioForm._invalid_language("not_a_language") is True
 
 
 async def test_transcriptions_require_a_bearer_token(

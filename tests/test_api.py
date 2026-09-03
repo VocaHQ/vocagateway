@@ -58,6 +58,9 @@ def test_session_schema_accepts_roman_hinglish_output_contract() -> None:
     request = CreateSessionRequest(client_session_id=uuid4(), language="hinglish_roman")
     assert request.language == "hinglish_roman"
 
+    with pytest.raises(ValueError):
+        CreateSessionRequest(client_session_id=uuid4(), language="not_a_language")
+
 
 async def test_unsupported_language_is_reported_a_d68a4(
     settings: Settings, authorization: dict[str, str], audio_bytes: bytes
