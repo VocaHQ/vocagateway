@@ -48,7 +48,7 @@ async def test_mlx_audio_keeps_one_model_loaded(
     monkeypatch.setitem(sys.modules, "mlx_audio.stt", stt_module)
     monkeypatch.setitem(sys.modules, "mlx_audio.stt.utils", utils_module)
     monkeypatch.setattr(
-        "app.models.mlx_audio.importlib.util.find_spec",
+        "app.models.mlx_audio.importlib_util.find_spec",
         lambda _: importlib.machinery.ModuleSpec("mlx_audio", loader=None),
     )
     monkeypatch.setattr("app.models.mlx_audio.platform.system", lambda: "Darwin")

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import importlib.util
 import json
 import time
 import wave
 from array import array
+from importlib import util as importlib_util
 from pathlib import Path
 from typing import Any
 
@@ -54,7 +54,7 @@ class MoonshineEngine:
         return self._metadata.get("model_arch") in STREAMING_ARCHITECTURES
 
     async def health(self) -> EngineHealth:
-        package_ready = importlib.util.find_spec("moonshine_voice") is not None
+        package_ready = importlib_util.find_spec("moonshine_voice") is not None
         metadata_ready = (
             self.model_root is not None and (self.model_root / MODEL_METADATA).is_file()
         )

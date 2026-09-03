@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import importlib.util
 import inspect
 import platform
 import time
+from importlib import util as importlib_util
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +31,7 @@ class MLXAudioEngine:
         self._inference_lock = asyncio.Lock()
 
     async def health(self) -> EngineHealth:
-        package_ready = importlib.util.find_spec("mlx_audio") is not None
+        package_ready = importlib_util.find_spec("mlx_audio") is not None
         platform_ready = platform.system() == "Darwin" and platform.machine() == "arm64"
         model_ready = (
             self.model_root is not None and (self.model_root / "model.safetensors").is_file()

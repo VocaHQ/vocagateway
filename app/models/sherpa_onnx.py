@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import importlib.util
 import os
 import time
 import wave
 from array import array
 from collections.abc import Callable
+from importlib import util as importlib_util
 from pathlib import Path
 from typing import Any
 
@@ -60,7 +60,7 @@ class SherpaOnnxEngine:
         return self.catalog_model.model_type == STREAMING_MODEL_TYPE
 
     async def health(self) -> EngineHealth:
-        package_ready = importlib.util.find_spec("sherpa_onnx") is not None
+        package_ready = importlib_util.find_spec("sherpa_onnx") is not None
         model_ready = (
             self.model_root is not None
             and self.catalog_model is not None
