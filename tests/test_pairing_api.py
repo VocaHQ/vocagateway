@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -24,6 +25,60 @@ def _assert_pairing_payload(body: dict[str, object]) -> None:
     assert TOKEN not in json.dumps(
         {key: entry_value for key, entry_value in body.items() if key != PAYLOAD_KEY}
     )
+
+
+async def _create_token_after_startup(settings: Settings, fake_engine: FakeEngine) -> str:
+    first_app = create_app(settings, engine=fake_engine, normalizer=FakeNormalizer())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=first_app), base_url="http://test"
+    ) as first_client:
+        created = await first_client.post(
+            TOKENS_API_PATH,
+            headers={"Authorization": f"Bearer {TOKEN}"},
+            json={LABEL_KEY: "Kanishk's Iphone"},
+        )
+    return created.json()[IDENTIFIER_KEY]
+
+
+def _network_switch_fixture(
+    tmp_path: Path,
+) -> tuple[Any, RuntimeConfig, str, str]:
+    settings = Settings(
+        token=TOKEN,
+        data_dir=tmp_path,
+        whisper_binary=tmp_path / "whisper-cli",
+        whisper_model=tmp_path / "model.bin",
+        config_path=tmp_path / "config.json",
+    )
+    old_address = "http://192.168.1.20:8765"
+    hostname_address = "https://homelabone.tail1234.ts.net:8765"
+    runtime_config = RuntimeConfig(
+        pairing_url=old_address,
+        pairing_urls=[old_address, hostname_address],
+    )
+    app = create_app(
+        settings,
+        model_manager=ModelManager(tmp_path / "models"),
+        runtime_config=runtime_config,
+    )
+    return app, runtime_config, old_address, hostname_address
+
+
+async def _assert_network_switch_pairing(
+    app: Any,
+    old_address: str,
+    hostname_address: str,
+) -> None:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        partial = await client.get(
+            PAIRING_UI_PATH,
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+    assert partial.status_code == HTTP_200_OK
+    assert f'value="{old_address}"' not in partial.text
+    assert f'value="{hostname_address}"' in partial.text
 
 
 PAIRING_API_PATH = "/v1/admin/pairing"
@@ -162,16 +217,7 @@ async def test_pairing_offers_to_rotate_a_stale_d_aaa(
     silently vanishing, and rotating it should make it selectable again.
     """
     monkeypatch.setenv(PUBLIC_URL_ENV, PUBLIC_GATEWAY_URL)
-    auth = {"Authorization": f"Bearer {TOKEN}"}
-
-    first_app = create_app(settings, engine=fake_engine, normalizer=FakeNormalizer())
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=first_app), base_url="http://test"
-    ) as first_client:
-        created = await first_client.post(
-            TOKENS_API_PATH, headers=auth, json={LABEL_KEY: "Kanishk's Iphone"}
-        )
-        device_id = created.json()[IDENTIFIER_KEY]
+    device_id = await _create_token_after_startup(settings, fake_engine)
 
     # A fresh app over the same data directory simulates a restart: the token
     # still exists on disk, but no process has its plaintext cached anymore.
@@ -180,7 +226,9 @@ async def test_pairing_offers_to_rotate_a_stale_d_aaa(
         transport=httpx.ASGITransport(app=second_app), base_url="http://test"
     ) as second_client:
         partial = await second_client.get(
-            PAIRING_UI_PATH, headers=auth, params={TOKEN_ID_KEY: device_id}
+            PAIRING_UI_PATH,
+            headers={"Authorization": f"Bearer {TOKEN}"},
+            params={TOKEN_ID_KEY: device_id},
         )
         assert "Kanishk&#39;s Iphone (paired; no live QR)" in partial.text
         assert "is still paired and working normally" in partial.text
@@ -189,7 +237,7 @@ async def test_pairing_offers_to_rotate_a_stale_d_aaa(
 
         rotated = await second_client.post(
             f"/ui/partials/pairing/tokens/{device_id}/rotate",
-            headers=auth,
+            headers={"Authorization": f"Bearer {TOKEN}"},
             data={URL_KEY: PUBLIC_GATEWAY_URL},
         )
         assert rotated.status_code == HTTP_200_OK
@@ -222,33 +270,8 @@ async def test_creating_a_pairing_token_shows_its_aaaa(
 async def test_switching_networks_forgets_the_old_a94f7(tmp_path: Path) -> None:
     """Reproduces the reported bug: an old Wi-Fi's LAN IP lingered forever
     alongside the new one instead of being superseded by fresh discovery."""
-    settings = Settings(
-        token=TOKEN,
-        data_dir=tmp_path,
-        whisper_binary=tmp_path / "whisper-cli",
-        whisper_model=tmp_path / "model.bin",
-        config_path=tmp_path / "config.json",
-    )
-    old_address = "http://192.168.1.20:8765"
-    hostname_address = "https://homelabone.tail1234.ts.net:8765"
-    runtime_config = RuntimeConfig(
-        pairing_url=old_address,
-        pairing_urls=[old_address, hostname_address],
-    )
-    app = create_app(
-        settings,
-        model_manager=ModelManager(tmp_path / "models"),
-        runtime_config=runtime_config,
-    )
-
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://test"
-    ) as client:
-        auth = {"Authorization": f"Bearer {TOKEN}"}
-        partial = await client.get(PAIRING_UI_PATH, headers=auth)
-        assert partial.status_code == HTTP_200_OK
-        assert f'value="{old_address}"' not in partial.text
-        assert f'value="{hostname_address}"' in partial.text
+    app, runtime_config, old_address, hostname_address = _network_switch_fixture(tmp_path)
+    await _assert_network_switch_pairing(app, old_address, hostname_address)
 
     # The stale ambient LAN IP is gone; the deliberately-typed hostname stayed.
     assert old_address not in runtime_config.pairing_urls
