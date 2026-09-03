@@ -9,6 +9,7 @@ from typing import Any
 
 from app.errors import EngineUnavailableError, TranscriptionProcessError
 from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
+from app.runtime_config import AUTO_ENGINE
 
 TRANSCRIPTION_TIMEOUT_SECONDS = 180
 MAXIMUM_ERROR_MESSAGE_LENGTH = 240
@@ -21,8 +22,8 @@ class FasterWhisperEngine:
         self,
         model_path: Path | None,
         *,
-        device: str = "auto",
-        compute_type: str = "auto",
+        device: str = AUTO_ENGINE,
+        compute_type: str = AUTO_ENGINE,
         cpu_threads: int = 0,
     ) -> None:
         self.model_path = model_path
@@ -113,7 +114,7 @@ class FasterWhisperEngine:
     def _transcribe_sync(model: Any, audio_path: Path, options: TranscriptionOptions) -> str:
         segments, _ = model.transcribe(
             str(audio_path),
-            language=None if options.language == "auto" else options.language,
+            language=None if options.language == AUTO_ENGINE else options.language,
             beam_size=1,
             best_of=1,
             temperature=0,
@@ -139,7 +140,7 @@ def _resolved_device(configured_device: str) -> str:
 
 
 def _resolved_compute_type(configured_type: str, device: str) -> str:
-    if configured_type != "auto":
+    if configured_type != AUTO_ENGINE:
         return configured_type
     return "float16" if device == "cuda" else "int8"
 

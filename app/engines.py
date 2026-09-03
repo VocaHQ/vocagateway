@@ -23,7 +23,7 @@ from app.models.sherpa_onnx import SherpaOnnxEngine
 from app.models.vocamac import VocaMacEngine
 from app.models.whisper_cpp import WhisperCppEngine
 from app.models.whisperkit import WhisperKitEngine
-from app.runtime_config import VALID_ENGINES, RuntimeConfig
+from app.runtime_config import AUTO_ENGINE, VALID_ENGINES, RuntimeConfig
 from app.system import engine_requirement, engine_runs_here
 
 MAXIMUM_CPU_THREADS = 256
@@ -115,7 +115,7 @@ class EngineManager:
             # catalog entry for exactly this fallback (see app/catalog.py). Reset to
             # it instead of None so a deleted model doesn't linger as a dangling id.
             self.runtime_config.moonshine_model = "moonshine:en"
-            self.runtime_config.engine = "auto"
+            self.runtime_config.engine = AUTO_ENGINE
             changed = True
         if self.runtime_config.whisper_model == str(path):
             self.runtime_config.whisper_model = None
@@ -131,14 +131,14 @@ class EngineManager:
             and self.runtime_config.engine == ENGINE_SHERPA_ONNX
         ):
             self.runtime_config.sherpa_model = None
-            self.runtime_config.engine = "auto"
+            self.runtime_config.engine = AUTO_ENGINE
             changed = True
         if (
             model_id == self.runtime_config.mlx_audio_model
             and self.runtime_config.engine == ENGINE_MLX_AUDIO
         ):
             self.runtime_config.mlx_audio_model = None
-            self.runtime_config.engine = "auto"
+            self.runtime_config.engine = AUTO_ENGINE
             changed = True
         if changed:
             self._apply()
@@ -163,9 +163,9 @@ class EngineManager:
             raise ValueError(f"Engine must be one of: {', '.join(VALID_ENGINES)}.")
         if not engine_runs_here(engine):
             raise ValueError(f"The {engine} engine runs only on {engine_requirement(engine)}.")
-        if device not in {"auto", "cpu", "cuda"}:
+        if device not in {AUTO_ENGINE, "cpu", "cuda"}:
             raise ValueError("Invalid compute device.")
-        if compute_type not in {"auto", "int8", "int8_float16", "float16", "float32"}:
+        if compute_type not in {AUTO_ENGINE, "int8", "int8_float16", "float16", "float32"}:
             raise ValueError("Invalid compute type.")
         if not 0 <= cpu_threads <= MAXIMUM_CPU_THREADS:
             raise ValueError("CPU threads must be between 0 and 256.")
@@ -204,9 +204,11 @@ def build_engine(
     model_manager: ModelManager,
 ) -> TranscriptionEngine:
     # A non-auto VOCAGATEWAY_ENGINE is an operator force-flag and must win over
-    # whatever the WebUI last persisted (including the default "auto" written
+    # whatever the WebUI last persisted (including the default AUTO_ENGINE written
     # into config.json). When the env is auto, honour the runtime choice.
-    engine = settings.engine if settings.engine != "auto" else runtime_config.engine or "auto"
+    engine = (
+        settings.engine if settings.engine != AUTO_ENGINE else runtime_config.engine or AUTO_ENGINE
+    )
     if engine == "vocamac":
         return _vocamac_engine(settings)
     if engine == "handy":
