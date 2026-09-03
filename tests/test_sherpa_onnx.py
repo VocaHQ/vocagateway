@@ -136,7 +136,7 @@ def _fake_recognizer_module(
     attr_name: str = "OfflineRecognizer",
 ) -> None:
     class Recognizer:
-        pass
+        """Minimal recognizer stub for constructor assertions."""
 
     def factory(cls: type[Recognizer], **kwargs: object) -> Recognizer:
         constructions.append(kwargs)
