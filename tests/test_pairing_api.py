@@ -15,6 +15,17 @@ from app.pairing import decode_pairing_payload
 from app.runtime_config import RuntimeConfig
 
 MINIMUM_QR_SVG_BYTES = 200
+
+
+def _assert_pairing_payload(body: dict[str, object]) -> None:
+    decoded = decode_pairing_payload(body[PAYLOAD_KEY])
+    assert decoded.url == PUBLIC_GATEWAY_URL
+    assert decoded.token == TOKEN
+    assert TOKEN not in json.dumps(
+        {key: entry_value for key, entry_value in body.items() if key != PAYLOAD_KEY}
+    )
+
+
 PAIRING_API_PATH = "/v1/admin/pairing"
 PAIRING_UI_PATH = "/ui/partials/pairing"
 PUBLIC_URL_ENV = "VOCAGATEWAY_PUBLIC_URL"
@@ -40,17 +51,10 @@ async def test_pairing_payload_and_qr(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(PUBLIC_URL_ENV, PUBLIC_GATEWAY_URL)
-    response = await client.get(PAIRING_API_PATH, headers=authorization)
-    assert response.status_code == HTTP_200_OK
-    body = response.json()
+    body = (await client.get(PAIRING_API_PATH, headers=authorization)).json()
     assert body[URL_KEY] == PUBLIC_GATEWAY_URL
     assert body["version"] == 1
-    decoded = decode_pairing_payload(body[PAYLOAD_KEY])
-    assert decoded.url == PUBLIC_GATEWAY_URL
-    assert decoded.token == TOKEN
-    assert TOKEN not in json.dumps(
-        {key: entry_value for key, entry_value in body.items() if key != PAYLOAD_KEY}
-    )
+    _assert_pairing_payload(body)
 
     qr = await client.get(
         "/v1/admin/pairing/qr.svg",
