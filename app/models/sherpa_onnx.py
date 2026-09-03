@@ -391,24 +391,25 @@ class SherpaOnnxEngine:
 def _read_wave_samples(audio_path: Path) -> tuple[int, Any]:
     """Read a PCM WAV file as the float waveform sherpa-onnx accepts.
 
-    numpy is a declared dependency of the `engines` extra, which is the only
-    way this engine is installed, so the vectorized conversion is always
-    available on the path that reaches this function. The list comprehension it
-    replaces built one Python float per sample, which is roughly half a million
-    short-lived objects for a 30-second recording.
+    numpy turns this into two vector operations instead of one Python float per
+    sample — roughly half a million short-lived objects for a 30-second clip —
+    but it arrives with the `engines` extra rather than the core install, and
+    the test suite runs without that extra. So the stdlib comprehension stays
+    as the fallback, exactly as `app.audio` keeps one for its RMS gate.
     """
-    import numpy
-
     with wave.open(str(audio_path), "rb") as source:
         if source.getsampwidth() != 2:
             raise ValueError("sherpa-onnx expects normalized 16-bit PCM WAV audio.")
         channels = source.getnchannels()
         sample_rate = source.getframerate()
         frames = source.readframes(source.getnframes())
-    samples = numpy.frombuffer(frames, dtype=numpy.int16)
-    if channels > 1:
-        samples = samples[::channels]
-    return sample_rate, samples.astype(numpy.float32) / PCM_SAMPLE_SCALE
+    try:
+        import numpy
+    except ImportError:
+        samples = memoryview(frames).cast("h")[::channels]
+        return sample_rate, [sample / PCM_SAMPLE_SCALE for sample in samples]
+    block = numpy.frombuffer(frames, dtype=numpy.int16)[::channels]
+    return sample_rate, block.astype(numpy.float32) / PCM_SAMPLE_SCALE
 
 
 def _decode_wave(recognizer: Any, audio_path: Path) -> str:

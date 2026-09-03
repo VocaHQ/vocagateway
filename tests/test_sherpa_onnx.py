@@ -646,3 +646,40 @@ def test_stream_adapter_does_not_repeat_ide_a() -> None:
     adapter.add_audio([0.2], NORMALIZED_SAMPLE_RATE_HZ)
 
     assert len(events) == 1
+
+
+@pytest.mark.parametrize("channels", [1, 2])
+def test_both_waveform_paths_agree(channels: int, tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """numpy only arrives with the `engines` extra, which CI does not install.
+
+    The vectorized path and the stdlib fallback have to hand sherpa-onnx the
+    same waveform, or the engine transcribes different audio depending on how
+    the gateway happened to be installed.
+    """
+    import builtins
+
+    from app.models.sherpa_onnx import _read_wave_samples
+
+    audio = tmp_path / "clip.wav"
+    frames = bytes(range(256)) * 8
+    with wave.open(str(audio), "wb") as writer:
+        writer.setnchannels(channels)
+        writer.setsampwidth(2)
+        writer.setframerate(16_000)
+        writer.writeframes(frames)
+
+    rate, vectorized = _read_wave_samples(audio)
+    assert rate == 16_000
+
+    real_import = builtins.__import__
+
+    def without_numpy(name: str, *arguments: object, **keywords: object) -> object:
+        if name == "numpy":
+            raise ImportError(name)
+        return real_import(name, *arguments, **keywords)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(builtins, "__import__", without_numpy)
+    _, fallback = _read_wave_samples(audio)
+
+    assert list(fallback) == pytest.approx(list(vectorized))
+    assert len(fallback) == len(frames) // 2 // channels
