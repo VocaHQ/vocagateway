@@ -162,15 +162,12 @@ async def test_handy_explicit_model_override_does_c5495(
     configured = "owner/configured/configured.gguf"
     selected = "owner/selected/selected.gguf"
     settings_file = tmp_path / "settings_store.json"
-    binary = tmp_path / HANDY_BINARY_NAME
-    binary.write_text("#!/bin/sh\nexit 0\n", encoding=UTF8_ENCODING)
-    binary.chmod(EXECUTABLE_FILE_MODE)
-    for model in (configured, selected):
-        _write_downloaded_model(tmp_path / CACHE_DIRECTORY_NAME, model)
+    _write_downloaded_model(tmp_path / CACHE_DIRECTORY_NAME, configured)
+    _write_downloaded_model(tmp_path / CACHE_DIRECTORY_NAME, selected)
     _write_selected_model(settings_file, selected)
 
     engine = HandyEngine(
-        binary,
+        _write_handy_binary(tmp_path, "#!/bin/sh\nexit 0\n"),
         configured,
         settings_file=settings_file,
         huggingface_cache=tmp_path / CACHE_DIRECTORY_NAME,
