@@ -117,10 +117,11 @@ down *args='':
 container-logs:
     docker compose logs --follow
 
-# Build the gateway image without starting anything
+# Build a gateway image without starting anything; `just image cuda` or `vulkan`
 [group('container')]
-image:
-    docker build --tag vocagateway:local \
+image accel='cpu':
+    docker build --tag vocagateway:{{ if accel == "cpu" { "local" } else { accel } }} \
+      --build-arg ACCEL={{ accel }} \
       --build-arg VOCAGATEWAY_GIT_COMMIT \
       --build-arg VOCAGATEWAY_GIT_COMMIT_SUBJECT \
       --build-arg VOCAGATEWAY_GIT_COMMIT_DATE \

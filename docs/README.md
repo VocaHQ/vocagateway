@@ -5,7 +5,7 @@ full `VOCAGATEWAY_*` table. These pages go deeper on one topic each.
 
 | Page | Read it when |
 | --- | --- |
-| [deployment.md](deployment.md) | Choosing between native macOS, native Linux, and Docker; running at login; backups; the `native`/`cuda`/`vulkan` Compose profiles; where the phone reaches the host |
+| [deployment.md](deployment.md) | Choosing between native macOS, native Linux, and Docker; running at login; backups; the portable CPU service and `cuda`/`vulkan` Compose profiles; where the phone reaches the host |
 | [configuration.md](configuration.md) | You need the exact value of a path, an environment variable, or the pairing QR payload |
 | [tailscale.md](tailscale.md) | You want private HTTPS to the gateway without opening a port |
 | [troubleshooting.md](troubleshooting.md) | Something is failing and you want the symptom, not the theory |

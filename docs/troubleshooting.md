@@ -162,12 +162,14 @@ request. Check:
   nor spreads a batch across hyperthread siblings that then hold it back
 - the container has not been assigned a fractional CPU quota
 - Tiny/Base is used before Small/Medium on low-power servers
-- for capable hardware, the `native`, `cuda`, or `vulkan` Compose profile is
-  running instead of the portable default
+- for an NVIDIA or Intel/AMD GPU, the matching `cuda` or `vulkan` Compose
+  profile is running; CPU hosts should use the portable default, which chooses
+  the best compiled CPU backend at runtime and needs no `native` profile
 
-Do not run multiple profile services together: they share port 8765 and the
-model volume. SenseVoice Small INT8 is the smallest portable multilingual
-choice, while Parakeet TDT INT8 covers 25 European languages with punctuation.
+Do not run the default, CUDA, and Vulkan services together: they share port 8765
+and the model volume. SenseVoice Small INT8 is the smallest portable
+multilingual choice, while Parakeet TDT INT8 covers 25 European languages with
+punctuation.
 
 If you need Whisper itself rather than one of the faster architectures, the
 choice is between two tiers, and it is a speed/accuracy trade rather than a

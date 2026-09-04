@@ -119,9 +119,9 @@ Docker Desktop cannot use macOS MLX / WhisperKit / Core ML. Host-only engines
 (`vocamac`, `handy`, `mlx-audio`, `whisperkit`) are hidden in the WebUI on Linux
 and in containers; API select is `422 invalid_engine`. Compose default publish is
 `127.0.0.1:8765`. `VOCAGATEWAY_NETWORK_MODE=host` is Linux Docker Engine only
-(not Docker Desktop) and ignores `VOCAGATEWAY_PUBLISH_HOST`/`PORT`. Profiles
-`native` / `cuda` / `vulkan` share the same port and `vocagateway-data` volume —
-run one service at a time.
+(not Docker Desktop) and ignores `VOCAGATEWAY_PUBLISH_HOST`/`PORT`. The default
+CPU service and the `cuda` / `vulkan` profile services share the same port and
+`vocagateway-data` volume — run one service at a time.
 
 ## Consumers
 
@@ -160,7 +160,7 @@ behind a reverse proxy at a **domain root**, not a subpath.
 | Workflow | When | What |
 | --- | --- | --- |
 | `quality.yml` | `app/`, `tests/`, `scripts/`, `pyproject.toml`, `uv.lock`, `compose.yaml` | ffmpeg, ruff, format `--check`, `mypy app`, pytest, compose config |
-| `container.yml` | `Dockerfile*`, `.dockerignore`, `pyproject.toml`, `uv.lock` | `docker buildx` of `Dockerfile` only (`cacheonly`; not CUDA/Vulkan) |
+| `container.yml` | `Dockerfile`, `.dockerignore`, `compose.yaml`, `pyproject.toml`, `uv.lock`, workflow | `docker buildx` CPU/CUDA/Vulkan matrix (representative CUDA architecture), CPU backend/runtime smoke test, all-profile Compose config |
 | `verify-model-pins.yml` | pin/catalog/harvester paths + weekly | `scripts/verify-model-pins.py` |
 | `deploy-pages.yml` | `web/**` on `main` | GitHub Pages |
 
@@ -177,7 +177,7 @@ hostnames. Diagnostics omit those. Keep `.env` and token files local.
 - Never commit or push to `main`. Do not merge PRs; wait for review.
 - PR body should match [`.github/pull_request_template.md`](.github/pull_request_template.md):
   **Summary** (what/why), **Verification** (`just test` or the equivalent ruff /
-  mypy / pytest / compose checks; container build if Dockerfiles or the lockfile
+  mypy / pytest / compose checks; container build if the Dockerfile or lockfile
   changed; docs if setup/network/config changed), **Privacy and security**
   checklist.
 - One logical change per PR.

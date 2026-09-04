@@ -1,28 +1,32 @@
 name: Container
 
 # Building the image compiles whisper.cpp from source, which is by far the most
-# expensive thing in CI. Nothing under app/ can break that build — the runtime
-# image only copies the package, it never imports it — so this runs on the files
-# that actually decide whether the image assembles: the Dockerfiles and the
-# dependency set they install.
+# expensive thing in CI. Application behavior is covered by the Quality
+# workflow; this one runs on the container definition and dependency inputs
+# that decide whether the image itself assembles. Its CPU smoke test then proves
+# the installed package starts and serves from that image.
+#
+# One Dockerfile now builds all three accelerator images, so a change to it can
+# break cuda or vulkan while cpu still succeeds. The matrix below builds each
+# one. They are the reason this belongs in CI rather than on a laptop. A
+# portable cuda image compiles kernels for a broad GPU architecture spread; the
+# matrix narrows its compile-only validation to one architecture because no GPU
+# executes the cache-only result. Release/operator builds keep the portable
+# Dockerfile default.
 on:
   push:
     branches: [main]
-    paths:
-      - 'Dockerfile*'
+    paths: &container-paths
+      - 'Dockerfile'
       - '.dockerignore'
+      - 'compose.yaml'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/container.yml'
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - 'Dockerfile*'
-      - '.dockerignore'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - '.github/workflows/container.yml'
+    paths: *container-paths
   workflow_dispatch:
 
 permissions:
@@ -33,28 +37,171 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  container:
+  build:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      # One accelerator failing says nothing about the others, and the cuda job
+      # is long enough that cancelling it on a fast vulkan failure wastes the
+      # whole run.
+      fail-fast: false
+      matrix:
+        include:
+          # The cpu image is the one every deployment gets by default, so it is
+          # also the one that is loaded and actually run below.
+          - accel: cpu
+            timeout: 40
+            smoke: true
+            reclaim-disk: false
+            build_jobs: 4
+            cmake_extra: ''
+          - accel: vulkan
+            timeout: 40
+            smoke: false
+            reclaim-disk: false
+            build_jobs: 4
+            cmake_extra: ''
+          # The CUDA devel/runtime bases and Python engine layers are still much
+          # larger than the other variants, so reclaim the runner's unused SDKs.
+          - accel: cuda
+            timeout: 40
+            smoke: false
+            reclaim-disk: true
+            build_jobs: 3
+            # Compiling every CUDA architecture dominates the job despite the
+            # image never running on a GPU. Ada is a representative real-code
+            # compile; CPU dispatch is already built and exercised above.
+            cmake_extra: >-
+              -DCMAKE_CUDA_ARCHITECTURES=89-real
+              -DGGML_CPU_ALL_VARIANTS=OFF
+    name: build (${{ matrix.accel }})
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
-      - name: Build gateway image
+
+      - name: Reclaim runner disk space
+        if: matrix.reclaim-disk
         run: |
-          # cacheonly skips exporting the assembled image to the local daemon.
-          # The question this job answers is whether the build succeeds, and
-          # nothing downstream runs the image.
+          # Preinstalled SDKs this build never touches. Worth ~25 GB, which is
+          # the difference between the cuda image building and the runner
+          # filling up partway through.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /usr/local/share/boost "${AGENT_TOOLSDIRECTORY}"
+          df -h /
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Build ${{ matrix.accel }} image
+        run: |
+          # A smoke-tested image has to reach the local daemon; the others only
+          # need to prove they assemble, so they stop at the cache.
+          if [ "${SMOKE}" = "true" ]; then
+            output="type=docker"
+          else
+            output="type=cacheonly"
+          fi
           # Only the sha is stamped here: a commit subject is attacker-supplied
           # text on a pull request, and expanding it into this shell would be an
           # injection. Release builds that publish an image add the subject from
           # a checkout instead.
           docker buildx build \
-            --tag vocagateway:test \
+            --tag "vocagateway:test-${ACCEL}" \
+            --build-arg "ACCEL=${ACCEL}" \
+            --build-arg "BUILD_JOBS=${BUILD_JOBS}" \
+            --build-arg "WHISPER_CMAKE_EXTRA=${CMAKE_EXTRA}" \
             --build-arg VOCAGATEWAY_GIT_COMMIT="${GITHUB_SHA}" \
-            --cache-from type=gha,scope=gateway \
-            --cache-to type=gha,mode=max,scope=gateway \
-            --output type=cacheonly \
+            --cache-from "type=gha,scope=gateway-${ACCEL}" \
+            --cache-to "type=gha,mode=max,scope=gateway-${ACCEL}" \
+            --output "${output}" \
             .
+        env:
+          ACCEL: ${{ matrix.accel }}
+          BUILD_JOBS: ${{ matrix.build_jobs }}
+          CMAKE_EXTRA: ${{ matrix.cmake_extra }}
+          SMOKE: ${{ matrix.smoke }}
+
+      # Everything below is the cpu image only. It is what a laptop build was
+      # being used to check by hand, and it catches the failures a successful
+      # `docker build` does not: a backend that is present but never loaded, a
+      # wheel that is missing its templates, a container that cannot start under
+      # the hardening compose applies.
+      - name: Check ggml loads a CPU backend variant
+        if: matrix.smoke
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            --output jfk.wav \
+            https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.9.1/samples/jfk.wav
+          curl --fail --location --silent --show-error \
+            --output ggml-tiny.en.bin \
+            https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin
+
+          docker run --rm --volume "${PWD}:/bench:ro" \
+            --entrypoint whisper-cli vocagateway:test-cpu \
+            -m /bench/ggml-tiny.en.bin -f /bench/jfk.wav -nt -t 2 -bs 2 -bo 2 \
+            > transcript.txt 2> backend.log || { cat backend.log; exit 1; }
+
+          grep 'load_backend: loaded CPU backend' backend.log
+
+          # GGML_CPU_ALL_VARIANTS exists so a portable image still runs the
+          # host's instruction set. A GitHub runner is well past Haswell, so
+          # loading the x64 baseline means dispatch silently regressed and every
+          # deployment is running scalar kernels.
+          if grep -q 'libggml-cpu-x64\.so' backend.log; then
+            echo "::error::ggml fell back to the baseline x64 CPU backend" >&2
+            cat backend.log >&2
+            exit 1
+          fi
+
+          grep -qi 'ask not what your country can do for you' transcript.txt
+
+      - name: Check the container serves under compose's hardening
+        if: matrix.smoke
+        run: |
+          set -euo pipefail
+          # The same restrictions compose.yaml applies, so a capability the
+          # gateway turns out to need fails here rather than on a deployment.
+          docker run --detach --name vg-smoke --publish 18765:8765 \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --tmpfs /tmp:size=64m,mode=1777 \
+            vocagateway:test-cpu
+
+          for _ in $(seq 1 30); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' vg-smoke)"
+            [ "${status}" = "healthy" ] && break
+            [ "${status}" = "unhealthy" ] && break
+            sleep 2
+          done
+
+          if [ "${status}" != "healthy" ]; then
+            echo "::error::container never became healthy (${status})" >&2
+            docker logs vg-smoke >&2
+            exit 1
+          fi
+
+          curl --fail --silent --show-error --output /dev/null http://127.0.0.1:18765/health/live
+          # The WebUI renders Jinja templates from the installed wheel, so a 200
+          # here is what proves the non-editable install carried app/templates.
+          curl --fail --silent --show-error --output /dev/null http://127.0.0.1:18765/
+
+      - name: Container logs
+        if: failure() && matrix.smoke
+        run: docker logs vg-smoke || true
+
+  compose:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate every profile interpolates
+        run: |
+          # `just compose` checks the default service. The profile services carry
+          # the device wiring, so they need naming explicitly to be parsed.
+          VOCAGATEWAY_TOKEN=test-token-with-at-least-thirty-two-characters \
+            docker compose --profile cuda --profile vulkan config --quiet
