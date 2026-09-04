@@ -89,9 +89,11 @@ services:
       args:
         <<: *gateway-build-args
         ACCEL: cuda
-    # `gpus` is the whole request; NVIDIA_VISIBLE_DEVICES is what the Container
-    # Toolkit sets from it, so naming it again in the environment adds nothing.
-    gpus: all
+    # Compose v2.32+ schema wants a device list. `count: all` still requests
+    # every GPU. Do not also set NVIDIA_VISIBLE_DEVICES; the toolkit fills it.
+    gpus:
+      - count: all
+        capabilities: [gpu]
 
   gateway-vulkan:
     <<: *gateway-service

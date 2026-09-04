@@ -20,7 +20,7 @@ from app import (
 )
 from app.tokens import TokenStore
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 TOKEN_FILE_HINT = "~/.config/vocagateway/token"
 BOOTSTRAP_TOKEN_ID = "bootstrap"
 
