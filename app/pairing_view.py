@@ -194,9 +194,9 @@ def resolve_pairing_url(ctx: GatewayContext, url: str | None) -> str:
         detail = "No phone-reachable gateway address was detected."
         unreachable = unreachable_pairing_override()
         if unreachable is not None:
-            key, value = unreachable
+            key, raw_value = unreachable
             detail = (
-                f"{detail} {key}={value} is loopback/link-local and cannot be used for pairing."
+                f"{detail} {key}={raw_value} is loopback/link-local and cannot be used for pairing."
             )
         detail = f"{detail} Set a phone-reachable VOCAGATEWAY_PUBLIC_URL and retry."
         raise APIProblem(
