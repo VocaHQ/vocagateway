@@ -111,6 +111,13 @@ class EngineStatus(BaseModel):
 
 
 class PathStatus(BaseModel):
+    """On-disk locations the gateway owns.
+
+    ``data_dir`` holds sessions, device tokens, and gateway-owned on-disk
+    data/logs. Desktop embedders must not place that tree under the host
+    app's Application Support (or equivalent) directory.
+    """
+
     data_dir: str
     models_dir: str
     config_file: str
@@ -183,6 +190,12 @@ class AdminStatusResponse(BaseModel):
     setup: SetupChecklist
     metrics: OperationalMetricsStatus
     readiness: ReadinessStatus
+    # Desktop embed: Pairable when a phone-reachable pairing URL exists;
+    # Ready-for-dictation when the engine can transcribe. Never includes the
+    # bearer token; clients decode that from GET /v1/admin/pairing's payload.
+    pairable: bool
+    pairing_url: str | None = None
+    ready_for_dictation: bool
 
 
 class AdminModelEntry(BaseModel):

@@ -284,6 +284,52 @@ class _AddressCollector:
             self.found.update(_Ipv4Policy.parse_ifconfig(command_result.stdout))
 
 
+def is_phone_reachable_gateway_url(url: str) -> bool:
+    """True when a phone on LAN/VPN can open this gateway base URL.
+
+    Rejects empty hosts, ``localhost``, IPv4/IPv6 loopback, link-local,
+    unspecified, and multicast. Non-IP hostnames (MagicDNS, custom DNS) pass.
+    """
+    host = urlparse(url).hostname
+    if not host:
+        return False
+    if host.lower() == "localhost":
+        return False
+    try:
+        ip_address = ipaddress.ip_address(host)
+    except ValueError:
+        return True
+    if isinstance(ip_address, ipaddress.IPv4Address):
+        return _Ipv4Policy.is_reachable(host)
+    blocked = (
+        ip_address.is_loopback
+        or ip_address.is_link_local
+        or ip_address.is_unspecified
+        or ip_address.is_multicast
+    )
+    return not blocked
+
+
+def unreachable_pairing_override() -> tuple[str, str] | None:
+    """Return ``(env_key, raw_value)`` when a pairing override is set but unusable.
+
+    Checks ``VOCAGATEWAY_PUBLIC_URL`` then ``VOCAGATEWAY_PAIRING_URL``. A value
+    that fails to normalize is skipped; a value that normalizes to a
+    non-phone-reachable URL is returned so callers can explain the misconfig.
+    """
+    for key in ("VOCAGATEWAY_PUBLIC_URL", "VOCAGATEWAY_PAIRING_URL"):
+        raw = os.environ.get(key, "").strip()
+        if not raw:
+            continue
+        try:
+            normalized = _GatewayUrls.normalize(raw)
+        except ValueError:
+            continue
+        if not is_phone_reachable_gateway_url(normalized):
+            return (key, raw)
+    return None
+
+
 class _GatewayDiscovery:
     @classmethod
     def discover(cls, port: int) -> list[str]:
@@ -323,9 +369,12 @@ class _GatewayDiscovery:
         if not configured_url:
             return None
         try:
-            return normalize_gateway_url(configured_url)
+            normalized = normalize_gateway_url(configured_url)
         except ValueError:
             return None
+        if not is_phone_reachable_gateway_url(normalized):
+            return None
+        return normalized
 
     @classmethod
     def _unique(cls, candidates: list[str]) -> list[str]:

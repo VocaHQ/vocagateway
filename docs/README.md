@@ -7,6 +7,7 @@ full `VOCAGATEWAY_*` table. These pages go deeper on one topic each.
 | --- | --- |
 | [deployment.md](deployment.md) | Choosing between native macOS, native Linux, and Docker; running at login; backups; the portable CPU service and `cuda`/`vulkan` Compose profiles; where the phone reaches the host |
 | [configuration.md](configuration.md) | You need the exact value of a path, an environment variable, or the pairing QR payload |
+| [desktop-embed.md](desktop-embed.md) | Embedding the gateway in a desktop app (Planned); Pairable vs Ready; Compose image pin; platform launch notes |
 | [tailscale.md](tailscale.md) | You want private HTTPS to the gateway without opening a port |
 | [troubleshooting.md](troubleshooting.md) | Something is failing and you want the symptom, not the theory |
 | [models.md](models.md) | Picking a model: all 58 in the catalog, what each speaks, and a reverse index from 108 languages back to the models that cover them |

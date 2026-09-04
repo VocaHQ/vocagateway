@@ -17,7 +17,9 @@ portability.
 - [Configuration paths and env vars](#configuration-paths-and-env-vars)
 
 Quick starts live in the [README](../README.md). This page is the longer form:
-what to choose, how to keep it running, and how the phone reaches it.
+what to choose, how to keep it running, and how the phone reaches it. For the
+Planned desktop-app embed contract (platform matrix, Pairable vs Ready, Compose
+image pin), see [desktop-embed.md](desktop-embed.md).
 
 ## Which deployment should I choose?
 

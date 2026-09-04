@@ -29,10 +29,11 @@ The public landing page is in [`web/`](web/) and deploys to
 [vocagateway.vocahq.com](https://vocagateway.vocahq.com/).
 
 Install it once on a machine you control, then pair phone clients to that host.
-Desktop embed is Planned. A shipped VocaLinux can already point its `remote_api`
-engine at `POST /v1/audio/transcriptions` on this host. You can self-host on
-macOS or Linux, or use Docker Compose on Linux `amd64`/`arm64`. There is no Voca
-account and no hosted Voca cloud.
+Desktop embed is Planned
+([docs/desktop-embed.md](docs/desktop-embed.md)). A shipped VocaLinux can already
+point its `remote_api` engine at `POST /v1/audio/transcriptions` on this host.
+You can self-host on macOS or Linux, or use Docker Compose on Linux
+`amd64`/`arm64`. There is no Voca account and no hosted Voca cloud.
 
 The gateway takes bounded recordings from
 [vocaphone](https://github.com/VocaHQ/vocaphone) (iOS/Android), and from
@@ -927,12 +928,13 @@ For backup, update, and native-vs-container guidance, continue with
 [deployment.md](docs/deployment.md). For pairing, paths, and env vars, see
 [configuration.md](docs/configuration.md). For failures, see
 [troubleshooting.md](docs/troubleshooting.md). The [docs index](docs/) lists
-all five pages.
+all six pages.
 
 ## The Voca family
 
 Directory: [vocahq.com](https://vocahq.com). [VocaPhone](https://vocaphone.vocahq.com)
-is the live consumer. Embedding this gateway in a desktop app stays Planned.
+is the live consumer. Embedding this gateway in a desktop app stays Planned;
+see [docs/desktop-embed.md](docs/desktop-embed.md) for the spike contract.
 
 | Product | Status | Website | Source |
 | --- | --- | --- | --- |
@@ -947,8 +949,8 @@ is the live consumer. Embedding this gateway in a desktop app stays Planned.
 | Project | How it uses this gateway |
 | --- | --- |
 | [vocaphone](https://github.com/VocaHQ/vocaphone) | Live consumer. Git submodule at `gateway/` for the iOS/Android clients |
-| [vocalinux](https://github.com/VocaHQ/vocalinux) | `remote_api` can POST audio to `/v1/audio/transcriptions` on this host. Embedding the gateway in the app is still Planned. |
-| [vocamac](https://github.com/VocaHQ/vocamac) / [vocawin](https://github.com/VocaHQ/vocawin) | Planned: ship and start the headless server from the desktop app |
+| [vocalinux](https://github.com/VocaHQ/vocalinux) | `remote_api` can POST audio to `/v1/audio/transcriptions` on this host. Embedding the gateway in the app is still Planned ([docs/desktop-embed.md](docs/desktop-embed.md)). |
+| [vocamac](https://github.com/VocaHQ/vocamac) / [vocawin](https://github.com/VocaHQ/vocawin) | Planned: ship and start the headless server from the desktop app ([docs/desktop-embed.md](docs/desktop-embed.md)) |
 
 ### VocaLinux `remote_api`
 

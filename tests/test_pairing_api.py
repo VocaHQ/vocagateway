@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 import pytest
 from conftest import TOKEN, FakeEngine, FakeNormalizer
-from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED
+from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_503_SERVICE_UNAVAILABLE
 
 from app.config import Settings
 from app.main import create_app
@@ -91,6 +91,21 @@ TOKENS_API_PATH = "/v1/admin/tokens"
 LABEL_KEY = "label"
 TOKEN_ID_KEY = "token_id"
 IDENTIFIER_KEY = "id"
+
+
+@pytest.mark.asyncio
+async def test_pairing_rejects_loopback_public_url(
+    client: httpx.AsyncClient,
+    authorization: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(PUBLIC_URL_ENV, "http://127.0.0.1:8765")
+    monkeypatch.setattr("app.pairing_view.discover_gateway_base_urls", lambda port: [])
+
+    response = await client.get(PAIRING_API_PATH, headers=authorization)
+    assert response.status_code == HTTP_503_SERVICE_UNAVAILABLE
+    detail = response.text.lower()
+    assert "loopback" in detail or "public_url" in detail or "vocagateway_public_url" in detail
 
 
 @pytest.mark.asyncio
