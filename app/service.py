@@ -260,13 +260,13 @@ class _EnginePass:
         return outcome, normalization_ms, engine
 
     async def _infer(self, normalized: Path) -> tuple[EngineTranscription, TranscriptionEngine]:
-        engine = self.service._engine_provider.current()
-        inference_started = time.monotonic()
-        raw_result = await engine.transcribe(
-            normalized,
-            TranscriptionOptions(language=self.language, style=self.style),
-        )
-        return _Pipeline.engine_outcome(raw_result, inference_started), engine
+        async with self.service._engine_provider.lease() as engine:
+            inference_started = time.monotonic()
+            raw_result = await engine.transcribe(
+                normalized,
+                TranscriptionOptions(language=self.language, style=self.style),
+            )
+            return _Pipeline.engine_outcome(raw_result, inference_started), engine
 
 
 class _TranscriptionJob[JobResult](ABC):

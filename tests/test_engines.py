@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from app.catalog import CatalogModel
 from app.config import Settings
 from app.engines import EngineManager
 from app.model_manager import ModelManager
+from app.models.base import EngineHealth, TranscriptionOptions
 from app.models.mlx_audio import MLXAudioEngine
 from app.models.sherpa_onnx import SherpaOnnxEngine
 from app.runtime_config import RuntimeConfig
@@ -21,6 +23,27 @@ WHISPER_BINARY_NAME = "whisper-cli"
 WHISPER_MODEL_NAME = "whisper.bin"
 MISSING_HANDY_BINARY_NAME = "no-handy"
 MISSING_VOCAMAC_APP_NAME = "no-vocamac"
+IDLE_AFTER_DEADLINE_SECONDS = 601
+
+
+class ResidentFakeEngine:
+    def __init__(self) -> None:
+        self.loaded = True
+        self.unload_calls = 0
+
+    @property
+    def model_is_resident(self) -> bool:
+        return self.loaded
+
+    def unload(self) -> None:
+        self.loaded = False
+        self.unload_calls += 1
+
+    async def health(self) -> EngineHealth:
+        return EngineHealth(ready=True, name="resident-fake")
+
+    async def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> str:
+        return "unused"
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -112,6 +135,32 @@ def test_model_selection_builds_new_engine_aa(
     assert runtime.engine == catalog_model.engine
     assert getattr(runtime, config_field) == catalog_model.id
     assert getattr(RuntimeConfig.load(config_path), config_field) == catalog_model.id
+
+
+async def test_idle_offload_waits_for_active_model_lease(tmp_path: Path) -> None:
+    runtime = RuntimeConfig(idle_offload_enabled=True, idle_offload_minutes=10)
+    manager = EngineManager(
+        _settings(tmp_path),
+        runtime,
+        tmp_path / "config.json",
+        ModelManager(tmp_path / MODELS_DIRECTORY),
+    )
+    resident = ResidentFakeEngine()
+    manager._engine = resident
+    after_deadline = time.monotonic() + IDLE_AFTER_DEADLINE_SECONDS
+
+    async with manager.lease():
+        assert manager.offload_if_idle(now=after_deadline) is False
+
+    after_lease_deadline = time.monotonic() + IDLE_AFTER_DEADLINE_SECONDS
+    assert manager.offload_if_idle(now=after_lease_deadline) is True
+    assert resident.unload_calls == 1
+    assert manager.model_is_offloaded is True
+
+    async with manager.lease():
+        resident.loaded = True
+
+    assert manager.model_is_offloaded is False
 
 
 def test_whisper_model_selection_keeps_catalog_output_contract(tmp_path: Path) -> None:

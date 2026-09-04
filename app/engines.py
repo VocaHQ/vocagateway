@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import time
+from collections.abc import AsyncIterator
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
 from types import MappingProxyType
 from typing import Protocol
@@ -35,6 +38,8 @@ _MODEL_ATTRS = MappingProxyType(
 class EngineProvider(Protocol):
     def current(self) -> base.TranscriptionEngine: ...
 
+    def lease(self) -> AbstractAsyncContextManager[base.TranscriptionEngine]: ...
+
 
 class StaticEngineProvider:
     """Wraps a fixed engine (used by tests and the cleanup CLI)."""
@@ -45,9 +50,17 @@ class StaticEngineProvider:
     def current(self) -> base.TranscriptionEngine:
         return self._engine
 
+    @asynccontextmanager
+    async def lease(self) -> AsyncIterator[base.TranscriptionEngine]:
+        yield self._engine
+
 
 def close_engine(engine: base.TranscriptionEngine) -> None:
     """Release optional persistent resources owned by an engine."""
+    unload = getattr(engine, "unload", None)
+    if callable(unload):
+        unload()
+        return
     close = getattr(engine, "close", None)
     if callable(close):
         close()
@@ -311,9 +324,21 @@ class EngineManager:
         self.model_manager = model_manager
         self._builder = _EngineBuilder(settings, model_manager)
         self._engine = self._builder.build(runtime_config)
+        self._active_leases = 0
+        self._last_used_at = time.monotonic()
+        self._model_was_offloaded = False
 
     def current(self) -> base.TranscriptionEngine:
         return self._engine
+
+    @asynccontextmanager
+    async def lease(self) -> AsyncIterator[base.TranscriptionEngine]:
+        self._active_leases += 1
+        engine = self._engine
+        try:
+            yield engine
+        finally:
+            self._finish_lease()
 
     async def health(self) -> base.EngineHealth:
         return await self._engine.health()
@@ -324,6 +349,7 @@ class EngineManager:
             raise KeyError(model_id)
         self._builder.resolver.apply_model(self.runtime_config, model_id, str(path))
         self._engine = self._builder.swap(self._engine, self.runtime_config, self.config_path)
+        self._model_was_offloaded = False
 
     def forget_if_active(self, model_id: str) -> None:
         path = self.model_manager.installed_path(model_id)
@@ -338,16 +364,31 @@ class EngineManager:
         device: str | None = None,
         compute_type: str | None = None,
         cpu_threads: int | None = None,
+        idle_offload_enabled: bool | None = None,
+        idle_offload_minutes: int | None = None,
     ) -> None:
         rc = self.runtime_config
         dev = rc.compute_device if device is None else device
         ctype = rc.compute_type if compute_type is None else compute_type
         threads = rc.cpu_threads if cpu_threads is None else cpu_threads
+        offload_enabled = (
+            rc.idle_offload_enabled if idle_offload_enabled is None else idle_offload_enabled
+        )
+        offload_minutes = (
+            rc.idle_offload_minutes if idle_offload_minutes is None else idle_offload_minutes
+        )
         self._builder.validate(engine, dev, ctype, threads)
+        if offload_minutes not in runtime_config.IDLE_OFFLOAD_MINUTES:
+            valid_minutes = ", ".join(
+                str(minutes) for minutes in runtime_config.IDLE_OFFLOAD_MINUTES
+            )
+            raise ValueError(f"Idle offload minutes must be one of: {valid_minutes}.")
         rc.engine = engine
         rc.compute_device = dev
         rc.compute_type = ctype
         rc.cpu_threads = threads
+        rc.idle_offload_enabled = offload_enabled
+        rc.idle_offload_minutes = offload_minutes
         if engine != catalog.ENGINE_WHISPER_CPP:
             rc.whisper_model = None
         if engine != catalog.ENGINE_WHISPERKIT:
@@ -359,11 +400,41 @@ class EngineManager:
         if engine != catalog.ENGINE_MLX_AUDIO:
             rc.mlx_audio_model = None
         self._engine = self._builder.swap(self._engine, rc, self.config_path)
+        self._model_was_offloaded = False
 
     def update_performance(self, device: str, compute_type: str, cpu_threads: int) -> None:
         self.configure(self.runtime_config.engine, device, compute_type, cpu_threads)
 
     set_engine = configure
+
+    @property
+    def model_is_offloaded(self) -> bool:
+        return self._model_was_offloaded
+
+    def offload_if_idle(self, *, now: float | None = None) -> bool:
+        rc = self.runtime_config
+        engine = self._resident_engine()
+        if not rc.idle_offload_enabled or engine is None or self._active_leases:
+            return False
+        current_time = time.monotonic() if now is None else now
+        maximum_idle = rc.idle_offload_minutes * 60
+        if current_time - self._last_used_at < maximum_idle:
+            return False
+        engine.unload()
+        self._model_was_offloaded = True
+        return True
+
+    def _resident_engine(self) -> base.MemoryResidentEngine | None:
+        engine = self._engine
+        if isinstance(engine, base.MemoryResidentEngine) and engine.model_is_resident:
+            return engine
+        return None
+
+    def _finish_lease(self) -> None:
+        self._active_leases -= 1
+        self._last_used_at = time.monotonic()
+        if self._resident_engine() is not None:
+            self._model_was_offloaded = False
 
 
 def build_engine(

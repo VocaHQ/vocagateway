@@ -33,6 +33,16 @@ class TranscriptionEngine(Protocol):
     ) -> str | EngineTranscription: ...
 
 
+@runtime_checkable
+class MemoryResidentEngine(Protocol):
+    """An engine that owns a loaded model which can be released and reloaded."""
+
+    @property
+    def model_is_resident(self) -> bool: ...
+
+    def unload(self) -> None: ...
+
+
 class AudioNormalizer(Protocol):
     async def normalize(self, source: Path, destination: Path, maximum_seconds: int) -> Path: ...
 

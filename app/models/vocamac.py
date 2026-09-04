@@ -498,3 +498,10 @@ class VocaMacEngine:
         self._delegate_path = None
         if delegate is not None:
             delegate.close()
+
+    @property
+    def model_is_resident(self) -> bool:
+        return self._delegate is not None and self._delegate.model_is_resident
+
+    def unload(self) -> None:
+        self.close()

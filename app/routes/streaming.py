@@ -28,12 +28,13 @@ WRITING_STYLES = frozenset(("raw", "clean", "formal", "casual", "very_casual", "
 
 class _StreamGate:
     @classmethod
-    async def engine_or_close(cls, websocket: WebSocket) -> StreamingEngine | None:
+    async def engine_or_close(
+        cls, websocket: WebSocket, selected_engine: TranscriptionEngine
+    ) -> StreamingEngine | None:
         ctx: context.GatewayContext = websocket.app.state.ctx
         if not ctx.token_is_valid(websocket.headers.get("authorization")):
             await websocket.close(code=WEBSOCKET_UNAUTHORIZED_CODE, reason="Unauthorized")
             return None
-        selected_engine = ctx.engine_provider.current()
         if isinstance(selected_engine, StreamingEngine) and selected_engine.supports_streaming:
             return await cls._ready_or_close(websocket, selected_engine)
         await cls._reject_unsupported(websocket, selected_engine)
@@ -251,7 +252,9 @@ async def stream_transcription(websocket: WebSocket) -> None:
     `stop` works here — currently Moonshine and the sherpa-onnx streaming
     zipformer model.
     """
-    engine = await _StreamGate.engine_or_close(websocket)
-    if engine is None:
-        return
-    await _StreamSession(websocket, engine).run()
+    ctx: context.GatewayContext = websocket.app.state.ctx
+    async with ctx.engine_provider.lease() as selected_engine:
+        engine = await _StreamGate.engine_or_close(websocket, selected_engine)
+        if engine is None:
+            return
+        await _StreamSession(websocket, engine).run()

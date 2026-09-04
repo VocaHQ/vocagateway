@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.runtime_config import AUTO_ENGINE
+from app.runtime_config import AUTO_ENGINE, DEFAULT_IDLE_OFFLOAD_MINUTES
 
 MAXIMUM_LANGUAGE_TAG_LENGTH = 20
 MINIMUM_CUSTOM_MODEL_URL_LENGTH = 12
@@ -71,7 +71,9 @@ class ReadinessResponse(BaseModel):
     engine_ready: bool
     engine: str
     probe_age_seconds: float
-    warmup_state: Literal["pending", "warming", "complete", "unsupported", "unavailable", "failed"]
+    warmup_state: Literal[
+        "pending", "warming", "complete", "unsupported", "unavailable", "failed", "offloaded"
+    ]
 
 
 class ModelResponse(BaseModel):
@@ -157,7 +159,9 @@ class OperationalMetricsStatus(BaseModel):
 
 class ReadinessStatus(BaseModel):
     probe_age_seconds: float
-    warmup_state: Literal["pending", "warming", "complete", "unsupported", "unavailable", "failed"]
+    warmup_state: Literal[
+        "pending", "warming", "complete", "unsupported", "unavailable", "failed", "offloaded"
+    ]
     warmed_bytes: int
 
 
@@ -206,6 +210,7 @@ class AdminModelEntry(BaseModel):
     language_codes: list[str] = []
     state: Literal["installed", "downloading", "not_installed"]
     active: bool
+    offloaded: bool = False
     recommended: bool
     progress: float | None = None
     downloaded_bytes: int | None = None
@@ -271,6 +276,8 @@ class ConfigResponse(BaseModel):
     compute_device: str = AUTO_ENGINE
     compute_type: str = AUTO_ENGINE
     cpu_threads: int = 0
+    idle_offload_enabled: bool = False
+    idle_offload_minutes: int = DEFAULT_IDLE_OFFLOAD_MINUTES
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -292,6 +299,10 @@ class ConfigUpdateRequest(BaseModel):
         Literal["auto"], AUTO_ENGINE
     )
     cpu_threads: int = Field(default=0, ge=0, le=MAXIMUM_CPU_THREADS)
+    idle_offload_enabled: bool = False
+    idle_offload_minutes: Literal[10, 15, 30, 60, 120] = cast(
+        Literal[10, 15, 30, 60, 120], DEFAULT_IDLE_OFFLOAD_MINUTES
+    )
 
 
 class SelectModelResponse(BaseModel):

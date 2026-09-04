@@ -375,6 +375,13 @@ class SherpaOnnxEngine:
                 total += entry.stat().st_size
         return total
 
+    @property
+    def model_is_resident(self) -> bool:
+        return self._recognizer is not None
+
+    def unload(self) -> None:
+        self._recognizer = None
+
     async def _ensure_recognizer(self) -> tuple[Any, bool]:
         if self._recognizer is not None:
             return self._recognizer, False

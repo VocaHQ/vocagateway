@@ -263,7 +263,7 @@
 
   document.body.addEventListener("htmx:beforeSwap", (event) => {
     const target = event.detail && event.detail.target;
-    // Download / Select / Cancel / poll refresh replace #models-list; keep open families.
+    // Download / Load / Cancel / poll refresh replace #models-list; keep open families.
     if (target && target.id === "models-list") {
       window.__openModelFamilies = openFamilyNames();
       // Every swap here collapses all families back to the default and then

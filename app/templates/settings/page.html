@@ -46,6 +46,26 @@
     <p id="threads-hint" class="muted small settings-hint">0 means automatic
        thread count. INT8 is usually fastest on Linux CPUs. VocaMac and Handy
        reuse those Mac apps and their own models.</p>
+    <div class="memory-policy">
+      <label class="memory-policy-toggle" for="idle-offload-enabled">
+        <input id="idle-offload-enabled" name="idle_offload_enabled" type="checkbox"
+               value="true"{% if config.idle_offload_enabled %} checked{% endif %} />
+        <span>
+          <strong>Offload model when idle</strong>
+          <small>Release supported resident models from memory after no transcription activity.</small>
+        </span>
+      </label>
+      <label class="settings-field memory-policy-timeout">
+        <span>Idle time</span>
+        <select name="idle_offload_minutes">
+          {% for value, label in idle_offload_options %}
+          <option value="{{ value }}"{% if value == config.idle_offload_minutes %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <p class="muted small settings-hint">The next transcription loads an offloaded model again.
+       One-shot engines such as Handy and whisper.cpp do not keep a model resident.</p>
     <div class="row settings-actions">
       <button type="submit" class="primary">Apply</button>
     </div>

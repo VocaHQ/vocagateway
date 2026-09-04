@@ -40,3 +40,25 @@ def test_new_model_selections_round_trip(tmp_path: Path) -> None:
     original.save(path)
 
     assert RuntimeConfig.load(path) == original
+
+
+def test_idle_offload_policy_round_trips(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    original = RuntimeConfig(idle_offload_enabled=True, idle_offload_minutes=30)
+
+    original.save(path)
+
+    assert RuntimeConfig.load(path) == original
+
+
+def test_invalid_idle_offload_policy_uses_safe_defaults(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    path.write_text(
+        json.dumps({"idle_offload_enabled": "yes", "idle_offload_minutes": 1}),
+        encoding="utf-8",
+    )
+
+    loaded = RuntimeConfig.load(path)
+
+    assert loaded.idle_offload_enabled is False
+    assert loaded.idle_offload_minutes == 15

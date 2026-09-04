@@ -69,6 +69,13 @@ class MoonshineEngine:
                 total += entry.stat().st_size
         return total
 
+    @property
+    def model_is_resident(self) -> bool:
+        return self._transcriber is not None
+
+    def unload(self) -> None:
+        self._transcriber = None
+
     async def transcribe(
         self, audio_path: Path, options: TranscriptionOptions
     ) -> EngineTranscription:

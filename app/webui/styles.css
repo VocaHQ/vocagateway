@@ -2272,6 +2272,10 @@ html[data-theme="dark"] .filter-toggle:has(input:checked) { color: var(--accent)
   border-color: #f0b4ae;
   background: var(--error-wash);
 }
+.badge.offloaded {
+  color: var(--muted);
+  border-color: var(--line-strong);
+}
 
 /* ------------------------------------------------------------------- controls */
 
@@ -2372,6 +2376,33 @@ select {
   color: var(--text);
 }
 .settings-hint { margin: 0 0 4px; max-width: 40rem; }
+.memory-policy {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 14px 24px;
+  margin: 18px 0 10px;
+  padding-top: 18px;
+  max-width: 640px;
+  border-top: 1px solid var(--line-soft);
+}
+.memory-policy-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1 1 360px;
+  cursor: pointer;
+}
+.memory-policy-toggle input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+.memory-policy-toggle span { display: grid; gap: 3px; }
+.memory-policy-toggle strong { font-size: 0.94rem; }
+.memory-policy-toggle small { color: var(--muted); line-height: 1.45; }
+.memory-policy-timeout { flex: 0 1 180px; }
 .settings-engine-result { margin-top: 12px; }
 .settings-actions { margin-top: 14px; }
 .settings-facts { margin-top: 12px; }

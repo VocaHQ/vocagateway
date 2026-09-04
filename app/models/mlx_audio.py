@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import platform
 import time
+from importlib import import_module
 from importlib import util as importlib_util
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,18 @@ class MLXAudioEngine:
             return 0
         await self._ensure_model()
         return _directory_size(self.model_root) if self.model_root else 0
+
+    @property
+    def model_is_resident(self) -> bool:
+        return self._model is not None
+
+    def unload(self) -> None:
+        self._model = None
+        try:
+            mlx_core = import_module("mlx.core")
+        except ImportError:
+            return
+        mlx_core.clear_cache()
 
     async def transcribe(
         self, audio_path: Path, options: TranscriptionOptions

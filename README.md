@@ -824,6 +824,17 @@ so its first-load cost is included in each request; older WhisperKit-only
 VocaMac builds retain the persistent compatibility path. Handy and
 `whisper.cpp` retain the filesystem-prefetch warmup behavior.
 
+Choosing **Load** on a downloaded model waits for that warmup before the Models
+view reports it active, so resident engines do not defer their model load to the
+first transcription. In **Settings → Speech engine**, **Offload model when idle**
+can release a resident model after 10, 15, 30, 60, or 120 minutes without a
+transcription. It is off by default. The selected model stays selected and loads
+again automatically on the next transcription. Active batch and streaming jobs
+hold a model lease, so the idle monitor never unloads an engine in use. The
+setting does not apply to one-shot Handy, current VocaMac headless, or
+`whisper.cpp` processes because those engines do not keep a model resident in the
+gateway process.
+
 ## Docker performance profiles
 
 Only run one gateway service at a time. Every profile publishes the same port
