@@ -297,6 +297,11 @@ async def test_status_reports_system_and_setup(
     }
     assert isinstance(payload[METRICS_KEY]["history"], list)
     assert payload["readiness"]["warmup_state"] == "pending"
+    assert "pairable" in payload
+    assert "pairing_url" in payload
+    assert "ready_for_dictation" in payload
+    assert payload["ready_for_dictation"] is False
+    assert TOKEN not in response.text
 
 
 async def test_models_list_contains_catalog(

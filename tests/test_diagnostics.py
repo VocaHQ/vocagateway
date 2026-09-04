@@ -61,6 +61,9 @@ def _status(paths: schemas.PathStatus) -> schemas.AdminStatusResponse:
         readiness=schemas.ReadinessStatus(
             probe_age_seconds=1.0, warmup_state="complete", warmed_bytes=0
         ),
+        pairable=True,
+        pairing_url="http://192.168.1.20:8765",
+        ready_for_dictation=True,
     )
 
 

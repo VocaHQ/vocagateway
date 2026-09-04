@@ -9,12 +9,15 @@ from app.pairing import (
     _parse_ifconfig_ipv4_addresses,
     decode_pairing_payload,
     default_pairing_url,
+    discover_gateway_base_urls,
     encode_pairing_payload,
     is_ambient_lan_address,
+    is_phone_reachable_gateway_url,
     normalize_gateway_input,
     primary_gateway_base_url,
     qr_ascii_for_payload,
     qr_svg_for_payload,
+    unreachable_pairing_override,
 )
 
 DEFAULT_GATEWAY_PORT = 8765
@@ -31,6 +34,40 @@ def test_is_ambient_lan_address_matches_pri_aa() -> None:
     assert is_ambient_lan_address("http://10.0.0.5:8765") is True
     assert is_ambient_lan_address("http://172.16.5.5:8765") is True
     assert is_ambient_lan_address("http://100.101.102.103:8765") is True  # Tailscale/CGNAT
+
+
+def test_is_phone_reachable_gateway_url() -> None:
+    assert is_phone_reachable_gateway_url(LOCAL_GATEWAY_URL) is True
+    assert is_phone_reachable_gateway_url("http://homelab.example:8765") is True
+    assert is_phone_reachable_gateway_url("http://100.101.102.103:8765") is True
+    assert is_phone_reachable_gateway_url("http://127.0.0.1:8765") is False
+    assert is_phone_reachable_gateway_url("http://127.1:8765") is False
+    assert is_phone_reachable_gateway_url("http://LOCALHOST:8765") is False
+    assert is_phone_reachable_gateway_url("http://localhost.localdomain:8765") is False
+    assert is_phone_reachable_gateway_url("http://[::1]:8765") is False
+    assert is_phone_reachable_gateway_url("http://[::ffff:127.0.0.1]:8765") is False
+    assert is_phone_reachable_gateway_url("http://[fe80::1]:8765") is False
+    assert is_phone_reachable_gateway_url("http://169.254.1.1:8765") is False
+
+
+def test_discover_rejects_short_loopback_public_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(PUBLIC_URL_ENVIRONMENT_VARIABLE, "http://127.1:8765")
+    assert "http://127.1:8765" not in discover_gateway_base_urls(DEFAULT_GATEWAY_PORT)
+    assert "http://127.0.0.1:8765" not in discover_gateway_base_urls(DEFAULT_GATEWAY_PORT)
+
+
+def test_discover_rejects_loopback_public_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(PUBLIC_URL_ENVIRONMENT_VARIABLE, "http://127.0.0.1:8765")
+    assert "http://127.0.0.1:8765" not in discover_gateway_base_urls(DEFAULT_GATEWAY_PORT)
+
+
+def test_unreachable_pairing_override_reports_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(PUBLIC_URL_ENVIRONMENT_VARIABLE, "http://127.0.0.1:8765")
+    monkeypatch.delenv("VOCAGATEWAY_PAIRING_URL", raising=False)
+    assert unreachable_pairing_override() == (
+        PUBLIC_URL_ENVIRONMENT_VARIABLE,
+        "http://127.0.0.1:8765",
+    )
 
 
 def test_is_ambient_lan_address_leaves_host_aaa() -> None:

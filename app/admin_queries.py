@@ -9,6 +9,7 @@ from app.build_info import current_commit
 from app.catalog import catalog_source_url, language_names, recommended_ids
 from app.context import BOOTSTRAP_TOKEN_ID, TOKEN_FILE_HINT, VERSION, GatewayContext
 from app.engine_state import active_model_path, available_engines, engine_id
+from app.pairing import default_pairing_url, is_phone_reachable_gateway_url
 from app.serializers import metrics_status, model_covers
 from app.system import detect_system
 
@@ -290,6 +291,11 @@ async def status_payload(ctx: GatewayContext) -> schemas.AdminStatusResponse:
     readiness_details = await ctx.readiness.details()
     state = readiness_details.health
     metrics = ctx.service.metrics.snapshot(sample=True)
+    pairing_url = default_pairing_url(
+        ctx.settings.port, saved_pairing_url=ctx.pairing_config.pairing_url
+    )
+    if pairing_url is not None and not is_phone_reachable_gateway_url(pairing_url):
+        pairing_url = None
     return schemas.AdminStatusResponse(
         version=VERSION,
         commit=helper.build_commit_status(),
@@ -322,6 +328,9 @@ async def status_payload(ctx: GatewayContext) -> schemas.AdminStatusResponse:
             warmup_state=readiness_details.warmup_state,
             warmed_bytes=readiness_details.warmed_bytes,
         ),
+        pairable=pairing_url is not None,
+        pairing_url=pairing_url,
+        ready_for_dictation=bool(state.ready),
     )
 
 

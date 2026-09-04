@@ -36,11 +36,15 @@ License: [AGPL-3.0](../LICENSE). Contact: [hello@vocahq.com](mailto:hello@vocahq
 | --- | --- |
 | `~/.config/vocagateway/token` | Bootstrap bearer token (mode `600` on first run) |
 | `~/.config/vocagateway/config.json` | WebUI engine/model choice and saved pairing URLs |
-| `~/.local/share/vocagateway/` | Application data (sessions DB and related files) |
+| `~/.local/share/vocagateway/` | Application data (sessions DB, device tokens, and gateway-owned data/logs under `VOCAGATEWAY_DATA_DIR`) |
 | `~/.local/share/vocagateway/models` | Downloaded models (`VOCAGATEWAY_MODELS_DIR` default) |
 
 Docker Compose mounts the same layout under `/data` in the
 `vocagateway_vocagateway-data` named volume (token via Compose secret).
+
+Desktop embedders must keep gateway data/logs under `data_dir` (default
+`~/.local/share/vocagateway`). Never relocate that tree into a host app's
+Application Support directory. See [desktop-embed.md](desktop-embed.md).
 
 ## QR pairing payload
 
@@ -156,4 +160,5 @@ HTTPS needs a certificate the desktop OS trusts.
 
 - [README](../README.md) — quick starts and full configuration table
 - [deployment.md](deployment.md) — native vs Compose operations
+- [desktop-embed.md](desktop-embed.md): Planned desktop embed contract (Pairable vs Ready, Compose pin)
 - [troubleshooting.md](troubleshooting.md) — 401 and readiness failures

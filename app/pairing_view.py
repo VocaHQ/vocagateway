@@ -11,9 +11,11 @@ from app.pairing import (
     discover_gateway_base_urls,
     encode_pairing_payload,
     is_ambient_lan_address,
+    is_phone_reachable_gateway_url,
     normalize_gateway_input,
     primary_gateway_base_url,
     qr_svg_for_payload,
+    unreachable_pairing_override,
 )
 
 
@@ -186,14 +188,28 @@ def resolve_pairing_url(ctx: GatewayContext, url: str | None) -> str:
     candidates = discover_gateway_base_urls(ctx.settings.port)
     if url:
         try:
-            return normalize_gateway_input(url, ctx.settings.port)
+            normalized = normalize_gateway_input(url, ctx.settings.port)
         except ValueError as error:
             raise APIProblem(HTTP_400_BAD_REQUEST, "invalid_pairing_url", str(error)) from error
+        if not is_phone_reachable_gateway_url(normalized):
+            raise APIProblem(
+                HTTP_400_BAD_REQUEST,
+                "invalid_pairing_url",
+                "Pairing URL must be phone-reachable (not loopback or link-local).",
+            )
+        return normalized
     if not candidates:
+        detail = "No phone-reachable gateway address was detected."
+        unreachable = unreachable_pairing_override()
+        if unreachable is not None:
+            key, raw_value = unreachable
+            detail = (
+                f"{detail} {key}={raw_value} is loopback/link-local and cannot be used for pairing."
+            )
+        detail = f"{detail} Set a phone-reachable VOCAGATEWAY_PUBLIC_URL and retry."
         raise APIProblem(
             HTTP_503_SERVICE_UNAVAILABLE,
             "pairing_unavailable",
-            "No phone-reachable gateway address was detected. "
-            "Set VOCAGATEWAY_PUBLIC_URL and retry.",
+            detail,
         )
     return candidates[0]
