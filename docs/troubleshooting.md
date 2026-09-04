@@ -116,7 +116,10 @@ also requires `whisperkit-cli` on `PATH`; update VocaMac to follow other model
 families.
 
 With `VOCAGATEWAY_ENGINE=whisper.cpp`, also check
-`$VOCAGATEWAY_WHISPER_BINARY` and `$VOCAGATEWAY_WHISPER_MODEL`.
+`$VOCAGATEWAY_WHISPER_BINARY` and `$VOCAGATEWAY_WHISPER_MODEL`. Transcription
+itself does not need `whisper-server`; a missing or unstartable worker only
+costs speed, because the engine falls back to one `whisper-cli` run per
+request.
 
 Check `VOCAGATEWAY_ENGINE` itself before going further. Any value other than
 `auto` pins the engine for the whole process and overrides the WebUI's saved
@@ -153,8 +156,15 @@ Use the Pair & test tab's three-run benchmark, which reports the warm
 second/third run. Model load should be zero after the first persistent-engine
 request. Check:
 
-- the active engine is `sherpa-onnx`, Moonshine, or `faster-whisper`, not the
-  per-request `whisper.cpp` CLI
+- the active engine is `sherpa-onnx`, Moonshine, `faster-whisper`, or a
+  `whisper.cpp` model served by the resident worker. The benchmark's warm runs
+  should report a model load of zero; a load cost on every run means the worker
+  is not up and each request is paying a fresh `whisper-cli` start. `ps` inside
+  the container should show a `whisper-server` child process, and
+  `whisper-server` has to exist beside the configured `whisper-cli` (the images
+  ship both in `/usr/local/bin`, or point `VOCAGATEWAY_WHISPER_SERVER_BINARY` at
+  it). Restart the gateway after replacing the binaries so warmup starts the
+  worker again
 - Precision is INT8 and CPU threads is 0 or no higher than the effective CPU
   allocation shown on Overview. Leave it at 0 unless you are deliberately
   capping the gateway: 0 means the engine counts the host's physical cores,

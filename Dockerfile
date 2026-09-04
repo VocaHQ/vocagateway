@@ -117,6 +117,7 @@ RUN curl --fail --location --show-error \
 # The default target is built rather than `--target whisper-cli`: the variant
 # backends are standalone dlopen'd modules that nothing links against, so a
 # whisper-cli-only build would produce a binary with no CPU backend to load.
+# It also yields whisper-server, the resident worker the gateway prefers.
 RUN --mount=type=cache,id=ccache-${ACCEL},target=/root/.cache/ccache \
     cmake -S . -B build \
       -DCMAKE_BUILD_TYPE=Release \
@@ -137,11 +138,14 @@ RUN --mount=type=cache,id=ccache-${ACCEL},target=/root/.cache/ccache \
 
 # Sort the build output the way the runtime expects it: the linked libraries
 # onto the loader path, the dlopen'd backends into GGML_BACKEND_DIR. Only
-# whisper-cli is taken from the examples; the rest of the default target is
-# build fallout.
+# whisper-cli and whisper-server are taken from the examples; the rest of the
+# default target is build fallout. whisper-server is what keeps the model and
+# the accelerator context resident between requests — the gateway starts it on
+# a private loopback port and falls back to whisper-cli when it is missing, so
+# both have to come from this one build.
 RUN set -eu; \
     mkdir -p /out/bin /out/lib/ggml; \
-    cp build/bin/whisper-cli /out/bin/; \
+    cp build/bin/whisper-cli build/bin/whisper-server /out/bin/; \
     for lib in build/bin/*.so*; do \
       case "${lib##*/}" in \
         libggml-cpu*|libggml-blas*|libggml-cuda*|libggml-vulkan*) \
