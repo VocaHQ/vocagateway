@@ -7,7 +7,12 @@ from typing import Any
 import httpx
 import pytest
 from conftest import TOKEN, FakeEngine, FakeNormalizer
-from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_503_SERVICE_UNAVAILABLE
+from starlette.status import (
+    HTTP_200_OK,
+    HTTP_400_BAD_REQUEST,
+    HTTP_401_UNAUTHORIZED,
+    HTTP_503_SERVICE_UNAVAILABLE,
+)
 
 from app.config import Settings
 from app.main import create_app
@@ -91,6 +96,20 @@ TOKENS_API_PATH = "/v1/admin/tokens"
 LABEL_KEY = "label"
 TOKEN_ID_KEY = "token_id"
 IDENTIFIER_KEY = "id"
+
+
+
+@pytest.mark.asyncio
+async def test_pairing_rejects_loopback_query_url(
+    client: httpx.AsyncClient,
+    authorization: dict[str, str],
+) -> None:
+    response = await client.get(
+        PAIRING_API_PATH,
+        headers=authorization,
+        params={URL_KEY: "http://127.1:8765"},
+    )
+    assert response.status_code == HTTP_400_BAD_REQUEST
 
 
 @pytest.mark.asyncio

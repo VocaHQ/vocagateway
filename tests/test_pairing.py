@@ -41,10 +41,19 @@ def test_is_phone_reachable_gateway_url() -> None:
     assert is_phone_reachable_gateway_url("http://homelab.example:8765") is True
     assert is_phone_reachable_gateway_url("http://100.101.102.103:8765") is True
     assert is_phone_reachable_gateway_url("http://127.0.0.1:8765") is False
+    assert is_phone_reachable_gateway_url("http://127.1:8765") is False
     assert is_phone_reachable_gateway_url("http://LOCALHOST:8765") is False
+    assert is_phone_reachable_gateway_url("http://localhost.localdomain:8765") is False
     assert is_phone_reachable_gateway_url("http://[::1]:8765") is False
+    assert is_phone_reachable_gateway_url("http://[::ffff:127.0.0.1]:8765") is False
     assert is_phone_reachable_gateway_url("http://[fe80::1]:8765") is False
     assert is_phone_reachable_gateway_url("http://169.254.1.1:8765") is False
+
+
+def test_discover_rejects_short_loopback_public_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(PUBLIC_URL_ENVIRONMENT_VARIABLE, "http://127.1:8765")
+    assert "http://127.1:8765" not in discover_gateway_base_urls(DEFAULT_GATEWAY_PORT)
+    assert "http://127.0.0.1:8765" not in discover_gateway_base_urls(DEFAULT_GATEWAY_PORT)
 
 
 def test_discover_rejects_loopback_public_url(monkeypatch: pytest.MonkeyPatch) -> None:

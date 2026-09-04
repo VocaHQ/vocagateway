@@ -38,7 +38,10 @@ decode `payload` to recover `{v,url,token}`. Optional
 
 `VOCAGATEWAY_PUBLIC_URL` (alias `VOCAGATEWAY_PAIRING_URL`) must be a
 phone-reachable, non-loopback base URL. The gateway drops loopback and
-link-local overrides from discovery, and the QR never encodes loopback. Set
+link-local overrides from discovery (including short-form loopback like
+`127.1` and `localhost.*`). Pairing encode paths (`/v1/admin/pairing`,
+`qr.svg`, and explicit `?url=`) reject the same hosts, so the QR never
+encodes loopback. Set
 the override whenever auto-discovery would otherwise advertise an address the
 phone cannot open (Docker bridge, reverse proxy, Tailscale Serve hostname).
 

@@ -287,20 +287,22 @@ class _AddressCollector:
 def is_phone_reachable_gateway_url(url: str) -> bool:
     """True when a phone on LAN/VPN can open this gateway base URL.
 
-    Rejects empty hosts, ``localhost``, IPv4/IPv6 loopback, link-local,
-    unspecified, and multicast. Non-IP hostnames (MagicDNS, custom DNS) pass.
+    Rejects empty hosts, ``localhost`` / ``localhost.*``, abbreviated IPv4
+    loopback (``127.1``), IPv4/IPv6 loopback, link-local, unspecified, and
+    multicast. Other non-IP hostnames (MagicDNS, custom DNS) pass without DNS
+    lookup.
     """
     host = urlparse(url).hostname
     if not host:
         return False
-    if host.lower() == "localhost":
+    lowered = host.lower()
+    if lowered == "localhost" or lowered.startswith("localhost."):
         return False
-    try:
-        ip_address = ipaddress.ip_address(host)
-    except ValueError:
+    ip_address = _parse_gateway_host_ip(host)
+    if ip_address is None:
         return True
     if isinstance(ip_address, ipaddress.IPv4Address):
-        return _Ipv4Policy.is_reachable(host)
+        return _Ipv4Policy.is_reachable(str(ip_address))
     blocked = (
         ip_address.is_loopback
         or ip_address.is_link_local
@@ -308,6 +310,21 @@ def is_phone_reachable_gateway_url(url: str) -> bool:
         or ip_address.is_multicast
     )
     return not blocked
+
+
+def _parse_gateway_host_ip(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """Parse a URL host as an IP, including short-form IPv4 that ``ip_address`` rejects."""
+    try:
+        return ipaddress.ip_address(host)
+    except ValueError:
+        return _parse_short_ipv4_host(host)
+
+
+def _parse_short_ipv4_host(host: str) -> ipaddress.IPv4Address | None:
+    try:
+        return ipaddress.IPv4Address(socket.inet_aton(host))
+    except OSError:
+        return None
 
 
 def unreachable_pairing_override() -> tuple[str, str] | None:
@@ -350,6 +367,8 @@ class _GatewayDiscovery:
 
     @classmethod
     def _keep_saved(cls, port: int, saved_pairing_url: str) -> bool:
+        if not is_phone_reachable_gateway_url(saved_pairing_url):
+            return False
         if not is_ambient_lan_address(saved_pairing_url):
             return True
         return saved_pairing_url in cls.discover(port)
