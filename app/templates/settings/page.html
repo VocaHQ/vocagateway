@@ -1,3 +1,4 @@
+{% from "macros/native_requirements.html" import transcribe_requirement %}
 <div class="page-head">
   <div>
     <h2>Settings</h2>
@@ -11,6 +12,9 @@
   </div>
   <p class="muted">Local engine that transcribes audio. Choosing a model under
      Models usually sets this for you. Only engines this machine can run are listed.</p>
+  {% if "transcribe.cpp" in config.available_engines %}
+  {{ transcribe_requirement() }}
+  {% endif %}
   <form hx-put="/ui/partials/config" hx-target="#engine-result" hx-swap="innerHTML">
     <div class="settings-grid">
       <label class="settings-field">
