@@ -157,6 +157,8 @@ the model resident in that worker instead of reloading it for every clip; see
 
 Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and FFmpeg on the host.
 
+Run `just doctor` to check available host tools.
+
 ```sh
 # Debian / Ubuntu
 sudo apt install ffmpeg

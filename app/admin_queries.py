@@ -7,13 +7,18 @@ from typing import Any
 from app import schemas
 from app.build_info import current_commit
 from app.catalog import catalog_source_url, language_names, recommended_ids
+from app.config import Settings
 from app.context import BOOTSTRAP_TOKEN_ID, TOKEN_FILE_HINT, VERSION, GatewayContext
 from app.engine_state import active_model_path, available_engines, engine_id
 from app.runtime_config import DEFAULT_IDLE_OFFLOAD_MINUTES
 from app.serializers import metrics_status, model_covers
-from app.system import detect_system
+from app.system import SystemInfo, detect_system
 
 PYTHON_PACKAGE_PATH = "Python package"
+PYTHON_ENGINE_INSTALL_HINT = "Install vocagateway[engines] or use the Docker image"
+# One engine paired with the single runtime it needs.
+_EngineRuntime = tuple[str, schemas.DependencyStatus]
+
 
 SIZE_FILTER_CAPS: MappingProxyType[str, int] = MappingProxyType(
     {
@@ -23,6 +28,147 @@ SIZE_FILTER_CAPS: MappingProxyType[str, int] = MappingProxyType(
         "1500mb": 1_500_000_000,
     }
 )
+
+
+class _EngineRuntimes:
+    """Per-engine runtime availability: one entry per engine the catalog ships.
+
+    Both the Overview "Libraries & tools" tiles and the per-model warning read
+    this, so a card can never claim a runtime the panel says is installed.
+    Model weights are deliberately not part of the check: this answers "can this
+    host run the engine at all", which is what a download decision turns on.
+    """
+
+    def __init__(self, system: SystemInfo, settings: Settings) -> None:
+        self.system = system
+        self.settings = settings
+        self._cached: dict[str, schemas.DependencyStatus] | None = None
+
+    def tiles(self) -> list[schemas.DependencyStatus]:
+        return list(self._tiles.values())
+
+    def missing(self, engine: str) -> schemas.DependencyStatus | None:
+        """The unmet runtime behind an engine, or None when it can run here."""
+        status = self._tiles.get(engine)
+        return None if status is None or status.available else status
+
+    def entry_fields(self, engine: str) -> dict[str, str | None]:
+        """The AdminModelEntry warning fields for an engine, empty when it runs."""
+        unmet = self.missing(engine)
+        if unmet is None:
+            return {}
+        return {"runtime_requirement": unmet.name, "runtime_hint": unmet.install_hint}
+
+    @property
+    def _tiles(self) -> dict[str, schemas.DependencyStatus]:
+        """Probe on first use, once per request.
+
+        Not cached beyond that on purpose: an operator who pip-installs an
+        engine and reloads the page has to see it turn from Missing to
+        Installed, which a process-lifetime cache would prevent.
+        """
+        if self._cached is None:
+            self._cached = dict(self._build())
+        return self._cached
+
+    def _build(self) -> list[_EngineRuntime]:
+        is_mac = self.system.os_name == "Darwin"
+        silicon = self.system.is_apple_silicon
+        return [
+            *self._binary_tiles(is_mac),
+            *self._package_tiles(silicon),
+            *self._app_tiles(is_mac, silicon),
+        ]
+
+    def _binary_tiles(self, is_mac: bool) -> list[_EngineRuntime]:
+        whisper_hint = (
+            "brew install whisper-cpp"
+            if is_mac
+            else "Included in Docker or build whisper.cpp from source"
+        )
+        return [
+            (
+                "whisper.cpp",
+                schemas.DependencyStatus(
+                    name="whisper.cpp CLI",
+                    available=self.system.whisper_cpp_path is not None,
+                    path=self.system.whisper_cpp_path,
+                    install_hint=whisper_hint,
+                ),
+            ),
+        ]
+
+    def _package_tiles(self, silicon: bool) -> list[_EngineRuntime]:
+        mlx_ready = silicon and importlib_util.find_spec("mlx_audio") is not None
+        mlx_hint = (
+            "Install vocagateway[apple]" if silicon else "Available only on Apple-silicon Macs"
+        )
+        tiles = [
+            (engine, self._package_status(label, module))
+            for engine, label, module in (
+                ("faster-whisper", "faster-whisper", "faster_whisper"),
+                ("moonshine", "Moonshine Voice", "moonshine_voice"),
+                ("sherpa-onnx", "sherpa-onnx", "sherpa_onnx"),
+            )
+        ]
+        tiles.append(
+            (
+                "mlx-audio",
+                schemas.DependencyStatus(
+                    name="MLX Audio",
+                    available=mlx_ready,
+                    path=PYTHON_PACKAGE_PATH if mlx_ready else None,
+                    install_hint=mlx_hint,
+                ),
+            )
+        )
+        return tiles
+
+    def _package_status(self, label: str, module: str) -> schemas.DependencyStatus:
+        installed = importlib_util.find_spec(module) is not None
+        return schemas.DependencyStatus(
+            name=label,
+            available=installed,
+            path=PYTHON_PACKAGE_PATH if installed else None,
+            install_hint=PYTHON_ENGINE_INSTALL_HINT,
+        )
+
+    def _app_tiles(self, is_mac: bool, silicon: bool) -> list[_EngineRuntime]:
+        wk_hint = "brew install whisperkit-cli" if is_mac else "Available only on Apple platforms"
+        vocamac_hint = (
+            "https://github.com/jatinkrmalik/vocamac"
+            if silicon
+            else "Available only on Apple silicon Macs"
+        )
+        return [
+            (
+                "whisperkit",
+                schemas.DependencyStatus(
+                    name="WhisperKit CLI",
+                    available=self.system.whisperkit_cli_path is not None,
+                    path=self.system.whisperkit_cli_path,
+                    install_hint=wk_hint,
+                ),
+            ),
+            (
+                "handy",
+                schemas.DependencyStatus(
+                    name="Handy app",
+                    available=self.system.handy_installed,
+                    path=str(self.settings.handy_binary) if self.system.handy_installed else None,
+                    install_hint="https://handy.computer" if is_mac else "Available only on macOS",
+                ),
+            ),
+            (
+                "vocamac",
+                schemas.DependencyStatus(
+                    name="VocaMac app",
+                    available=self.system.vocamac_installed,
+                    path=str(self.settings.vocamac_app) if self.system.vocamac_installed else None,
+                    install_hint=vocamac_hint,
+                ),
+            ),
+        ]
 
 
 class _SystemDependencyHelper:
@@ -35,42 +181,26 @@ class _SystemDependencyHelper:
             handy_binary=self.settings.handy_binary,
             vocamac_app=self.settings.vocamac_app,
         )
+        self.runtimes = _EngineRuntimes(self.system, self.settings)
 
     def build_dependencies(self) -> list[schemas.DependencyStatus]:
         is_mac = self.system.os_name == "Darwin"
         ffmpeg_hint = (
             "brew install ffmpeg" if is_mac else "Install FFmpeg with your Linux package manager"
         )
-        whisper_hint = (
-            "brew install whisper-cpp"
-            if is_mac
-            else "Included in Docker or build whisper.cpp from source"
+        ffmpeg = schemas.DependencyStatus(
+            name="FFmpeg",
+            available=self.system.ffmpeg_path is not None,
+            path=self.system.ffmpeg_path,
+            install_hint=ffmpeg_hint,
         )
-        deps = [
-            schemas.DependencyStatus(
-                name="FFmpeg",
-                available=self.system.ffmpeg_path is not None,
-                path=self.system.ffmpeg_path,
-                install_hint=ffmpeg_hint,
-            ),
-            schemas.DependencyStatus(
-                name="whisper.cpp CLI",
-                available=self.system.whisper_cpp_path is not None,
-                path=self.system.whisper_cpp_path,
-                install_hint=whisper_hint,
-            ),
-        ]
-        deps.extend(self._python_dependencies())
-        deps.extend(self._app_dependencies(is_mac))
-        return deps
+        return [ffmpeg, *self.runtimes.tiles()]
 
-    def build_checklist(
-        self, dependencies: list[schemas.DependencyStatus], ready: bool
-    ) -> schemas.SetupChecklist:
+    def build_checklist(self, ready: bool) -> schemas.SetupChecklist:
         return schemas.SetupChecklist(
             token_configured=True,
             ffmpeg_available=self.system.ffmpeg_path is not None,
-            engine_binary_available=any(dep.available for dep in dependencies[1:]),
+            engine_binary_available=any(tile.available for tile in self.runtimes.tiles()),
             model_installed=bool(self.ctx.manager.installed())
             or (self.ctx.engine_manager is not None and ready),
             engine_ready=ready,
@@ -93,68 +223,6 @@ class _SystemDependencyHelper:
         version = self.system.os_version
         return f"{name} {version}"
 
-    def _python_dependencies(self) -> list[schemas.DependencyStatus]:
-        silicon = self.system.is_apple_silicon
-        mlx_ready = silicon and importlib_util.find_spec("mlx_audio") is not None
-        mlx_hint = (
-            "Install vocagateway[apple]" if silicon else "Available only on Apple-silicon Macs"
-        )
-        return [
-            schemas.DependencyStatus(
-                name="faster-whisper",
-                available=importlib_util.find_spec("faster_whisper") is not None,
-                path=PYTHON_PACKAGE_PATH if importlib_util.find_spec("faster_whisper") else None,
-                install_hint="Install vocagateway[engines] or use the Docker image",
-            ),
-            schemas.DependencyStatus(
-                name="Moonshine Voice",
-                available=importlib_util.find_spec("moonshine_voice") is not None,
-                path=PYTHON_PACKAGE_PATH if importlib_util.find_spec("moonshine_voice") else None,
-                install_hint="Install vocagateway[engines] or use the Docker image",
-            ),
-            schemas.DependencyStatus(
-                name="sherpa-onnx",
-                available=importlib_util.find_spec("sherpa_onnx") is not None,
-                path=PYTHON_PACKAGE_PATH if importlib_util.find_spec("sherpa_onnx") else None,
-                install_hint="Install vocagateway[engines] or use the Docker image",
-            ),
-            schemas.DependencyStatus(
-                name="MLX Audio",
-                available=mlx_ready,
-                path=PYTHON_PACKAGE_PATH if mlx_ready else None,
-                install_hint=mlx_hint,
-            ),
-        ]
-
-    def _app_dependencies(self, is_mac: bool) -> list[schemas.DependencyStatus]:
-        silicon = self.system.is_apple_silicon
-        wk_hint = "brew install whisperkit-cli" if is_mac else "Available only on Apple platforms"
-        vocamac_hint = (
-            "https://github.com/jatinkrmalik/vocamac"
-            if silicon
-            else "Available only on Apple silicon Macs"
-        )
-        return [
-            schemas.DependencyStatus(
-                name="WhisperKit CLI",
-                available=self.system.whisperkit_cli_path is not None,
-                path=self.system.whisperkit_cli_path,
-                install_hint=wk_hint,
-            ),
-            schemas.DependencyStatus(
-                name="Handy app",
-                available=self.system.handy_installed,
-                path=str(self.settings.handy_binary) if self.system.handy_installed else None,
-                install_hint="https://handy.computer" if is_mac else "Available only on macOS",
-            ),
-            schemas.DependencyStatus(
-                name="VocaMac app",
-                available=self.system.vocamac_installed,
-                path=str(self.settings.vocamac_app) if self.system.vocamac_installed else None,
-                install_hint=vocamac_hint,
-            ),
-        ]
-
 
 _ModelState = tuple[str, float | None, str | None]
 
@@ -168,6 +236,7 @@ class _ModelEntryHelper:
             handy_binary=ctx.settings.handy_binary,
             vocamac_app=ctx.settings.vocamac_app,
         )
+        self.runtimes = _EngineRuntimes(self.system, ctx.settings)
         self.recommended = recommended_ids(self.system)
         self.installed = {model.id: model for model in ctx.manager.installed()}
         self.active_path = active_model_path(ctx)
@@ -234,6 +303,7 @@ class _ModelEntryHelper:
             retired=model.retired,
             replacement_id=model.replacement_id,
             retirement_reason=model.retirement_reason,
+            **self.runtimes.entry_fields(model.engine),
         )
 
     def build_custom_entry(self, custom: Any) -> schemas.AdminModelEntry:
@@ -256,6 +326,7 @@ class _ModelEntryHelper:
                 and self.ctx.engine_manager.model_is_offloaded
             ),
             recommended=False,
+            **self.runtimes.entry_fields(custom.engine),
         )
 
     def filter_by_criteria(
@@ -327,7 +398,7 @@ async def status_payload(ctx: GatewayContext) -> schemas.AdminStatusResponse:
         ),
         bind_host=ctx.settings.bind_host,
         port=ctx.settings.port,
-        setup=helper.build_checklist(dependencies, state.ready),
+        setup=helper.build_checklist(state.ready),
         metrics=metrics_status(metrics),
         readiness=schemas.ReadinessStatus(
             probe_age_seconds=round(readiness_details.checked_age_seconds, 3),

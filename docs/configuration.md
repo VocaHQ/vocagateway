@@ -96,8 +96,8 @@ variable. `compose.yaml` forwards only the keys it names, so a variable marked
 
 `VOCAGATEWAY_ENGINE` accepts `auto`, `sherpa-onnx`, `faster-whisper`,
 `moonshine`, `whisper.cpp`, `mlx-audio`, `whisperkit`, `vocamac`, or `handy`.
-Only the first five run in the Linux container, and only the value's spelling is
-checked at startup — the host check that answers `422 invalid_engine` in the
+Only the first five run in the Linux container, and only the value's spelling
+is checked at startup — the host check that answers `422 invalid_engine` in the
 WebUI and on `PUT /v1/admin/config` does not apply here. A macOS-only engine
 pinned through the variable on Linux starts fine and leaves `/health/ready` at
 `503`.

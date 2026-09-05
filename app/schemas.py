@@ -219,6 +219,11 @@ class AdminModelEntry(BaseModel):
     retired: bool = False
     replacement_id: str | None = None
     retirement_reason: str | None = None
+    # Set when this host cannot run the model's engine yet, naming the runtime
+    # that is missing and how to install it. Downloading stays allowed - the
+    # weights are still correct, so the card warns rather than hiding the button.
+    runtime_requirement: str | None = None
+    runtime_hint: str | None = None
 
 
 class CustomDownloadRequest(BaseModel):

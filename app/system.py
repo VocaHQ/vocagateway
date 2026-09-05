@@ -138,6 +138,14 @@ class _EngineHost:
 class _SysProbe:
     @classmethod
     def resolve_binary(cls, binary: str) -> str | None:
+        """An operator's binary setting resolved to a path, or None if absent.
+
+        `shutil.which` alone is not enough: it neither expands `~` nor accepts a
+        file without the execute bit, so an engine probing with it would report
+        "not installed" for a binary the Libraries panel just showed as present.
+        Every caller — the panel, the model cards, and the engines themselves —
+        must resolve through here so they cannot disagree.
+        """
         candidate = Path(binary).expanduser()
         if candidate.is_file():
             return str(candidate)

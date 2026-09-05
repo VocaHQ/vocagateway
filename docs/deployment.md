@@ -9,6 +9,7 @@ portability.
 
 - [Which deployment should I choose?](#which-deployment-should-i-choose)
   - [Recommendation](#recommendation)
+- [Host tool requirements](#host-tool-requirements)
 - [Native macOS deployment](#native-macos-deployment) — [install](#install-and-run) · [run at login](#run-at-login)
 - [Native Linux deployment](#native-linux-deployment) — [install](#install-and-run-1) · [systemd user service](#run-as-a-systemd-user-service)
 - [Docker Compose deployment](#docker-compose-deployment) — [prerequisites](#prerequisites) · [first model](#first-model) · [routine operations](#routine-operations) · [backup](#persistent-data-and-backup) · [performance profiles](#performance-profiles) · [Vulkan GPU access](#giving-the-vulkan-container-access-to-the-gpu) · [build tuning](#tuning-the-whispercpp-build)
@@ -53,6 +54,20 @@ Pair & test tab's three-run benchmark. It treats run 1 as model warmup/load and
 reports the warm average of runs 2 and 3. Compare inference time and real-time factor,
 not only end-to-end time.
 
+## Host tool requirements
+
+Python packages in `pyproject.toml` / `uv.lock` are installed by `uv sync` or
+`just install`. Native executables are separate host requirements:
+
+| Tool | Required when | Installation |
+| --- | --- | --- |
+| Python 3.12+ and uv | Every native deployment | Native quick starts below |
+| FFmpeg | Every engine; normalizes recordings | `brew install ffmpeg` or `sudo apt install ffmpeg` |
+| `whisper-cli` | Selecting `whisper.cpp` | Homebrew `whisper-cpp`, or an upstream native build |
+| `whisper-server` | Keeping `whisper.cpp` resident | Same whisper.cpp build as `whisper-cli`; optional fallback to CLI |
+| `whisperkit-cli` | Standalone WhisperKit on macOS | `brew install whisperkit-cli` |
+
+Run `just doctor` to check the host tools.
 ## Native macOS deployment
 
 ### Install and run

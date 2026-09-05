@@ -99,3 +99,73 @@ async def test_mlx_rejects_a_language_the_model_c_aa(tmp_path: Path) -> None:
             tmp_path / "unused.wav",
             TranscriptionOptions(language="hi", style="raw"),
         )
+
+
+@pytest.mark.parametrize("requested", ["auto", "hinglish_roman"])
+async def test_roman_output_uses_hindi_decoder_and_rejects_script_leakage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, requested: str
+) -> None:
+    """`decoder_language_code` support in the MLX adapter, mirroring whisper.cpp.
+
+    No shipped MLX model sets the field today - the Roman-Hindi fine-tunes that
+    did were dropped for accuracy - so the contract is pinned to a synthetic
+    entry rather than to whichever catalog model happens to carry it.
+    """
+    from dataclasses import replace
+
+    from app.catalog import DEFAULT_CATALOG
+    from app.models.base import EngineHealth
+
+    model = replace(
+        next(entry for entry in DEFAULT_CATALOG if entry.engine == "mlx-audio"),
+        language_codes=("hinglish_roman",),
+        decoder_language_code="hi",
+    )
+    engine = MLXAudioEngine(tmp_path, model)
+    calls = []
+
+    class FakeModel:
+        text = "Aaj office jaana hai"
+
+        def generate(self, audio: str, *, language: str):
+            calls.append(language)
+            return types.SimpleNamespace(text=self.text)
+
+    fake = FakeModel()
+
+    async def ready():
+        return EngineHealth(ready=True, name="test")
+
+    async def loaded():
+        return fake, 0
+
+    monkeypatch.setattr(engine, "health", ready)
+    monkeypatch.setattr(engine, "_ensure_model", loaded)
+    options = TranscriptionOptions(requested, "raw")
+    result = await engine.transcribe(tmp_path / "audio.wav", options)
+    assert result.text == fake.text
+    assert calls == ["hi"]
+    fake.text = "Aaj office में jaana hai"
+    with pytest.raises(LanguageUnsupportedError, match="writing system"):
+        await engine.transcribe(tmp_path / "audio.wav", options)
+    with pytest.raises(LanguageUnsupportedError, match="does not support en"):
+        await engine.transcribe(tmp_path / "audio.wav", TranscriptionOptions("en", "raw"))
+
+
+@pytest.mark.parametrize("language", ["auto", "fr-FR"])
+def test_granite_language_hint_keeps_transcription(tmp_path: Path, language: str) -> None:
+    from app.catalog import DEFAULT_CATALOG
+    from app.models.mlx_audio import _generate_text
+
+    model = next(entry for entry in DEFAULT_CATALOG if entry.key == "granite-speech-4.1-2b")
+    engine = MLXAudioEngine(tmp_path, model)
+
+    class FakeModel:
+        def generate(self, audio: str, *, language: str | None = None, prompt: str | None = None):
+            assert language in {None, "fr"}
+            assert prompt == "transcribe the speech with proper punctuation and capitalization."
+            return types.SimpleNamespace(text="Bonjour")
+
+    assert _generate_text(
+        FakeModel(), tmp_path / "audio.wav", language, engine._transcription_prompt()
+    )

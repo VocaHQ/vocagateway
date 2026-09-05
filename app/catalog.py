@@ -74,9 +74,7 @@ MULTILINGUAL = "Multilingual"
 BASE_MODEL_VARIANT = "Base"
 MOONSHINE_BASE_SIZE_MB = "141"
 FAST_BATCH_QUALITY = "Fast · batch"
-TINY_MODEL_SIZE_MB = "75"
 FASTEST_QUALITY = "Fastest"
-BASE_MODEL_SIZE_MB = "145"
 FAST_QUALITY = "Fast"
 BALANCED_QUALITY = "Balanced"
 MOST_ACCURATE_QUALITY = "Most accurate"
@@ -131,6 +129,17 @@ WHISPER_TURBO_RETIREMENT_REASON = (
     "and up to 2 behind on German — but Medium trails both, so nothing here is given up."
 )
 HINGLISH_MODEL_SIZE_BYTES = 574_041_195
+
+MODEL_SAFETENSORS = "model.safetensors"
+JOINER_INT8_FILE = "joiner.int8.onnx"
+NEMO_TRANSDUCER_TYPE = "nemo_transducer"
+STREAMING_TRANSDUCER_TYPE = "streaming_zipformer"
+COHERE_TRANSCRIBE_TYPE = "cohere_transcribe"
+ENGLISH_CODES = (ENGLISH_LANGUAGE_CODE,)
+GRANITE_MULTILINGUAL_SIZE_BYTES = 4_636_316_308
+PARAKEET_UNIFIED_SIZE_BYTES = 663_043_117
+PARAKEET_UNIFIED_STREAMING_SIZE_BYTES = 663_048_978
+COHERE_SIZE_BYTES = 2_888_052_036
 
 # Qwen3-ASR's upstream card lists 30 languages plus Chinese dialects. The
 # dialects are represented by the model's Mandarin/`yue` capability rather
@@ -205,6 +214,9 @@ class CatalogModel:
     # value is not a token understood by the decoder (for example, Roman
     # Hinglish is requested as `hinglish_roman` but Whisper expects `hi`).
     decoder_language_code: str | None = None
+    # Instruction some autoregressive models need in order to transcribe rather
+    # than answer or translate. Passed only when the adapter's generate() takes it.
+    decoder_prompt: str | None = None
     apple_silicon_only: bool = False
     detects_language_automatically: bool = False
     retired: bool = False
@@ -282,7 +294,7 @@ class _WhisperModelBuilders:
 
     @classmethod
     def whisper_language_codes(cls, languages: str) -> tuple[str, ...]:
-        return (ENGLISH_LANGUAGE_CODE,) if languages == ENGLISH_ONLY else WHISPER_LANGUAGES
+        return ENGLISH_CODES if languages == ENGLISH_ONLY else WHISPER_LANGUAGES
 
     @classmethod
     def whisper_cpp(
@@ -315,6 +327,7 @@ class _WhisperModelBuilders:
                 kwargs.get("language_codes") or cls.whisper_language_codes(cls._languages(args))
             ),
             decoder_language_code=kwargs.get("decoder_language_code"),
+            decoder_prompt=kwargs.get("decoder_prompt"),
             license_name=str(kwargs.get("license_name", "See model source")),  # noqa: WPS226
             **cls.retirement(kwargs),
         )
@@ -399,7 +412,10 @@ class _WhisperModelBuilders:
             family=str(kwargs["family"]),
             description=str(kwargs["description"]),
             source="MLX Audio",
-            marker_file="model.safetensors",
+            marker_file=str(kwargs.get("marker_file", MODEL_SAFETENSORS)),
+            required_files=tuple(kwargs.get("required_files", ())),
+            decoder_language_code=kwargs.get("decoder_language_code"),
+            decoder_prompt=kwargs.get("decoder_prompt"),
             language_codes=tuple(kwargs.get("language_codes", ())),
             apple_silicon_only=True,
             license_name=str(kwargs["license_name"]),
@@ -868,10 +884,10 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         required_files=(
             ENCODER_INT8_FILE,
             DECODER_INT8_FILE,
-            "joiner.int8.onnx",
+            JOINER_INT8_FILE,
             TOKENS_FILE,
         ),
-        model_type="nemo_transducer",
+        model_type=NEMO_TRANSDUCER_TYPE,
         language_codes=(
             BULGARIAN_LANGUAGE_CODE,
             CROATIAN_LANGUAGE_CODE,
@@ -917,11 +933,11 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         required_files=(
             ENCODER_INT8_FILE,
             DECODER_INT8_FILE,
-            "joiner.int8.onnx",
+            JOINER_INT8_FILE,
             TOKENS_FILE,
         ),
-        model_type="nemo_transducer",
-        language_codes=(ENGLISH_LANGUAGE_CODE,),
+        model_type=NEMO_TRANSDUCER_TYPE,
+        language_codes=ENGLISH_CODES,
         family="Parakeet TDT",
         description=(
             "The English-only Parakeet. v3 trades some English accuracy for 25-language coverage, "
@@ -955,7 +971,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         2,
         huggingface_repo="csukuangfj/sherpa-onnx-nemo-transducer-giga-am-v3-russian-2025-12-16",
         required_files=(ENCODER_INT8_FILE, "decoder.onnx", "joiner.onnx", TOKENS_FILE),
-        model_type="nemo_transducer",
+        model_type=NEMO_TRANSDUCER_TYPE,
         language_codes=(RUSSIAN_LANGUAGE_CODE,),
         family="GigaAM",
         description=(
@@ -975,7 +991,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         huggingface_repo="csukuangfj/sherpa-onnx-nemo-canary-180m-flash-en-es-de-fr-int8",
         required_files=(ENCODER_INT8_FILE, DECODER_INT8_FILE, TOKENS_FILE),
         model_type="nemo_canary",
-        language_codes=(ENGLISH_LANGUAGE_CODE,),
+        language_codes=ENGLISH_CODES,
         family="Canary",
         description=(
             "NVIDIA's Canary 180M Flash converted to INT8 ONNX. The underlying model also "
@@ -999,8 +1015,8 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
             "joiner-epoch-99-avg-1.int8.onnx",
             TOKENS_FILE,
         ),
-        model_type="streaming_zipformer",
-        language_codes=(ENGLISH_LANGUAGE_CODE,),
+        model_type=STREAMING_TRANSDUCER_TYPE,
+        language_codes=ENGLISH_CODES,
         family="Zipformer",
         description=(
             "A small streaming-capable zipformer transducer. Unlike most batch sherpa-onnx "
@@ -1097,10 +1113,10 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         required_files=(
             ENCODER_INT8_FILE,
             DECODER_INT8_FILE,
-            "joiner.int8.onnx",
+            JOINER_INT8_FILE,
             TOKENS_FILE,
         ),
-        model_type="streaming_zipformer",
+        model_type=STREAMING_TRANSDUCER_TYPE,
         language_codes=(
             ENGLISH_LANGUAGE_CODE,
             SPANISH_LANGUAGE_CODE,
@@ -1151,7 +1167,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         2,
         huggingface_repo="csukuangfj2/sherpa-onnx-streaming-zipformer-bn-vosk-2026-02-09",
         required_files=("encoder.onnx", "decoder.onnx", "joiner.onnx", TOKENS_FILE),
-        model_type="streaming_zipformer",
+        model_type=STREAMING_TRANSDUCER_TYPE,
         language_codes=("bn",),
         family="Zipformer",
         description=(
@@ -1232,7 +1248,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
             "multilingual v3 build, which spends capacity on 24 other languages."
         ),
         license_name=CC_BY_LICENSE,
-        language_codes=(ENGLISH_LANGUAGE_CODE,),
+        language_codes=ENGLISH_CODES,
     ),
     _mlx_audio(
         "qwen3-asr-0.6b-4bit",
@@ -1283,7 +1299,127 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
             "accuracy rankings."
         ),
         license_name=APACHE_LICENSE,
-        language_codes=(ENGLISH_LANGUAGE_CODE,),
+        language_codes=ENGLISH_CODES,
+    ),
+    _mlx_audio(
+        "granite-speech-4.1-2b",
+        "MLX Granite Speech 4.1 2B Multilingual",
+        GRANITE_MULTILINGUAL_SIZE_BYTES,
+        "Six languages",
+        "Accurate · multilingual",
+        VERY_HIGH_MEMORY_RAM_GB,
+        repository="ibm-granite/granite-speech-4.1-2b",
+        family="Granite Speech / MLX",
+        description=(
+            "Autoregressive Granite Speech for English, French, German, Spanish, Portuguese and "
+            "Japanese. Larger download than the English NAR quantization; upstream BF16 weights. "
+        ),
+        license_name=APACHE_LICENSE,
+        language_codes=(
+            ENGLISH_LANGUAGE_CODE,
+            FRENCH_LANGUAGE_CODE,
+            GERMAN_LANGUAGE_CODE,
+            SPANISH_LANGUAGE_CODE,
+            PORTUGUESE_LANGUAGE_CODE,
+            JAPANESE_LANGUAGE_CODE,
+        ),
+        decoder_language_code=None,
+        # Without it MLX Granite reads an explicit language hint as a request
+        # to translate into that language rather than transcribe.
+        decoder_prompt="transcribe the speech with proper punctuation and capitalization.",
+        marker_file="model.safetensors.index.json",
+        required_files=(
+            "added_tokens.json",
+            "config.json",
+            "merges.txt",
+            "model-00001-of-00003.safetensors",
+            "model-00002-of-00003.safetensors",
+            "model-00003-of-00003.safetensors",
+            "model.safetensors.index.json",
+            "preprocessor_config.json",
+            "processor_config.json",
+            "special_tokens_map.json",
+            "tokenizer.json",
+            "tokenizer_config.json",
+            "vocab.json",
+        ),
+    ),
+    _sherpa_onnx(
+        "parakeet-unified-en-0.6b-int8",
+        "Parakeet Unified English INT8",
+        PARAKEET_UNIFIED_SIZE_BYTES,
+        ENGLISH_ONLY,
+        "Accurate · batch",
+        4,
+        huggingface_repo="csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming",
+        required_files=(ENCODER_INT8_FILE, DECODER_INT8_FILE, JOINER_INT8_FILE, TOKENS_FILE),
+        family="Parakeet Unified",
+        model_type=NEMO_TRANSDUCER_TYPE,
+        description=(
+            "Unified FastConformer RNNT for English. INT8 CPU export. The streaming variant uses "
+            "560 ms model context; end-to-end latency depends on the host. "
+        ),
+        language_codes=ENGLISH_CODES,
+        license_name="NVIDIA Open Model License",
+        supports_streaming=False,
+    ),
+    _sherpa_onnx(
+        "parakeet-unified-en-0.6b-560ms-int8",
+        "Parakeet Unified English INT8 Streaming 560 ms",
+        PARAKEET_UNIFIED_STREAMING_SIZE_BYTES,
+        ENGLISH_ONLY,
+        "Fast · streaming",
+        4,
+        huggingface_repo="csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-streaming-560ms",
+        required_files=(ENCODER_INT8_FILE, DECODER_INT8_FILE, JOINER_INT8_FILE, TOKENS_FILE),
+        family="Parakeet Unified",
+        model_type=STREAMING_TRANSDUCER_TYPE,
+        description=(
+            "Unified FastConformer RNNT for English. INT8 CPU export. The streaming variant uses "
+            "560 ms model context; end-to-end latency depends on the host. "
+        ),
+        language_codes=ENGLISH_CODES,
+        license_name="NVIDIA Open Model License",
+        supports_streaming=True,
+    ),
+    _sherpa_onnx(
+        "cohere-transcribe-14-lang-int8",
+        "Cohere Transcribe INT8",
+        COHERE_SIZE_BYTES,
+        "14 languages",
+        "Accurate · choose a language",
+        8,
+        huggingface_repo="csukuangfj2/sherpa-onnx-cohere-transcribe-14-lang-int8-2026-04-01",
+        required_files=(
+            ENCODER_INT8_FILE,
+            "encoder.int8.onnx.data",
+            DECODER_INT8_FILE,
+            TOKENS_FILE,
+        ),
+        family="Cohere Transcribe",
+        model_type=COHERE_TRANSCRIBE_TYPE,
+        description=(
+            "Cohere's multilingual speech recognizer through a community INT8 CPU export. Select "
+            "the spoken language explicitly; automatic language detection and Hindi are not "
+            "supported. "
+        ),
+        language_codes=(
+            ENGLISH_LANGUAGE_CODE,
+            FRENCH_LANGUAGE_CODE,
+            GERMAN_LANGUAGE_CODE,
+            "it",
+            SPANISH_LANGUAGE_CODE,
+            PORTUGUESE_LANGUAGE_CODE,
+            "el",
+            "nl",
+            POLISH_LANGUAGE_CODE,
+            "zh",
+            JAPANESE_LANGUAGE_CODE,
+            "ko",
+            "vi",
+            "ar",
+        ),
+        license_name=APACHE_LICENSE,
     ),
     # Keep moonshine:en as the default English ID so existing installations and
     # runtime configuration continue to resolve after adding explicit variants.
@@ -1581,33 +1717,6 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         retirement_reason=MOONSHINE_RETIREMENT_REASON,
     ),
     _faster_whisper(
-        "tiny.en",
-        "faster-whisper Tiny EN",
-        _megabytes(TINY_MODEL_SIZE_MB),
-        ENGLISH_ONLY,
-        FASTEST_QUALITY,
-        2,
-    ),
-    _faster_whisper(
-        "tiny",
-        "faster-whisper Tiny",
-        _megabytes(TINY_MODEL_SIZE_MB),
-        MULTILINGUAL,
-        FASTEST_QUALITY,
-        2,
-    ),
-    _faster_whisper(
-        "base.en",
-        "faster-whisper Base EN",
-        _megabytes(BASE_MODEL_SIZE_MB),
-        ENGLISH_ONLY,
-        FAST_QUALITY,
-        3,
-    ),
-    _faster_whisper(
-        "base", "faster-whisper Base", _megabytes(BASE_MODEL_SIZE_MB), MULTILINGUAL, FAST_QUALITY, 3
-    ),
-    _faster_whisper(
         "small.en", "faster-whisper Small EN", _megabytes("484"), ENGLISH_ONLY, BALANCED_QUALITY, 6
     ),
     _faster_whisper(
@@ -1693,33 +1802,6 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         ),
     ),
     _whisperkit(
-        "openai_whisper-tiny", "WhisperKit Tiny", _megabytes("66"), MULTILINGUAL, FASTEST_QUALITY, 4
-    ),
-    _whisperkit(
-        "openai_whisper-tiny.en",
-        "WhisperKit Tiny EN",
-        _megabytes("66"),
-        ENGLISH_ONLY,
-        FASTEST_QUALITY,
-        4,
-    ),
-    _whisperkit(
-        "openai_whisper-base",
-        "WhisperKit Base",
-        _megabytes(BASE_MODEL_SIZE_MB),
-        MULTILINGUAL,
-        FAST_QUALITY,
-        4,
-    ),
-    _whisperkit(
-        "openai_whisper-base.en",
-        "WhisperKit Base EN",
-        _megabytes(BASE_MODEL_SIZE_MB),
-        ENGLISH_ONLY,
-        FAST_QUALITY,
-        4,
-    ),
-    _whisperkit(
         "openai_whisper-small_216MB",
         "WhisperKit Small (compressed)",
         _megabytes("216"),
@@ -1768,28 +1850,6 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
             "2.40% WER here against 2.49% for the compressed build. Eight hundredths of a WER "
             "point is not worth 984 MB of download and 16 GB of required RAM."
         ),
-    ),
-    _whisper_cpp(
-        "ggml-tiny.en.bin",
-        "whisper.cpp Tiny EN",
-        _megabytes(TINY_MODEL_SIZE_MB),
-        ENGLISH_ONLY,
-        FASTEST_QUALITY,
-        4,
-    ),
-    _whisper_cpp(
-        "ggml-tiny.bin",
-        "whisper.cpp Tiny",
-        _megabytes(TINY_MODEL_SIZE_MB),
-        MULTILINGUAL,
-        FASTEST_QUALITY,
-        4,
-    ),
-    _whisper_cpp(
-        "ggml-base.en.bin", "whisper.cpp Base EN", _megabytes("142"), ENGLISH_ONLY, FAST_QUALITY, 4
-    ),
-    _whisper_cpp(
-        "ggml-base.bin", "whisper.cpp Base", _megabytes("142"), MULTILINGUAL, FAST_QUALITY, 4
     ),
     _whisper_cpp(
         "ggml-small.en.bin",
@@ -1973,17 +2033,18 @@ class _CatalogRecommender:
                 }
             return {
                 f"{ENGINE_SHERPA_ONNX}:sensevoice-small-int8",
-                f"{ENGINE_FASTER_WHISPER}:base",
+                f"{ENGINE_SHERPA_ONNX}:parakeet-tdt-0.6b-v2-int8",
                 f"{ENGINE_FASTER_WHISPER}:distil-small.en",
             }
-        if is_apple:
-            return {
-                f"{ENGINE_WHISPERKIT}:openai_whisper-base",
-                f"{ENGINE_SHERPA_ONNX}:sensevoice-small-int8",
-            }
+        # Below 8 GB there is nothing Apple-specific to offer: the smallest
+        # WhisperKit and MLX entries both want 8 GB. Whisper's Tiny and Base
+        # tiers used to fill this rung and were dropped for accuracy, so the
+        # answer is the same on either host - a compact multilingual model and
+        # a purpose-built dictation model, both of which beat Whisper Base at
+        # this size.
         return {
             f"{ENGINE_SHERPA_ONNX}:sensevoice-small-int8",
-            f"{ENGINE_FASTER_WHISPER}:tiny",
+            f"{ENGINE_MOONSHINE}:en-base",
         }
 
 

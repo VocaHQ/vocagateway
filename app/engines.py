@@ -33,6 +33,19 @@ _MODEL_ATTRS = MappingProxyType(
         catalog.ENGINE_FASTER_WHISPER: "faster_whisper_model",
     }
 )
+# Every engine that remembers a chosen model, including whisper.cpp's default
+# slot. Exactly one may be set at a time: `active_model_path` reads the field
+# belonging to the running engine, so a leftover value from a previously
+# selected engine would report the wrong model as active.
+ENGINE_MODEL_FIELDS = MappingProxyType(
+    {**_MODEL_ATTRS, catalog.ENGINE_WHISPER_CPP: "whisper_model"}
+)
+
+
+def _clear_other_models(rc: runtime_config.RuntimeConfig, engine: str) -> None:
+    for owner, attribute in ENGINE_MODEL_FIELDS.items():
+        if owner != engine:
+            setattr(rc, attribute, None)
 
 
 class EngineProvider(Protocol):
@@ -117,6 +130,7 @@ class _ModelPathResolver:
 
     def apply_model(self, rc: runtime_config.RuntimeConfig, model_id: str, path_str: str) -> None:
         prefix = model_id.split(":", 1)[0]
+        _clear_other_models(rc, prefix)
         if prefix == catalog.ENGINE_MOONSHINE:
             cat_model = self.model_manager.catalog_model(model_id)
             if cat_model is None:
@@ -445,16 +459,7 @@ class EngineManager:
         rc.cpu_threads = threads
         rc.idle_offload_enabled = offload_enabled
         rc.idle_offload_minutes = offload_minutes
-        if engine != catalog.ENGINE_WHISPER_CPP:
-            rc.whisper_model = None
-        if engine != catalog.ENGINE_WHISPERKIT:
-            rc.whisperkit_model = None
-        if engine != catalog.ENGINE_FASTER_WHISPER:
-            rc.faster_whisper_model = None
-        if engine != catalog.ENGINE_SHERPA_ONNX:
-            rc.sherpa_model = None
-        if engine != catalog.ENGINE_MLX_AUDIO:
-            rc.mlx_audio_model = None
+        _clear_other_models(rc, engine)
         if _engine_signature(rc) == before:
             # Only the idle-offload policy moved. Persist it and leave the
             # resident model exactly where it is.
