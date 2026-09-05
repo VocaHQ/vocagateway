@@ -80,6 +80,10 @@ path of `build/bin/transcribe-cli` and restart the gateway. If `transcribe-cli` 
 already on the service's PATH, no override is needed. Service PATH can differ
 from the interactive shell's PATH.
 
+The WebUI Overview page lists **transcribe.cpp CLI** under Libraries & tools. It
+reads Missing until the gateway resolves the binary, and the tile carries the
+install hint; it shows the resolved path once the override or PATH lookup works.
+
 Use the upstream CPU build or enable its Metal, CUDA, Vulkan, or HIP backend for
 the host. A GPU build is not guaranteed to run on another machine. A container
 needs a compatible Linux build and its runtime libraries inside the image;

@@ -8,10 +8,12 @@ from pathlib import Path
 
 import pytest
 
+from app.admin_queries import TRANSCRIBE_INSTALL_HINT
 from app.catalog import DEFAULT_CATALOG
 from app.errors import EngineUnavailableError, LanguageUnsupportedError, TranscriptionProcessError
 from app.models.base import TranscriptionOptions
 from app.models.transcribe_cpp import TranscribeCppEngine, _execute
+from app.schemas import DependencyStatus
 
 
 def _model(key: str = "canary-qwen-2.5b-Q5_K_M.gguf"):
@@ -193,3 +195,45 @@ def test_switching_to_another_model_clears_native_selection(tmp_path):
     assert config.transcribe_model is None
     engine_manager.forget_if_active(native.id)
     assert config.engine == "whisper.cpp"
+
+
+def test_overview_names_the_missing_runtime_and_how_to_install_it(tmp_path):
+    """A GGUF model is useless without transcribe-cli, so the panel has to name it."""
+    from app.config import Settings
+    from app.fragments.overview import _OverviewPage
+    from app.system import detect_system
+
+    installed = tmp_path / "transcribe-cli"
+    installed.write_text("#!/bin/sh\n")
+    settings = Settings(
+        token="x" * 32,
+        data_dir=tmp_path,
+        whisper_binary=tmp_path / "whisper",
+        whisper_model=tmp_path / "unused",
+        transcribe_binary="absent-transcribe-cli",
+    )
+
+    def probe(binary: str) -> str | None:
+        return detect_system(
+            whisper_binary=settings.whisper_binary,
+            whisperkit_binary=settings.whisperkit_binary,
+            handy_binary=settings.handy_binary,
+            vocamac_app=settings.vocamac_app,
+            transcribe_binary=binary,
+        ).transcribe_cli_path
+
+    assert probe(settings.transcribe_binary) is None
+    assert probe(str(installed)) == str(installed)
+
+    panel = _OverviewPage._dependencies_panel(
+        [
+            DependencyStatus(
+                name="transcribe.cpp CLI",
+                available=False,
+                install_hint=TRANSCRIBE_INSTALL_HINT,
+            )
+        ]
+    )
+    assert "transcribe.cpp CLI" in panel
+    assert "Missing" in panel
+    assert "VOCAGATEWAY_TRANSCRIBE_BINARY" in panel

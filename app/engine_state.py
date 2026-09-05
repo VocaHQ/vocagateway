@@ -34,6 +34,7 @@ def available_engines(ctx: GatewayContext) -> list[str]:
         whisperkit_binary=settings.whisperkit_binary,
         handy_binary=settings.handy_binary,
         vocamac_app=settings.vocamac_app,
+        transcribe_binary=settings.transcribe_binary,
     )
     engines = [
         "auto",

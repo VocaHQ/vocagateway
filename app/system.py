@@ -52,6 +52,7 @@ class SystemInfo:
     is_apple_silicon: bool
     ffmpeg_path: str | None
     whisper_cpp_path: str | None
+    transcribe_cli_path: str | None
     whisperkit_cli_path: str | None
     handy_installed: bool
     vocamac_installed: bool
@@ -470,6 +471,7 @@ class _HostDetector:
         whisper_binary: Path,
         whisperkit_binary: str,
         handy_binary: Path,
+        transcribe_binary: str,
         vocamac_app: Path = DEFAULT_VOCAMAC_APPLICATION_PATH,
     ) -> SystemInfo:
         arch = platform.machine()
@@ -490,6 +492,7 @@ class _HostDetector:
             is_apple_silicon=is_mac and arch == ARM64_ARCHITECTURE,
             ffmpeg_path=shutil.which("ffmpeg"),
             whisper_cpp_path=whisper_cli,
+            transcribe_cli_path=_SysProbe.resolve_binary(transcribe_binary),
             whisperkit_cli_path=_SysProbe.resolve_binary(whisperkit_binary),
             handy_installed=handy_binary.is_file(),
             vocamac_installed=vocamac_app.exists(),

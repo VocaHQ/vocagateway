@@ -14,6 +14,12 @@ from app.serializers import metrics_status, model_covers
 from app.system import detect_system
 
 PYTHON_PACKAGE_PATH = "Python package"
+# The GGUF models in the catalog need a transcribe-cli this project never ships;
+# the tile names the build and the override so a missing binary is actionable.
+TRANSCRIBE_INSTALL_HINT = (
+    "Build https://github.com/handy-computer/transcribe.cpp, then set "
+    "VOCAGATEWAY_TRANSCRIBE_BINARY to its transcribe-cli"
+)
 
 SIZE_FILTER_CAPS: MappingProxyType[str, int] = MappingProxyType(
     {
@@ -34,6 +40,7 @@ class _SystemDependencyHelper:
             whisperkit_binary=self.settings.whisperkit_binary,
             handy_binary=self.settings.handy_binary,
             vocamac_app=self.settings.vocamac_app,
+            transcribe_binary=self.settings.transcribe_binary,
         )
 
     def build_dependencies(self) -> list[schemas.DependencyStatus]:
@@ -58,6 +65,12 @@ class _SystemDependencyHelper:
                 available=self.system.whisper_cpp_path is not None,
                 path=self.system.whisper_cpp_path,
                 install_hint=whisper_hint,
+            ),
+            schemas.DependencyStatus(
+                name="transcribe.cpp CLI",
+                available=self.system.transcribe_cli_path is not None,
+                path=self.system.transcribe_cli_path,
+                install_hint=TRANSCRIBE_INSTALL_HINT,
             ),
         ]
         deps.extend(self._python_dependencies())
@@ -167,6 +180,7 @@ class _ModelEntryHelper:
             whisperkit_binary=ctx.settings.whisperkit_binary,
             handy_binary=ctx.settings.handy_binary,
             vocamac_app=ctx.settings.vocamac_app,
+            transcribe_binary=ctx.settings.transcribe_binary,
         )
         self.recommended = recommended_ids(self.system)
         self.installed = {model.id: model for model in ctx.manager.installed()}
