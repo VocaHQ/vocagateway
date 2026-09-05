@@ -2417,15 +2417,6 @@ select {
 .memory-policy-timeout { flex: 0 1 180px; }
 .settings-engine-result { margin-top: 12px; }
 
-.native-tool-requirement {
-  margin: 12px 0;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  font-size: 13px;
-  line-height: 1.5;
-}
-.native-tool-requirement p { margin: 4px 0 8px; }
 .settings-actions { margin-top: 14px; }
 .settings-facts { margin-top: 12px; }
 .settings-facts code {

@@ -124,7 +124,6 @@ def test_build_diagnostics_bundle_redacts_c_a8a1b() -> None:
         whisper_model=f"{home}/.local/share/vocagateway/models/whisper.cpp/ggml-base.en.bin",
         whisperkit_model=f"{home}/.local/share/vocagateway/models/whisperkit/openai_whisper-tiny",
         faster_whisper_model=f"{home}/.local/share/vocagateway/models/faster-whisper/tiny.en",
-        transcribe_model=f"{home}/models/canary.gguf",
         sherpa_model="sherpa-onnx:sensevoice-small-int8",
     )
 
@@ -142,6 +141,5 @@ def test_build_diagnostics_bundle_redacts_c_a8a1b() -> None:
         bundle.config.faster_whisper_model
         == "~/.local/share/vocagateway/models/faster-whisper/tiny.en"
     )
-    assert bundle.config.transcribe_model == "~/models/canary.gguf"
     assert bundle.config.sherpa_model == "sherpa-onnx:sensevoice-small-int8"
     assert home not in bundle.model_dump_json()

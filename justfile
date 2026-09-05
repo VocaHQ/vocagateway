@@ -166,12 +166,6 @@ doctor:
         fi
       done
     fi
-    transcribe_binary="${VOCAGATEWAY_TRANSCRIBE_BINARY:-transcribe-cli}"
-    if command -v "${transcribe_binary}" >/dev/null 2>&1; then
-      echo "ok       transcribe-cli (${transcribe_binary})"
-    else
-      echo "note     transcribe-cli absent — required for transcribe.cpp models; see docs/deployment.md#install-transcribecpp"
-    fi
     if [ "${ok}" -ne 0 ]; then
       echo
       echo "Install what is marked MISSING above, then run just doctor again."

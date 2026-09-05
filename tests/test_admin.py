@@ -266,7 +266,6 @@ async def test_status_reports_system_and_setup(
     assert {dependency["name"] for dependency in payload["dependencies"]} == {
         "FFmpeg",
         "whisper.cpp CLI",
-        "transcribe.cpp CLI",
         "WhisperKit CLI",
         "Handy app",
         "VocaMac app",

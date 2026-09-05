@@ -14,6 +14,7 @@ from app.errors import EngineUnavailableError, LanguageUnsupportedError
 from app.models.base import EngineTranscription, TranscriptionOptions
 from app.models.sherpa_onnx import (
     SherpaOnnxEngine,
+    _LanguagePolicy,
     _set_stream_language,
     _SherpaOnnxStreamAdapter,
     _SherpaRecognizerBuilder,
@@ -448,7 +449,7 @@ def test_decode_wave_online_reads_result_fr_a(tmp_path: Path) -> None:
             return " final streaming text "
 
     recognizer = FakeRecognizer()
-    text = _decode_wave_online(recognizer, audio)
+    text = _decode_wave_online(recognizer, audio, _LanguagePolicy())
 
     assert text == "final streaming text"
     assert recognizer.stream.finished is True
@@ -491,7 +492,7 @@ def test_decode_wave_online_sets_optional_language_option(tmp_path: Path) -> Non
             return "text"
 
     recognizer = FakeRecognizer()
-    assert _decode_wave_online(recognizer, audio, "de-DE") == "text"
+    assert _decode_wave_online(recognizer, audio, _LanguagePolicy("de-DE")) == "text"
     assert recognizer.stream.options == {"language": "de"}
 
 
@@ -721,8 +722,12 @@ async def test_cohere_requires_language_and_sets_it_for_every_recording(
 
     monkeypatch.setattr("app.models.sherpa_onnx._read_wave_samples", lambda _: (16000, []))
     recognizer = Recognizer()
-    assert _decode_wave(recognizer, tmp_path / "audio.wav", "fr-FR", True) == "hello"
-    assert _decode_wave(recognizer, tmp_path / "audio.wav", "de", True) == "hello"
+    policy = _LanguagePolicy("fr-FR", set_on_stream=True)
+    assert _decode_wave(recognizer, tmp_path / "audio.wav", policy) == "hello"
+    assert (
+        _decode_wave(recognizer, tmp_path / "audio.wav", _LanguagePolicy("de", set_on_stream=True))
+        == "hello"
+    )
     assert languages == ["fr", "de"]
 
     # Every other offline model decoded without the option before Cohere
@@ -735,7 +740,7 @@ async def test_cohere_requires_language_and_sets_it_for_every_recording(
             return None
 
     monkeypatch.setattr(Recognizer, "create_stream", lambda self: QuietStream())
-    assert _decode_wave(recognizer, tmp_path / "audio.wav", "de") == "hello"
+    assert _decode_wave(recognizer, tmp_path / "audio.wav", _LanguagePolicy("de")) == "hello"
 
 
 async def test_cohere_recognizer_is_rebuilt_when_the_language_changes(

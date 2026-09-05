@@ -51,56 +51,13 @@ Sources: [Small Hindi](https://huggingface.co/zindagi-technologies/whisper-small
   NVIDIA Open Model License; consult the linked upstream terms before use.
 - **Granite Speech 4.1 Multilingual** supports English, French, German, Spanish,
   Portuguese, and Japanese. The MLX BF16 model is separate from the existing
-  English NAR quantization. A smaller native Q5 entry is available through the
-  optional transcribe.cpp runtime. The MLX adapter supplies a transcription prompt
-  so an explicit language selection does not turn into a translation request.
-- **Canary-Qwen 2.5B Q5** is English-only and uses transcribe.cpp. It is a different
-  architecture from Canary 180M and cannot be loaded using that sherpa adapter.
+  English NAR quantization. The MLX adapter supplies a transcription prompt so an
+  explicit language selection does not turn into a translation request.
 
 Sources: [Cohere](https://huggingface.co/CohereLabs/cohere-transcribe-03-2026),
 [sherpa Cohere](https://k2-fsa.github.io/sherpa/onnx/cohere_transcribe/index.html),
 [Parakeet Unified](https://huggingface.co/nvidia/parakeet-unified-en-0.6b),
-[Granite](https://huggingface.co/ibm-granite/granite-speech-4.1-2b),
-[Canary GGUF](https://huggingface.co/handy-computer/canary-qwen-2.5b-gguf).
-
-## Install the optional transcribe.cpp runtime
-
-The gateway's Python extras and default container image do not bundle this
-binary. Install it on the gateway host before choosing its models. The model
-weights are downloaded by the gateway with revision and SHA-256 pins.
-
-The adapter was checked with transcribe.cpp 0.2.3, commit
-`e2f82cb6702315a1194f3bf1a6fee67cd2678447`. It requires the `-o` text-file output
-option. Older binaries without that option are not compatible.
-Longer recordings also use its `--batch` and `--batch-jsonl` options.
-
-Follow the [pinned build and installation instructions](deployment.md#install-transcribecpp)
-for macOS or Linux. If installing elsewhere, set `VOCAGATEWAY_TRANSCRIBE_BINARY` to the absolute
-path of `build/bin/transcribe-cli` and restart the gateway. If `transcribe-cli` is
-already on the service's PATH, no override is needed. Service PATH can differ
-from the interactive shell's PATH.
-
-The WebUI Overview page lists **transcribe.cpp CLI** under Libraries & tools. It
-reads Missing until the gateway resolves the binary, and the tile carries the
-install hint; it shows the resolved path once the override or PATH lookup works.
-Every transcribe.cpp model card carries the same warning, so a download that
-cannot run yet is flagged before it starts. The weights are still correct
-without the binary, so the download stays available and the warning clears on
-the next page load once the gateway resolves `transcribe-cli`.
-
-Use the upstream CPU build or enable its Metal, CUDA, Vulkan, or HIP backend for
-the host. A GPU build is not guaranteed to run on another machine. A container
-needs a compatible Linux build and its runtime libraries inside the image;
-macOS binaries cannot run in Docker Desktop's Linux container.
-
-This gateway adapter runs a bounded subprocess for each recording, cleans up its
-transcript file, and kills the process on timeout or cancellation. It does not
-keep weights resident between recordings. Recordings over 20 seconds are split
-near quiet boundaries without dropping samples, then decoded in one process so
-the weights are loaded once. Each chunk is checked for errors or truncation before
-returning a combined transcript. Chunk boundaries can still affect recognition;
-measure accuracy on your recordings. Select an explicit language for
-multilingual Granite; Automatic resolves to English only for English-only Canary.
+[Granite](https://huggingface.co/ibm-granite/granite-speech-4.1-2b).
 
 ## Evaluation and availability
 

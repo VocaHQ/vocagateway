@@ -15,15 +15,6 @@ from app.serializers import metrics_status, model_covers
 from app.system import SystemInfo, detect_system
 
 PYTHON_PACKAGE_PATH = "Python package"
-# The GGUF models in the catalog need a transcribe-cli this project never ships;
-# the tile names the build and the override so a missing binary is actionable.
-TRANSCRIBE_INSTALL_HINT = (
-    "Install transcribe-cli where the gateway runs, inside the container under "
-    "Docker, and set VOCAGATEWAY_TRANSCRIBE_BINARY if it is not on PATH"
-)
-TRANSCRIBE_DOCS_URL = (
-    "https://github.com/VocaHQ/vocagateway/blob/main/docs/deployment.md#install-transcribecpp"
-)
 PYTHON_ENGINE_INSTALL_HINT = "Install vocagateway[engines] or use the Docker image"
 # One engine paired with the single runtime it needs.
 _EngineRuntime = tuple[str, schemas.DependencyStatus]
@@ -53,18 +44,6 @@ class _EngineRuntimes:
         self.settings = settings
         self._cached: dict[str, schemas.DependencyStatus] | None = None
 
-    @property
-    def _tiles(self) -> dict[str, schemas.DependencyStatus]:
-        """Probe on first use, once per request.
-
-        Not cached beyond that on purpose: an operator who pip-installs an
-        engine and reloads the page has to see it turn from Missing to
-        Installed, which a process-lifetime cache would prevent.
-        """
-        if self._cached is None:
-            self._cached = dict(self._build())
-        return self._cached
-
     def tiles(self) -> list[schemas.DependencyStatus]:
         return list(self._tiles.values())
 
@@ -78,11 +57,19 @@ class _EngineRuntimes:
         unmet = self.missing(engine)
         if unmet is None:
             return {}
-        return {
-            "runtime_requirement": unmet.name,
-            "runtime_hint": unmet.install_hint,
-            "runtime_docs_url": unmet.docs_url,
-        }
+        return {"runtime_requirement": unmet.name, "runtime_hint": unmet.install_hint}
+
+    @property
+    def _tiles(self) -> dict[str, schemas.DependencyStatus]:
+        """Probe on first use, once per request.
+
+        Not cached beyond that on purpose: an operator who pip-installs an
+        engine and reloads the page has to see it turn from Missing to
+        Installed, which a process-lifetime cache would prevent.
+        """
+        if self._cached is None:
+            self._cached = dict(self._build())
+        return self._cached
 
     def _build(self) -> list[_EngineRuntime]:
         is_mac = self.system.os_name == "Darwin"
@@ -107,16 +94,6 @@ class _EngineRuntimes:
                     available=self.system.whisper_cpp_path is not None,
                     path=self.system.whisper_cpp_path,
                     install_hint=whisper_hint,
-                ),
-            ),
-            (
-                "transcribe.cpp",
-                schemas.DependencyStatus(
-                    name="transcribe.cpp CLI",
-                    available=self.system.transcribe_cli_path is not None,
-                    path=self.system.transcribe_cli_path,
-                    install_hint=TRANSCRIBE_INSTALL_HINT,
-                    docs_url=TRANSCRIBE_DOCS_URL,
                 ),
             ),
         ]
@@ -203,7 +180,6 @@ class _SystemDependencyHelper:
             whisperkit_binary=self.settings.whisperkit_binary,
             handy_binary=self.settings.handy_binary,
             vocamac_app=self.settings.vocamac_app,
-            transcribe_binary=self.settings.transcribe_binary,
         )
         self.runtimes = _EngineRuntimes(self.system, self.settings)
 
@@ -259,7 +235,6 @@ class _ModelEntryHelper:
             whisperkit_binary=ctx.settings.whisperkit_binary,
             handy_binary=ctx.settings.handy_binary,
             vocamac_app=ctx.settings.vocamac_app,
-            transcribe_binary=ctx.settings.transcribe_binary,
         )
         self.runtimes = _EngineRuntimes(self.system, ctx.settings)
         self.recommended = recommended_ids(self.system)
@@ -485,7 +460,6 @@ def config_response(ctx: GatewayContext) -> schemas.ConfigResponse:
             engine=rc.engine,
             available_engines=available_engines(ctx),
             whisper_model=rc.whisper_model,
-            transcribe_model=rc.transcribe_model,
             whisperkit_model=rc.whisperkit_model,
             faster_whisper_model=rc.faster_whisper_model,
             moonshine_model=rc.moonshine_model,

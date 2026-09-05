@@ -78,7 +78,6 @@ class Settings:
     # `fast` decodes greedily, which is cheaper on a CPU-only host and may cost
     # accuracy on accented or noisy audio. See app/models/whisper_cpp.py.
     whisper_decoder_preset: str = "quality"
-    transcribe_binary: str = "transcribe-cli"
     models_dir: Path | None = None
     config_path: Path = Path("~/.config/vocagateway/config.json")
     token_file: Path = Path("~/.config/vocagateway/token")
@@ -143,7 +142,6 @@ class Settings:
                 _env("VOCAGATEWAY_VOCAMAC_APP", "/Applications/VocaMac.app")
             ).expanduser(),
             vocamac_model=_env("VOCAGATEWAY_VOCAMAC_MODEL") or None,
-            transcribe_binary=_env("VOCAGATEWAY_TRANSCRIBE_BINARY", "transcribe-cli"),
             whisperkit_binary=_env("VOCAGATEWAY_WHISPERKIT_BINARY", "whisperkit-cli"),
             whisper_server_binary=_optional_path("VOCAGATEWAY_WHISPER_SERVER_BINARY"),
             whisper_decoder_preset=_env("VOCAGATEWAY_WHISPER_DECODER_PRESET", "quality").lower(),

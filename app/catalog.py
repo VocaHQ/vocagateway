@@ -15,7 +15,6 @@ from app.system import SystemInfo
 PINS_PATH = Path(__file__).parent / "model_pins.json"
 
 ENGINE_WHISPER_CPP = "whisper.cpp"
-ENGINE_TRANSCRIBE_CPP = "transcribe.cpp"
 ENGINE_WHISPERKIT = "whisperkit"
 ENGINE_FASTER_WHISPER = "faster-whisper"
 ENGINE_MOONSHINE = "moonshine"
@@ -150,8 +149,6 @@ GRANITE_MULTILINGUAL_SIZE_BYTES = 4_636_316_308
 PRIME_SIZE_BYTES = 1_177_039_883
 PARAKEET_UNIFIED_SIZE_BYTES = 663_043_117
 PARAKEET_UNIFIED_STREAMING_SIZE_BYTES = 663_048_978
-CANARY_QWEN_SIZE_BYTES = 1_983_729_024
-GRANITE_GGUF_SIZE_BYTES = 1_829_704_544
 COHERE_SIZE_BYTES = 2_888_052_036
 WHISPER_HF_FILES = (
     "added_tokens.json",
@@ -1548,53 +1545,6 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
             "ar",
         ),
         license_name=APACHE_LICENSE,
-    ),
-    CatalogModel(
-        id="transcribe.cpp:canary-qwen-2.5b-Q5_K_M.gguf",
-        engine=ENGINE_TRANSCRIBE_CPP,
-        key="canary-qwen-2.5b-Q5_K_M.gguf",
-        label="Canary-Qwen 2.5B Q5",
-        size_bytes=CANARY_QWEN_SIZE_BYTES,
-        languages="English only",
-        quality="Accurate · native Q5",
-        minimum_ram_gb=8,
-        download_url="https://huggingface.co/handy-computer/canary-qwen-2.5b-gguf/resolve/main/canary-qwen-2.5b-Q5_K_M.gguf",
-        family="Canary-Qwen",
-        source="Handy / transcribe.cpp",
-        language_codes=ENGLISH_CODES,
-        license_name=CC_BY_LICENSE,
-        description=(
-            "Community Q5 GGUF conversion. Requires a separately installed transcribe-cli "
-            "with a CPU, Metal, CUDA or Vulkan backend. Each recording reloads the model; "
-            "this entry does not provide live streaming."
-        ),
-    ),
-    CatalogModel(
-        id="transcribe.cpp:granite-speech-4.1-2b-Q5_K_M.gguf",
-        engine=ENGINE_TRANSCRIBE_CPP,
-        key="granite-speech-4.1-2b-Q5_K_M.gguf",
-        label="Granite Speech 4.1 Multilingual Q5",
-        size_bytes=GRANITE_GGUF_SIZE_BYTES,
-        languages="Six languages",
-        quality="Accurate · native Q5",
-        minimum_ram_gb=8,
-        download_url="https://huggingface.co/handy-computer/granite-speech-4.1-2b-gguf/resolve/main/granite-speech-4.1-2b-Q5_K_M.gguf",
-        family="Granite Speech",
-        source="Handy / transcribe.cpp",
-        language_codes=(
-            ENGLISH_LANGUAGE_CODE,
-            FRENCH_LANGUAGE_CODE,
-            GERMAN_LANGUAGE_CODE,
-            SPANISH_LANGUAGE_CODE,
-            PORTUGUESE_LANGUAGE_CODE,
-            JAPANESE_LANGUAGE_CODE,
-        ),
-        license_name=APACHE_LICENSE,
-        description=(
-            "Community Q5 GGUF conversion. Requires a separately installed transcribe-cli "
-            "with a CPU, Metal, CUDA or Vulkan backend. Each recording reloads the model; "
-            "this entry does not provide live streaming."
-        ),
     ),
     # Keep moonshine:en as the default English ID so existing installations and
     # runtime configuration continue to resolve after adding explicit variants.

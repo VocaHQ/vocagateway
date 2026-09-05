@@ -13,7 +13,6 @@ VALID_ENGINES = (
     "vocamac",
     "handy",
     "whisper.cpp",
-    "transcribe.cpp",
     "whisperkit",
     "faster-whisper",
     "moonshine",
@@ -32,7 +31,6 @@ class RuntimeConfig:
 
     engine: str = AUTO_ENGINE
     whisper_model: str | None = None
-    transcribe_model: str | None = None
     whisperkit_model: str | None = None
     faster_whisper_model: str | None = None
     moonshine_model: str = "moonshine:en"
@@ -62,7 +60,6 @@ class RuntimeConfig:
         payload = {
             ENGINE_FIELD: self.engine,
             "whisper_model": self.whisper_model,
-            "transcribe_model": self.transcribe_model,
             "whisperkit_model": self.whisperkit_model,
             "faster_whisper_model": self.faster_whisper_model,
             "moonshine_model": self.moonshine_model,
@@ -107,7 +104,6 @@ def _parse_model_fields(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         ENGINE_FIELD: resolved_engine,
         "whisper_model": _optional_str(payload.get("whisper_model")),
-        "transcribe_model": _optional_str(payload.get("transcribe_model")),
         "whisperkit_model": _optional_str(payload.get("whisperkit_model")),
         "faster_whisper_model": _optional_str(payload.get("faster_whisper_model")),
         "moonshine_model": moon_model if isinstance(moon_model, str) else default_moonshine,

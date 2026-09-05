@@ -2,7 +2,7 @@
 
 # Models and languages
 
-Every model in the catalog (76 of them), what it speaks, and which models cover a given language. Generated from `app/catalog.py`, so it always matches the catalog the gateway actually ships.
+Every model in the catalog (74 of them), what it speaks, and which models cover a given language. Generated from `app/catalog.py`, so it always matches the catalog the gateway actually ships.
 
 The WebUI Models tab shows the same information per card, with a language filter. Use this page to pick a model before installing anything.
 
@@ -105,15 +105,6 @@ GGML models through the standalone `whisper-cli` binary.
 | Whisper Large v3 Q5 | 1.08 GB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
 | Breeze ASR Q5 | 1.08 GB | Mandarin Chinese, English | — | Apache 2.0 |
 | Hinglish — Roman (Experimental) | 574 MB | Hinglish — Roman | — | Apache 2.0 |
-
-### transcribe.cpp
-
-GGUF models. Install transcribe-cli separately; see [setup](additional-models.md).
-
-| Model | Download | Languages | Flags | Licence |
-| --- | ---: | --- | --- | --- |
-| Canary-Qwen 2.5B Q5 | 1.98 GB | English | — | CC BY 4.0 |
-| Granite Speech 4.1 Multilingual Q5 | 1.83 GB | English, French, German, Spanish, Portuguese, Japanese | — | Apache 2.0 |
 
 ### whisperkit
 
@@ -774,7 +765,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>English</strong> (<code>en</code>) — 55 models</summary>
+<summary><strong>English</strong> (<code>en</code>) — 53 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -815,8 +806,6 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | Cohere Transcribe INT8 | sherpa-onnx | 2.89 GB | — |
-| Granite Speech 4.1 Multilingual Q5 | transcribe.cpp | 1.83 GB | — |
-| Canary-Qwen 2.5B Q5 | transcribe.cpp | 1.98 GB | — |
 | whisper.cpp Tiny EN | whisper.cpp | 75 MB | — |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base EN | whisper.cpp | 142 MB | — |
@@ -934,7 +923,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>French</strong> (<code>fr</code>) — 26 models</summary>
+<summary><strong>French</strong> (<code>fr</code>) — 25 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -953,7 +942,6 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | Cohere Transcribe INT8 | sherpa-onnx | 2.89 GB | — |
-| Granite Speech 4.1 Multilingual Q5 | transcribe.cpp | 1.83 GB | — |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -1018,7 +1006,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>German</strong> (<code>de</code>) — 28 models</summary>
+<summary><strong>German</strong> (<code>de</code>) — 27 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1039,7 +1027,6 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | Cohere Transcribe INT8 | sherpa-onnx | 2.89 GB | — |
-| Granite Speech 4.1 Multilingual Q5 | transcribe.cpp | 1.83 GB | — |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -1375,7 +1362,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Japanese</strong> (<code>ja</code>) — 29 models</summary>
+<summary><strong>Japanese</strong> (<code>ja</code>) — 28 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1397,7 +1384,6 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | Cohere Transcribe INT8 | sherpa-onnx | 2.89 GB | — |
-| Granite Speech 4.1 Multilingual Q5 | transcribe.cpp | 1.83 GB | — |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -2197,7 +2183,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Portuguese</strong> (<code>pt</code>) — 26 models</summary>
+<summary><strong>Portuguese</strong> (<code>pt</code>) — 25 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -2216,7 +2202,6 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | Cohere Transcribe INT8 | sherpa-onnx | 2.89 GB | — |
-| Granite Speech 4.1 Multilingual Q5 | transcribe.cpp | 1.83 GB | — |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
@@ -2531,7 +2516,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Spanish</strong> (<code>es</code>) — 28 models</summary>
+<summary><strong>Spanish</strong> (<code>es</code>) — 27 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -2552,7 +2537,6 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
 | Cohere Transcribe INT8 | sherpa-onnx | 2.89 GB | — |
-| Granite Speech 4.1 Multilingual Q5 | transcribe.cpp | 1.83 GB | — |
 | whisper.cpp Tiny | whisper.cpp | 75 MB | — |
 | whisper.cpp Base | whisper.cpp | 142 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |

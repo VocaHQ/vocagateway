@@ -91,9 +91,6 @@ class DependencyStatus(BaseModel):
     available: bool
     path: str | None = None
     install_hint: str | None = None
-    # Set when a hint alone cannot carry the setup, as for a tool the project
-    # does not ship and the operator has to build.
-    docs_url: str | None = None
 
 
 class SystemStatus(BaseModel):
@@ -227,7 +224,6 @@ class AdminModelEntry(BaseModel):
     # weights are still correct, so the card warns rather than hiding the button.
     runtime_requirement: str | None = None
     runtime_hint: str | None = None
-    runtime_docs_url: str | None = None
 
 
 class CustomDownloadRequest(BaseModel):
@@ -276,7 +272,6 @@ class ConfigResponse(BaseModel):
     engine: str
     available_engines: list[str]
     whisper_model: str | None = None
-    transcribe_model: str | None = None
     whisperkit_model: str | None = None
     faster_whisper_model: str | None = None
     moonshine_model: str = "moonshine:en"
@@ -298,7 +293,6 @@ class ConfigUpdateRequest(BaseModel):
         "vocamac",
         "handy",
         "whisper.cpp",
-        "transcribe.cpp",
         "whisperkit",
         "faster-whisper",
         "moonshine",

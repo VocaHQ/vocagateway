@@ -18,7 +18,6 @@ from app.models import (
     vocamac,
     whisper_cpp,
 )
-from app.models.transcribe_cpp import TranscribeCppEngine
 from app.models.whisperkit import WhisperKitEngine
 
 ENGINE_VOCAMAC = "vocamac"
@@ -29,7 +28,6 @@ engine_requirement = system.engine_requirement
 _MODEL_ATTRS = MappingProxyType(
     {
         catalog.ENGINE_SHERPA_ONNX: "sherpa_model",
-        catalog.ENGINE_TRANSCRIBE_CPP: "transcribe_model",
         catalog.ENGINE_MLX_AUDIO: "mlx_audio_model",
         catalog.ENGINE_WHISPERKIT: "whisperkit_model",
         catalog.ENGINE_FASTER_WHISPER: "faster_whisper_model",
@@ -92,9 +90,7 @@ class _ModelPathResolver:
 
     def resolve_path(self, engine: str, rc: runtime_config.RuntimeConfig) -> Path | None:
         configured = rc.whisper_model
-        if engine == catalog.ENGINE_TRANSCRIBE_CPP:
-            configured = rc.transcribe_model
-        elif engine == catalog.ENGINE_WHISPERKIT:
+        if engine == catalog.ENGINE_WHISPERKIT:
             configured = rc.whisperkit_model
         elif engine == catalog.ENGINE_FASTER_WHISPER:
             configured = rc.faster_whisper_model
@@ -154,10 +150,6 @@ class _ModelPathResolver:
         changed = False
         if model_id == rc.moonshine_model and rc.engine == catalog.ENGINE_MOONSHINE:
             rc.moonshine_model = "moonshine:en"
-            rc.engine = runtime_config.AUTO_ENGINE
-            changed = True
-        if rc.transcribe_model == path_str:
-            rc.transcribe_model = None
             rc.engine = runtime_config.AUTO_ENGINE
             changed = True
         if rc.whisper_model == path_str:
@@ -240,14 +232,6 @@ class _EngineBuilder:
             engine_name = rc.engine or runtime_config.AUTO_ENGINE
         if engine_name == runtime_config.AUTO_ENGINE:
             return self.resolver.resolve_auto(rc)
-        if engine_name == catalog.ENGINE_TRANSCRIBE_CPP:
-            path = self.resolver.resolve_path(engine_name, rc)
-            return TranscribeCppEngine(
-                self.settings.transcribe_binary,
-                path,
-                self.resolver.catalog_model_for_path(path),
-                cpu_threads=rc.cpu_threads,
-            )
         return self._build_named(engine_name, rc)
 
     def validate(self, engine: str, device: str, compute_type: str, cpu_threads: int) -> None:
@@ -383,7 +367,6 @@ def _engine_signature(rc: runtime_config.RuntimeConfig) -> str:
         rc.compute_device,
         rc.compute_type,
         rc.cpu_threads,
-        rc.transcribe_model,
         rc.whisper_model,
         rc.whisperkit_model,
         rc.faster_whisper_model,

@@ -452,14 +452,6 @@
         "joiner-epoch-99-avg-1.int8.onnx": "e085d73b593cf9b0707f370dbd656d58327d3fe36d80d849202ef81df02cb01e"
       }
     },
-    "transcribe.cpp:canary-qwen-2.5b-Q5_K_M.gguf": {
-      "revision": "3370d4e2f28cc70eea79dfc9f2f43fb91eef3163",
-      "sha256": "d71b1d9ae442dc538665ed4df63a69520eb9be769ec0bc78c7d2f40040928306"
-    },
-    "transcribe.cpp:granite-speech-4.1-2b-Q5_K_M.gguf": {
-      "revision": "58e7710fd7039ded5a185668eef5f71ca5d9d919",
-      "sha256": "63e0d3a82fa6f0f4688af0b7d7ee784864d271b7be820f4ea43c8298c59b0ac5"
-    },
     "whisper.cpp:ggml-apex-hinglish-q5_0.bin": {
       "revision": "d1de3ff618856e5675c47d3158ca820506fb4d9e",
       "sha256": "9d877151b15cec1feb9110cfbc0a3162cf377bcc0ab1935174226f461cf60f13"

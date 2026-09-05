@@ -15,7 +15,6 @@ CATALOG_MODEL_ATTRIBUTES = (
 # single engine owns the answer. Order only decides between fields that should
 # never be set at once; `EngineManager` clears the others on every selection.
 PATH_MODEL_ATTRIBUTES = (
-    ("transcribe.cpp", "transcribe_model"),
     ("whisper.cpp", "whisper_model"),
     ("whisperkit", "whisperkit_model"),
     ("faster-whisper", "faster_whisper_model"),
@@ -37,7 +36,6 @@ def available_engines(ctx: GatewayContext) -> list[str]:
         whisperkit_binary=settings.whisperkit_binary,
         handy_binary=settings.handy_binary,
         vocamac_app=settings.vocamac_app,
-        transcribe_binary=settings.transcribe_binary,
     )
     engines = [
         "auto",
@@ -45,7 +43,6 @@ def available_engines(ctx: GatewayContext) -> list[str]:
         "faster-whisper",
         "moonshine",
         "whisper.cpp",
-        "transcribe.cpp",
     ]
     # The desktop-app and Apple-native adapters only exist on a matching host.
     engines.extend(

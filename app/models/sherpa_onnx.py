@@ -5,6 +5,7 @@ import re
 import time
 import wave
 from collections.abc import Callable
+from dataclasses import dataclass
 from importlib import util as importlib_util
 from pathlib import Path
 from types import MappingProxyType
@@ -120,6 +121,14 @@ class _SherpaRecognizerBuilder:
         if self.model and self.model.key == NEMOTRON_MODEL_KEY:
             return NEMOTRON_LANGUAGE_LOCALES.get(normalized, normalized)
         return language
+
+    def language_policy(self, requested: str) -> _LanguagePolicy:
+        return _LanguagePolicy(
+            language=self.stream_language(requested),
+            preserve_locale=self.uses_stream_language_locale(),
+            strip_tags=self.strips_stream_language_tags(),
+            set_on_stream=self.pins_language_at_build(),
+        )
 
     def uses_stream_language_locale(self) -> bool:
         return self.model is not None and self.model.key == NEMOTRON_MODEL_KEY
@@ -388,10 +397,7 @@ class SherpaOnnxEngine:
                 recognizer,
                 audio_path,
                 self.supports_streaming,
-                self._builder.stream_language(options.language),
-                self._builder.uses_stream_language_locale(),
-                self._builder.strips_stream_language_tags(),
-                self._builder.pins_language_at_build(),
+                self._builder.language_policy(options.language),
             )
             if not text:
                 if options.language != AUTO_LANGUAGE:
@@ -467,12 +473,23 @@ def _read_wave_samples(audio_path: Path) -> tuple[int, Any]:
     return sample_rate, block.astype(numpy.float32) / PCM_SAMPLE_SCALE
 
 
-def _decode_wave(
-    recognizer: Any,
-    audio_path: Path,
-    language: str = AUTO_LANGUAGE,
-    set_stream_language: bool = False,
-) -> str:
+@dataclass(frozen=True, slots=True)
+class _LanguagePolicy:
+    """How one request's language reaches the recognizer.
+
+    The four settings are one decision made per model, so they travel together
+    rather than as a row of positional flags through three call layers.
+    """
+
+    language: str = AUTO_LANGUAGE
+    preserve_locale: bool = False
+    strip_tags: bool = False
+    set_on_stream: bool = False
+
+
+def _decode_wave(recognizer: Any, audio_path: Path, policy: _LanguagePolicy) -> str:
+    language = policy.language
+    set_stream_language = policy.set_on_stream
     sample_rate, floats = _read_wave_samples(audio_path)
     stream = recognizer.create_stream()
     setter = getattr(stream, "set_option", None)
@@ -489,47 +506,27 @@ def _decode_wave(
     return str(stream.result.text).strip()
 
 
-def _decode_wave_online(
-    recognizer: Any,
-    audio_path: Path,
-    language: str = AUTO_LANGUAGE,
-    preserve_locale: bool = False,
-    strip_language_tags: bool = False,
-) -> str:
+def _decode_wave_online(recognizer: Any, audio_path: Path, policy: _LanguagePolicy) -> str:
     sample_rate, floats = _read_wave_samples(audio_path)
     stream = recognizer.create_stream()
-    _set_stream_language(stream, language, preserve_locale=preserve_locale)
+    _set_stream_language(stream, policy.language, preserve_locale=policy.preserve_locale)
     stream.accept_waveform(sample_rate, floats)
     stream.input_finished()
     while recognizer.is_ready(stream):
         recognizer.decode_stream(stream)
     text = str(recognizer.get_result(stream)).strip()
-    return _strip_language_tag(text) if strip_language_tags else text
+    return _strip_language_tag(text) if policy.strip_tags else text
 
 
 async def _run_sherpa_inference(
     recognizer: Any,
     audio_path: Path,
     is_streaming: bool,
-    language: str = AUTO_LANGUAGE,
-    preserve_locale: bool = False,
-    strip_language_tags: bool = False,
-    set_stream_language: bool = False,
+    policy: _LanguagePolicy,
 ) -> str:
     try:
-        if is_streaming:
-            decode_result = asyncio.to_thread(
-                _decode_wave_online,
-                recognizer,
-                audio_path,
-                language,
-                preserve_locale,
-                strip_language_tags,
-            )
-        else:
-            decode_result = asyncio.to_thread(
-                _decode_wave, recognizer, audio_path, language, set_stream_language
-            )
+        decoder = _decode_wave_online if is_streaming else _decode_wave
+        decode_result = asyncio.to_thread(decoder, recognizer, audio_path, policy)
         return await asyncio.wait_for(
             decode_result,
             timeout=TRANSCRIPTION_TIMEOUT_SECONDS,

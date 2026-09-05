@@ -15,7 +15,6 @@ ENGINE_LABELS = MappingProxyType(
         "vocamac": "VocaMac app",
         "handy": "Handy app",
         "whisper.cpp": "whisper.cpp",
-        "transcribe.cpp": "transcribe.cpp",
         "whisperkit": "WhisperKit",
         "faster-whisper": "faster-whisper",
         "moonshine": "Moonshine",
@@ -34,7 +33,6 @@ ENGINE_HINTS = MappingProxyType(
         "handy": "Optional macOS app. Reuses the Handy app and its downloaded models. "
         "No separate download.",
         "whisper.cpp": "Local GGML models. Kept resident when the build ships whisper-server.",
-        "transcribe.cpp": "GGUF speech models. Requires a separately installed transcribe-cli.",
         "whisperkit": "Core ML models via whisperkit-cli on Apple silicon Macs.",
         "faster-whisper": "Keeps a CTranslate2 model loaded. CPU INT8 is the usual Linux default.",
         "moonshine": "Fast language-specific models. Compatible English tiers can stream live.",
