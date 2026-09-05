@@ -131,10 +131,6 @@ WHISPER_TURBO_RETIREMENT_REASON = (
     "and up to 2 behind on German — but Medium trails both, so nothing here is given up."
 )
 HINGLISH_MODEL_SIZE_BYTES = 574_041_195
-# Qwen3-ASR takes its language as a string interpolated into the decoder prompt,
-# where the literal "None" is how that prompt spells "do not pin a language".
-# It is a decoder token, not Python's None, which would mean "no override".
-LANGUAGE_AGNOSTIC_DECODER = "None"
 
 MODEL_SAFETENSORS = "model.safetensors"
 JOINER_INT8_FILE = "joiner.int8.onnx"
@@ -142,27 +138,10 @@ NEMO_TRANSDUCER_TYPE = "nemo_transducer"
 STREAMING_TRANSDUCER_TYPE = "streaming_zipformer"
 COHERE_TRANSCRIBE_TYPE = "cohere_transcribe"
 ENGLISH_CODES = (ENGLISH_LANGUAGE_CODE,)
-SWIFT_SIZE_BYTES = 296_189_187
-HINDI_SMALL_SIZE_BYTES = 970_935_688
-SROTA_SIZE_BYTES = 1_580_827_103
 GRANITE_MULTILINGUAL_SIZE_BYTES = 4_636_316_308
-PRIME_SIZE_BYTES = 1_177_039_883
 PARAKEET_UNIFIED_SIZE_BYTES = 663_043_117
 PARAKEET_UNIFIED_STREAMING_SIZE_BYTES = 663_048_978
 COHERE_SIZE_BYTES = 2_888_052_036
-WHISPER_HF_FILES = (
-    "added_tokens.json",
-    "config.json",
-    "generation_config.json",
-    "merges.txt",
-    MODEL_SAFETENSORS,
-    "preprocessor_config.json",
-    "special_tokens_map.json",
-    "tokenizer.json",
-    "tokenizer_config.json",
-    "vocab.json",
-)
-SROTA_HF_FILES = (*WHISPER_HF_FILES, "chat_template.json")
 
 # Qwen3-ASR's upstream card lists 30 languages plus Chinese dialects. The
 # dialects are represented by the model's Mandarin/`yue` capability rather
@@ -236,7 +215,6 @@ class CatalogModel:
     # Some fine-tunes expose an application-level output contract whose wire
     # value is not a token understood by the decoder (for example, Roman
     # Hinglish is requested as `hinglish_roman` but Whisper expects `hi`).
-    # `LANGUAGE_AGNOSTIC_DECODER` pins the decoder to no language at all.
     decoder_language_code: str | None = None
     # Instruction some autoregressive models need in order to transcribe rather
     # than answer or translate. Passed only when the adapter's generate() takes it.
@@ -1326,89 +1304,6 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         language_codes=ENGLISH_CODES,
     ),
     _mlx_audio(
-        "hinglish-swift",
-        "MLX Hindi to Roman — Swift (Experimental)",
-        SWIFT_SIZE_BYTES,
-        "Hindi in Roman letters",
-        "Fast · Roman output",
-        4,
-        repository="Oriserve/Whisper-Hindi2Hinglish-Swift",
-        family="Whisper / Roman Hindi",
-        description=(
-            "Compact Whisper Base fine-tune that writes spoken Hindi in Roman letters. Faster and "
-            "smaller than Apex, with higher published error rates. No English translation. "
-        ),
-        license_name=APACHE_LICENSE,
-        language_codes=("hinglish_roman",),
-        decoder_language_code=HINDI_LANGUAGE_CODE,
-        marker_file=MODEL_SAFETENSORS,
-        required_files=WHISPER_HF_FILES,
-    ),
-    _mlx_audio(
-        "whisper-small-hindi",
-        "MLX Whisper Small Hindi (Experimental)",
-        HINDI_SMALL_SIZE_BYTES,
-        "Hindi",
-        "Specialized · read Hindi",
-        4,
-        repository="zindagi-technologies/whisper-small-hindi",
-        family="Whisper / Hindi",
-        description=(
-            "Whisper Small fine-tuned on Kathbath Hindi. Writes Devanagari; conversational speech "
-            "and Hindi-English mixing are not validated by the publisher. "
-        ),
-        license_name=APACHE_LICENSE,
-        language_codes=(HINDI_LANGUAGE_CODE,),
-        decoder_language_code=HINDI_LANGUAGE_CODE,
-        marker_file=MODEL_SAFETENSORS,
-        required_files=(
-            "config.json",
-            "generation_config.json",
-            MODEL_SAFETENSORS,
-            "processor_config.json",
-            "tokenizer.json",
-            "tokenizer_config.json",
-        ),
-    ),
-    _mlx_audio(
-        "srota-hinglish",
-        "MLX Srota — Hindi + English (Experimental)",
-        SROTA_SIZE_BYTES,
-        "Hindi + English, mixed script",
-        "Specialized · mixed script",
-        8,
-        repository="moorlee/qwen3-asr-0.6b-hinglish",
-        family="Qwen3-ASR / Srota",
-        description=(
-            "Qwen3-ASR fine-tune for conversational and tutorial Hindi-English speech. Hindi words "
-            "use Devanagari, English words use Latin. This is not the Roman Hindi output mode. "
-        ),
-        license_name=APACHE_LICENSE,
-        language_codes=(HINDI_LANGUAGE_CODE, ENGLISH_LANGUAGE_CODE),
-        decoder_language_code=LANGUAGE_AGNOSTIC_DECODER,
-        marker_file=MODEL_SAFETENSORS,
-        required_files=SROTA_HF_FILES,
-    ),
-    _mlx_audio(
-        "srota-conversational",
-        "MLX Srota Conversational (Experimental)",
-        SROTA_SIZE_BYTES,
-        "Hindi + English, mixed script",
-        "Specialized · conversation",
-        8,
-        repository="moorlee/qwen3-asr-0.6b-hinglish-hiacc-v1",
-        family="Qwen3-ASR / Srota",
-        description=(
-            "Conversation-only Srota fine-tune. Mixed Devanagari and Latin output, not Roman "
-            "Hindi. Its published conversational evaluation shares speakers with training. "
-        ),
-        license_name=APACHE_LICENSE,
-        language_codes=(HINDI_LANGUAGE_CODE, ENGLISH_LANGUAGE_CODE),
-        decoder_language_code=LANGUAGE_AGNOSTIC_DECODER,
-        marker_file=MODEL_SAFETENSORS,
-        required_files=SROTA_HF_FILES,
-    ),
-    _mlx_audio(
         "granite-speech-4.1-2b",
         "MLX Granite Speech 4.1 2B Multilingual",
         GRANITE_MULTILINGUAL_SIZE_BYTES,
@@ -1450,24 +1345,6 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
             "tokenizer_config.json",
             "vocab.json",
         ),
-    ),
-    _whisper_cpp(
-        "ggml-hindi2hinglish-prime.bin",
-        "Hindi to Roman — Prime Q5 (Experimental)",
-        PRIME_SIZE_BYTES,
-        "Hindi in Roman letters",
-        "Specialized · Roman output",
-        8,
-        download_url="https://huggingface.co/curiophile/whisper-hindi2hinglish-ggml/resolve/main/ggml-hindi2hinglish-prime.bin",
-        family="Whisper / Roman Hindi",
-        source="Oriserve / community GGML",
-        description=(
-            "Whisper Large v3 fine-tune for direct Roman Hindi output. Larger and slower than "
-            "Apex; published accuracy varies by dataset. Community Q5_1 conversion. "
-        ),
-        language_codes=(HINGLISH_ROMAN_LANGUAGE_CODE,),
-        decoder_language_code=HINDI_LANGUAGE_CODE,
-        license_name=APACHE_LICENSE,
     ),
     _sherpa_onnx(
         "parakeet-unified-en-0.6b-int8",

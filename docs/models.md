@@ -2,7 +2,7 @@
 
 # Models and languages
 
-Every model in the catalog (74 of them), what it speaks, and which models cover a given language. Generated from `app/catalog.py`, so it always matches the catalog the gateway actually ships.
+Every model in the catalog (69 of them), what it speaks, and which models cover a given language. Generated from `app/catalog.py`, so it always matches the catalog the gateway actually ships.
 
 The WebUI Models tab shows the same information per card, with a language filter. Use this page to pick a model before installing anything.
 
@@ -93,7 +93,6 @@ GGML models through the standalone `whisper-cli` binary.
 
 | Model | Download | Languages | Flags | Licence |
 | --- | ---: | --- | --- | --- |
-| Hindi to Roman — Prime Q5 (Experimental) | 1.18 GB | Hinglish — Roman | — | Apache 2.0 |
 | whisper.cpp Tiny EN | 75 MB | English | — | See model source |
 | whisper.cpp Tiny | 75 MB | [100 languages](#language-set-100-0b8e4ee5) | — | See model source |
 | whisper.cpp Base EN | 142 MB | English | — | See model source |
@@ -131,10 +130,6 @@ MLX, **Apple silicon only**. Hidden on Linux and in containers.
 | MLX Qwen3-ASR 0.6B 4-bit | 713 MB | [30 languages](#language-set-30-b59576aa) | Apple silicon | Apache 2.0 |
 | MLX Qwen3-ASR 1.7B 4-bit | 1.61 GB | [30 languages](#language-set-30-b59576aa) | Apple silicon | Apache 2.0 |
 | MLX Granite Speech 4.1 2B | 2.38 GB | English | Apple silicon | Apache 2.0 |
-| MLX Hindi to Roman — Swift (Experimental) | 296 MB | Hinglish — Roman | Apple silicon | Apache 2.0 |
-| MLX Whisper Small Hindi (Experimental) | 971 MB | Hindi | Apple silicon | Apache 2.0 |
-| MLX Srota — Hindi + English (Experimental) | 1.58 GB | Hindi, English | Apple silicon | Apache 2.0 |
-| MLX Srota Conversational (Experimental) | 1.58 GB | Hindi, English | Apple silicon | Apache 2.0 |
 | MLX Granite Speech 4.1 2B Multilingual | 4.64 GB | English, French, German, Spanish, Portuguese, Japanese | Apple silicon | Apache 2.0 |
 
 ## Language sets
@@ -765,7 +760,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>English</strong> (<code>en</code>) — 53 models</summary>
+<summary><strong>English</strong> (<code>en</code>) — 51 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -784,8 +779,6 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Large v3 | faster-whisper | 3.09 GB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
-| MLX Srota — Hindi + English (Experimental) | mlx-audio | 1.58 GB | Apple silicon |
-| MLX Srota Conversational (Experimental) | mlx-audio | 1.58 GB | Apple silicon |
 | MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | MLX Granite Speech 4.1 2B | mlx-audio | 2.38 GB | Apple silicon |
 | MLX Parakeet TDT 0.6B v2 | mlx-audio | 2.47 GB | Apple silicon |
@@ -1199,7 +1192,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Hindi</strong> (<code>hi</code>) — 26 models</summary>
+<summary><strong>Hindi</strong> (<code>hi</code>) — 23 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1211,9 +1204,6 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Large v3 | faster-whisper | 3.09 GB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
-| MLX Whisper Small Hindi (Experimental) | mlx-audio | 971 MB | Apple silicon |
-| MLX Srota — Hindi + English (Experimental) | mlx-audio | 1.58 GB | Apple silicon |
-| MLX Srota Conversational (Experimental) | mlx-audio | 1.58 GB | Apple silicon |
 | MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
@@ -1233,13 +1223,11 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Hinglish — Roman</strong> (<code>hinglish_roman</code>) — 3 models</summary>
+<summary><strong>Hinglish — Roman</strong> (<code>hinglish_roman</code>) — 1 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
-| MLX Hindi to Roman — Swift (Experimental) | mlx-audio | 296 MB | Apple silicon |
 | Hinglish — Roman (Experimental) | whisper.cpp | 574 MB | — |
-| Hindi to Roman — Prime Q5 (Experimental) | whisper.cpp | 1.18 GB | — |
 
 </details>
 

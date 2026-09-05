@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from app import scripts
-from app.catalog import LANGUAGE_AGNOSTIC_DECODER, CatalogModel
+from app.catalog import CatalogModel
 from app.errors import (
     EngineUnavailableError,
     LanguageUnsupportedError,
@@ -160,9 +160,7 @@ def _generate_text(model: Any, audio_path: Path, language: str, prompt: str | No
     if prompt is not None and "prompt" in generate_parameters:
         arguments["prompt"] = prompt
     if language != "auto" and "language" in generate_parameters:
-        arguments["language"] = (
-            language if language == LANGUAGE_AGNOSTIC_DECODER else _language_code(language)
-        )
+        arguments["language"] = _language_code(language)
     generation = model.generate(str(audio_path), **arguments)
     return str(generation.text).strip()
 

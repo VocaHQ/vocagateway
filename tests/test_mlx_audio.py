@@ -105,10 +105,22 @@ async def test_mlx_rejects_a_language_the_model_c_aa(tmp_path: Path) -> None:
 async def test_roman_output_uses_hindi_decoder_and_rejects_script_leakage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, requested: str
 ) -> None:
+    """`decoder_language_code` support in the MLX adapter, mirroring whisper.cpp.
+
+    No shipped MLX model sets the field today - the Roman-Hindi fine-tunes that
+    did were dropped for accuracy - so the contract is pinned to a synthetic
+    entry rather than to whichever catalog model happens to carry it.
+    """
+    from dataclasses import replace
+
     from app.catalog import DEFAULT_CATALOG
     from app.models.base import EngineHealth
 
-    model = next(entry for entry in DEFAULT_CATALOG if entry.key == "hinglish-swift")
+    model = replace(
+        next(entry for entry in DEFAULT_CATALOG if entry.engine == "mlx-audio"),
+        language_codes=("hinglish_roman",),
+        decoder_language_code="hi",
+    )
     engine = MLXAudioEngine(tmp_path, model)
     calls = []
 
@@ -138,21 +150,6 @@ async def test_roman_output_uses_hindi_decoder_and_rejects_script_leakage(
         await engine.transcribe(tmp_path / "audio.wav", options)
     with pytest.raises(LanguageUnsupportedError, match="does not support en"):
         await engine.transcribe(tmp_path / "audio.wav", TranscriptionOptions("en", "raw"))
-
-
-def test_srota_preserves_literal_language_agnostic_prefix(tmp_path: Path) -> None:
-    from app.catalog import DEFAULT_CATALOG
-    from app.models.mlx_audio import _generate_text
-
-    model = next(entry for entry in DEFAULT_CATALOG if entry.key == "srota-hinglish")
-    engine = MLXAudioEngine(tmp_path, model)
-
-    class FakeModel:
-        def generate(self, audio: str, *, language: str):
-            assert language == "None"
-            return types.SimpleNamespace(text="मेरा office")
-
-    assert _generate_text(FakeModel(), tmp_path / "audio.wav", engine._decoder_language("hi"))
 
 
 @pytest.mark.parametrize("language", ["auto", "fr-FR"])

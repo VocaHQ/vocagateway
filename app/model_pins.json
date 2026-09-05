@@ -94,12 +94,6 @@
         "multilingual_sample.wav": "91d243650809c1274141ec20ff23045315eaf27567694002ea3ef390048b7058"
       }
     },
-    "mlx-audio:hinglish-swift": {
-      "revision": "cd0d4d013062d542569135460a79025337df1982",
-      "file_digests": {
-        "model.safetensors": "235b2a5dfee28f64da3659954f8f644decc82dada8a07971b9a2246ded9594cb"
-      }
-    },
     "mlx-audio:parakeet-tdt-0.6b-v2": {
       "revision": "8ae155301e23d820d82aa60d24817c900e69e487",
       "file_digests": {
@@ -126,30 +120,10 @@
         "model.safetensors": "9848eaf7a5c1589c671b35035ac27b72e248dd0c604eacae547e7e403d29db45"
       }
     },
-    "mlx-audio:srota-conversational": {
-      "revision": "b6d7a400e653326e963d81abd50fdbbd8a851146",
-      "file_digests": {
-        "model.safetensors": "e28aca014f1fecaf2dbd21d8572c4daf32bf8d6b237a6492dea8873ee462b888",
-        "tokenizer.json": "bd2a97b55c8f7f9c328c73ee9b9178771037e9f566dfca8e238a063d41cbac92"
-      }
-    },
-    "mlx-audio:srota-hinglish": {
-      "revision": "188ae2b61f932feb998e3b3c7a868e927a467031",
-      "file_digests": {
-        "model.safetensors": "87dfcb5780623483746dddf5121ec0f324e7bf40b1938628b0102d868eb330a0",
-        "tokenizer.json": "bd2a97b55c8f7f9c328c73ee9b9178771037e9f566dfca8e238a063d41cbac92"
-      }
-    },
     "mlx-audio:whisper-large-v3-turbo-4bit": {
       "revision": "321a6ead9f6e0646bc8188a54d2a470e275c6b76",
       "file_digests": {
         "model.safetensors": "45298f6dc48df8c11e0a8d1dc5e0197c688bfa530646fa21f1a0238d2b0ecda3"
-      }
-    },
-    "mlx-audio:whisper-small-hindi": {
-      "revision": "292b4b1b11fb7383405f269834b78a3ba19a03f5",
-      "file_digests": {
-        "model.safetensors": "e78339cfa00a7d61592c1c82db6cbc783c8c0354e975cebe884add3efe148bed"
       }
     },
     "moonshine:ar-tiny-streaming": {
@@ -463,10 +437,6 @@
     "whisper.cpp:ggml-base.en.bin": {
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
       "sha256": "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002"
-    },
-    "whisper.cpp:ggml-hindi2hinglish-prime.bin": {
-      "revision": "ea0d52c8fe269d87ae03e0f5a4cbd0b5673b35e2",
-      "sha256": "60bb800a35c1df7400020ed2e13981027b2c6caff71a318f321f6108838f0bad"
     },
     "whisper.cpp:ggml-large-v3-turbo.bin": {
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
