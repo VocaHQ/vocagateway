@@ -79,11 +79,25 @@
         "model.bin": "1a5afae06a4db91c975c9a9d78be5cc110ee4ea022ad57d55492e4550e936b2a"
       }
     },
+    "mlx-audio:granite-speech-4.1-2b": {
+      "revision": "de575db64086f84fdc79da4932d1076e965bc546",
+      "file_digests": {
+        "model-00001-of-00003.safetensors": "3c987fdc29940c49d2498ea5925e8d57f88661af3ef30f73e56e2434ded3e42f",
+        "model-00002-of-00003.safetensors": "8e18d6d3fbe009a95a4cf305e31c2aab4a3484eccbce29aa1aa1454fc8c046ee",
+        "model-00003-of-00003.safetensors": "32f823497bc179f6f346efdd46984ab60e44b3d443bf40a18d757ddce626a2d2"
+      }
+    },
     "mlx-audio:granite-speech-4.1-2b-nar": {
       "revision": "22be7373b8b9b4cb3bd81a35ea3e8418244648b3",
       "file_digests": {
         "model.safetensors": "cc5b122f07135a577cae2e8ec94933f4152e47aa3217b9e558c179420f5e0cd2",
         "multilingual_sample.wav": "91d243650809c1274141ec20ff23045315eaf27567694002ea3ef390048b7058"
+      }
+    },
+    "mlx-audio:hinglish-swift": {
+      "revision": "cd0d4d013062d542569135460a79025337df1982",
+      "file_digests": {
+        "model.safetensors": "235b2a5dfee28f64da3659954f8f644decc82dada8a07971b9a2246ded9594cb"
       }
     },
     "mlx-audio:parakeet-tdt-0.6b-v2": {
@@ -112,10 +126,30 @@
         "model.safetensors": "9848eaf7a5c1589c671b35035ac27b72e248dd0c604eacae547e7e403d29db45"
       }
     },
+    "mlx-audio:srota-conversational": {
+      "revision": "b6d7a400e653326e963d81abd50fdbbd8a851146",
+      "file_digests": {
+        "model.safetensors": "e28aca014f1fecaf2dbd21d8572c4daf32bf8d6b237a6492dea8873ee462b888",
+        "tokenizer.json": "bd2a97b55c8f7f9c328c73ee9b9178771037e9f566dfca8e238a063d41cbac92"
+      }
+    },
+    "mlx-audio:srota-hinglish": {
+      "revision": "188ae2b61f932feb998e3b3c7a868e927a467031",
+      "file_digests": {
+        "model.safetensors": "87dfcb5780623483746dddf5121ec0f324e7bf40b1938628b0102d868eb330a0",
+        "tokenizer.json": "bd2a97b55c8f7f9c328c73ee9b9178771037e9f566dfca8e238a063d41cbac92"
+      }
+    },
     "mlx-audio:whisper-large-v3-turbo-4bit": {
       "revision": "321a6ead9f6e0646bc8188a54d2a470e275c6b76",
       "file_digests": {
         "model.safetensors": "45298f6dc48df8c11e0a8d1dc5e0197c688bfa530646fa21f1a0238d2b0ecda3"
+      }
+    },
+    "mlx-audio:whisper-small-hindi": {
+      "revision": "292b4b1b11fb7383405f269834b78a3ba19a03f5",
+      "file_digests": {
+        "model.safetensors": "e78339cfa00a7d61592c1c82db6cbc783c8c0354e975cebe884add3efe148bed"
       }
     },
     "moonshine:ar-tiny-streaming": {
@@ -326,6 +360,14 @@
         "encoder.int8.onnx": "7a75b4e2a5857a6dcc0819503bbe3fad66943db4a3ccf21d3f27c633667d303f"
       }
     },
+    "sherpa-onnx:cohere-transcribe-14-lang-int8": {
+      "revision": "156a470cf08eefe706a0004f3c52d9ee567ca7a0",
+      "file_digests": {
+        "decoder.int8.onnx": "8372ca6c8ff4db8b916ca3592f5c757a715e691b9edec751ba19b29fc854baf9",
+        "encoder.int8.onnx": "cf704f8cfa90e3f0a76f9ffc05998bdf00ba9ae983192c14a85a3a5eb008b367",
+        "encoder.int8.onnx.data": "bcf1b7148c8518ae52df1ad2d2fc2b4e89261ea23e6c874eef1d9f55bcbaa4a3"
+      }
+    },
     "sherpa-onnx:dolphin-base-ctc-int8": {
       "revision": "1f3a53d0ecf658f8b0974e2cfde368eee40732fa",
       "file_digests": {
@@ -368,6 +410,22 @@
         "joiner.int8.onnx": "7946164367946e7f9f29a122407c3252b680dbae9a51343eb2488d057c3c43d2"
       }
     },
+    "sherpa-onnx:parakeet-unified-en-0.6b-560ms-int8": {
+      "revision": "7551fd26fc810cc1e4e043e608db4d13b59be31e",
+      "file_digests": {
+        "decoder.int8.onnx": "34fea72425d2506600772ba191a6d3f99c0710abdb68d9a3dc89fa8cb2aa473a",
+        "encoder.int8.onnx": "e566c3f014598a41724f2df028779a2d4cf7943cbefa324964f6a72e8ee255fb",
+        "joiner.int8.onnx": "869f43f7d24595c55581ad3bf249a935fb8a71389fbdaa7504b9f46f93140f8a"
+      }
+    },
+    "sherpa-onnx:parakeet-unified-en-0.6b-int8": {
+      "revision": "8c3a10fb13408c7a7054f6898958bf1c64a8d6c7",
+      "file_digests": {
+        "decoder.int8.onnx": "a5e223392c90e75f8144cdb5eb95af7625db389e39edef2bd1a9c872b3298fe6",
+        "encoder.int8.onnx": "6716910b7a0833997fec7a410494c995d70124001a0e9b66d6370d6aced577e0",
+        "joiner.int8.onnx": "869f43f7d24595c55581ad3bf249a935fb8a71389fbdaa7504b9f46f93140f8a"
+      }
+    },
     "sherpa-onnx:qwen3-asr-0.6b-int8": {
       "revision": "68818b2313fe77bd06f6a7c5068ff3ef59d02b8a",
       "file_digests": {
@@ -394,6 +452,14 @@
         "joiner-epoch-99-avg-1.int8.onnx": "e085d73b593cf9b0707f370dbd656d58327d3fe36d80d849202ef81df02cb01e"
       }
     },
+    "transcribe.cpp:canary-qwen-2.5b-Q5_K_M.gguf": {
+      "revision": "3370d4e2f28cc70eea79dfc9f2f43fb91eef3163",
+      "sha256": "d71b1d9ae442dc538665ed4df63a69520eb9be769ec0bc78c7d2f40040928306"
+    },
+    "transcribe.cpp:granite-speech-4.1-2b-Q5_K_M.gguf": {
+      "revision": "58e7710fd7039ded5a185668eef5f71ca5d9d919",
+      "sha256": "63e0d3a82fa6f0f4688af0b7d7ee784864d271b7be820f4ea43c8298c59b0ac5"
+    },
     "whisper.cpp:ggml-apex-hinglish-q5_0.bin": {
       "revision": "d1de3ff618856e5675c47d3158ca820506fb4d9e",
       "sha256": "9d877151b15cec1feb9110cfbc0a3162cf377bcc0ab1935174226f461cf60f13"
@@ -405,6 +471,10 @@
     "whisper.cpp:ggml-base.en.bin": {
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
       "sha256": "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002"
+    },
+    "whisper.cpp:ggml-hindi2hinglish-prime.bin": {
+      "revision": "ea0d52c8fe269d87ae03e0f5a4cbd0b5673b35e2",
+      "sha256": "60bb800a35c1df7400020ed2e13981027b2c6caff71a318f321f6108838f0bad"
     },
     "whisper.cpp:ggml-large-v3-turbo.bin": {
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",

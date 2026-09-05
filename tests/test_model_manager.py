@@ -1533,3 +1533,46 @@ def test_no_turbo_build_claims_to_be_the_most_accurate() -> None:
     for model in DEFAULT_CATALOG:
         if "turbo" in model.key.lower():
             assert model.quality != "Most accurate", model.id
+
+
+@pytest.mark.parametrize("missing", [False, True])
+async def test_hf_manifest_downloads_only_runtime_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, missing: bool
+) -> None:
+    model = CatalogModel(
+        id="mlx-audio:manifest",
+        engine="mlx-audio",
+        key="manifest",
+        label="Test",
+        size_bytes=5,
+        languages="Hindi",
+        quality="Test",
+        minimum_ram_gb=1,
+        huggingface_repo="test/model",
+        huggingface_folder="",
+        marker_file="model.safetensors",
+        required_files=("model.safetensors", "config.json"),
+        revision="a" * 40,
+    )
+    files = [RepoFile("model.safetensors", 4), RepoFile("predictions.jsonl", 999)]
+    if not missing:
+        files.append(RepoFile("config.json", 1))
+    monkeypatch.setattr(model_manager, "_list_repo_folder", lambda *args: files)
+    fetched = []
+
+    def download(url, destination, *args):
+        fetched.append(destination.name)
+        destination.write_bytes(b"x")
+
+    monkeypatch.setattr(model_manager, "_download_file", download)
+    manager = ModelManager(tmp_path, catalog=(model,))
+    state = manager.start_download(model.id)
+    await manager._downloads[model.id].task
+    if missing:
+        assert state.status == "failed"
+        assert manager.installed_path(model.id) is None
+        assert fetched == []
+    else:
+        assert state.status == "completed"
+        assert set(fetched) == {"model.safetensors", "config.json"}
+        assert state.total_bytes == 5

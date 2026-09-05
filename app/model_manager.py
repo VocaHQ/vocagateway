@@ -632,6 +632,12 @@ class ModelManager:
         files = await asyncio.to_thread(
             _list_repo_folder, model.huggingface_repo, model.huggingface_folder, _revision(model)
         )
+        if model.required_files:
+            available = {entry.relative_path for entry in files}
+            missing = set(model.required_files) - available
+            if missing:
+                raise UnknownModelError(f"Required model files are missing: {sorted(missing)}.")
+            files = [entry for entry in files if entry.relative_path in model.required_files]
         if not files:
             raise UnknownModelError(f"No model files found in {model.huggingface_repo}.")
         download_handle.state.total_bytes = sum(entry.size_bytes for entry in files)

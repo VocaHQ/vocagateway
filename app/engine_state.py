@@ -11,7 +11,12 @@ CATALOG_MODEL_ATTRIBUTES = (
     ("sherpa-onnx", "sherpa_model"),
     ("mlx-audio", "mlx_audio_model"),
 )
-PATH_MODEL_ATTRIBUTES = ("whisper_model", "whisperkit_model", "faster_whisper_model")
+PATH_MODEL_ATTRIBUTES = (
+    "transcribe_model",
+    "whisper_model",
+    "whisperkit_model",
+    "faster_whisper_model",
+)
 
 
 def engine_id(ctx: GatewayContext) -> str:
@@ -30,7 +35,14 @@ def available_engines(ctx: GatewayContext) -> list[str]:
         handy_binary=settings.handy_binary,
         vocamac_app=settings.vocamac_app,
     )
-    engines = ["auto", "sherpa-onnx", "faster-whisper", "moonshine", "whisper.cpp"]
+    engines = [
+        "auto",
+        "sherpa-onnx",
+        "faster-whisper",
+        "moonshine",
+        "whisper.cpp",
+        "transcribe.cpp",
+    ]
     # The desktop-app and Apple-native adapters only exist on a matching host.
     engines.extend(
         engine

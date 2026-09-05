@@ -45,11 +45,15 @@ ENGINE_ORDER = (
     "faster-whisper",
     "moonshine",
     "whisper.cpp",
+    "transcribe.cpp",
     "whisperkit",
     "mlx-audio",
 )
 
 ENGINE_NOTES = {
+    "transcribe.cpp": (
+        "GGUF models. Install transcribe-cli separately; see [setup](additional-models.md)."
+    ),
     "sherpa-onnx": "Portable INT8 CPU models. Run everywhere, including containers.",
     "faster-whisper": "CTranslate2 Whisper. Kept resident; the broad multilingual fallback.",
     "moonshine": "Compact dictation models. English tiers support live streaming.",

@@ -267,6 +267,7 @@ class ConfigResponse(BaseModel):
     engine: str
     available_engines: list[str]
     whisper_model: str | None = None
+    transcribe_model: str | None = None
     whisperkit_model: str | None = None
     faster_whisper_model: str | None = None
     moonshine_model: str = "moonshine:en"
@@ -288,6 +289,7 @@ class ConfigUpdateRequest(BaseModel):
         "vocamac",
         "handy",
         "whisper.cpp",
+        "transcribe.cpp",
         "whisperkit",
         "faster-whisper",
         "moonshine",

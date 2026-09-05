@@ -389,6 +389,7 @@ def config_response(ctx: GatewayContext) -> schemas.ConfigResponse:
             engine=rc.engine,
             available_engines=available_engines(ctx),
             whisper_model=rc.whisper_model,
+            transcribe_model=rc.transcribe_model,
             whisperkit_model=rc.whisperkit_model,
             faster_whisper_model=rc.faster_whisper_model,
             moonshine_model=rc.moonshine_model,

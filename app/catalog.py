@@ -15,6 +15,7 @@ from app.system import SystemInfo
 PINS_PATH = Path(__file__).parent / "model_pins.json"
 
 ENGINE_WHISPER_CPP = "whisper.cpp"
+ENGINE_TRANSCRIBE_CPP = "transcribe.cpp"
 ENGINE_WHISPERKIT = "whisperkit"
 ENGINE_FASTER_WHISPER = "faster-whisper"
 ENGINE_MOONSHINE = "moonshine"
@@ -131,6 +132,35 @@ WHISPER_TURBO_RETIREMENT_REASON = (
     "and up to 2 behind on German — but Medium trails both, so nothing here is given up."
 )
 HINGLISH_MODEL_SIZE_BYTES = 574_041_195
+
+MODEL_SAFETENSORS = "model.safetensors"
+JOINER_INT8_FILE = "joiner.int8.onnx"
+NEMO_TRANSDUCER_TYPE = "nemo_transducer"
+STREAMING_TRANSDUCER_TYPE = "streaming_zipformer"
+ENGLISH_CODES = (ENGLISH_LANGUAGE_CODE,)
+SWIFT_SIZE_BYTES = 296_189_187
+HINDI_SMALL_SIZE_BYTES = 970_935_688
+SROTA_SIZE_BYTES = 1_580_827_103
+GRANITE_MULTILINGUAL_SIZE_BYTES = 4_636_316_308
+PRIME_SIZE_BYTES = 1_177_039_883
+PARAKEET_UNIFIED_SIZE_BYTES = 663_043_117
+PARAKEET_UNIFIED_STREAMING_SIZE_BYTES = 663_048_978
+CANARY_QWEN_SIZE_BYTES = 1_983_729_024
+GRANITE_GGUF_SIZE_BYTES = 1_829_704_544
+COHERE_SIZE_BYTES = 2_888_052_036
+WHISPER_HF_FILES = (
+    "added_tokens.json",
+    "config.json",
+    "generation_config.json",
+    "merges.txt",
+    MODEL_SAFETENSORS,
+    "preprocessor_config.json",
+    "special_tokens_map.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "vocab.json",
+)
+SROTA_HF_FILES = (*WHISPER_HF_FILES, "chat_template.json")
 
 # Qwen3-ASR's upstream card lists 30 languages plus Chinese dialects. The
 # dialects are represented by the model's Mandarin/`yue` capability rather
@@ -282,7 +312,7 @@ class _WhisperModelBuilders:
 
     @classmethod
     def whisper_language_codes(cls, languages: str) -> tuple[str, ...]:
-        return (ENGLISH_LANGUAGE_CODE,) if languages == ENGLISH_ONLY else WHISPER_LANGUAGES
+        return ENGLISH_CODES if languages == ENGLISH_ONLY else WHISPER_LANGUAGES
 
     @classmethod
     def whisper_cpp(
@@ -399,7 +429,9 @@ class _WhisperModelBuilders:
             family=str(kwargs["family"]),
             description=str(kwargs["description"]),
             source="MLX Audio",
-            marker_file="model.safetensors",
+            marker_file=str(kwargs.get("marker_file", MODEL_SAFETENSORS)),
+            required_files=tuple(kwargs.get("required_files", ())),
+            decoder_language_code=kwargs.get("decoder_language_code"),
             language_codes=tuple(kwargs.get("language_codes", ())),
             apple_silicon_only=True,
             license_name=str(kwargs["license_name"]),
@@ -868,10 +900,10 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         required_files=(
             ENCODER_INT8_FILE,
             DECODER_INT8_FILE,
-            "joiner.int8.onnx",
+            JOINER_INT8_FILE,
             TOKENS_FILE,
         ),
-        model_type="nemo_transducer",
+        model_type=NEMO_TRANSDUCER_TYPE,
         language_codes=(
             BULGARIAN_LANGUAGE_CODE,
             CROATIAN_LANGUAGE_CODE,
@@ -917,11 +949,11 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         required_files=(
             ENCODER_INT8_FILE,
             DECODER_INT8_FILE,
-            "joiner.int8.onnx",
+            JOINER_INT8_FILE,
             TOKENS_FILE,
         ),
-        model_type="nemo_transducer",
-        language_codes=(ENGLISH_LANGUAGE_CODE,),
+        model_type=NEMO_TRANSDUCER_TYPE,
+        language_codes=ENGLISH_CODES,
         family="Parakeet TDT",
         description=(
             "The English-only Parakeet. v3 trades some English accuracy for 25-language coverage, "
@@ -955,7 +987,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         2,
         huggingface_repo="csukuangfj/sherpa-onnx-nemo-transducer-giga-am-v3-russian-2025-12-16",
         required_files=(ENCODER_INT8_FILE, "decoder.onnx", "joiner.onnx", TOKENS_FILE),
-        model_type="nemo_transducer",
+        model_type=NEMO_TRANSDUCER_TYPE,
         language_codes=(RUSSIAN_LANGUAGE_CODE,),
         family="GigaAM",
         description=(
@@ -975,7 +1007,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         huggingface_repo="csukuangfj/sherpa-onnx-nemo-canary-180m-flash-en-es-de-fr-int8",
         required_files=(ENCODER_INT8_FILE, DECODER_INT8_FILE, TOKENS_FILE),
         model_type="nemo_canary",
-        language_codes=(ENGLISH_LANGUAGE_CODE,),
+        language_codes=ENGLISH_CODES,
         family="Canary",
         description=(
             "NVIDIA's Canary 180M Flash converted to INT8 ONNX. The underlying model also "
@@ -999,8 +1031,8 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
             "joiner-epoch-99-avg-1.int8.onnx",
             TOKENS_FILE,
         ),
-        model_type="streaming_zipformer",
-        language_codes=(ENGLISH_LANGUAGE_CODE,),
+        model_type=STREAMING_TRANSDUCER_TYPE,
+        language_codes=ENGLISH_CODES,
         family="Zipformer",
         description=(
             "A small streaming-capable zipformer transducer. Unlike most batch sherpa-onnx "
@@ -1097,10 +1129,10 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         required_files=(
             ENCODER_INT8_FILE,
             DECODER_INT8_FILE,
-            "joiner.int8.onnx",
+            JOINER_INT8_FILE,
             TOKENS_FILE,
         ),
-        model_type="streaming_zipformer",
+        model_type=STREAMING_TRANSDUCER_TYPE,
         language_codes=(
             ENGLISH_LANGUAGE_CODE,
             SPANISH_LANGUAGE_CODE,
@@ -1151,7 +1183,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         2,
         huggingface_repo="csukuangfj2/sherpa-onnx-streaming-zipformer-bn-vosk-2026-02-09",
         required_files=("encoder.onnx", "decoder.onnx", "joiner.onnx", TOKENS_FILE),
-        model_type="streaming_zipformer",
+        model_type=STREAMING_TRANSDUCER_TYPE,
         language_codes=("bn",),
         family="Zipformer",
         description=(
@@ -1232,7 +1264,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
             "multilingual v3 build, which spends capacity on 24 other languages."
         ),
         license_name=CC_BY_LICENSE,
-        language_codes=(ENGLISH_LANGUAGE_CODE,),
+        language_codes=ENGLISH_CODES,
     ),
     _mlx_audio(
         "qwen3-asr-0.6b-4bit",
@@ -1283,7 +1315,272 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
             "accuracy rankings."
         ),
         license_name=APACHE_LICENSE,
-        language_codes=(ENGLISH_LANGUAGE_CODE,),
+        language_codes=ENGLISH_CODES,
+    ),
+    _mlx_audio(
+        "hinglish-swift",
+        "MLX Hindi to Roman — Swift (Experimental)",
+        SWIFT_SIZE_BYTES,
+        "Hindi in Roman letters",
+        "Fast · Roman output",
+        4,
+        repository="Oriserve/Whisper-Hindi2Hinglish-Swift",
+        family="Whisper / Roman Hindi",
+        description=(
+            "Compact Whisper Base fine-tune that writes spoken Hindi in Roman letters. Faster and "
+            "smaller than Apex, with higher published error rates. No English translation. "
+        ),
+        license_name=APACHE_LICENSE,
+        language_codes=("hinglish_roman",),
+        decoder_language_code=HINDI_LANGUAGE_CODE,
+        marker_file=MODEL_SAFETENSORS,
+        required_files=WHISPER_HF_FILES,
+    ),
+    _mlx_audio(
+        "whisper-small-hindi",
+        "MLX Whisper Small Hindi (Experimental)",
+        HINDI_SMALL_SIZE_BYTES,
+        "Hindi",
+        "Specialized · read Hindi",
+        4,
+        repository="zindagi-technologies/whisper-small-hindi",
+        family="Whisper / Hindi",
+        description=(
+            "Whisper Small fine-tuned on Kathbath Hindi. Writes Devanagari; conversational speech "
+            "and Hindi-English mixing are not validated by the publisher. "
+        ),
+        license_name=APACHE_LICENSE,
+        language_codes=(HINDI_LANGUAGE_CODE,),
+        decoder_language_code=HINDI_LANGUAGE_CODE,
+        marker_file=MODEL_SAFETENSORS,
+        required_files=(
+            "config.json",
+            "generation_config.json",
+            MODEL_SAFETENSORS,
+            "processor_config.json",
+            "tokenizer.json",
+            "tokenizer_config.json",
+        ),
+    ),
+    _mlx_audio(
+        "srota-hinglish",
+        "MLX Srota — Hindi + English (Experimental)",
+        SROTA_SIZE_BYTES,
+        "Hindi + English, mixed script",
+        "Specialized · mixed script",
+        8,
+        repository="moorlee/qwen3-asr-0.6b-hinglish",
+        family="Qwen3-ASR / Srota",
+        description=(
+            "Qwen3-ASR fine-tune for conversational and tutorial Hindi-English speech. Hindi words "
+            "use Devanagari, English words use Latin. This is not the Roman Hindi output mode. "
+        ),
+        license_name=APACHE_LICENSE,
+        language_codes=(HINDI_LANGUAGE_CODE, ENGLISH_LANGUAGE_CODE),
+        decoder_language_code="None",
+        marker_file=MODEL_SAFETENSORS,
+        required_files=SROTA_HF_FILES,
+    ),
+    _mlx_audio(
+        "srota-conversational",
+        "MLX Srota Conversational (Experimental)",
+        SROTA_SIZE_BYTES,
+        "Hindi + English, mixed script",
+        "Specialized · conversation",
+        8,
+        repository="moorlee/qwen3-asr-0.6b-hinglish-hiacc-v1",
+        family="Qwen3-ASR / Srota",
+        description=(
+            "Conversation-only Srota fine-tune. Mixed Devanagari and Latin output, not Roman "
+            "Hindi. Its published conversational evaluation shares speakers with training. "
+        ),
+        license_name=APACHE_LICENSE,
+        language_codes=(HINDI_LANGUAGE_CODE, ENGLISH_LANGUAGE_CODE),
+        decoder_language_code="None",
+        marker_file=MODEL_SAFETENSORS,
+        required_files=SROTA_HF_FILES,
+    ),
+    _mlx_audio(
+        "granite-speech-4.1-2b",
+        "MLX Granite Speech 4.1 2B Multilingual",
+        GRANITE_MULTILINGUAL_SIZE_BYTES,
+        "Six languages",
+        "Accurate · multilingual",
+        VERY_HIGH_MEMORY_RAM_GB,
+        repository="ibm-granite/granite-speech-4.1-2b",
+        family="Granite Speech / MLX",
+        description=(
+            "Autoregressive Granite Speech for English, French, German, Spanish, Portuguese and "
+            "Japanese. Larger download than the English NAR quantization; upstream BF16 weights. "
+        ),
+        license_name=APACHE_LICENSE,
+        language_codes=(
+            ENGLISH_LANGUAGE_CODE,
+            FRENCH_LANGUAGE_CODE,
+            GERMAN_LANGUAGE_CODE,
+            SPANISH_LANGUAGE_CODE,
+            PORTUGUESE_LANGUAGE_CODE,
+            JAPANESE_LANGUAGE_CODE,
+        ),
+        decoder_language_code=None,
+        marker_file="model.safetensors.index.json",
+        required_files=(
+            "added_tokens.json",
+            "config.json",
+            "merges.txt",
+            "model-00001-of-00003.safetensors",
+            "model-00002-of-00003.safetensors",
+            "model-00003-of-00003.safetensors",
+            "model.safetensors.index.json",
+            "preprocessor_config.json",
+            "processor_config.json",
+            "special_tokens_map.json",
+            "tokenizer.json",
+            "tokenizer_config.json",
+            "vocab.json",
+        ),
+    ),
+    _whisper_cpp(
+        "ggml-hindi2hinglish-prime.bin",
+        "Hindi to Roman — Prime Q5 (Experimental)",
+        PRIME_SIZE_BYTES,
+        "Hindi in Roman letters",
+        "Specialized · Roman output",
+        8,
+        download_url="https://huggingface.co/curiophile/whisper-hindi2hinglish-ggml/resolve/main/ggml-hindi2hinglish-prime.bin",
+        family="Whisper / Roman Hindi",
+        source="Oriserve / community GGML",
+        description=(
+            "Whisper Large v3 fine-tune for direct Roman Hindi output. Larger and slower than "
+            "Apex; published accuracy varies by dataset. Community Q5_1 conversion. "
+        ),
+        language_codes=(HINGLISH_ROMAN_LANGUAGE_CODE,),
+        decoder_language_code=HINDI_LANGUAGE_CODE,
+        license_name=APACHE_LICENSE,
+    ),
+    _sherpa_onnx(
+        "parakeet-unified-en-0.6b-int8",
+        "Parakeet Unified English INT8",
+        PARAKEET_UNIFIED_SIZE_BYTES,
+        ENGLISH_ONLY,
+        "Accurate · batch",
+        4,
+        huggingface_repo="csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming",
+        required_files=(ENCODER_INT8_FILE, DECODER_INT8_FILE, JOINER_INT8_FILE, TOKENS_FILE),
+        family="Parakeet Unified",
+        model_type=NEMO_TRANSDUCER_TYPE,
+        description=(
+            "Unified FastConformer RNNT for English. INT8 CPU export. The streaming variant uses "
+            "560 ms model context; end-to-end latency depends on the host. "
+        ),
+        language_codes=ENGLISH_CODES,
+        license_name="NVIDIA Open Model License",
+        supports_streaming=False,
+    ),
+    _sherpa_onnx(
+        "parakeet-unified-en-0.6b-560ms-int8",
+        "Parakeet Unified English INT8 Streaming 560 ms",
+        PARAKEET_UNIFIED_STREAMING_SIZE_BYTES,
+        ENGLISH_ONLY,
+        "Fast · streaming",
+        4,
+        huggingface_repo="csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-streaming-560ms",
+        required_files=(ENCODER_INT8_FILE, DECODER_INT8_FILE, JOINER_INT8_FILE, TOKENS_FILE),
+        family="Parakeet Unified",
+        model_type=STREAMING_TRANSDUCER_TYPE,
+        description=(
+            "Unified FastConformer RNNT for English. INT8 CPU export. The streaming variant uses "
+            "560 ms model context; end-to-end latency depends on the host. "
+        ),
+        language_codes=ENGLISH_CODES,
+        license_name="NVIDIA Open Model License",
+        supports_streaming=True,
+    ),
+    _sherpa_onnx(
+        "cohere-transcribe-14-lang-int8",
+        "Cohere Transcribe INT8",
+        COHERE_SIZE_BYTES,
+        "14 languages",
+        "Accurate · choose a language",
+        8,
+        huggingface_repo="csukuangfj2/sherpa-onnx-cohere-transcribe-14-lang-int8-2026-04-01",
+        required_files=(
+            ENCODER_INT8_FILE,
+            "encoder.int8.onnx.data",
+            DECODER_INT8_FILE,
+            TOKENS_FILE,
+        ),
+        family="Cohere Transcribe",
+        model_type="cohere_transcribe",
+        description=(
+            "Cohere's multilingual speech recognizer through a community INT8 CPU export. Select "
+            "the spoken language explicitly; automatic language detection and Hindi are not "
+            "supported. "
+        ),
+        language_codes=(
+            ENGLISH_LANGUAGE_CODE,
+            FRENCH_LANGUAGE_CODE,
+            GERMAN_LANGUAGE_CODE,
+            "it",
+            SPANISH_LANGUAGE_CODE,
+            PORTUGUESE_LANGUAGE_CODE,
+            "el",
+            "nl",
+            POLISH_LANGUAGE_CODE,
+            "zh",
+            JAPANESE_LANGUAGE_CODE,
+            "ko",
+            "vi",
+            "ar",
+        ),
+        license_name=APACHE_LICENSE,
+    ),
+    CatalogModel(
+        id="transcribe.cpp:canary-qwen-2.5b-Q5_K_M.gguf",
+        engine=ENGINE_TRANSCRIBE_CPP,
+        key="canary-qwen-2.5b-Q5_K_M.gguf",
+        label="Canary-Qwen 2.5B Q5",
+        size_bytes=CANARY_QWEN_SIZE_BYTES,
+        languages="English only",
+        quality="Accurate · native Q5",
+        minimum_ram_gb=8,
+        download_url="https://huggingface.co/handy-computer/canary-qwen-2.5b-gguf/resolve/main/canary-qwen-2.5b-Q5_K_M.gguf",
+        family="Canary-Qwen",
+        source="Handy / transcribe.cpp",
+        language_codes=("en",),
+        license_name="CC BY 4.0",
+        description=(
+            "Community Q5 GGUF conversion. Requires a separately installed transcribe-cli "
+            "with a CPU, Metal, CUDA or Vulkan backend. Each recording reloads the model; "
+            "this entry does not provide live streaming."
+        ),
+    ),
+    CatalogModel(
+        id="transcribe.cpp:granite-speech-4.1-2b-Q5_K_M.gguf",
+        engine=ENGINE_TRANSCRIBE_CPP,
+        key="granite-speech-4.1-2b-Q5_K_M.gguf",
+        label="Granite Speech 4.1 Multilingual Q5",
+        size_bytes=GRANITE_GGUF_SIZE_BYTES,
+        languages="Six languages",
+        quality="Accurate · native Q5",
+        minimum_ram_gb=8,
+        download_url="https://huggingface.co/handy-computer/granite-speech-4.1-2b-gguf/resolve/main/granite-speech-4.1-2b-Q5_K_M.gguf",
+        family="Granite Speech",
+        source="Handy / transcribe.cpp",
+        language_codes=(
+            "en",
+            FRENCH_LANGUAGE_CODE,
+            GERMAN_LANGUAGE_CODE,
+            SPANISH_LANGUAGE_CODE,
+            PORTUGUESE_LANGUAGE_CODE,
+            JAPANESE_LANGUAGE_CODE,
+        ),
+        license_name="Apache 2.0",
+        description=(
+            "Community Q5 GGUF conversion. Requires a separately installed transcribe-cli "
+            "with a CPU, Metal, CUDA or Vulkan backend. Each recording reloads the model; "
+            "this entry does not provide live streaming."
+        ),
     ),
     # Keep moonshine:en as the default English ID so existing installations and
     # runtime configuration continue to resolve after adding explicit variants.

@@ -39,6 +39,7 @@ def build_diagnostics_bundle(
     redacted_config = config.model_copy(
         update={
             "whisper_model": _redact_optional_path(config.whisper_model),
+            "transcribe_model": _redact_optional_path(config.transcribe_model),
             "whisperkit_model": _redact_optional_path(config.whisperkit_model),
             "faster_whisper_model": _redact_optional_path(config.faster_whisper_model),
         }

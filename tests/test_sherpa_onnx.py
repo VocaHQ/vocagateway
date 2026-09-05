@@ -683,3 +683,60 @@ def test_both_waveform_paths_agree(channels: int, tmp_path: Path, monkeypatch) -
 
     assert list(fallback) == pytest.approx(list(vectorized))
     assert len(fallback) == len(frames) // 2 // channels
+
+
+async def test_cohere_requires_language_and_sets_it_for_every_recording(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dataclasses import replace
+
+    from app.errors import LanguageUnsupportedError
+    from app.models.sherpa_onnx import _decode_wave
+
+    model = replace(_catalog("cohere_transcribe"), language_codes=("en", "fr", "de"))
+    engine = SherpaOnnxEngine(tmp_path, model)
+    with pytest.raises(LanguageUnsupportedError, match="explicit spoken language"):
+        await engine.transcribe(tmp_path / "audio.wav", TranscriptionOptions("auto", "raw"))
+    languages = []
+
+    class Stream:
+        result = types.SimpleNamespace(text="hello")
+
+        def has_option(self, key):
+            return False
+
+        def set_option(self, key, value):
+            assert key == "language"
+            languages.append(value)
+
+        def accept_waveform(self, rate, samples):
+            assert languages
+
+    class Recognizer:
+        def create_stream(self):
+            return Stream()
+
+        def decode_stream(self, stream):
+            pass
+
+    monkeypatch.setattr("app.models.sherpa_onnx._read_wave_samples", lambda _: (16000, []))
+    recognizer = Recognizer()
+    assert _decode_wave(recognizer, tmp_path / "audio.wav", "fr-FR") == "hello"
+    assert _decode_wave(recognizer, tmp_path / "audio.wav", "de") == "hello"
+    assert languages == ["fr", "de"]
+
+
+def test_cohere_builder_uses_external_data_encoder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.catalog import DEFAULT_CATALOG
+
+    model = next(
+        entry for entry in DEFAULT_CATALOG if entry.key == "cohere-transcribe-14-lang-int8"
+    )
+    root = _model_root(tmp_path, model)
+    calls = []
+    _fake_recognizer_module("from_cohere_transcribe", calls, monkeypatch)
+    SherpaOnnxEngine(root, model)._load_recognizer_sync()
+    assert calls[0]["encoder"] == str(root / "encoder.int8.onnx")
+    assert (root / "encoder.int8.onnx.data").is_file()

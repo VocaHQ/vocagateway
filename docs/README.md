@@ -37,3 +37,5 @@ certificate. HTTP protects neither the bearer token nor the recording.
 `models.md` is generated — run `uv run scripts/generate_model_docs.py` rather
 than editing it; a test asserts `--check`. Everything else on this page is
 hand-written. [AGENTS.md](../AGENTS.md) has the repository conventions.
+
+- [Additional speech-to-text models and optional native runtime](additional-models.md)

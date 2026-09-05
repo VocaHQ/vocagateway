@@ -159,3 +159,9 @@ HTTPS needs a certificate the desktop OS trusts.
 - [README](../README.md) — quick starts and full configuration table
 - [deployment.md](deployment.md) — native vs Compose operations
 - [troubleshooting.md](troubleshooting.md) — 401 and readiness failures
+
+### Optional transcribe.cpp binary
+
+Set `VOCAGATEWAY_TRANSCRIBE_BINARY` to a compatible `transcribe-cli` executable
+(default: `transcribe-cli` on PATH). See [additional models](additional-models.md)
+for setup and platform requirements. Select its downloaded model in the WebUI.

@@ -20,6 +20,7 @@ MAXIMUM_ERROR_MESSAGE_LENGTH = 240
 PCM_SAMPLE_SCALE = 32_768.0
 CPU_DEVICE = "cpu"
 AUTO_LANGUAGE = "auto"
+LANGUAGE_TAG_SEPARATOR = "-"
 NEMOTRON_MODEL_KEY = "nemotron-3.5-asr-streaming-0.6b-320ms-int8"
 NEMOTRON_LANGUAGE_TAG = re.compile(r"\s*<([a-z]{2,3}(?:-[A-Z]{2})?)>\s*$")
 NEMOTRON_LANGUAGE_LOCALES = MappingProxyType(
@@ -75,8 +76,17 @@ class _SherpaRecognizerBuilder:
         return self._build_offline(sherpa_onnx)
 
     def validate_language(self, language: str) -> None:
+        if (
+            self.model
+            and self.model.model_type == "cohere_transcribe"
+            and language == AUTO_LANGUAGE
+        ):
+            raise errors.LanguageUnsupportedError(
+                "Cohere Transcribe requires an explicit spoken language; "
+                "choose a language instead of Auto."
+            )
         supported = self.model.language_codes if self.model else ()
-        normalized = language.lower().split("-", maxsplit=1)[0]
+        normalized = language.lower().split(LANGUAGE_TAG_SEPARATOR, maxsplit=1)[0]
         if language != AUTO_LANGUAGE and supported and normalized not in supported:
             choices = ", ".join(supported)
             raise errors.LanguageUnsupportedError(
@@ -85,7 +95,7 @@ class _SherpaRecognizerBuilder:
             )
 
     def stream_language(self, language: str) -> str:
-        normalized = language.lower().split("-", maxsplit=1)[0]
+        normalized = language.lower().split(LANGUAGE_TAG_SEPARATOR, maxsplit=1)[0]
         if self.model and self.model.key == NEMOTRON_MODEL_KEY:
             return NEMOTRON_LANGUAGE_LOCALES.get(normalized, normalized)
         return language
@@ -125,6 +135,15 @@ class _SherpaRecognizerBuilder:
             )
         if mtype in {"nemo_transducer", "nemo_ctc", "nemo_canary"}:
             return self._build_nemo(sherpa, mtype)
+        if mtype == "cohere_transcribe":
+            return sherpa.OfflineRecognizer.from_cohere_transcribe(
+                encoder=str(self.root / "encoder.int8.onnx"),
+                decoder=str(self.root / "decoder.int8.onnx"),
+                tokens=self.tokens,
+                num_threads=self.threads,
+                language="en",
+                provider=CPU_DEVICE,
+            )
         if mtype in {"dolphin_ctc", "qwen3_asr"}:
             return self._build_other(sherpa, mtype)
         raise errors.EngineUnavailableError(f"Unsupported sherpa-onnx model type: {mtype}.")
@@ -419,9 +438,14 @@ def _read_wave_samples(audio_path: Path) -> tuple[int, Any]:
     return sample_rate, block.astype(numpy.float32) / PCM_SAMPLE_SCALE
 
 
-def _decode_wave(recognizer: Any, audio_path: Path) -> str:
+def _decode_wave(recognizer: Any, audio_path: Path, language: str = AUTO_LANGUAGE) -> str:
     sample_rate, floats = _read_wave_samples(audio_path)
     stream = recognizer.create_stream()
+    setter = getattr(stream, "set_option", None)
+    if language != AUTO_LANGUAGE and callable(setter):
+        # Offline has_option reports stored values, not supported options. New
+        # Cohere streams start empty and must receive the hint before decoding.
+        setter("language", language.lower().split(LANGUAGE_TAG_SEPARATOR, maxsplit=1)[0])
     stream.accept_waveform(sample_rate, floats)
     recognizer.decode_stream(stream)
     return str(stream.result.text).strip()
@@ -464,7 +488,7 @@ async def _run_sherpa_inference(
                 strip_language_tags,
             )
         else:
-            decode_result = asyncio.to_thread(_decode_wave, recognizer, audio_path)
+            decode_result = asyncio.to_thread(_decode_wave, recognizer, audio_path, language)
         return await asyncio.wait_for(
             decode_result,
             timeout=TRANSCRIPTION_TIMEOUT_SECONDS,
@@ -492,7 +516,7 @@ def _set_stream_language(stream: Any, language: str, *, preserve_locale: bool = 
     normalized = (
         language
         if language == AUTO_LANGUAGE or preserve_locale
-        else language.lower().split("-", maxsplit=1)[0]
+        else language.lower().split(LANGUAGE_TAG_SEPARATOR, maxsplit=1)[0]
     )
     setter("language", normalized)
 
