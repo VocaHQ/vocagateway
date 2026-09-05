@@ -672,6 +672,54 @@ async def test_a_cancelled_clip_frees_the_worker_for_the_next_one(
         engine.unload()
 
 
+# Binds the port so a start succeeds, then ignores SIGTERM the way the pinned
+# server effectively does while it is decoding: its handler shuts down
+# gracefully, which means waiting for the request in flight.
+DEAF_SERVER_SCRIPT = r"""#!/usr/bin/env python3
+import signal
+import socket
+import sys
+import time
+
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+ARGUMENTS = sys.argv[1:]
+PORT = int(ARGUMENTS[ARGUMENTS.index("--port") + 1])
+LISTENER = socket.socket()
+LISTENER.bind(("127.0.0.1", PORT))
+LISTENER.listen(8)
+while True:
+    time.sleep(1)
+"""
+POLITE_STOP_SECONDS = 4
+
+
+async def test_a_wedged_worker_is_killed_rather_than_asked_politely(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Terminating a worker that is mid-decode blocks the whole event loop.
+
+    whisper-server catches SIGTERM and shuts down gracefully, so it waits for
+    the request it is running — measured at 2.8 s against a real one. A worker
+    is only forced once it has already failed to let go of that decode, so the
+    wait would buy nothing and stall every other request in the gateway.
+    """
+    monkeypatch.setattr(whisper_server, "STOP_TIMEOUT_SECONDS", POLITE_STOP_SECONDS)
+    binary = tmp_path / SERVER_BINARY_NAME
+    _write_binary(binary, DEAF_SERVER_SCRIPT)
+    model = tmp_path / MODEL_FILE_NAME
+    model.write_bytes(MODEL_BYTES)
+    worker = whisper_server.WhisperServerWorker(
+        binary, model, cpu_threads=1, beam_size=1, best_of=1
+    )
+    await worker.ensure_started()
+
+    started = time.monotonic()
+    worker.stop(force=True)
+
+    assert time.monotonic() - started < POLITE_STOP_SECONDS / 2
+    assert worker.is_running is False
+
+
 async def test_cancelling_a_load_does_not_leave_the_model_behind(tmp_path: Path) -> None:
     """The worker owns the process from the moment it is spawned.
 
@@ -733,6 +781,72 @@ def test_the_server_binary_is_taken_from_the_cli_s_own_build(tmp_path: Path) -> 
     # A bare name is launched through PATH, so a same-named file in the working
     # directory is not the pair that would actually run.
     assert resolve_server_binary(Path(WHISPER_BINARY_NAME)) != sibling
+
+
+HEADER_TERMINATOR = b"\r\n\r\n"
+CHUNKED_REPLY = (
+    b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nTransfer-Encoding: chunked\r\n\r\n"
+    b"14\r\n resident transcript\r\n0\r\n\r\n"
+)
+
+
+def _framed(content_type: bytes, body: bytes) -> bytes:
+    length = str(len(body)).encode()
+    return (
+        b"HTTP/1.1 200 OK\r\nContent-Type: "
+        + content_type
+        + b"\r\nContent-Length: "
+        + length
+        + HEADER_TERMINATOR
+        + body
+    )
+
+
+async def _reply_once(payload: bytes) -> asyncio.Server:
+    """A stand-in worker that answers one `/inference` request with `payload`."""
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        head = await reader.readuntil(HEADER_TERMINATOR)
+        for line in head.decode("latin-1").split("\r\n"):
+            name, _, raw = line.partition(":")
+            if name.strip().lower() == "content-length":
+                await reader.readexactly(int(raw.strip()))
+        writer.write(payload)
+        await writer.drain()
+        writer.close()
+
+    return await asyncio.start_server(handle, "127.0.0.1", 0)
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        # A framed reply has to be unframed. Handing the chunk headers back
+        # would paste them into the transcript.
+        (CHUNKED_REPLY, RESIDENT_TRANSCRIPT),
+        # `response_format=text` is answered as text/html by the pinned server.
+        # A dictated line that opens with a brace is a transcript, not a
+        # document, and sniffing the first character rejected it outright.
+        (
+            _framed(b"text/html; charset=utf-8", b' { "one": "two" } three'),
+            '{ "one": "two" } three',
+        ),
+        # An older build wraps the same answer in JSON, and says so.
+        (_framed(b"application/json", b'{"text":" resident transcript"}'), RESIDENT_TRANSCRIPT),
+    ],
+)
+async def test_the_reply_is_read_by_its_own_framing_and_type(
+    tmp_path: Path, payload: bytes, expected: str
+) -> None:
+    audio = tmp_path / AUDIO_FILE_NAME
+    audio.write_bytes(AUDIO_BYTES)
+    server = await _reply_once(payload)
+    port = int(server.sockets[0].getsockname()[1])
+    try:
+        assert await whisper_server._ServerHttp.transcribe(port, audio, "en") == expected
+    finally:
+        server.close()
+        await server.wait_closed()
 
 
 def test_the_engine_answers_the_idle_offload_protocol(tmp_path: Path) -> None:

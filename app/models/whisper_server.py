@@ -23,7 +23,12 @@ INFERENCE_PATH = "/inference"
 # and the process only binds the port after the model is in memory, so a slow
 # start is a slow load rather than a hung worker.
 START_TIMEOUT_SECONDS = 120.0
-START_POLL_SECONDS = 0.1
+# Readiness is polled by connecting, which costs a refused connect on loopback
+# — cheap enough to ask often at first. A small model binds in well under a
+# tenth of a second, and a fixed coarse poll would hand most of that back on
+# every reload after an idle offload.
+FIRST_POLL_SECONDS = 0.005
+MAXIMUM_POLL_SECONDS = 0.05
 CONNECT_TIMEOUT_SECONDS = 1.0
 REQUEST_TIMEOUT_SECONDS = 75.0
 STOP_TIMEOUT_SECONDS = 3
@@ -39,9 +44,12 @@ BOUNDARY_TOKEN_BYTES = 12
 MAXIMUM_SERVER_ERROR_LENGTH = 240
 DIAGNOSTIC_TAIL_BYTES = 2048
 TEXT_RESPONSE_FORMAT = "text"
-JSON_PREFIX = "{"
+JSON_MEDIA_TYPE = "json"
 HTTP_OK = 200
+HEXADECIMAL = 16
+INVALID_RESPONSE = "The whisper.cpp worker returned an invalid response."
 CRLF = "\r\n"
+CRLF_BYTES = b"\r\n"
 HEADER_TERMINATOR = b"\r\n\r\n"
 # One boundary per process is enough: it only has to be absent from the audio,
 # and a random token settles that without threading it through every helper.
@@ -68,8 +76,17 @@ def time_budget(deadline: float | None, ceiling: float) -> float:
     return max(MINIMUM_BUDGET_SECONDS, min(ceiling, deadline - time.monotonic()))
 
 
-def _terminate(process: subprocess.Popen[bytes]) -> None:
+def _terminate(process: subprocess.Popen[bytes], *, force: bool) -> None:
     if process.poll() is not None:
+        return
+    if force:
+        # The pinned server's SIGTERM handler shuts down gracefully, which
+        # means waiting for the request it is running. A worker is only forced
+        # once it has already failed to let go of a decode nobody is waiting
+        # for, so asking politely would block this thread for the rest of it —
+        # measured at 2.8 s against a real whisper-server mid-decode.
+        process.kill()
+        process.wait()
         return
     process.terminate()
     try:
@@ -175,7 +192,7 @@ class WhisperServerWorker:
         if not interrupted or not self.is_running:
             return
         if not await _ServerHttp.answers(self._port):
-            self.stop()
+            self.stop(force=True)
 
     async def transcribe(
         self, audio_path: Path, language: str, *, deadline: float | None = None
@@ -217,13 +234,13 @@ class WhisperServerWorker:
         self._stderr = tempfile.TemporaryFile()  # noqa: SIM115
         return self._stderr
 
-    def stop(self) -> None:
+    def stop(self, *, force: bool = False) -> None:
         process = self._process
         self._process = None
         self._port = 0
         self._interrupted = False
         if process is not None:
-            _terminate(process)
+            _terminate(process, force=force)
 
     def _close_diagnostics(self) -> None:
         stderr = self._stderr
@@ -321,12 +338,14 @@ class _ServerStart:
         only spend the same timeout again.
         """
         limit = time.monotonic() + time_budget(deadline, START_TIMEOUT_SECONDS)
+        delay = FIRST_POLL_SECONDS
         while time.monotonic() < limit:
             if process.poll() is not None:
                 return False
             if await _accepts(port):
                 return True
-            await asyncio.sleep(START_POLL_SECONDS)
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, MAXIMUM_POLL_SECONDS)
         raise WhisperServerUnavailable("The whisper.cpp worker did not become ready.")
 
 
@@ -355,6 +374,7 @@ def _loopback_port() -> int:
 class _Reply:
     status: int
     body: bytes
+    content_type: str
 
 
 class _ServerHttp:
@@ -370,13 +390,13 @@ class _ServerHttp:
     @classmethod
     async def transcribe(cls, port: int, audio_path: Path, language: str) -> str:
         audio = await asyncio.to_thread(audio_path.read_bytes)
-        reply = await cls._exchange(port, cls._inference_body(language, audio_path.name, audio))
+        reply = await cls._exchange(port, cls._inference_parts(language, audio_path.name, audio))
         if reply.status != HTTP_OK:
             detail = reply.body.decode("utf-8", errors="replace")[-MAXIMUM_SERVER_ERROR_LENGTH:]
             raise errors.TranscriptionProcessError(
                 f"The whisper.cpp worker rejected the audio: {detail}"
             )
-        transcript = cls._decode(reply.body)
+        transcript = cls._decode(reply.body, reply.content_type)
         if not transcript:
             raise errors.TranscriptionProcessError("The transcription result was empty.")
         return transcript
@@ -389,7 +409,7 @@ class _ServerHttp:
         fieldless probe that comes back — with the 400 it deserves — proves the
         previous decode has been released rather than still running.
         """
-        probe = cls._body([("response_format", TEXT_RESPONSE_FORMAT)], b"")
+        probe = cls._parts([("response_format", TEXT_RESPONSE_FORMAT)], b"")
         try:
             await asyncio.wait_for(cls._exchange(port, probe), timeout=ABORT_GRACE_SECONDS)
         except (TimeoutError, WhisperServerUnavailable, errors.TranscriptionProcessError):
@@ -397,13 +417,15 @@ class _ServerHttp:
         return True
 
     @classmethod
-    async def _exchange(cls, port: int, body: bytes) -> _Reply:
+    async def _exchange(cls, port: int, parts: list[bytes]) -> _Reply:
         try:
             reader, writer = await asyncio.open_connection(LOOPBACK_HOST, port)
         except OSError as error:
             raise WhisperServerUnavailable("The whisper.cpp worker is unreachable.") from error
         try:
-            writer.write(cls._head(port, len(body)) + body)
+            writer.write(cls._head(port, sum(len(part) for part in parts)))
+            for part in parts:
+                writer.write(part)
             await writer.drain()
             return await cls._read_reply(reader)
         except (OSError, EOFError, asyncio.LimitOverrunError) as error:
@@ -428,48 +450,83 @@ class _ServerHttp:
     async def _read_reply(cls, reader: asyncio.StreamReader) -> _Reply:
         head = await reader.readuntil(HEADER_TERMINATOR)
         lines = head.decode("latin-1").split(CRLF)
+        headers = cls._headers(lines[1:])
+        return _Reply(
+            status=cls._status(lines[0]),
+            body=await cls._read_body(reader, headers),
+            content_type=headers.get("content-type", ""),
+        )
+
+    @classmethod
+    def _status(cls, status_line: str) -> int:
         try:
-            status = int(lines[0].split(" ")[1])
+            return int(status_line.split(" ")[1])
         except (IndexError, ValueError) as error:
-            raise errors.TranscriptionProcessError(
-                "The whisper.cpp worker returned an invalid response."
-            ) from error
-        length = cls._content_length(lines[1:])
+            raise errors.TranscriptionProcessError(INVALID_RESPONSE) from error
+
+    @classmethod
+    def _headers(cls, header_lines: list[str]) -> dict[str, str]:
+        headers = {}
+        for line in header_lines:
+            name, separator, raw = line.partition(":")
+            if separator:
+                headers[name.strip().lower()] = raw.strip()
+        return headers
+
+    @classmethod
+    async def _read_body(cls, reader: asyncio.StreamReader, headers: dict[str, str]) -> bytes:
+        if "chunked" in headers.get("transfer-encoding", "").lower():
+            return await cls._read_chunked(reader)
+        length = headers.get("content-length", "")
         # The pinned server answers from a string, so it always sets
         # Content-Length; reading to EOF is only the safety net, and `Connection:
         # close` is what makes it terminate.
-        body = await (reader.read() if length is None else reader.readexactly(length))
-        return _Reply(status=status, body=body)
+        if length.isdigit():
+            return await reader.readexactly(int(length))
+        return await reader.read()
 
     @classmethod
-    def _content_length(cls, header_lines: list[str]) -> int | None:
-        for line in header_lines:
-            name, _, raw = line.partition(":")
-            if name.strip().lower() == "content-length" and raw.strip().isdigit():
-                return int(raw.strip())
-        return None
+    async def _read_chunked(cls, reader: asyncio.StreamReader) -> bytes:
+        """Decode a chunked reply.
+
+        The pinned server sets Content-Length, so this is for a build or proxy
+        that frames the response instead. Without it the chunk headers would be
+        handed back as part of the transcript.
+        """
+        chunks: list[bytes] = []
+        while True:
+            header = await reader.readuntil(CRLF_BYTES)
+            try:
+                size = int(header.split(b";", 1)[0], HEXADECIMAL)
+            except ValueError as error:
+                raise errors.TranscriptionProcessError(INVALID_RESPONSE) from error
+            if not size:
+                return b"".join(chunks)
+            chunks.append(await reader.readexactly(size))
+            await reader.readexactly(len(CRLF_BYTES))
 
     @classmethod
-    def _decode(cls, payload: bytes) -> str:
-        """`response_format=text` answers in plain text; older builds wrap it in JSON."""
+    def _decode(cls, payload: bytes, content_type: str) -> str:
+        """`response_format=text` answers in text; older builds wrap it in JSON.
+
+        The content type decides, never the first character: a dictated line
+        that opens with a brace is a transcript, not a document, and sniffing
+        the payload rejected it as an invalid response.
+        """
         decoded = payload.decode("utf-8", errors="replace").strip()
-        if not decoded.startswith(JSON_PREFIX):
+        if JSON_MEDIA_TYPE not in content_type.lower():
             return decoded
         try:
             document = json.loads(decoded)
         except json.JSONDecodeError as error:
-            raise errors.TranscriptionProcessError(
-                "The whisper.cpp worker returned an invalid response."
-            ) from error
+            raise errors.TranscriptionProcessError(INVALID_RESPONSE) from error
         text = document.get("text") if isinstance(document, dict) else None
         if not isinstance(text, str):
-            raise errors.TranscriptionProcessError(
-                "The whisper.cpp worker returned an invalid response."
-            )
+            raise errors.TranscriptionProcessError(INVALID_RESPONSE)
         return text.strip()
 
     @classmethod
-    def _inference_body(cls, language: str, file_name: str, audio: bytes) -> bytes:
+    def _inference_parts(cls, language: str, file_name: str, audio: bytes) -> list[bytes]:
         fields = [
             ("response_format", TEXT_RESPONSE_FORMAT),
             ("language", language),
@@ -480,17 +537,23 @@ class _ServerHttp:
             ("no_timestamps", "true"),
             ("token_timestamps", "false"),
         ]
-        return cls._body(fields, audio, file_name=file_name)
+        return cls._parts(fields, audio, file_name=file_name)
 
     @classmethod
-    def _body(cls, fields: list[tuple[str, str]], audio: bytes, *, file_name: str = "") -> bytes:
-        chunks = [cls._field_chunk(name, entry) for name, entry in fields]
-        if file_name:
-            chunks.append(cls._file_header(file_name))
-            chunks.append(audio)
-            chunks.append(CRLF.encode())
-        chunks.append(f"--{MULTIPART_BOUNDARY}--{CRLF}".encode())
-        return b"".join(chunks)
+    def _parts(
+        cls, fields: list[tuple[str, str]], audio: bytes, *, file_name: str = ""
+    ) -> list[bytes]:
+        """The body as a prefix, the recording, and a suffix.
+
+        Left apart so the audio is never copied into a joined body and then
+        again onto the request head — two minutes of speech is a few megabytes,
+        and it was being held three times over.
+        """
+        prefix = b"".join(cls._field_chunk(name, entry) for name, entry in fields)
+        closing = f"--{MULTIPART_BOUNDARY}--{CRLF}".encode()
+        if not file_name:
+            return [prefix + closing]
+        return [prefix + cls._file_header(file_name), audio, CRLF_BYTES + closing]
 
     @classmethod
     def _file_header(cls, file_name: str) -> bytes:
