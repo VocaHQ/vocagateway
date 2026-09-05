@@ -95,9 +95,10 @@ variable. `compose.yaml` forwards only the keys it names, so a variable marked
 | `VOCAGATEWAY_HANDY_FALLBACK_MODEL` | `handy-computer/whisper-base-gguf/whisper-base-Q8_0.gguf` | ignored — macOS only | Model used when the pinned Handy model is missing |
 
 `VOCAGATEWAY_ENGINE` accepts `auto`, `sherpa-onnx`, `faster-whisper`,
-`moonshine`, `whisper.cpp`, `mlx-audio`, `whisperkit`, `vocamac`, or `handy`.
-Only the first five run in the Linux container, and only the value's spelling is
-checked at startup — the host check that answers `422 invalid_engine` in the
+`moonshine`, `whisper.cpp`, `transcribe.cpp`, `mlx-audio`, `whisperkit`, `vocamac`, or `handy`.
+The stock Linux container includes the first five choices; `transcribe.cpp`
+requires a custom image with `transcribe-cli` installed. Only the value's spelling
+is checked at startup — the host check that answers `422 invalid_engine` in the
 WebUI and on `PUT /v1/admin/config` does not apply here. A macOS-only engine
 pinned through the variable on Linux starts fine and leaves `/health/ready` at
 `503`.
@@ -163,5 +164,7 @@ HTTPS needs a certificate the desktop OS trusts.
 ### Optional transcribe.cpp binary
 
 Set `VOCAGATEWAY_TRANSCRIBE_BINARY` to a compatible `transcribe-cli` executable
-(default: `transcribe-cli` on PATH). See [additional models](additional-models.md)
+(default: `transcribe-cli` on PATH). See the
+[native installation requirements](deployment.md#install-transcribecpp) and
+[additional models](additional-models.md)
 for setup and platform requirements. Select its downloaded model in the WebUI.

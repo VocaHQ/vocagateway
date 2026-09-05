@@ -9,6 +9,7 @@ portability.
 
 - [Which deployment should I choose?](#which-deployment-should-i-choose)
   - [Recommendation](#recommendation)
+- [Host tool requirements](#host-tool-requirements) — [install transcribe.cpp](#install-transcribecpp)
 - [Native macOS deployment](#native-macos-deployment) — [install](#install-and-run) · [run at login](#run-at-login)
 - [Native Linux deployment](#native-linux-deployment) — [install](#install-and-run-1) · [systemd user service](#run-as-a-systemd-user-service)
 - [Docker Compose deployment](#docker-compose-deployment) — [prerequisites](#prerequisites) · [first model](#first-model) · [routine operations](#routine-operations) · [backup](#persistent-data-and-backup) · [performance profiles](#performance-profiles) · [Vulkan GPU access](#giving-the-vulkan-container-access-to-the-gpu) · [build tuning](#tuning-the-whispercpp-build)
@@ -24,7 +25,7 @@ what to choose, how to keep it running, and how the phone reaches it.
 | Consideration | Native macOS | Native Linux | Docker Compose |
 | --- | --- | --- | --- |
 | Recommended host | Apple silicon Mac | Linux desktop or home server | Linux `amd64`/`arm64` when you want an image |
-| Engines | MLX Audio, WhisperKit, VocaMac, Handy, sherpa-onnx, faster-whisper, Moonshine, `whisper.cpp` | sherpa-onnx, faster-whisper, Moonshine, optional `whisper.cpp` | sherpa-onnx, faster-whisper, Moonshine, `whisper.cpp` |
+| Engines | MLX Audio, WhisperKit, VocaMac, Handy, sherpa-onnx, faster-whisper, Moonshine, `whisper.cpp`, optional `transcribe.cpp` | sherpa-onnx, faster-whisper, Moonshine, optional `whisper.cpp` / `transcribe.cpp` | sherpa-onnx, faster-whisper, Moonshine, `whisper.cpp` |
 | Acceleration | Apple-native MLX and WhisperKit/Core ML paths | Host CPU (Python wheels); CUDA via Docker profiles | Runtime-dispatched CPU backends; CUDA or Vulkan profiles |
 | Performance | Recommended on Mac; no Linux VM | No container overhead on Linux | Slightly more isolation cost; strong for CUDA images |
 | Portability | macOS LaunchAgent | systemd user unit | Reproducible across supported Linux architectures |
@@ -53,6 +54,86 @@ Pair & test tab's three-run benchmark. It treats run 1 as model warmup/load and
 reports the warm average of runs 2 and 3. Compare inference time and real-time factor,
 not only end-to-end time.
 
+## Host tool requirements
+
+Python packages in `pyproject.toml` / `uv.lock` are installed by `uv sync` or
+`just install`. Native executables are separate host requirements:
+
+| Tool | Required when | Installation |
+| --- | --- | --- |
+| Python 3.12+ and uv | Every native deployment | Native quick starts below |
+| FFmpeg | Every engine; normalizes recordings | `brew install ffmpeg` or `sudo apt install ffmpeg` |
+| `whisper-cli` | Selecting `whisper.cpp` | Homebrew `whisper-cpp`, or an upstream native build |
+| `whisper-server` | Keeping `whisper.cpp` resident | Same whisper.cpp build as `whisper-cli`; optional fallback to CLI |
+| `whisperkit-cli` | Standalone WhisperKit on macOS | `brew install whisperkit-cli` |
+| `transcribe-cli` | Selecting `transcribe.cpp` (Canary-Qwen Q5 / Granite multilingual Q5) | Pinned native build below; not installed by Python extras |
+
+`transcribe-cli` is optional for other engines. It is not provided by
+`whisper-cpp`, and downloading GGUF weights does not install the executable.
+Run `just doctor` to check the host tools, including the
+`VOCAGATEWAY_TRANSCRIBE_BINARY` override when set.
+
+### Install transcribe.cpp
+
+Install build prerequisites on the gateway host:
+
+```sh
+# macOS: install Apple's command-line tools if not already present
+xcode-select --install
+brew install cmake git
+```
+
+```sh
+# Debian / Ubuntu: OpenBLAS accelerates the CPU decoder
+sudo apt install build-essential cmake git libopenblas-dev
+```
+
+Build the version used by the gateway adapter (0.2.3, pinned commit below).
+These commands build CPU support on Linux and CPU plus Metal on Apple silicon:
+
+```sh
+build_root="$(mktemp -d)"
+git -C "$build_root" init
+git -C "$build_root" remote add origin https://github.com/handy-computer/transcribe.cpp.git
+git -C "$build_root" fetch --depth 1 origin e2f82cb6702315a1194f3bf1a6fee67cd2678447
+git -C "$build_root" checkout --detach FETCH_HEAD
+cmake -S "$build_root" -B "$build_root/build" \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DTRANSCRIBE_BUILD_SHARED=OFF \
+  -DTRANSCRIBE_BUILD_TESTS=OFF \
+  -DTRANSCRIBE_BUILD_TOOLS=OFF \
+  -DGGML_METAL_EMBED_LIBRARY=ON
+cmake --build "$build_root/build" --target transcribe-cli --parallel 4
+sudo mkdir -p /usr/local/bin
+sudo install -m 755 "$build_root/build/bin/transcribe-cli" /usr/local/bin/transcribe-cli
+/usr/local/bin/transcribe-cli --help
+```
+
+The help output must include `-o` / `--output`, `--batch`, and `--batch-jsonl`.
+The build links transcribe/ggml statically and embeds Metal kernels. Linux system
+libraries such as OpenBLAS still need to remain installed. For CUDA, Vulkan, or
+HIP builds, follow the [upstream build guide](https://github.com/handy-computer/transcribe.cpp#build)
+for the matching SDK and backend flag; build on the target host architecture.
+
+Both supplied native service templates include `/usr/local/bin` in PATH, so this
+installation needs no binary override. Restart your LaunchAgent or systemd user
+service after installation, then download and select a `transcribe.cpp` model in
+the WebUI. The gateway downloads model weights separately.
+
+For a different installation location, set
+`VOCAGATEWAY_TRANSCRIBE_BINARY=/absolute/path/to/transcribe-cli`. For a service,
+put the override in its environment (a systemd drop-in `Environment=` line or
+the LaunchAgent's `EnvironmentVariables` dictionary), then reload/restart it.
+An export in an interactive terminal does not configure an existing service.
+
+**Docker:** the standard images do not include `transcribe-cli`. Installing it on
+the Docker host does not install it inside a container. To use these models in
+Docker, extend the gateway image with a compatible Linux build and its runtime
+libraries at `/usr/local/bin/transcribe-cli`; macOS binaries cannot be used.
+A custom path needs an explicit `VOCAGATEWAY_TRANSCRIBE_BINARY` entry in the
+service's Compose `environment:` mapping. Adding it to `.env` alone has no effect.
+The stock CPU/CUDA/Vulkan profiles do not build or accelerate this optional tool.
+
 ## Native macOS deployment
 
 ### Install and run
@@ -63,6 +144,8 @@ brew install ffmpeg whisperkit-cli whisper-cpp
 uv sync --all-groups --extra engines --extra apple
 uv run vocagateway
 ```
+
+For Canary-Qwen Q5 or native Granite Q5, also [install transcribe.cpp](#install-transcribecpp).
 
 The default listener is `0.0.0.0:8765`, while the local WebUI is
 `http://127.0.0.1:8765/`. When Tailscale Serve is the only desired ingress,
@@ -100,6 +183,8 @@ sudo apt install ffmpeg
 uv sync --all-groups --extra engines
 uv run vocagateway
 ```
+
+For Canary-Qwen Q5 or native Granite Q5, also [install transcribe.cpp](#install-transcribecpp).
 
 Omit `--extra apple` on Linux. The default listener is `0.0.0.0:8765`. When
 Tailscale Serve is the only desired ingress, override the listener:

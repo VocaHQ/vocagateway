@@ -96,8 +96,8 @@ variables, pairing payload) · [tailscale.md](docs/tailscale.md) (private HTTPS)
 
 | Mode | Engines | Recommended use |
 | --- | --- | --- |
-| Native macOS | MLX Audio, WhisperKit, VocaMac, Handy, sherpa-onnx, faster-whisper, Moonshine, `whisper.cpp` | Best performance on Apple silicon |
-| Native Linux | sherpa-onnx INT8, faster-whisper, Moonshine, optional `whisper.cpp` | Linux desktop or home server without Docker |
+| Native macOS | MLX Audio, WhisperKit, VocaMac, Handy, sherpa-onnx, faster-whisper, Moonshine, `whisper.cpp`, optional `transcribe.cpp` | Best performance on Apple silicon |
+| Native Linux | sherpa-onnx INT8, faster-whisper, Moonshine, optional `whisper.cpp` / `transcribe.cpp` | Linux desktop or home server without Docker |
 | Docker Compose | sherpa-onnx INT8, faster-whisper INT8, Moonshine, `whisper.cpp` | Reproducible Linux `amd64`/`arm64` images |
 
 Native MLX Audio and WhisperKit are the accelerated choices on Apple silicon.
@@ -115,6 +115,10 @@ Requires [Homebrew](https://brew.sh/), Python 3.12+, and
   the compatibility path for VocaMac releases through 0.7.2
 - `whisper-cpp`: provides `whisper-cli` for GGML `whisper.cpp` models,
   including the Handy model family, which runs without the Handy app
+- `transcribe-cli`: required when selecting a `transcribe.cpp` model, including
+  Canary-Qwen Q5 and Granite multilingual Q5. Install it separately using the
+  [pinned native build instructions](docs/deployment.md#install-transcribecpp).
+  Python extras and `just install` do not install this executable.
 
 The [VocaMac](https://github.com/VocaHQ/vocamac) and
 [Handy](https://handy.computer) desktop apps are **optional and Mac-only**.
@@ -156,6 +160,10 @@ the model resident in that worker instead of reloading it for every clip; see
 ## Native Linux quick start
 
 Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and FFmpeg on the host.
+
+For `transcribe.cpp` models, also install the native `transcribe-cli` executable
+as described under [host tool requirements](docs/deployment.md#host-tool-requirements).
+Run `just doctor` to check available host tools.
 
 ```sh
 # Debian / Ubuntu
@@ -631,11 +639,12 @@ uv run vocagateway
 | `VOCAGATEWAY_DATA_DIR` | `~/.local/share/vocagateway` | `/data` | Sessions and application data |
 | `VOCAGATEWAY_MODELS_DIR` | `~/.local/share/vocagateway/models` | `/data/models` | Downloaded models |
 | `VOCAGATEWAY_CONFIG_FILE` | `~/.config/vocagateway/config.json` | `/data/config/config.json` | WebUI engine/model choice |
-| `VOCAGATEWAY_ENGINE` | `auto` | `auto` | `auto`, `vocamac`, `handy`, `mlx-audio`, `whisperkit`, `sherpa-onnx`, `faster-whisper`, `moonshine`, or `whisper.cpp` |
+| `VOCAGATEWAY_ENGINE` | `auto` | `auto` | `auto`, `vocamac`, `handy`, `mlx-audio`, `whisperkit`, `sherpa-onnx`, `faster-whisper`, `moonshine`, `whisper.cpp`, or `transcribe.cpp` |
 | `VOCAGATEWAY_WHISPER_BINARY` | `/opt/homebrew/bin/whisper-cli` | `/usr/local/bin/whisper-cli` | `whisper.cpp` executable |
 | `VOCAGATEWAY_WHISPER_MODEL` | `~/.local/share/whisper.cpp/models/ggml-base.en.bin` | same, and normally absent | Fallback `whisper.cpp` model used only when no model is selected in the WebUI |
 | `VOCAGATEWAY_WHISPER_SERVER_BINARY` | the `whisper-server` beside `whisper-cli`, else `PATH` | `/usr/local/bin/whisper-server` | Resident `whisper.cpp` worker; unset is normal, and a missing binary falls back to one `whisper-cli` run per request |
 | `VOCAGATEWAY_WHISPER_DECODER_PRESET` | `quality` | `quality` | `quality` keeps the narrowed beam search; `fast` decodes greedily — cheaper on a CPU-only host, and worth a WER comparison on your own audio before you keep it |
+| `VOCAGATEWAY_TRANSCRIBE_BINARY` | `transcribe-cli` on PATH | not bundled | Required executable for `transcribe.cpp`; [install separately](docs/deployment.md#install-transcribecpp) |
 | `VOCAGATEWAY_WHISPERKIT_BINARY` | `whisperkit-cli` | unavailable | Standalone WhisperKit executable and legacy VocaMac fallback |
 | `VOCAGATEWAY_VOCAMAC_APP` | `/Applications/VocaMac.app` | unavailable | Optional VocaMac app bundle |
 | `VOCAGATEWAY_VOCAMAC_MODEL` | unset | unset | Pin a VocaMac model instead of following the app's choice |

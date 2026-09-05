@@ -74,8 +74,8 @@ The adapter was checked with transcribe.cpp 0.2.3, commit
 option. Older binaries without that option are not compatible.
 Longer recordings also use its `--batch` and `--batch-jsonl` options.
 
-Build [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) using its
-upstream instructions, then set `VOCAGATEWAY_TRANSCRIBE_BINARY` to the absolute
+Follow the [pinned build and installation instructions](deployment.md#install-transcribecpp)
+for macOS or Linux. If installing elsewhere, set `VOCAGATEWAY_TRANSCRIBE_BINARY` to the absolute
 path of `build/bin/transcribe-cli` and restart the gateway. If `transcribe-cli` is
 already on the service's PATH, no override is needed. Service PATH can differ
 from the interactive shell's PATH.
