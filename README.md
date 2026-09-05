@@ -839,8 +839,12 @@ view reports it active, so resident engines do not defer their model load to the
 first transcription. In **Settings → Speech engine**, **Offload model when idle**
 can release a resident model after 10, 15, 30, 60, or 120 minutes without a
 transcription. It is off by default. The selected model stays selected and loads
-again automatically on the next transcription. Active batch and streaming jobs
-hold a model lease, so the idle monitor never unloads an engine in use. The
+again automatically on the next transcription. Saving a change to this setting
+alone keeps whatever is already loaded — only a change that actually selects a
+different engine, device, precision, thread count, or model rebuilds it. Active
+batch and streaming jobs hold a model lease, so neither the idle monitor nor a
+settings change unloads an engine while a transcription is still using it: the
+replaced engine is closed once its last request finishes. The
 setting also releases the `whisper.cpp` worker: the process is terminated and
 the next transcription starts it again, paying one model load. It does not apply
 to one-shot Handy or current VocaMac headless processes, because those engines

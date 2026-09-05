@@ -163,6 +163,61 @@ async def test_idle_offload_waits_for_active_model_lease(tmp_path: Path) -> None
     assert manager.model_is_offloaded is False
 
 
+def test_changing_only_the_idle_policy_keeps_the_loaded_model(tmp_path: Path) -> None:
+    """Saving `Offload model when idle` must not make the next recording cold.
+
+    Every settings write used to rebuild the engine, which closed the previous
+    one — so choosing an offload interval threw away the very model the setting
+    is about.
+    """
+    runtime = RuntimeConfig(engine="whisper.cpp")
+    config_path = tmp_path / "config.json"
+    manager = EngineManager(
+        _settings(tmp_path), runtime, config_path, ModelManager(tmp_path / MODELS_DIRECTORY)
+    )
+    resident = ResidentFakeEngine()
+    manager._engine = resident
+
+    manager.configure("whisper.cpp", idle_offload_enabled=True, idle_offload_minutes=30)
+
+    assert manager.current() is resident
+    assert resident.unload_calls == 0
+    assert RuntimeConfig.load(config_path).idle_offload_minutes == 30
+
+    manager.configure("whisper.cpp", cpu_threads=6)
+
+    assert manager.current() is not resident
+    assert resident.unload_calls == 1
+
+
+async def test_an_engine_swap_waits_for_the_transcription_still_using_it(
+    tmp_path: Path,
+) -> None:
+    """A lease holds the engine object it was handed, so closing it must wait.
+
+    Idle offload already respected leases; a settings change did not, and could
+    unload the model out from under a request that was mid-transcription.
+    """
+    runtime = RuntimeConfig(engine="whisper.cpp")
+    manager = EngineManager(
+        _settings(tmp_path),
+        runtime,
+        tmp_path / "config.json",
+        ModelManager(tmp_path / MODELS_DIRECTORY),
+    )
+    resident = ResidentFakeEngine()
+    manager._engine = resident
+
+    async with manager.lease() as leased:
+        assert leased is resident
+        manager.configure("whisper.cpp", cpu_threads=5)
+
+        assert manager.current() is not resident
+        assert resident.unload_calls == 0
+
+    assert resident.unload_calls == 1
+
+
 def test_whisper_model_selection_keeps_catalog_output_contract(tmp_path: Path) -> None:
     catalog_model = CatalogModel(
         id="whisper.cpp:hinglish",

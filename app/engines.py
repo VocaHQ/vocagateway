@@ -219,17 +219,6 @@ class _EngineBuilder:
             return self.resolver.resolve_auto(rc)
         return self._build_named(engine_name, rc)
 
-    def swap(
-        self,
-        previous: base.TranscriptionEngine,
-        rc: runtime_config.RuntimeConfig,
-        config_path: Path,
-    ) -> base.TranscriptionEngine:
-        rc.save(config_path)
-        new_engine = self.build(rc)
-        close_engine(previous)
-        return new_engine
-
     def validate(self, engine: str, device: str, compute_type: str, cpu_threads: int) -> None:
         err = self._check_error(engine) or self._check_perf(device, compute_type, cpu_threads)
         if err:
@@ -306,8 +295,71 @@ class _EngineBuilder:
                 self.resolver.catalog_model_for_path(path or self.settings.whisper_model),
                 cpu_threads=rc.cpu_threads,
                 server_binary=self.settings.whisper_server_binary,
-            )
+                )
         )
+
+
+class _LeaseBook:
+    """Counts in-flight transcriptions per engine so a swap never closes a busy one.
+
+    A lease keeps the engine object it was handed, so a settings change mid
+    transcription hands new requests the new engine while the old one finishes.
+    Closing the old engine right away would unload the model out from under
+    that request, so it is retired here and closed on its last release.
+    """
+
+    def __init__(self) -> None:
+        self._counts: dict[int, int] = {}
+        self._retired: dict[int, base.TranscriptionEngine] = {}
+
+    @property
+    def active(self) -> int:
+        return sum(self._counts.values())
+
+    def acquire(self, engine: base.TranscriptionEngine) -> None:
+        key = id(engine)
+        self._counts[key] = self._counts.get(key, 0) + 1
+
+    def release(self, engine: base.TranscriptionEngine) -> None:
+        key = id(engine)
+        remaining = self._counts.get(key, 1) - 1
+        if remaining > 0:
+            self._counts[key] = remaining
+            return
+        self._counts.pop(key, None)
+        retired = self._retired.pop(key, None)
+        if retired is not None:
+            close_engine(retired)
+
+    def retire(self, engine: base.TranscriptionEngine) -> None:
+        """Close the engine now, or once the requests still holding it are done."""
+        if id(engine) in self._counts:
+            # Held here so the id stays this engine's until it is closed.
+            self._retired[id(engine)] = engine
+            return
+        close_engine(engine)
+
+
+def _engine_signature(rc: runtime_config.RuntimeConfig) -> str:
+    """Everything about the config that decides which engine object gets built.
+
+    The idle-offload policy is deliberately absent: changing only that must not
+    discard a loaded model and make the next recording cold again.
+    """
+    decisive = (
+        rc.engine,
+        rc.compute_device,
+        rc.compute_type,
+        rc.cpu_threads,
+        rc.whisper_model,
+        rc.whisperkit_model,
+        rc.faster_whisper_model,
+        rc.sherpa_model,
+        rc.mlx_audio_model,
+        rc.moonshine_model,
+        rc.moonshine_language,
+    )
+    return "\x1f".join(str(field) for field in decisive)
 
 
 class EngineManager:
@@ -326,7 +378,7 @@ class EngineManager:
         self.model_manager = model_manager
         self._builder = _EngineBuilder(settings, model_manager)
         self._engine = self._builder.build(runtime_config)
-        self._active_leases = 0
+        self._leases = _LeaseBook()
         self._last_used_at = time.monotonic()
         self._model_was_offloaded = False
 
@@ -335,12 +387,12 @@ class EngineManager:
 
     @asynccontextmanager
     async def lease(self) -> AsyncIterator[base.TranscriptionEngine]:
-        self._active_leases += 1
         engine = self._engine
+        self._leases.acquire(engine)
         try:
             yield engine
         finally:
-            self._finish_lease()
+            self._finish_lease(engine)
 
     async def health(self) -> base.EngineHealth:
         return await self._engine.health()
@@ -350,15 +402,14 @@ class EngineManager:
         if path is None:
             raise KeyError(model_id)
         self._builder.resolver.apply_model(self.runtime_config, model_id, str(path))
-        self._engine = self._builder.swap(self._engine, self.runtime_config, self.config_path)
-        self._model_was_offloaded = False
+        self._swap()
 
     def forget_if_active(self, model_id: str) -> None:
         path = self.model_manager.installed_path(model_id)
         if path is None:
             return
         if self._builder.resolver.forget_if_active(self.runtime_config, model_id, str(path)):
-            self._engine = self._builder.swap(self._engine, self.runtime_config, self.config_path)
+            self._swap()
 
     def configure(
         self,
@@ -385,6 +436,7 @@ class EngineManager:
                 str(minutes) for minutes in runtime_config.IDLE_OFFLOAD_MINUTES
             )
             raise ValueError(f"Idle offload minutes must be one of: {valid_minutes}.")
+        before = _engine_signature(rc)
         rc.engine = engine
         rc.compute_device = dev
         rc.compute_type = ctype
@@ -401,8 +453,12 @@ class EngineManager:
             rc.sherpa_model = None
         if engine != catalog.ENGINE_MLX_AUDIO:
             rc.mlx_audio_model = None
-        self._engine = self._builder.swap(self._engine, rc, self.config_path)
-        self._model_was_offloaded = False
+        if _engine_signature(rc) == before:
+            # Only the idle-offload policy moved. Persist it and leave the
+            # resident model exactly where it is.
+            rc.save(self.config_path)
+            return
+        self._swap()
 
     def update_performance(self, device: str, compute_type: str, cpu_threads: int) -> None:
         self.configure(self.runtime_config.engine, device, compute_type, cpu_threads)
@@ -416,7 +472,7 @@ class EngineManager:
     def offload_if_idle(self, *, now: float | None = None) -> bool:
         rc = self.runtime_config
         engine = self._resident_engine()
-        if not rc.idle_offload_enabled or engine is None or self._active_leases:
+        if not rc.idle_offload_enabled or engine is None or self._leases.active:
             return False
         current_time = time.monotonic() if now is None else now
         maximum_idle = rc.idle_offload_minutes * 60
@@ -432,8 +488,15 @@ class EngineManager:
             return engine
         return None
 
-    def _finish_lease(self) -> None:
-        self._active_leases -= 1
+    def _swap(self) -> None:
+        previous = self._engine
+        self.runtime_config.save(self.config_path)
+        self._engine = self._builder.build(self.runtime_config)
+        self._leases.retire(previous)
+        self._model_was_offloaded = False
+
+    def _finish_lease(self, engine: base.TranscriptionEngine) -> None:
+        self._leases.release(engine)
         self._last_used_at = time.monotonic()
         if self._resident_engine() is not None:
             self._model_was_offloaded = False
