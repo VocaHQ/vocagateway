@@ -74,9 +74,7 @@ MULTILINGUAL = "Multilingual"
 BASE_MODEL_VARIANT = "Base"
 MOONSHINE_BASE_SIZE_MB = "141"
 FAST_BATCH_QUALITY = "Fast · batch"
-TINY_MODEL_SIZE_MB = "75"
 FASTEST_QUALITY = "Fastest"
-BASE_MODEL_SIZE_MB = "145"
 FAST_QUALITY = "Fast"
 BALANCED_QUALITY = "Balanced"
 MOST_ACCURATE_QUALITY = "Most accurate"
@@ -1719,33 +1717,6 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         retirement_reason=MOONSHINE_RETIREMENT_REASON,
     ),
     _faster_whisper(
-        "tiny.en",
-        "faster-whisper Tiny EN",
-        _megabytes(TINY_MODEL_SIZE_MB),
-        ENGLISH_ONLY,
-        FASTEST_QUALITY,
-        2,
-    ),
-    _faster_whisper(
-        "tiny",
-        "faster-whisper Tiny",
-        _megabytes(TINY_MODEL_SIZE_MB),
-        MULTILINGUAL,
-        FASTEST_QUALITY,
-        2,
-    ),
-    _faster_whisper(
-        "base.en",
-        "faster-whisper Base EN",
-        _megabytes(BASE_MODEL_SIZE_MB),
-        ENGLISH_ONLY,
-        FAST_QUALITY,
-        3,
-    ),
-    _faster_whisper(
-        "base", "faster-whisper Base", _megabytes(BASE_MODEL_SIZE_MB), MULTILINGUAL, FAST_QUALITY, 3
-    ),
-    _faster_whisper(
         "small.en", "faster-whisper Small EN", _megabytes("484"), ENGLISH_ONLY, BALANCED_QUALITY, 6
     ),
     _faster_whisper(
@@ -1831,33 +1802,6 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         ),
     ),
     _whisperkit(
-        "openai_whisper-tiny", "WhisperKit Tiny", _megabytes("66"), MULTILINGUAL, FASTEST_QUALITY, 4
-    ),
-    _whisperkit(
-        "openai_whisper-tiny.en",
-        "WhisperKit Tiny EN",
-        _megabytes("66"),
-        ENGLISH_ONLY,
-        FASTEST_QUALITY,
-        4,
-    ),
-    _whisperkit(
-        "openai_whisper-base",
-        "WhisperKit Base",
-        _megabytes(BASE_MODEL_SIZE_MB),
-        MULTILINGUAL,
-        FAST_QUALITY,
-        4,
-    ),
-    _whisperkit(
-        "openai_whisper-base.en",
-        "WhisperKit Base EN",
-        _megabytes(BASE_MODEL_SIZE_MB),
-        ENGLISH_ONLY,
-        FAST_QUALITY,
-        4,
-    ),
-    _whisperkit(
         "openai_whisper-small_216MB",
         "WhisperKit Small (compressed)",
         _megabytes("216"),
@@ -1906,28 +1850,6 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
             "2.40% WER here against 2.49% for the compressed build. Eight hundredths of a WER "
             "point is not worth 984 MB of download and 16 GB of required RAM."
         ),
-    ),
-    _whisper_cpp(
-        "ggml-tiny.en.bin",
-        "whisper.cpp Tiny EN",
-        _megabytes(TINY_MODEL_SIZE_MB),
-        ENGLISH_ONLY,
-        FASTEST_QUALITY,
-        4,
-    ),
-    _whisper_cpp(
-        "ggml-tiny.bin",
-        "whisper.cpp Tiny",
-        _megabytes(TINY_MODEL_SIZE_MB),
-        MULTILINGUAL,
-        FASTEST_QUALITY,
-        4,
-    ),
-    _whisper_cpp(
-        "ggml-base.en.bin", "whisper.cpp Base EN", _megabytes("142"), ENGLISH_ONLY, FAST_QUALITY, 4
-    ),
-    _whisper_cpp(
-        "ggml-base.bin", "whisper.cpp Base", _megabytes("142"), MULTILINGUAL, FAST_QUALITY, 4
     ),
     _whisper_cpp(
         "ggml-small.en.bin",
@@ -2111,17 +2033,18 @@ class _CatalogRecommender:
                 }
             return {
                 f"{ENGINE_SHERPA_ONNX}:sensevoice-small-int8",
-                f"{ENGINE_FASTER_WHISPER}:base",
+                f"{ENGINE_SHERPA_ONNX}:parakeet-tdt-0.6b-v2-int8",
                 f"{ENGINE_FASTER_WHISPER}:distil-small.en",
             }
-        if is_apple:
-            return {
-                f"{ENGINE_WHISPERKIT}:openai_whisper-base",
-                f"{ENGINE_SHERPA_ONNX}:sensevoice-small-int8",
-            }
+        # Below 8 GB there is nothing Apple-specific to offer: the smallest
+        # WhisperKit and MLX entries both want 8 GB. Whisper's Tiny and Base
+        # tiers used to fill this rung and were dropped for accuracy, so the
+        # answer is the same on either host - a compact multilingual model and
+        # a purpose-built dictation model, both of which beat Whisper Base at
+        # this size.
         return {
             f"{ENGINE_SHERPA_ONNX}:sensevoice-small-int8",
-            f"{ENGINE_FASTER_WHISPER}:tiny",
+            f"{ENGINE_MOONSHINE}:en-base",
         }
 
 

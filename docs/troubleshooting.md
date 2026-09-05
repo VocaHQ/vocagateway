@@ -181,7 +181,9 @@ request. Check:
   clamped by the container's CPU quota, so it neither oversubscribes a cgroup
   nor spreads a batch across hyperthread siblings that then hold it back
 - the container has not been assigned a fractional CPU quota
-- Tiny/Base is used before Small/Medium on low-power servers
+- a compact model is chosen before Small/Medium on low-power servers —
+  Moonshine English Base and SenseVoice Small INT8 are the smallest
+  portable options, and both read more accurately than Whisper Base did
 - for an NVIDIA or Intel/AMD GPU, the matching `cuda` or `vulkan` Compose
   profile is running; CPU hosts should use the portable default, which chooses
   the best compiled CPU backend at runtime and needs no `native` profile

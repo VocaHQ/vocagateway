@@ -1517,7 +1517,9 @@ def test_the_english_only_builds_are_not_treated_as_duplicates() -> None:
     """
     active = {model.id for model in DEFAULT_CATALOG}
 
-    for key in ("tiny", "base", "small", "medium"):
+    # Tiny and Base were dropped: Moonshine and the 20M zipformer beat them at
+    # the same size, so the pairing now starts at Small.
+    for key in ("small", "medium"):
         assert f"faster-whisper:{key}" in active
         assert f"faster-whisper:{key}.en" in active
 

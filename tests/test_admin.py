@@ -1025,7 +1025,7 @@ def test_model_cards_name_their_languages() -> None:
 
     # An English-only build carries just ENGLISH_LANGUAGE_CODE, and gets no disclosure at all —
     # its "English only" summary already says everything a list would.
-    english_only = card("whisper.cpp:ggml-tiny.en.bin")
+    english_only = card("whisper.cpp:ggml-small.en.bin")
     assert "model-languages" not in english_only
 
     # Card structure: blurb on tile; info icon + actions; extra facts in popover.
