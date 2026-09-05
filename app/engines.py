@@ -198,6 +198,7 @@ class _ModelPathResolver:
             self.catalog_model_for_path(cpp_p),
             cpu_threads=rc.cpu_threads,
             server_binary=self.settings.whisper_server_binary,
+            decoder_preset=self.settings.whisper_decoder_preset,
         )
 
 
@@ -295,7 +296,8 @@ class _EngineBuilder:
                 self.resolver.catalog_model_for_path(path or self.settings.whisper_model),
                 cpu_threads=rc.cpu_threads,
                 server_binary=self.settings.whisper_server_binary,
-                )
+                decoder_preset=self.settings.whisper_decoder_preset,
+            )
         )
 
 

@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 
 from app import scripts, system
 from app.catalog import CatalogModel
@@ -11,13 +13,21 @@ from app.errors import EngineUnavailableError, LanguageUnsupportedError, Transcr
 from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
 from app.models.warmup import prefetch_model_paths
 from app.models.whisper_server import (
+    START_TIMEOUT_SECONDS,
     WhisperServerUnavailable,
     WhisperServerWorker,
     elapsed_ms,
     resolve_server_binary,
+    time_budget,
 )
 
-TRANSCRIPTION_TIMEOUT_SECONDS = 75
+TRANSCRIPTION_TIMEOUT_SECONDS = 75.0
+# One deadline covers the whole request. A cold worker may still spend the model
+# load budget before it can decode, but the inference and any CLI fallback then
+# share what is left of it instead of each starting a fresh 75 s clock — which
+# is how a single recording used to be able to keep the caller waiting for
+# minutes.
+REQUEST_DEADLINE_SECONDS = START_TIMEOUT_SECONDS + TRANSCRIPTION_TIMEOUT_SECONDS
 MAXIMUM_ERROR_MESSAGE_LENGTH = 200
 # whisper-cli defaults to a beam of 5 with 5 greedy candidates, which is tuned for
 # batch transcription of long recordings. Dictation clips are short and the decoder
@@ -27,6 +37,33 @@ MAXIMUM_ERROR_MESSAGE_LENGTH = 200
 # stays on — it is what rescues a degenerate segment from a repetition loop.
 DECODER_BEAM_SIZE = 2
 DECODER_BEST_OF = 2
+QUALITY_PRESET = "quality"
+FAST_PRESET = "fast"
+
+
+@dataclass(frozen=True, slots=True)
+class DecoderSearch:
+    beam_size: int
+    best_of: int
+
+
+# `fast` asks for greedy decoding — whisper.cpp picks the greedy sampler
+# whenever the beam size is not above 1, which drops the per-token search to a
+# single candidate. That is cheaper on a CPU-only host and can cost accuracy on
+# accented or noisy audio, so `quality` stays the default until a WER comparison
+# on the target machine says otherwise. Temperature fallback stays on in both.
+DECODER_PRESETS = MappingProxyType(
+    {
+        QUALITY_PRESET: DecoderSearch(DECODER_BEAM_SIZE, DECODER_BEST_OF),
+        FAST_PRESET: DecoderSearch(beam_size=1, best_of=1),
+    }
+)
+
+
+def decoder_search(preset: str | None) -> DecoderSearch:
+    """The search a preset name asks for, falling back to the documented default."""
+    named = DECODER_PRESETS.get((preset or "").strip().lower())
+    return named or DECODER_PRESETS[QUALITY_PRESET]
 
 
 class WhisperCppEngine:
@@ -46,11 +83,15 @@ class WhisperCppEngine:
         *,
         cpu_threads: int = 0,
         server_binary: Path | None = None,
+        decoder_preset: str | None = None,
     ) -> None:
         self.binary = binary
         self.model = model
         self.catalog_model = catalog_model
         self.cpu_threads = system.inference_thread_count(cpu_threads)
+        search = decoder_search(decoder_preset)
+        self.beam_size = search.beam_size
+        self.best_of = search.best_of
         self._worker = self._build_worker(resolve_server_binary(binary, server_binary))
 
     async def health(self) -> EngineHealth:
@@ -62,7 +103,7 @@ class WhisperCppEngine:
         if not (await self.health()).ready:
             return 0
         advised = await asyncio.to_thread(prefetch_model_paths, [self.model])
-        await self._start_worker()
+        await self._start_worker(None)
         # A resident worker holds the whole model, which is what the readiness
         # report means by warmed bytes. The advised page count only stands in
         # for it when the transcription path is still the one-shot CLI.
@@ -81,9 +122,10 @@ class WhisperCppEngine:
     ) -> EngineTranscription:
         await self._require_ready()
         language = self._decoder_language(options.language)
-        outcome = await self._resident_transcription(audio_path, language)
+        deadline = time.monotonic() + REQUEST_DEADLINE_SECONDS
+        outcome = await self._resident_transcription(audio_path, language, deadline)
         if outcome is None:
-            outcome = await _CliRun(self, audio_path, language).transcribe()
+            outcome = await _CliRun(self, audio_path, language).transcribe(deadline)
         self._require_fixed_output_script(outcome.text)
         return outcome
 
@@ -94,17 +136,17 @@ class WhisperCppEngine:
             server_binary,
             self.model,
             cpu_threads=self.cpu_threads,
-            beam_size=DECODER_BEAM_SIZE,
-            best_of=DECODER_BEST_OF,
+            beam_size=self.beam_size,
+            best_of=self.best_of,
         )
 
-    async def _start_worker(self) -> bool:
+    async def _start_worker(self, deadline: float | None) -> bool:
         """Bring the resident worker up, reporting whether this call loaded it."""
         worker = self._worker
         if worker is None:
             return False
         try:
-            return await worker.ensure_started()
+            return await worker.ensure_started(deadline=deadline)
         except WhisperServerUnavailable:
             self._retire_worker()
             return False
@@ -120,17 +162,23 @@ class WhisperCppEngine:
         self._worker = None
 
     async def _resident_transcription(
-        self, audio_path: Path, language: str
+        self, audio_path: Path, language: str, deadline: float
     ) -> EngineTranscription | None:
+        pending = self._worker
+        if pending is not None:
+            # A previous clip that timed out or was cancelled may still be
+            # decoding inside the worker; this drops that worker rather than
+            # queueing this recording behind it.
+            await pending.reclaim()
         load_started = time.monotonic()
-        loaded_now = await self._start_worker()
+        loaded_now = await self._start_worker(deadline)
         worker = self._worker
         if worker is None:
             return None
         load_ms = elapsed_ms(load_started) if loaded_now else 0
         inference_started = time.monotonic()
         try:
-            transcript = await worker.transcribe(audio_path, language)
+            transcript = await worker.transcribe(audio_path, language, deadline=deadline)
         except WhisperServerUnavailable:
             worker.stop()
             return None
@@ -175,24 +223,16 @@ class _CliRun:
         self.audio_path = audio_path
         self.language = language
 
-    async def transcribe(self) -> EngineTranscription:
+    async def transcribe(self, deadline: float | None = None) -> EngineTranscription:
         started = time.monotonic()
         with tempfile.TemporaryDirectory(prefix="vocagateway-transcript-") as temporary:
             output_stem = Path(temporary) / "result"
-            await _execute_whisper_cpp(self._arguments(output_stem))
+            arguments = _build_arguments(self.engine, self.audio_path, output_stem, self.language)
+            await _execute_whisper_cpp(
+                arguments, time_budget(deadline, TRANSCRIPTION_TIMEOUT_SECONDS)
+            )
             transcript = _read_output_text(output_stem.with_suffix(".txt"))
         return EngineTranscription(text=transcript, inference_ms=elapsed_ms(started))
-
-    def _arguments(self, output_stem: Path) -> list[str]:
-        engine = self.engine
-        return _build_arguments(
-            engine.binary,
-            engine.model,
-            self.audio_path,
-            output_stem,
-            self.language,
-            engine.cpu_threads,
-        )
 
 
 def _collapse_whitespace(transcript: str) -> str:
@@ -205,27 +245,25 @@ def _collapse_whitespace(transcript: str) -> str:
 
 
 def _build_arguments(
-    binary: Path, model: Path, audio: Path, output: Path, language: str, threads: int
+    engine: WhisperCppEngine, audio: Path, output: Path, language: str
 ) -> list[str]:
-    arguments = [str(binary), "-m", str(model), "-f", str(audio)]
+    arguments = [str(engine.binary), "-m", str(engine.model), "-f", str(audio)]
     arguments.extend(["-otxt", "-of", str(output), "-np", "-nt"])
-    arguments.extend(["-t", str(threads)])
-    arguments.extend(["-bs", str(DECODER_BEAM_SIZE), "-bo", str(DECODER_BEST_OF)])
+    arguments.extend(["-t", str(engine.cpu_threads)])
+    arguments.extend(["-bs", str(engine.beam_size), "-bo", str(engine.best_of)])
     if language != "auto":
         arguments.extend(["-l", language])
     return arguments
 
 
-async def _execute_whisper_cpp(arguments: list[str]) -> None:
+async def _execute_whisper_cpp(arguments: list[str], budget: float) -> None:
     process = await asyncio.create_subprocess_exec(
         *arguments,
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.PIPE,
     )
     try:
-        _, stderr = await asyncio.wait_for(
-            process.communicate(), timeout=TRANSCRIPTION_TIMEOUT_SECONDS
-        )
+        _, stderr = await asyncio.wait_for(process.communicate(), timeout=budget)
     except TimeoutError as error:
         process.kill()
         await process.wait()

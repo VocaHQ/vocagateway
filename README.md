@@ -635,6 +635,7 @@ uv run vocagateway
 | `VOCAGATEWAY_WHISPER_BINARY` | `/opt/homebrew/bin/whisper-cli` | `/usr/local/bin/whisper-cli` | `whisper.cpp` executable |
 | `VOCAGATEWAY_WHISPER_MODEL` | `~/.local/share/whisper.cpp/models/ggml-base.en.bin` | same, and normally absent | Fallback `whisper.cpp` model used only when no model is selected in the WebUI |
 | `VOCAGATEWAY_WHISPER_SERVER_BINARY` | the `whisper-server` beside `whisper-cli`, else `PATH` | `/usr/local/bin/whisper-server` | Resident `whisper.cpp` worker; unset is normal, and a missing binary falls back to one `whisper-cli` run per request |
+| `VOCAGATEWAY_WHISPER_DECODER_PRESET` | `quality` | `quality` | `quality` keeps the narrowed beam search; `fast` decodes greedily — cheaper on a CPU-only host, and worth a WER comparison on your own audio before you keep it |
 | `VOCAGATEWAY_WHISPERKIT_BINARY` | `whisperkit-cli` | unavailable | Standalone WhisperKit executable and legacy VocaMac fallback |
 | `VOCAGATEWAY_VOCAMAC_APP` | `/Applications/VocaMac.app` | unavailable | Optional VocaMac app bundle |
 | `VOCAGATEWAY_VOCAMAC_MODEL` | unset | unset | Pin a VocaMac model instead of following the app's choice |
