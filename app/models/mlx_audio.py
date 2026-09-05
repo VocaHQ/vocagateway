@@ -105,10 +105,7 @@ class MLXAudioEngine:
         return requested
 
     def _transcription_prompt(self) -> str | None:
-        if self.catalog_model and self.catalog_model.key == "granite-speech-4.1-2b":
-            # MLX Granite otherwise turns explicit language hints into translation requests.
-            return "transcribe the speech with proper punctuation and capitalization."
-        return None
+        return self.catalog_model.decoder_prompt if self.catalog_model else None
 
     def _validate_output(self, text: str) -> None:
         model = self.catalog_model
@@ -158,7 +155,9 @@ class MLXAudioEngine:
 def _generate_text(model: Any, audio_path: Path, language: str, prompt: str | None = None) -> str:
     generate_parameters = inspect.signature(model.generate).parameters
     arguments: dict[str, Any] = {}
-    if prompt is not None:
+    # Both kwargs are optional in mlx-audio and absent from some model wrappers,
+    # so neither is passed unless this model's generate() actually accepts it.
+    if prompt is not None and "prompt" in generate_parameters:
         arguments["prompt"] = prompt
     if language != "auto" and "language" in generate_parameters:
         arguments["language"] = (

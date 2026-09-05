@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
 import tempfile
+import wave
 from pathlib import Path
 
 from app import system
@@ -13,6 +13,7 @@ from app.models.transcribe_chunks import prepare_recordings, read_batch_output
 from app.models.warmup import prefetch_model_paths
 
 TRANSCRIPTION_TIMEOUT_SECONDS = 180
+MAXIMUM_ERROR_MESSAGE_LENGTH = 240
 
 
 class TranscribeCppEngine:
@@ -34,7 +35,7 @@ class TranscribeCppEngine:
     async def health(self) -> EngineHealth:
         name = self.model.name if self.model else "no-model-selected"
         return EngineHealth(
-            ready=shutil.which(self.binary) is not None
+            ready=system.resolve_binary(self.binary) is not None
             and self.model is not None
             and self.model.is_file(),
             name=f"transcribe.cpp:{name}",
@@ -46,15 +47,17 @@ class TranscribeCppEngine:
         return await asyncio.to_thread(prefetch_model_paths, [self.model])
 
     async def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> str:
-        language = self._language(options.language)
+        # Readiness first: with no model selected there is no catalog entry, so
+        # `_language` would reject even "auto" and hide the real problem.
         if not (await self.health()).ready or self.model is None:
             raise EngineUnavailableError(
                 "Install transcribe-cli, set VOCAGATEWAY_TRANSCRIBE_BINARY if needed, "
                 "and download a transcribe.cpp model."
             )
+        language = self._language(options.language)
         with tempfile.TemporaryDirectory(prefix="vocagateway-transcribe-") as temporary:
             root = Path(temporary)
-            recordings = await asyncio.to_thread(prepare_recordings, audio_path, root)
+            recordings = await _prepared_recordings(audio_path, root)
             output = root / "transcript.txt"
             arguments = [
                 self.binary,
@@ -106,14 +109,34 @@ async def _transcribe_batch(arguments: list[str], root: Path, recordings: list[P
     return read_batch_output(output, recordings)
 
 
-async def _execute(arguments: list[str], *, stdout: int = asyncio.subprocess.DEVNULL) -> None:
-    process = await asyncio.create_subprocess_exec(
-        *arguments,
-        stdout=stdout,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
+async def _prepared_recordings(audio_path: Path, root: Path) -> list[Path]:
+    """Split the recording, reporting an unreadable WAV as a transcription failure.
+
+    The normalizer hands over a RIFF file, so `wave.Error` here means it was
+    truncated or written in another container - an engine failure, not a crash.
+    """
     try:
-        await asyncio.wait_for(process.wait(), timeout=TRANSCRIPTION_TIMEOUT_SECONDS)
+        return await asyncio.to_thread(prepare_recordings, audio_path, root)
+    except (wave.Error, OSError, ValueError) as error:
+        raise TranscriptionProcessError(
+            f"transcribe.cpp could not read the recording: {error}"
+        ) from error
+
+
+async def _execute(arguments: list[str], *, stdout: int = asyncio.subprocess.DEVNULL) -> None:
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *arguments,
+            stdout=stdout,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as error:
+        # The binary passed `health()` but is gone, or is not executable.
+        raise EngineUnavailableError(f"Could not run {arguments[0]}: {error}") from error
+    try:
+        _, stderr = await asyncio.wait_for(
+            process.communicate(), timeout=TRANSCRIPTION_TIMEOUT_SECONDS
+        )
     except (TimeoutError, asyncio.CancelledError) as error:
         if process.returncode is None:
             process.kill()
@@ -122,4 +145,10 @@ async def _execute(arguments: list[str], *, stdout: int = asyncio.subprocess.DEV
             raise
         raise TranscriptionProcessError("transcribe.cpp transcription timed out.") from error
     if process.returncode != 0:
-        raise TranscriptionProcessError(f"transcribe.cpp exited with code {process.returncode}.")
+        # Without the tail, "unsupported GGUF", "out of memory" and "unknown
+        # flag on an older build" are the same opaque exit code to an operator.
+        detail = (stderr or b"").decode("utf-8", errors="replace").strip()
+        suffix = f": {detail[-MAXIMUM_ERROR_MESSAGE_LENGTH:]}" if detail else "."
+        raise TranscriptionProcessError(
+            f"transcribe.cpp exited with code {process.returncode}{suffix}"
+        )

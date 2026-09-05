@@ -721,9 +721,43 @@ async def test_cohere_requires_language_and_sets_it_for_every_recording(
 
     monkeypatch.setattr("app.models.sherpa_onnx._read_wave_samples", lambda _: (16000, []))
     recognizer = Recognizer()
-    assert _decode_wave(recognizer, tmp_path / "audio.wav", "fr-FR") == "hello"
-    assert _decode_wave(recognizer, tmp_path / "audio.wav", "de") == "hello"
+    assert _decode_wave(recognizer, tmp_path / "audio.wav", "fr-FR", True) == "hello"
+    assert _decode_wave(recognizer, tmp_path / "audio.wav", "de", True) == "hello"
     assert languages == ["fr", "de"]
+
+    # Every other offline model decoded without the option before Cohere
+    # arrived; pinning one that auto-detects would change its transcripts.
+    class QuietStream(Stream):
+        def set_option(self, key, value):
+            raise AssertionError("only a language-pinned model may set a stream option")
+
+        def accept_waveform(self, rate, samples):
+            return None
+
+    monkeypatch.setattr(Recognizer, "create_stream", lambda self: QuietStream())
+    assert _decode_wave(recognizer, tmp_path / "audio.wav", "de") == "hello"
+
+
+async def test_cohere_recognizer_is_rebuilt_when_the_language_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cached recognizer built for French would decode German as French, and a
+    fluent wrong-language transcript never trips the empty-result check."""
+    from dataclasses import replace
+
+    model = replace(_catalog("cohere_transcribe"), language_codes=("en", "fr", "de"))
+    engine = SherpaOnnxEngine(tmp_path, model)
+    built: list[str] = []
+    monkeypatch.setattr(
+        engine._builder, "build", lambda language=None: built.append(language) or object()
+    )
+
+    await engine._ensure_recognizer("fr-FR")
+    await engine._ensure_recognizer("fr")
+    assert built == ["fr-FR"]
+    await engine._ensure_recognizer("de")
+    assert built == ["fr-FR", "de"]
+    assert engine._builder.build_language("auto") == "en"
 
 
 def test_cohere_builder_uses_external_data_encoder(

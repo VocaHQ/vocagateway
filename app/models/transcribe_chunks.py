@@ -5,6 +5,7 @@ import wave
 from array import array
 from functools import partial
 from pathlib import Path
+from typing import Any
 
 from app.errors import TranscriptionProcessError
 
@@ -50,25 +51,39 @@ def _window_energy(pcm: bytes, window: int, frame: int) -> int:
 
 
 def read_batch_output(output: Path, recordings: list[Path]) -> str:
-    """Do not accept partial/truncated native batch results as successful dictation."""
+    """Reassemble the batch transcript, refusing partial or truncated results.
+
+    Results are matched to chunks by file name rather than by position or by an
+    identical path string: a CLI is free to canonicalise the paths it was given
+    (on macOS the temporary directory is `/var/...`, a symlink to `/private/var/...`)
+    or to finish them out of order, and neither means the transcript is wrong.
+    A chunk that is missing, errored, or reported twice still fails the recording.
+    """
     try:
         records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
-        if records and isinstance(records[0], dict) and records[0].get("type") == "batch_header":
-            records = records[1:]
-        if len(records) != len(recordings):
-            raise ValueError("Missing batch results")
+        results = _batch_results(records)
         texts = []
-        for record, path in zip(records, recordings, strict=True):
-            if (
-                not isinstance(record, dict)
-                or record.get("error")
-                or record.get("file") != str(path)
-                or not isinstance(record.get("text"), str)
-            ):
-                raise ValueError("Incomplete batch result")
+        for path in recordings:
+            record = results.get(path.name)
+            if record is None or record.get("error") or not isinstance(record.get("text"), str):
+                raise ValueError(f"Incomplete batch result for {path.name}")
             texts.append(record["text"].strip())
         return " ".join(text for text in texts if text)
     except (OSError, ValueError) as error:
         raise TranscriptionProcessError(
-            "transcribe.cpp could not fully transcribe this recording. Try a shorter recording."
+            "transcribe.cpp could not fully transcribe this recording."
         ) from error
+
+
+def _batch_results(records: list[Any]) -> dict[str, dict[str, Any]]:
+    """Index the per-chunk records by file name, ignoring the batch envelope."""
+    results: dict[str, dict[str, Any]] = {}
+    for record in records:
+        if not isinstance(record, dict) or "file" not in record:
+            # A leading `batch_header` and any trailing summary carry no chunk.
+            continue
+        name = Path(str(record["file"])).name
+        if name in results:
+            raise ValueError(f"Duplicate batch result for {name}")
+        results[name] = record
+    return results

@@ -653,6 +653,14 @@ class ModelManager:
             await _DownloadBatch(downloads, download_handle).run()
             if download_handle.cancel.is_set():
                 raise DownloadCancelled
+            # The listing said the files exist upstream; this says they landed.
+            # Promoting an incomplete tree would read as installed forever after,
+            # since `installed()` only looks for the marker file.
+            missing_on_disk = [
+                name for name in model.required_files if not (partial_dir / name).is_file()
+            ]
+            if missing_on_disk:
+                raise RuntimeError(_missing_model_files_message(missing_on_disk))
             final_dir.parent.mkdir(parents=True, exist_ok=True)
             _remove_tree(final_dir)
             partial_dir.replace(final_dir)

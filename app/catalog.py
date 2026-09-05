@@ -141,6 +141,7 @@ MODEL_SAFETENSORS = "model.safetensors"
 JOINER_INT8_FILE = "joiner.int8.onnx"
 NEMO_TRANSDUCER_TYPE = "nemo_transducer"
 STREAMING_TRANSDUCER_TYPE = "streaming_zipformer"
+COHERE_TRANSCRIBE_TYPE = "cohere_transcribe"
 ENGLISH_CODES = (ENGLISH_LANGUAGE_CODE,)
 SWIFT_SIZE_BYTES = 296_189_187
 HINDI_SMALL_SIZE_BYTES = 970_935_688
@@ -240,6 +241,9 @@ class CatalogModel:
     # Hinglish is requested as `hinglish_roman` but Whisper expects `hi`).
     # `LANGUAGE_AGNOSTIC_DECODER` pins the decoder to no language at all.
     decoder_language_code: str | None = None
+    # Instruction some autoregressive models need in order to transcribe rather
+    # than answer or translate. Passed only when the adapter's generate() takes it.
+    decoder_prompt: str | None = None
     apple_silicon_only: bool = False
     detects_language_automatically: bool = False
     retired: bool = False
@@ -350,6 +354,7 @@ class _WhisperModelBuilders:
                 kwargs.get("language_codes") or cls.whisper_language_codes(cls._languages(args))
             ),
             decoder_language_code=kwargs.get("decoder_language_code"),
+            decoder_prompt=kwargs.get("decoder_prompt"),
             license_name=str(kwargs.get("license_name", "See model source")),  # noqa: WPS226
             **cls.retirement(kwargs),
         )
@@ -437,6 +442,7 @@ class _WhisperModelBuilders:
             marker_file=str(kwargs.get("marker_file", MODEL_SAFETENSORS)),
             required_files=tuple(kwargs.get("required_files", ())),
             decoder_language_code=kwargs.get("decoder_language_code"),
+            decoder_prompt=kwargs.get("decoder_prompt"),
             language_codes=tuple(kwargs.get("language_codes", ())),
             apple_silicon_only=True,
             license_name=str(kwargs["license_name"]),
@@ -1428,6 +1434,9 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
             JAPANESE_LANGUAGE_CODE,
         ),
         decoder_language_code=None,
+        # Without it MLX Granite reads an explicit language hint as a request
+        # to translate into that language rather than transcribe.
+        decoder_prompt="transcribe the speech with proper punctuation and capitalization.",
         marker_file="model.safetensors.index.json",
         required_files=(
             "added_tokens.json",
@@ -1516,7 +1525,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
             TOKENS_FILE,
         ),
         family="Cohere Transcribe",
-        model_type="cohere_transcribe",
+        model_type=COHERE_TRANSCRIBE_TYPE,
         description=(
             "Cohere's multilingual speech recognizer through a community INT8 CPU export. Select "
             "the spoken language explicitly; automatic language detection and Hindi are not "

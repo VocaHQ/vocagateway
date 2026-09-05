@@ -14,7 +14,11 @@ from app import catalog, errors, system
 from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
 
 MODEL_METADATA = ".vocagateway-model.json"
-STREAMING_MODEL_TYPE = "streaming_zipformer"
+# The catalog names the model types; dispatching on its constants keeps a
+# renamed type from silently falling through to "unsupported" here.
+STREAMING_MODEL_TYPE = catalog.STREAMING_TRANSDUCER_TYPE
+NEMO_TRANSDUCER_TYPE = catalog.NEMO_TRANSDUCER_TYPE
+COHERE_TRANSCRIBE_TYPE = catalog.COHERE_TRANSCRIBE_TYPE
 TRANSCRIPTION_TIMEOUT_SECONDS = 180
 MAXIMUM_ERROR_MESSAGE_LENGTH = 240
 PCM_SAMPLE_SCALE = 32_768.0
@@ -66,19 +70,36 @@ class _SherpaRecognizerBuilder:
         self.threads = threads
         self.tokens = str(model_root / "tokens.txt") if model_root else ""
 
-    def build(self) -> Any:
+    def build(self, language: str = AUTO_LANGUAGE) -> Any:
         if self.root is None or self.model is None:
             raise errors.EngineUnavailableError("No sherpa-onnx model is selected.")
         import sherpa_onnx
 
         if self.model.model_type == STREAMING_MODEL_TYPE:
             return self._build_streaming(sherpa_onnx)
-        return self._build_offline(sherpa_onnx)
+        return self._build_offline(sherpa_onnx, self.build_language(language))
+
+    def pins_language_at_build(self) -> bool:
+        """Whether the recognizer bakes in a language and must be rebuilt to change it.
+
+        Only Cohere Transcribe does. Its decoder takes the language when the
+        recognizer is constructed, so a cached recognizer built for one language
+        would otherwise keep decoding every later request in that language --
+        silently, since a wrong-language decode still returns fluent text.
+        """
+        return self.model is not None and self.model.model_type == COHERE_TRANSCRIBE_TYPE
+
+    def build_language(self, language: str) -> str:
+        """The language to construct a language-pinned recognizer with."""
+        supported = self.model.language_codes if self.model else ()
+        if language == AUTO_LANGUAGE:
+            return supported[0] if supported else AUTO_LANGUAGE
+        return language.lower().split(LANGUAGE_TAG_SEPARATOR, maxsplit=1)[0]
 
     def validate_language(self, language: str) -> None:
         if (
             self.model
-            and self.model.model_type == "cohere_transcribe"
+            and self.model.model_type == COHERE_TRANSCRIBE_TYPE
             and language == AUTO_LANGUAGE
         ):
             raise errors.LanguageUnsupportedError(
@@ -120,7 +141,7 @@ class _SherpaRecognizerBuilder:
             enable_endpoint_detection=True,
         )
 
-    def _build_offline(self, sherpa: Any) -> Any:
+    def _build_offline(self, sherpa: Any, language: str = AUTO_LANGUAGE) -> Any:
         if self.root is None or self.model is None:
             return None
         mtype = self.model.model_type
@@ -133,15 +154,15 @@ class _SherpaRecognizerBuilder:
                 use_itn=True,
                 provider=CPU_DEVICE,
             )
-        if mtype in {"nemo_transducer", "nemo_ctc", "nemo_canary"}:
+        if mtype in {NEMO_TRANSDUCER_TYPE, "nemo_ctc", "nemo_canary"}:
             return self._build_nemo(sherpa, mtype)
-        if mtype == "cohere_transcribe":
+        if mtype == COHERE_TRANSCRIBE_TYPE:
             return sherpa.OfflineRecognizer.from_cohere_transcribe(
                 encoder=str(self.root / "encoder.int8.onnx"),
                 decoder=str(self.root / "decoder.int8.onnx"),
                 tokens=self.tokens,
                 num_threads=self.threads,
-                language="en",
+                language=language,
                 provider=CPU_DEVICE,
             )
         if mtype in {"dolphin_ctc", "qwen3_asr"}:
@@ -151,7 +172,7 @@ class _SherpaRecognizerBuilder:
     def _build_nemo(self, sherpa: Any, mtype: str) -> Any:
         if self.root is None or self.model is None:
             return None
-        if mtype == "nemo_transducer":
+        if mtype == NEMO_TRANSDUCER_TYPE:
             encoder, decoder, joiner, _ = self.model.required_files
             return sherpa.OfflineRecognizer.from_transducer(
                 encoder=str(self.root / encoder),
@@ -159,7 +180,7 @@ class _SherpaRecognizerBuilder:
                 joiner=str(self.root / joiner),
                 tokens=self.tokens,
                 num_threads=self.threads,
-                model_type="nemo_transducer",
+                model_type=NEMO_TRANSDUCER_TYPE,
                 provider=CPU_DEVICE,
             )
         if mtype == "nemo_ctc":
@@ -295,6 +316,7 @@ class SherpaOnnxEngine:
         self.catalog_model = catalog_model
         self.cpu_threads = cpu_threads
         self._recognizer: Any | None = None
+        self._recognizer_language: str | None = None
         self._load_lock = asyncio.Lock()
         self._inference_lock = asyncio.Lock()
         self.streaming_lock = self._inference_lock
@@ -357,7 +379,7 @@ class SherpaOnnxEngine:
             )
         async with self._inference_lock:
             start_time = time.monotonic()
-            recognizer, loaded_now = await self._ensure_recognizer()
+            recognizer, loaded_now = await self._ensure_recognizer(options.language)
             load_ms = 0
             if loaded_now:
                 load_ms = max(0, int((time.monotonic() - start_time) * 1000))
@@ -369,6 +391,7 @@ class SherpaOnnxEngine:
                 self._builder.stream_language(options.language),
                 self._builder.uses_stream_language_locale(),
                 self._builder.strips_stream_language_tags(),
+                self._builder.pins_language_at_build(),
             )
             if not text:
                 if options.language != AUTO_LANGUAGE:
@@ -401,17 +424,23 @@ class SherpaOnnxEngine:
     def unload(self) -> None:
         self._recognizer = None
 
-    async def _ensure_recognizer(self) -> tuple[Any, bool]:
-        if self._recognizer is not None:
+    async def _ensure_recognizer(self, language: str = AUTO_LANGUAGE) -> tuple[Any, bool]:
+        wanted = self._builder.build_language(language)
+        if self._recognizer is not None and not self._needs_rebuild(wanted):
             return self._recognizer, False
         async with self._load_lock:
-            if self._recognizer is not None:
+            if self._recognizer is not None and not self._needs_rebuild(wanted):
                 return self._recognizer, False
-            self._recognizer = await asyncio.to_thread(self._load_recognizer_sync)
+            self._recognizer = await asyncio.to_thread(self._load_recognizer_sync, language)
+            self._recognizer_language = wanted
             return self._recognizer, True
 
-    def _load_recognizer_sync(self) -> Any:
-        return self._builder.build()
+    def _needs_rebuild(self, wanted: str) -> bool:
+        """A language-pinned recognizer built for another language is the wrong one."""
+        return self._builder.pins_language_at_build() and self._recognizer_language != wanted
+
+    def _load_recognizer_sync(self, language: str = AUTO_LANGUAGE) -> Any:
+        return self._builder.build(language)
 
 
 def _read_wave_samples(audio_path: Path) -> tuple[int, Any]:
@@ -438,13 +467,22 @@ def _read_wave_samples(audio_path: Path) -> tuple[int, Any]:
     return sample_rate, block.astype(numpy.float32) / PCM_SAMPLE_SCALE
 
 
-def _decode_wave(recognizer: Any, audio_path: Path, language: str = AUTO_LANGUAGE) -> str:
+def _decode_wave(
+    recognizer: Any,
+    audio_path: Path,
+    language: str = AUTO_LANGUAGE,
+    set_stream_language: bool = False,
+) -> str:
     sample_rate, floats = _read_wave_samples(audio_path)
     stream = recognizer.create_stream()
     setter = getattr(stream, "set_option", None)
-    if language != AUTO_LANGUAGE and callable(setter):
-        # Offline has_option reports stored values, not supported options. New
-        # Cohere streams start empty and must receive the hint before decoding.
+    if set_stream_language and language != AUTO_LANGUAGE and callable(setter):
+        # Belt and braces for Cohere only: the recognizer was already built for
+        # this language. `_set_stream_language`'s has_option probe is no use
+        # here, because offline has_option reports whether a value is *stored*,
+        # not whether the option is supported, and a new stream starts empty.
+        # Every other offline model decoded without this before, and pinning
+        # one that auto-detects would quietly change its transcripts.
         setter("language", language.lower().split(LANGUAGE_TAG_SEPARATOR, maxsplit=1)[0])
     stream.accept_waveform(sample_rate, floats)
     recognizer.decode_stream(stream)
@@ -476,6 +514,7 @@ async def _run_sherpa_inference(
     language: str = AUTO_LANGUAGE,
     preserve_locale: bool = False,
     strip_language_tags: bool = False,
+    set_stream_language: bool = False,
 ) -> str:
     try:
         if is_streaming:
@@ -488,7 +527,9 @@ async def _run_sherpa_inference(
                 strip_language_tags,
             )
         else:
-            decode_result = asyncio.to_thread(_decode_wave, recognizer, audio_path, language)
+            decode_result = asyncio.to_thread(
+                _decode_wave, recognizer, audio_path, language, set_stream_language
+            )
         return await asyncio.wait_for(
             decode_result,
             timeout=TRANSCRIPTION_TIMEOUT_SECONDS,

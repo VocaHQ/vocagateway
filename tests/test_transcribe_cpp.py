@@ -38,7 +38,9 @@ async def test_native_cli_uses_file_output_and_cleans_up(tmp_path, monkeypatch):
     weights.write_bytes(b"weights")
     _wave(tmp_path / "audio.wav")
     seen = []
-    monkeypatch.setattr("app.models.transcribe_cpp.shutil.which", lambda _: "/bin/transcribe-cli")
+    monkeypatch.setattr(
+        "app.models.transcribe_cpp.system.resolve_binary", lambda _: "/bin/transcribe-cli"
+    )
 
     async def execute(arguments):
         output = Path(arguments[arguments.index("-o") + 1])
@@ -59,7 +61,7 @@ async def test_native_cli_uses_file_output_and_cleans_up(tmp_path, monkeypatch):
 
 
 async def test_native_cli_missing_runtime_and_explicit_multilingual_language(tmp_path, monkeypatch):
-    monkeypatch.setattr("app.models.transcribe_cpp.shutil.which", lambda _: None)
+    monkeypatch.setattr("app.models.transcribe_cpp.system.resolve_binary", lambda _: None)
     engine = TranscribeCppEngine("absent-cli", None, _model())
     with pytest.raises(EngineUnavailableError, match="Install transcribe-cli"):
         await engine.transcribe(tmp_path / "audio.wav", TranscriptionOptions("en", "raw"))
@@ -76,10 +78,12 @@ async def test_native_process_is_reaped_on_timeout_or_cancellation(monkeypatch, 
     class Process:
         returncode = None
 
+        async def communicate(self):
+            calls.append("communicate")
+            raise failure
+
         async def wait(self):
             calls.append("wait")
-            if len(calls) == 1:
-                raise failure
             self.returncode = -9
 
         def kill(self):
@@ -94,7 +98,7 @@ async def test_native_process_is_reaped_on_timeout_or_cancellation(monkeypatch, 
     )
     with pytest.raises(expected):
         await _execute(["transcribe-cli"])
-    assert calls == ["wait", "kill", "wait"]
+    assert calls == ["communicate", "kill", "wait"]
 
 
 def test_native_selection_survives_restart_and_deletion(tmp_path):
@@ -137,7 +141,9 @@ async def test_long_audio_keeps_samples_uses_one_process_and_checks_each_result(
     original = _wave(audio, 45)
     paths = []
     calls = []
-    monkeypatch.setattr("app.models.transcribe_cpp.shutil.which", lambda _: "/bin/transcribe-cli")
+    monkeypatch.setattr(
+        "app.models.transcribe_cpp.system.resolve_binary", lambda _: "/bin/transcribe-cli"
+    )
 
     async def execute(arguments, *, stdout):
         calls.append(arguments)
@@ -337,3 +343,98 @@ def test_model_card_warns_before_the_download_but_still_offers_it():
     assert "needs transcribe.cpp CLI" not in ready
     assert "Not installed yet" not in ready
     assert "Download" in ready
+
+
+async def test_missing_runtime_is_reported_as_such_even_with_no_model_selected(
+    tmp_path, monkeypatch
+):
+    """`auto` used to hit the language check first and blame the language."""
+    monkeypatch.setattr("app.models.transcribe_cpp.system.resolve_binary", lambda _: None)
+    engine = TranscribeCppEngine("absent-cli", None, None)
+    with pytest.raises(EngineUnavailableError, match="Install transcribe-cli"):
+        await engine.transcribe(tmp_path / "audio.wav", TranscriptionOptions("auto", "raw"))
+
+
+@pytest.mark.parametrize("setting", ["{home}/bin/transcribe-cli", "~/bin/transcribe-cli"])
+async def test_health_accepts_the_same_binaries_the_libraries_panel_does(
+    tmp_path, monkeypatch, setting
+):
+    """The panel said Installed while the engine said not-ready.
+
+    `shutil.which` neither expands `~` nor accepts a file without the execute
+    bit, so the two probes disagreed on exactly the binary the setup docs tell
+    operators to configure.
+    """
+    from app.system import resolve_binary
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    binary = tmp_path / "bin" / "transcribe-cli"
+    binary.parent.mkdir()
+    binary.write_text("#!/bin/sh\n")  # No execute bit, as a fresh copy often has.
+    weights = tmp_path / "model.gguf"
+    weights.write_bytes(b"weights")
+
+    configured = setting.format(home=tmp_path)
+    assert resolve_binary(configured) == str(binary)
+    assert (await TranscribeCppEngine(configured, weights, None).health()).ready
+
+
+async def test_process_failures_carry_their_stderr_and_stay_typed(tmp_path, monkeypatch):
+    weights = tmp_path / "model.gguf"
+    weights.write_bytes(b"weights")
+    audio = tmp_path / "audio.wav"
+    _wave(audio)
+    monkeypatch.setattr(
+        "app.models.transcribe_cpp.system.resolve_binary", lambda _: "/bin/transcribe-cli"
+    )
+    engine = TranscribeCppEngine("transcribe-cli", weights, _model())
+    options = TranscriptionOptions("en", "raw")
+
+    class Failed:
+        returncode = 1
+
+        async def communicate(self):
+            return b"", b"error: unsupported GGUF version 4\n"
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", lambda *a, **k: _async(Failed()))
+    with pytest.raises(TranscriptionProcessError, match="unsupported GGUF version 4"):
+        await engine.transcribe(audio, options)
+
+    # A binary that vanished between health() and exec is unavailable, not a 500.
+    def missing(*args, **kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", missing)
+    with pytest.raises(EngineUnavailableError, match="Could not run"):
+        await engine.transcribe(audio, options)
+
+    # A recording the WAV reader cannot parse is an engine failure, not a crash.
+    audio.write_bytes(b"not a riff file")
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", lambda *a, **k: _async(Failed()))
+    with pytest.raises(TranscriptionProcessError, match="could not read the recording"):
+        await engine.transcribe(audio, options)
+
+
+async def _async(value):
+    return value
+
+
+def test_batch_results_survive_canonicalised_paths_and_reordering(tmp_path):
+    """macOS hands out /var/... paths that a CLI may echo back as /private/var/..."""
+    from app.models.transcribe_chunks import read_batch_output
+
+    recordings = [tmp_path / "chunk-0.wav", tmp_path / "chunk-1.wav"]
+    output = tmp_path / "results.jsonl"
+    records = [
+        {"type": "batch_header", "load_ms": 20},
+        {"file": f"/private{recordings[1]}", "text": "second"},
+        {"file": f"/private{recordings[0]}", "text": "first"},
+        {"type": "batch_footer", "total_ms": 90},
+    ]
+    output.write_text("".join(json.dumps(record) + "\n" for record in records))
+    assert read_batch_output(output, recordings) == "first second"
+
+    # A chunk reported twice is still a failure: one of them is not this chunk.
+    output.write_text("".join(json.dumps(records[1]) + "\n" for _ in range(2)))
+    with pytest.raises(TranscriptionProcessError, match="fully transcribe"):
+        read_batch_output(output, recordings)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from importlib import util as importlib_util
 from types import MappingProxyType
 from typing import Any
@@ -23,14 +22,8 @@ TRANSCRIBE_INSTALL_HINT = (
     "VOCAGATEWAY_TRANSCRIBE_BINARY to its transcribe-cli"
 )
 PYTHON_ENGINE_INSTALL_HINT = "Install vocagateway[engines] or use the Docker image"
-
-
-@dataclass(frozen=True, slots=True)
-class _EngineTile:
-    """An engine and the one runtime it needs, as the Overview panel shows it."""
-
-    engine: str
-    status: schemas.DependencyStatus
+# One engine paired with the single runtime it needs.
+_EngineRuntime = tuple[str, schemas.DependencyStatus]
 
 
 SIZE_FILTER_CAPS: MappingProxyType[str, int] = MappingProxyType(
@@ -55,7 +48,19 @@ class _EngineRuntimes:
     def __init__(self, system: SystemInfo, settings: Settings) -> None:
         self.system = system
         self.settings = settings
-        self._tiles = {tile.engine: tile.status for tile in self._build()}
+        self._cached: dict[str, schemas.DependencyStatus] | None = None
+
+    @property
+    def _tiles(self) -> dict[str, schemas.DependencyStatus]:
+        """Probe on first use, once per request.
+
+        Not cached beyond that on purpose: an operator who pip-installs an
+        engine and reloads the page has to see it turn from Missing to
+        Installed, which a process-lifetime cache would prevent.
+        """
+        if self._cached is None:
+            self._cached = dict(self._build())
+        return self._cached
 
     def tiles(self) -> list[schemas.DependencyStatus]:
         return list(self._tiles.values())
@@ -72,7 +77,7 @@ class _EngineRuntimes:
             return {}
         return {"runtime_requirement": unmet.name, "runtime_hint": unmet.install_hint}
 
-    def _build(self) -> list[_EngineTile]:
+    def _build(self) -> list[_EngineRuntime]:
         is_mac = self.system.os_name == "Darwin"
         silicon = self.system.is_apple_silicon
         return [
@@ -81,14 +86,14 @@ class _EngineRuntimes:
             *self._app_tiles(is_mac, silicon),
         ]
 
-    def _binary_tiles(self, is_mac: bool) -> list[_EngineTile]:
+    def _binary_tiles(self, is_mac: bool) -> list[_EngineRuntime]:
         whisper_hint = (
             "brew install whisper-cpp"
             if is_mac
             else "Included in Docker or build whisper.cpp from source"
         )
         return [
-            _EngineTile(
+            (
                 "whisper.cpp",
                 schemas.DependencyStatus(
                     name="whisper.cpp CLI",
@@ -97,7 +102,7 @@ class _EngineRuntimes:
                     install_hint=whisper_hint,
                 ),
             ),
-            _EngineTile(
+            (
                 "transcribe.cpp",
                 schemas.DependencyStatus(
                     name="transcribe.cpp CLI",
@@ -108,13 +113,13 @@ class _EngineRuntimes:
             ),
         ]
 
-    def _package_tiles(self, silicon: bool) -> list[_EngineTile]:
+    def _package_tiles(self, silicon: bool) -> list[_EngineRuntime]:
         mlx_ready = silicon and importlib_util.find_spec("mlx_audio") is not None
         mlx_hint = (
             "Install vocagateway[apple]" if silicon else "Available only on Apple-silicon Macs"
         )
         tiles = [
-            _EngineTile(engine, self._package_status(label, module))
+            (engine, self._package_status(label, module))
             for engine, label, module in (
                 ("faster-whisper", "faster-whisper", "faster_whisper"),
                 ("moonshine", "Moonshine Voice", "moonshine_voice"),
@@ -122,7 +127,7 @@ class _EngineRuntimes:
             )
         ]
         tiles.append(
-            _EngineTile(
+            (
                 "mlx-audio",
                 schemas.DependencyStatus(
                     name="MLX Audio",
@@ -143,7 +148,7 @@ class _EngineRuntimes:
             install_hint=PYTHON_ENGINE_INSTALL_HINT,
         )
 
-    def _app_tiles(self, is_mac: bool, silicon: bool) -> list[_EngineTile]:
+    def _app_tiles(self, is_mac: bool, silicon: bool) -> list[_EngineRuntime]:
         wk_hint = "brew install whisperkit-cli" if is_mac else "Available only on Apple platforms"
         vocamac_hint = (
             "https://github.com/jatinkrmalik/vocamac"
@@ -151,7 +156,7 @@ class _EngineRuntimes:
             else "Available only on Apple silicon Macs"
         )
         return [
-            _EngineTile(
+            (
                 "whisperkit",
                 schemas.DependencyStatus(
                     name="WhisperKit CLI",
@@ -160,7 +165,7 @@ class _EngineRuntimes:
                     install_hint=wk_hint,
                 ),
             ),
-            _EngineTile(
+            (
                 "handy",
                 schemas.DependencyStatus(
                     name="Handy app",
@@ -169,7 +174,7 @@ class _EngineRuntimes:
                     install_hint="https://handy.computer" if is_mac else "Available only on macOS",
                 ),
             ),
-            _EngineTile(
+            (
                 "vocamac",
                 schemas.DependencyStatus(
                     name="VocaMac app",

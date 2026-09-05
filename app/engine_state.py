@@ -11,11 +11,14 @@ CATALOG_MODEL_ATTRIBUTES = (
     ("sherpa-onnx", "sherpa_model"),
     ("mlx-audio", "mlx_audio_model"),
 )
+# Path-configured engines, and the order `auto` falls back through when no
+# single engine owns the answer. Order only decides between fields that should
+# never be set at once; `EngineManager` clears the others on every selection.
 PATH_MODEL_ATTRIBUTES = (
-    "transcribe_model",
-    "whisper_model",
-    "whisperkit_model",
-    "faster_whisper_model",
+    ("transcribe.cpp", "transcribe_model"),
+    ("whisper.cpp", "whisper_model"),
+    ("whisperkit", "whisperkit_model"),
+    ("faster-whisper", "faster_whisper_model"),
 )
 
 
@@ -65,7 +68,14 @@ def active_model_path(ctx: GatewayContext) -> Path | None:
         if config.engine == engine_name:
             model_id = getattr(config, attribute_name)
             return ctx.manager.installed_path(model_id) if model_id else None
-    for attribute_name in PATH_MODEL_ATTRIBUTES:
+    for engine_name, attribute_name in PATH_MODEL_ATTRIBUTES:
+        if config.engine == engine_name:
+            model_path = getattr(config, attribute_name)
+            return Path(model_path) if model_path else None
+    # `auto` picks the engine at build time, so no field owns the answer: report
+    # the one model that is set. A stale second value would make the Models tab
+    # mark the wrong card active, so selection clears the fields it does not use.
+    for _, attribute_name in PATH_MODEL_ATTRIBUTES:
         model_path = getattr(config, attribute_name)
         if model_path:
             return Path(model_path)
