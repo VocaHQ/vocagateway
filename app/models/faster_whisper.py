@@ -55,6 +55,13 @@ class FasterWhisperEngine:
         await self._ensure_model()
         return self._directory_size(self.model_path)
 
+    @property
+    def model_is_resident(self) -> bool:
+        return self._model is not None
+
+    def unload(self) -> None:
+        self._model = None
+
     async def transcribe(
         self, audio_path: Path, options: TranscriptionOptions
     ) -> EngineTranscription:

@@ -8,13 +8,24 @@ from typing import Literal, Protocol, runtime_checkable
 from app.engines import EngineProvider
 from app.models.base import EngineHealth, TranscriptionEngine
 
-WarmupState = Literal["pending", "warming", "complete", "unsupported", "unavailable", "failed"]
+WarmupState = Literal[
+    "pending", "warming", "complete", "unsupported", "unavailable", "failed", "offloaded"
+]
 INITIAL_CHECK_TIMESTAMP = -1.0
+IDLE_OFFLOAD_POLL_SECONDS = 1.0
 
 
 @runtime_checkable
 class WarmableEngine(Protocol):
     async def warmup(self) -> int: ...
+
+
+@runtime_checkable
+class IdleOffloadProvider(Protocol):
+    @property
+    def model_is_offloaded(self) -> bool: ...
+
+    def offload_if_idle(self, *, now: float | None = None) -> bool: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +48,7 @@ class ReadinessMonitor:
         self._checked_at = INITIAL_CHECK_TIMESTAMP
         self._warmup_state: WarmupState = "pending"
         self._warmed_bytes = 0
+        self._last_warmed_bytes = 0
 
     async def probe(self, *, force: bool = False) -> EngineHealth:
         engine = self.provider.current()
@@ -64,30 +76,40 @@ class ReadinessMonitor:
             return health
 
     async def warmup(self) -> None:
-        engine = self.provider.current()
-        if self._engine is not engine:
-            self._reset_for_engine(engine)
-        self._warmup_state = "warming"
-        health = await self.probe(force=True)
-        if not health.ready:
-            self._warmup_state = "unavailable"
-            return
-        if not isinstance(engine, WarmableEngine):
-            self._warmup_state = "unsupported"
-            return
-        try:
-            warmed_bytes = await engine.warmup()
-        except Exception:
+        async with self.provider.lease() as engine:
+            if self._engine is not engine:
+                self._reset_for_engine(engine)
+            self._warmup_state = "warming"
+            health = await self.probe(force=True)
+            if not health.ready:
+                self._warmup_state = "unavailable"
+                return
+            if not isinstance(engine, WarmableEngine):
+                self._warmup_state = "unsupported"
+                return
+            try:
+                warmed_bytes = await engine.warmup()
+            except Exception:
+                if self.provider.current() is engine:
+                    self._warmup_state = "failed"
+                return
             if self.provider.current() is engine:
-                self._warmup_state = "failed"
+                self._warmed_bytes = warmed_bytes
+                self._last_warmed_bytes = warmed_bytes
+                self._warmup_state = "complete" if warmed_bytes > 0 else "unsupported"
+                await self.probe(force=True)
+
+    async def monitor_idle_offload(self, poll_seconds: float = IDLE_OFFLOAD_POLL_SECONDS) -> None:
+        provider = self.provider
+        if not isinstance(provider, IdleOffloadProvider):
             return
-        if self.provider.current() is engine:
-            self._warmed_bytes = warmed_bytes
-            self._warmup_state = "complete" if warmed_bytes > 0 else "unsupported"
-            await self.probe(force=True)
+        while True:
+            await asyncio.sleep(poll_seconds)
+            self._check_idle_offload(provider)
 
     async def details(self) -> ReadinessDetails:
         health = await self.probe()
+        self._refresh_reloaded_state()
         age = max(0, time.monotonic() - self._checked_at)
         return ReadinessDetails(
             health=health,
@@ -102,6 +124,7 @@ class ReadinessMonitor:
         self._checked_at = INITIAL_CHECK_TIMESTAMP
         self._warmup_state = "pending"
         self._warmed_bytes = 0
+        self._last_warmed_bytes = 0
 
     def _cached_health(self, now: float, force: bool) -> EngineHealth | None:
         if force or self._health is None:
@@ -109,3 +132,18 @@ class ReadinessMonitor:
         if now - self._checked_at >= self.ttl_seconds:
             return None
         return self._health
+
+    def _refresh_reloaded_state(self) -> None:
+        provider = self.provider
+        if (
+            self._warmup_state == "offloaded"
+            and isinstance(provider, IdleOffloadProvider)
+            and not provider.model_is_offloaded
+        ):
+            self._warmup_state = "complete"
+            self._warmed_bytes = self._last_warmed_bytes
+
+    def _check_idle_offload(self, provider: IdleOffloadProvider) -> None:
+        if provider.offload_if_idle():
+            self._warmup_state = "offloaded"
+            self._warmed_bytes = 0

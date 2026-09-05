@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import platform
 import time
+from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Header, Query, Request
@@ -12,6 +13,7 @@ from app import admin_queries, audio, errors, pairing_view
 from app.context import TOKEN_FILE_HINT, GatewayContextDependency, require_token
 from app.fragments import settings, test_panel, tokens
 from app.fragments.engine import engine_update_fragment
+from app.runtime_config import DEFAULT_IDLE_OFFLOAD_MINUTES
 from app.schemas import (
     ConfigResponse,
     ConfigUpdateRequest,
@@ -28,6 +30,18 @@ EngineForm = Annotated[str, Form()]
 ComputeDeviceForm = Annotated[str, Form()]
 ComputeTypeForm = Annotated[str, Form()]
 CpuThreadsForm = Annotated[int, Form()]
+IdleOffloadForm = Annotated[bool, Form()]
+IdleOffloadMinutesForm = Annotated[int, Form()]
+
+
+@dataclass
+class _ConfigForm:
+    engine: EngineForm
+    compute_device: ComputeDeviceForm = "auto"
+    compute_type: ComputeTypeForm = "auto"
+    cpu_threads: CpuThreadsForm = 0
+    idle_offload_enabled: IdleOffloadForm = False
+    idle_offload_minutes: IdleOffloadMinutesForm = DEFAULT_IDLE_OFFLOAD_MINUTES
 
 
 @router.get("/v1/admin/config", response_model=ConfigResponse)
@@ -46,7 +60,12 @@ async def update_config(
         )
     try:
         engine_manager.configure(
-            body.engine, body.compute_device, body.compute_type, body.cpu_threads
+            body.engine,
+            body.compute_device,
+            body.compute_type,
+            body.cpu_threads,
+            body.idle_offload_enabled,
+            body.idle_offload_minutes,
         )
     except ValueError as error:
         raise errors.APIProblem(
@@ -117,11 +136,8 @@ async def ui_settings(ctx: GatewayContextDependency) -> HTMLResponse:
 
 @router.put("/ui/partials/config", response_class=HTMLResponse)
 async def ui_update_config(
-    engine: EngineForm,
     ctx: GatewayContextDependency,
-    compute_device: ComputeDeviceForm = "auto",
-    compute_type: ComputeTypeForm = "auto",
-    cpu_threads: CpuThreadsForm = 0,
+    form: Annotated[_ConfigForm, Depends()],
 ) -> HTMLResponse:
     engine_manager = ctx.engine_manager
     if engine_manager is None:
@@ -129,7 +145,14 @@ async def ui_update_config(
             HTTP_409_CONFLICT, "engine_locked", "The engine was fixed at startup and cannot switch."
         )
     try:
-        engine_manager.configure(engine, compute_device, compute_type, cpu_threads)
+        engine_manager.configure(
+            form.engine,
+            form.compute_device,
+            form.compute_type,
+            form.cpu_threads,
+            form.idle_offload_enabled,
+            form.idle_offload_minutes,
+        )
     except ValueError as error:
         raise errors.APIProblem(
             HTTP_422_UNPROCESSABLE_CONTENT, "invalid_engine", str(error)
@@ -138,8 +161,8 @@ async def ui_update_config(
     state = await ctx.readiness.probe()
     return HTMLResponse(
         engine_update_fragment(
-            EngineStatus(id=engine, name=state.name, ready=state.ready),
-            "Engine preference saved.",
+            EngineStatus(id=form.engine, name=state.name, ready=state.ready),
+            "Engine preference saved. Memory policy updated.",
             bind_host=ctx.settings.bind_host,
             port=ctx.settings.port,
         )

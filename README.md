@@ -148,7 +148,10 @@ MLX Audio and WhisperKit are recommended on Apple silicon. The `apple` extra
 installs MLX only on an arm64 Mac. It is left out of Linux and Docker on
 purpose. The standalone `whisper.cpp` engine uses the `whisper-cli` binary
 installed above (override its location with `VOCAGATEWAY_WHISPER_BINARY`). On a
-native Linux host it is optional and can be built from source instead.
+native Linux host it is optional and can be built from source instead. When the
+same build also ships `whisper-server` next to `whisper-cli`, the engine keeps
+the model resident in that worker instead of reloading it for every clip; see
+[Health and readiness](#health-and-readiness).
 
 ## Native Linux quick start
 
@@ -631,6 +634,8 @@ uv run vocagateway
 | `VOCAGATEWAY_ENGINE` | `auto` | `auto` | `auto`, `vocamac`, `handy`, `mlx-audio`, `whisperkit`, `sherpa-onnx`, `faster-whisper`, `moonshine`, or `whisper.cpp` |
 | `VOCAGATEWAY_WHISPER_BINARY` | `/opt/homebrew/bin/whisper-cli` | `/usr/local/bin/whisper-cli` | `whisper.cpp` executable |
 | `VOCAGATEWAY_WHISPER_MODEL` | `~/.local/share/whisper.cpp/models/ggml-base.en.bin` | same, and normally absent | Fallback `whisper.cpp` model used only when no model is selected in the WebUI |
+| `VOCAGATEWAY_WHISPER_SERVER_BINARY` | the `whisper-server` beside `whisper-cli`, else `PATH` | `/usr/local/bin/whisper-server` | Resident `whisper.cpp` worker; unset is normal, and a missing binary falls back to one `whisper-cli` run per request |
+| `VOCAGATEWAY_WHISPER_DECODER_PRESET` | `quality` | `quality` | `quality` keeps the narrowed beam search; `fast` decodes greedily — cheaper on a CPU-only host, and worth a WER comparison on your own audio before you keep it |
 | `VOCAGATEWAY_WHISPERKIT_BINARY` | `whisperkit-cli` | unavailable | Standalone WhisperKit executable and legacy VocaMac fallback |
 | `VOCAGATEWAY_VOCAMAC_APP` | `/Applications/VocaMac.app` | unavailable | Optional VocaMac app bundle |
 | `VOCAGATEWAY_VOCAMAC_MODEL` | unset | unset | Pin a VocaMac model instead of following the app's choice |
@@ -819,10 +824,32 @@ old URL.
 Engine probes are cached for five seconds. sherpa-onnx, MLX Audio,
 `faster-whisper`, and Moonshine load their selected model once and keep it
 resident. WhisperKit warmup starts its managed loopback service and keeps the
-Core ML model resident there. VocaMac 0.8.0+ headless transcription is one-shot,
+Core ML model resident there. `whisper.cpp` does the same when the build ships
+`whisper-server`: warmup prefetches the model file and then starts a private
+worker on an ephemeral `127.0.0.1` port, which holds the parsed model and the
+CUDA/Vulkan/Metal context between requests. Nothing extra is published and no
+host port is added. A build without that binary, or a worker that fails to
+start, falls back to one `whisper-cli` run per transcription — the behavior
+every earlier release had. VocaMac 0.8.0+ headless transcription is one-shot,
 so its first-load cost is included in each request; older WhisperKit-only
-VocaMac builds retain the persistent compatibility path. Handy and
-`whisper.cpp` retain the filesystem-prefetch warmup behavior.
+VocaMac builds retain the persistent compatibility path. Handy retains the
+filesystem-prefetch warmup behavior.
+
+Choosing **Load** on a downloaded model waits for that warmup before the Models
+view reports it active, so resident engines do not defer their model load to the
+first transcription. In **Settings → Speech engine**, **Offload model when idle**
+can release a resident model after 10, 15, 30, 60, or 120 minutes without a
+transcription. It is off by default. The selected model stays selected and loads
+again automatically on the next transcription. Saving a change to this setting
+alone keeps whatever is already loaded — only a change that actually selects a
+different engine, device, precision, thread count, or model rebuilds it. Active
+batch and streaming jobs hold a model lease, so neither the idle monitor nor a
+settings change unloads an engine while a transcription is still using it: the
+replaced engine is closed once its last request finishes. The
+setting also releases the `whisper.cpp` worker: the process is terminated and
+the next transcription starts it again, paying one model load. It does not apply
+to one-shot Handy or current VocaMac headless processes, because those engines
+keep no model resident between requests.
 
 ## Docker performance profiles
 

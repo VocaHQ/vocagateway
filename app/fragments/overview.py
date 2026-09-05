@@ -427,6 +427,7 @@ class _MetricCards:
             "unsupported": ("Ready", "This engine does not prefetch models."),
             "unavailable": ("Waiting", "Install or select a model to warm it."),
             "failed": ("Needs retry", "Warm-up failed; transcription can still retry."),
+            "offloaded": ("Offloaded", "Idle model memory was released."),
         }
         return warmup_labels[readiness.warmup_state]
 

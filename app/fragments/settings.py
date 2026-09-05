@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.config import format_host_port, local_webui_url
 from app.fragments.engine import ENGINE_HINTS, _engine_option_label
+from app.runtime_config import IDLE_OFFLOAD_MINUTES
 from app.schemas import ConfigResponse
 from app.templating import render
 
@@ -31,5 +32,15 @@ def settings_fragment(
             ("float16", "FP16"),
             ("float32", "FP32"),
         ],
+        idle_offload_options=[
+            (minutes, _idle_duration_label(minutes)) for minutes in IDLE_OFFLOAD_MINUTES
+        ],
         tokens_html=tokens_html,
     )
+
+
+def _idle_duration_label(minutes: int) -> str:
+    if minutes < 60:
+        return f"{minutes} minutes"
+    hours = minutes // 60
+    return f"{hours} hour" if hours == 1 else f"{hours} hours"

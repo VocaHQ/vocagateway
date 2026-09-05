@@ -9,6 +9,7 @@ from app.build_info import current_commit
 from app.catalog import catalog_source_url, language_names, recommended_ids
 from app.context import BOOTSTRAP_TOKEN_ID, TOKEN_FILE_HINT, VERSION, GatewayContext
 from app.engine_state import active_model_path, available_engines, engine_id
+from app.runtime_config import DEFAULT_IDLE_OFFLOAD_MINUTES
 from app.serializers import metrics_status, model_covers
 from app.system import detect_system
 
@@ -200,6 +201,11 @@ class _ModelEntryHelper:
         inst = self.installed.get(model.id)
         resolution = self._resolve_state(download, inst)
         is_active = inst is not None and inst.path == self.active_path
+        is_offloaded = bool(
+            is_active
+            and self.ctx.engine_manager is not None
+            and self.ctx.engine_manager.model_is_offloaded
+        )
         return schemas.AdminModelEntry(
             id=model.id,
             engine=model.engine,
@@ -219,6 +225,7 @@ class _ModelEntryHelper:
             language_codes=list(model.language_codes),
             state=resolution[0],
             active=is_active,
+            offloaded=is_offloaded,
             recommended=model.id in self.recommended,
             progress=resolution[1],
             downloaded_bytes=download.downloaded_bytes if download else None,
@@ -243,6 +250,11 @@ class _ModelEntryHelper:
             source="Local file",
             state="installed",
             active=custom.path == self.active_path,
+            offloaded=bool(
+                custom.path == self.active_path
+                and self.ctx.engine_manager is not None
+                and self.ctx.engine_manager.model_is_offloaded
+            ),
             recommended=False,
         )
 
@@ -386,6 +398,8 @@ def config_response(ctx: GatewayContext) -> schemas.ConfigResponse:
             compute_device=rc.compute_device,
             compute_type=rc.compute_type,
             cpu_threads=rc.cpu_threads,
+            idle_offload_enabled=rc.idle_offload_enabled,
+            idle_offload_minutes=rc.idle_offload_minutes,
         )
     return schemas.ConfigResponse(
         engine="custom",
@@ -400,4 +414,6 @@ def config_response(ctx: GatewayContext) -> schemas.ConfigResponse:
         compute_device="auto",
         compute_type="auto",
         cpu_threads=0,
+        idle_offload_enabled=False,
+        idle_offload_minutes=DEFAULT_IDLE_OFFLOAD_MINUTES,
     )

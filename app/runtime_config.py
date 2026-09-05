@@ -21,6 +21,8 @@ VALID_ENGINES = (
 )
 MAXIMUM_CPU_THREADS = 256
 ENGINE_FIELD = "engine"
+IDLE_OFFLOAD_MINUTES = (10, 15, 30, 60, 120)
+DEFAULT_IDLE_OFFLOAD_MINUTES = 15
 
 
 @dataclass(slots=True)
@@ -38,6 +40,8 @@ class RuntimeConfig:
     compute_device: str = AUTO_ENGINE
     compute_type: str = AUTO_ENGINE
     cpu_threads: int = 0
+    idle_offload_enabled: bool = False
+    idle_offload_minutes: int = DEFAULT_IDLE_OFFLOAD_MINUTES
     pairing_url: str | None = None
     pairing_urls: list[str] = field(default_factory=list)
 
@@ -48,6 +52,7 @@ class RuntimeConfig:
             return cls()
         fields = _parse_model_fields(payload)
         fields.update(_parse_hardware_fields(payload))
+        fields.update(_parse_memory_fields(payload))
         return cls(**fields)
 
     def save(self, path: Path) -> None:
@@ -64,6 +69,8 @@ class RuntimeConfig:
             "compute_device": self.compute_device,
             "compute_type": self.compute_type,
             "cpu_threads": self.cpu_threads,
+            "idle_offload_enabled": self.idle_offload_enabled,
+            "idle_offload_minutes": self.idle_offload_minutes,
             "pairing_url": self.pairing_url,
             "pairing_urls": self.pairing_urls,
         }
@@ -122,6 +129,18 @@ def _parse_hardware_fields(payload: dict[str, Any]) -> dict[str, Any]:
         ),
         "pairing_url": _optional_str(payload.get("pairing_url")),
         "pairing_urls": _clean_urls(payload.get("pairing_urls")),
+    }
+
+
+def _parse_memory_fields(payload: dict[str, Any]) -> dict[str, Any]:
+    idle_minutes = payload.get("idle_offload_minutes")
+    return {
+        "idle_offload_enabled": payload.get("idle_offload_enabled") is True,
+        "idle_offload_minutes": (
+            idle_minutes
+            if isinstance(idle_minutes, int) and idle_minutes in IDLE_OFFLOAD_MINUTES
+            else DEFAULT_IDLE_OFFLOAD_MINUTES
+        ),
     }
 
 

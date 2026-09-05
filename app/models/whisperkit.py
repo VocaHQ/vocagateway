@@ -329,6 +329,13 @@ class WhisperKitEngine:
             return
         _ServerProcess.stop(server.process)
 
+    @property
+    def model_is_resident(self) -> bool:
+        return self._server is not None and self._server.process.poll() is None
+
+    def unload(self) -> None:
+        self.close()
+
     async def _ensure_server(self) -> tuple[_WhisperKitServer, bool]:
         if self._server is not None and self._server.process.poll() is None:
             return self._server, False

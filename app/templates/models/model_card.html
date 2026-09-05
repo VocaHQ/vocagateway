@@ -48,6 +48,11 @@
         {% elif entry.recommended and not card.suppress_recommended %}
         <span class="badge recommended">recommended</span>
         {% endif %}
+        {% if entry.offloaded %}
+        <span class="badge offloaded" title="Selected model is not currently resident in memory">
+          offloaded
+        </span>
+        {% endif %}
         {% if entry.retired %}
         <span class="badge retired">retired</span>
         {% endif %}
@@ -106,11 +111,12 @@
         </div>
       </div>
       {% elif entry.state == "installed" %}
-      {% if not entry.active %}
+      {% if not entry.active or entry.offloaded %}
       <button class="primary small"
               hx-post="/ui/partials/models/{{ card.encoded_id }}/select"
               hx-include="#models-filter-form"
-              hx-target="#models-list" hx-swap="innerHTML">Select</button>
+              hx-target="#models-list" hx-swap="innerHTML"
+              hx-disabled-elt="this">Load</button>
       {% endif %}
       <button class="ghost small danger"
               hx-delete="/ui/partials/models/{{ card.encoded_id }}"

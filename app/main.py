@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -181,15 +181,23 @@ async def _app_lifespan(app: FastAPI) -> Any:
     ctx: context.GatewayContext = app.state.ctx
     ctx.service.cleanup_expired()
     warmup_task = asyncio.create_task(ctx.readiness.warmup())
+    idle_offload_task = asyncio.create_task(ctx.readiness.monitor_idle_offload())
     app.state.warmup_task = warmup_task
+    app.state.idle_offload_task = idle_offload_task
     try:
         yield
     finally:
-        if not warmup_task.done():
-            warmup_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await warmup_task
-        await asyncio.to_thread(engines.close_engine, ctx.engine_provider.current())
+        await _shutdown_runtime(ctx, (warmup_task, idle_offload_task))
+
+
+async def _shutdown_runtime(
+    ctx: context.GatewayContext, tasks: tuple[asyncio.Task[None], ...]
+) -> None:
+    pending_tasks = [task for task in tasks if not task.done()]
+    for task in pending_tasks:
+        task.cancel()
+    await asyncio.gather(*pending_tasks, return_exceptions=True)
+    await asyncio.to_thread(engines.close_engine, ctx.engine_provider.current())
 
 
 async def _browser_security_middleware(

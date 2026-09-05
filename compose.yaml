@@ -35,6 +35,10 @@ x-gateway-environment: &gateway-environment
   VOCAGATEWAY_BIND_HOST: ${VOCAGATEWAY_BIND_HOST:-0.0.0.0}
   VOCAGATEWAY_PORT: ${VOCAGATEWAY_PORT:-8765}
   VOCAGATEWAY_ENGINE: ${VOCAGATEWAY_ENGINE:-auto}
+  # `fast` decodes whisper.cpp greedily instead of with the narrowed beam
+  # search. Cheaper on a CPU-only host; compare accuracy on your own audio
+  # before keeping it.
+  VOCAGATEWAY_WHISPER_DECODER_PRESET: ${VOCAGATEWAY_WHISPER_DECODER_PRESET:-quality}
   VOCAGATEWAY_RETENTION_HOURS: ${VOCAGATEWAY_RETENTION_HOURS:-24}
   VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO: ${VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO:-true}
 

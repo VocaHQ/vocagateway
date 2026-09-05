@@ -43,6 +43,11 @@ def _env_path(name: str, default: Path) -> Path:
     return Path(configured_path).expanduser()
 
 
+def _optional_path(name: str) -> Path | None:
+    configured_path = _env(name)
+    return Path(configured_path).expanduser() if configured_path else None
+
+
 def _default_token_file() -> Path:
     base = Path(os.environ.get("XDG_CONFIG_HOME", "~/.config")).expanduser()
     return base / APP_DIR_NAME / "token"
@@ -66,6 +71,13 @@ class Settings:
     vocamac_app: Path = Path("/Applications/VocaMac.app")
     vocamac_model: str | None = None
     whisperkit_binary: str = "whisperkit-cli"
+    # Optional override for the `whisper-server` that keeps a whisper.cpp model
+    # resident. Unset means "the sibling of whisper_binary, else PATH".
+    whisper_server_binary: Path | None = None
+    # `quality` (the default) keeps whisper.cpp's narrowed beam search;
+    # `fast` decodes greedily, which is cheaper on a CPU-only host and may cost
+    # accuracy on accented or noisy audio. See app/models/whisper_cpp.py.
+    whisper_decoder_preset: str = "quality"
     models_dir: Path | None = None
     config_path: Path = Path("~/.config/vocagateway/config.json")
     token_file: Path = Path("~/.config/vocagateway/token")
@@ -131,6 +143,8 @@ class Settings:
             ).expanduser(),
             vocamac_model=_env("VOCAGATEWAY_VOCAMAC_MODEL") or None,
             whisperkit_binary=_env("VOCAGATEWAY_WHISPERKIT_BINARY", "whisperkit-cli"),
+            whisper_server_binary=_optional_path("VOCAGATEWAY_WHISPER_SERVER_BINARY"),
+            whisper_decoder_preset=_env("VOCAGATEWAY_WHISPER_DECODER_PRESET", "quality").lower(),
             models_dir=Path(models_override).expanduser()
             if models_override
             else data_dir / "models",

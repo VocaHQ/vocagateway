@@ -85,6 +85,8 @@ variable. `compose.yaml` forwards only the keys it names, so a variable marked
 | `VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO` | `true` | forwarded | Delete audio after success |
 | `VOCAGATEWAY_WHISPER_BINARY` | `/opt/homebrew/bin/whisper-cli` | ignored — image pins `/usr/local/bin/whisper-cli` | `whisper.cpp` CLI |
 | `VOCAGATEWAY_WHISPER_MODEL` | `~/.local/share/whisper.cpp/models/ggml-base.en.bin` | ignored | Fallback `whisper.cpp` model, used only when no model is selected in the WebUI |
+| `VOCAGATEWAY_WHISPER_SERVER_BINARY` | the `whisper-server` beside `whisper-cli`, else `PATH` | ignored — image ships `/usr/local/bin/whisper-server` | Resident `whisper.cpp` worker; a missing binary falls back to one `whisper-cli` run per request |
+| `VOCAGATEWAY_WHISPER_DECODER_PRESET` | `quality` | forwarded | `quality` keeps the narrowed beam search; `fast` decodes greedily — cheaper on a CPU-only host, and worth a WER comparison on your own audio before you keep it |
 | `VOCAGATEWAY_WHISPERKIT_BINARY` | `whisperkit-cli` | ignored — macOS only | WhisperKit CLI (macOS); also the 0.7.2 VocaMac fallback |
 | `VOCAGATEWAY_VOCAMAC_APP` | `/Applications/VocaMac.app` | ignored — macOS only | Optional VocaMac bundle |
 | `VOCAGATEWAY_VOCAMAC_MODEL` | unset | ignored — macOS only | Pin a VocaMac model ID instead of following the app |

@@ -23,6 +23,7 @@ from app.catalog import CatalogModel
 from app.config import Settings
 from app.main import create_app
 from app.model_manager import ModelManager
+from app.models.whisper_cpp import WhisperCppEngine
 from app.runtime_config import RuntimeConfig
 
 MAC_ONLY = frozenset({"vocamac", "handy", "whisperkit", "mlx-audio"})
@@ -315,6 +316,7 @@ async def test_download_select_and_delete_flow(
     admin_client: httpx.AsyncClient,
     auth: dict[str, str],
     admin_settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     model_id = TINY_MODEL_ID
 
@@ -337,9 +339,19 @@ async def test_download_select_and_delete_flow(
         await asyncio.sleep(ASYNC_POLL_SECONDS)
     assert entries[model_id][STATE_KEY] == INSTALLED_STATE
 
+    warmup_calls = 0
+
+    async def record_warmup(_: WhisperCppEngine) -> int:
+        nonlocal warmup_calls
+        warmup_calls += 1
+        return TINY_MODEL_SIZE_BYTES
+
+    admin_settings.whisper_binary.write_bytes(b"binary")
+    monkeypatch.setattr(WhisperCppEngine, "warmup", record_warmup)
     selected = await admin_client.post(f"/v1/admin/models/{model_id}/select", headers=auth)
     assert selected.status_code == HTTP_200_OK
     assert selected.json()[ENGINE_KEY][MODEL_ID_KEY] == WHISPER_CPP_ENGINE
+    assert warmup_calls == 1
 
     saved = RuntimeConfig.load(admin_settings.config_path)
     assert saved.engine == WHISPER_CPP_ENGINE
@@ -675,6 +687,9 @@ async def test_mac_only_engines_are_labelled_with_aaaa(
     assert "VocaMac app (Apple silicon only)" in settings_html
     assert "Handy app (macOS only)" in settings_html
     assert "sherpa-onnx</option>" in settings_html
+    assert "Offload model when idle" in settings_html
+    assert 'option value="10"' in settings_html
+    assert 'option value="120"' in settings_html
 
 
 async def test_ui_config_update_switches_engine_a_abe0c(
@@ -683,12 +698,21 @@ async def test_ui_config_update_switches_engine_a_abe0c(
     response = await admin_client.put(
         "/ui/partials/config",
         headers=auth,
-        data={ENGINE_KEY: SHERPA_ONNX_ENGINE, "compute_device": "cpu", "cpu_threads": "2"},
+        data={
+            ENGINE_KEY: SHERPA_ONNX_ENGINE,
+            "compute_device": "cpu",
+            "cpu_threads": "2",
+            "idle_offload_enabled": "true",
+            "idle_offload_minutes": "30",
+        },
     )
     assert response.status_code == HTTP_200_OK
     assert "Engine preference saved." in response.text
     assert 'id="engine-pill"' in response.text
     assert RuntimeConfig.load(admin_settings.config_path).engine == SHERPA_ONNX_ENGINE
+    saved = RuntimeConfig.load(admin_settings.config_path)
+    assert saved.idle_offload_enabled is True
+    assert saved.idle_offload_minutes == 30
 
 
 async def test_ui_config_update_rejects_an_invali_aaaaa(
