@@ -311,6 +311,21 @@ async def test_models_list_contains_catalog(
     assert entries[TINY_MODEL_ID][STATE_KEY] == NOT_INSTALLED_STATE
     assert entries[TINY_MODEL_ID]["family"] == "Whisper"
     assert entries[TINY_MODEL_ID]["description"]
+    # A card warns about a missing runtime using the same table the Overview
+    # panel reads, so the two can never disagree about what is installed.
+    status = await admin_client.get(ADMIN_STATUS_PATH, headers=auth)
+    tile = next(
+        dependency
+        for dependency in status.json()["dependencies"]
+        if dependency["name"] == "whisper.cpp CLI"
+    )
+    entry = entries[TINY_MODEL_ID]
+    if tile["available"]:
+        assert entry["runtime_requirement"] is None
+        assert entry["runtime_hint"] is None
+    else:
+        assert entry["runtime_requirement"] == "whisper.cpp CLI"
+        assert entry["runtime_hint"] == tile["install_hint"]
 
 
 async def test_download_select_and_delete_flow(

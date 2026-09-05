@@ -1657,6 +1657,17 @@ html[data-theme="dark"] .family-models-label {
   overflow: hidden;
   overflow-wrap: anywhere;
 }
+/* A model whose engine has no runtime on this host. Warn-coloured rather than
+   error-coloured: the weights are fine, only the CLI or package is absent. */
+.model-runtime-note {
+  margin: 6px 0 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--warn);
+  color: var(--warn);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
 
 .model-toolbar {
   display: flex;

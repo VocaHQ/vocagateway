@@ -8,12 +8,16 @@ from pathlib import Path
 
 import pytest
 
-from app.admin_queries import TRANSCRIBE_INSTALL_HINT
+from app.admin_queries import TRANSCRIBE_INSTALL_HINT, _EngineRuntimes
 from app.catalog import DEFAULT_CATALOG
+from app.config import Settings
 from app.errors import EngineUnavailableError, LanguageUnsupportedError, TranscriptionProcessError
+from app.fragments.models import models_list_fragment
 from app.models.base import TranscriptionOptions
 from app.models.transcribe_cpp import TranscribeCppEngine, _execute
-from app.schemas import DependencyStatus
+from app.runtime_config import AUTO_ENGINE, VALID_ENGINES
+from app.schemas import AdminModelEntry, DependencyStatus
+from app.system import SystemInfo
 
 
 def _model(key: str = "canary-qwen-2.5b-Q5_K_M.gguf"):
@@ -237,3 +241,99 @@ def test_overview_names_the_missing_runtime_and_how_to_install_it(tmp_path):
     assert "transcribe.cpp CLI" in panel
     assert "Missing" in panel
     assert "VOCAGATEWAY_TRANSCRIBE_BINARY" in panel
+
+
+def _system(*, transcribe_cli: str | None) -> SystemInfo:
+    return SystemInfo(
+        os_name="Linux",
+        os_version="",
+        arch="x86_64",
+        chip="",
+        ram_gb=16.0,
+        is_apple_silicon=False,
+        ffmpeg_path="/usr/bin/ffmpeg",
+        whisper_cpp_path=None,
+        transcribe_cli_path=transcribe_cli,
+        whisperkit_cli_path=None,
+        handy_installed=False,
+        vocamac_installed=False,
+        logical_cpus=8,
+        effective_cpus=8.0,
+        containerized=False,
+        accelerators=(),
+        cpu_features=(),
+    )
+
+
+def _settings(tmp_path) -> Settings:
+    return Settings(
+        token="x" * 32,
+        data_dir=tmp_path,
+        whisper_binary=tmp_path / "whisper",
+        whisper_model=tmp_path / "unused",
+    )
+
+
+def test_engine_runtimes_names_the_missing_binary_only_while_it_is_absent(tmp_path):
+    absent = _EngineRuntimes(_system(transcribe_cli=None), _settings(tmp_path))
+    missing = absent.missing("transcribe.cpp")
+    assert missing is not None
+    assert missing.name == "transcribe.cpp CLI"
+    assert missing.install_hint == TRANSCRIBE_INSTALL_HINT
+
+    # These are the fields a card renders, so the mapping is checked here too.
+    assert absent.entry_fields("transcribe.cpp") == {
+        "runtime_requirement": "transcribe.cpp CLI",
+        "runtime_hint": TRANSCRIBE_INSTALL_HINT,
+    }
+
+    present = _EngineRuntimes(_system(transcribe_cli="/opt/transcribe-cli"), _settings(tmp_path))
+    assert present.missing("transcribe.cpp") is None
+    assert present.entry_fields("transcribe.cpp") == {}
+    # The panel and the card read one table, so both agree on the resolved path.
+    tile = next(tile for tile in present.tiles() if tile.name == "transcribe.cpp CLI")
+    assert tile.available and tile.path == "/opt/transcribe-cli"
+
+
+def test_every_selectable_engine_has_a_runtime_tile(tmp_path):
+    """An engine missing from the table ships a card that can never warn."""
+    runtimes = _EngineRuntimes(_system(transcribe_cli=None), _settings(tmp_path))
+    assert set(runtimes._tiles) == set(VALID_ENGINES) - {AUTO_ENGINE}
+    # One tile per engine, and each names a distinct runtime for the panel.
+    names = [tile.name for tile in runtimes.tiles()]
+    assert len(names) == len(set(names)) == len(runtimes._tiles)
+
+
+def test_model_card_warns_before_the_download_but_still_offers_it():
+    def card(**runtime) -> str:
+        entry = AdminModelEntry(
+            id="transcribe.cpp:canary-qwen-2.5b-Q5_K_M.gguf",
+            engine="transcribe.cpp",
+            label="Canary-Qwen 2.5B Q5",
+            size_bytes=1_980_000_000,
+            languages="English",
+            quality="High",
+            family="Canary",
+            description="GGUF speech model.",
+            source="Handy / transcribe.cpp",
+            state="not_installed",
+            active=False,
+            recommended=False,
+            **runtime,
+        )
+        return models_list_fragment([entry])
+
+    warned = card(
+        runtime_requirement="transcribe.cpp CLI",
+        runtime_hint=TRANSCRIBE_INSTALL_HINT,
+    )
+    assert "needs transcribe.cpp CLI" in warned
+    assert "Not installed yet" in warned
+    assert "VOCAGATEWAY_TRANSCRIBE_BINARY" in warned
+    # The weights are still correct, so the card must not block the download.
+    assert "Download" in warned
+
+    ready = card()
+    assert "needs transcribe.cpp CLI" not in ready
+    assert "Not installed yet" not in ready
+    assert "Download" in ready

@@ -83,6 +83,10 @@ from the interactive shell's PATH.
 The WebUI Overview page lists **transcribe.cpp CLI** under Libraries & tools. It
 reads Missing until the gateway resolves the binary, and the tile carries the
 install hint; it shows the resolved path once the override or PATH lookup works.
+Every transcribe.cpp model card carries the same warning, so a download that
+cannot run yet is flagged before it starts. The weights are still correct
+without the binary, so the download stays available and the warning clears on
+the next page load once the gateway resolves `transcribe-cli`.
 
 Use the upstream CPU build or enable its Metal, CUDA, Vulkan, or HIP backend for
 the host. A GPU build is not guaranteed to run on another machine. A container

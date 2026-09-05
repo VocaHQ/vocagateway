@@ -57,6 +57,12 @@
         {% if entry.retired %}
         <span class="badge retired">retired</span>
         {% endif %}
+        {% if entry.runtime_requirement %}
+        <span class="badge missing"
+              title="{{ entry.runtime_requirement }} is not installed on this host">
+          needs {{ entry.runtime_requirement }}
+        </span>
+        {% endif %}
         {% if entry.detects_language_automatically %}
         <span class="badge auto-language" title="This model decides the language itself.
               The language chosen in the app does not constrain it.">auto language</span>
@@ -74,6 +80,12 @@
     <p class="model-retirement-note muted small">
       Retired{% if entry.replacement_id %}; use {{ entry.replacement_id }}{% endif %}{% if entry.retirement_reason %}. {{ entry.retirement_reason }}{% endif %}
     </p>
+    {% endif %}
+    {# The weights download fine without their runtime, so say what is still
+       missing before the operator spends the bandwidth on them. The badge above
+       names the requirement, so this line carries only how to satisfy it. #}
+    {% if entry.runtime_requirement and entry.runtime_hint %}
+    <p class="model-runtime-note small">Not installed yet &mdash; {{ entry.runtime_hint }}.</p>
     {% endif %}
   </div>
   <div class="model-toolbar">
