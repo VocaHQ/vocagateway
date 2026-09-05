@@ -132,6 +132,10 @@ WHISPER_TURBO_RETIREMENT_REASON = (
     "and up to 2 behind on German — but Medium trails both, so nothing here is given up."
 )
 HINGLISH_MODEL_SIZE_BYTES = 574_041_195
+# Qwen3-ASR takes its language as a string interpolated into the decoder prompt,
+# where the literal "None" is how that prompt spells "do not pin a language".
+# It is a decoder token, not Python's None, which would mean "no override".
+LANGUAGE_AGNOSTIC_DECODER = "None"
 
 MODEL_SAFETENSORS = "model.safetensors"
 JOINER_INT8_FILE = "joiner.int8.onnx"
@@ -234,6 +238,7 @@ class CatalogModel:
     # Some fine-tunes expose an application-level output contract whose wire
     # value is not a token understood by the decoder (for example, Roman
     # Hinglish is requested as `hinglish_roman` but Whisper expects `hi`).
+    # `LANGUAGE_AGNOSTIC_DECODER` pins the decoder to no language at all.
     decoder_language_code: str | None = None
     apple_silicon_only: bool = False
     detects_language_automatically: bool = False
@@ -1377,7 +1382,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         ),
         license_name=APACHE_LICENSE,
         language_codes=(HINDI_LANGUAGE_CODE, ENGLISH_LANGUAGE_CODE),
-        decoder_language_code="None",
+        decoder_language_code=LANGUAGE_AGNOSTIC_DECODER,
         marker_file=MODEL_SAFETENSORS,
         required_files=SROTA_HF_FILES,
     ),
@@ -1396,7 +1401,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         ),
         license_name=APACHE_LICENSE,
         language_codes=(HINDI_LANGUAGE_CODE, ENGLISH_LANGUAGE_CODE),
-        decoder_language_code="None",
+        decoder_language_code=LANGUAGE_AGNOSTIC_DECODER,
         marker_file=MODEL_SAFETENSORS,
         required_files=SROTA_HF_FILES,
     ),
@@ -1547,8 +1552,8 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         download_url="https://huggingface.co/handy-computer/canary-qwen-2.5b-gguf/resolve/main/canary-qwen-2.5b-Q5_K_M.gguf",
         family="Canary-Qwen",
         source="Handy / transcribe.cpp",
-        language_codes=("en",),
-        license_name="CC BY 4.0",
+        language_codes=ENGLISH_CODES,
+        license_name=CC_BY_LICENSE,
         description=(
             "Community Q5 GGUF conversion. Requires a separately installed transcribe-cli "
             "with a CPU, Metal, CUDA or Vulkan backend. Each recording reloads the model; "
@@ -1568,14 +1573,14 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         family="Granite Speech",
         source="Handy / transcribe.cpp",
         language_codes=(
-            "en",
+            ENGLISH_LANGUAGE_CODE,
             FRENCH_LANGUAGE_CODE,
             GERMAN_LANGUAGE_CODE,
             SPANISH_LANGUAGE_CODE,
             PORTUGUESE_LANGUAGE_CODE,
             JAPANESE_LANGUAGE_CODE,
         ),
-        license_name="Apache 2.0",
+        license_name=APACHE_LICENSE,
         description=(
             "Community Q5 GGUF conversion. Requires a separately installed transcribe-cli "
             "with a CPU, Metal, CUDA or Vulkan backend. Each recording reloads the model; "

@@ -9,7 +9,8 @@ full `VOCAGATEWAY_*` table. These pages go deeper on one topic each.
 | [configuration.md](configuration.md) | You need the exact value of a path, an environment variable, or the pairing QR payload |
 | [tailscale.md](tailscale.md) | You want private HTTPS to the gateway without opening a port |
 | [troubleshooting.md](troubleshooting.md) | Something is failing and you want the symptom, not the theory |
-| [models.md](models.md) | Picking a model: all 58 in the catalog, what each speaks, and a reverse index from 108 languages back to the models that cover them |
+| [models.md](models.md) | Picking a model: all 76 in the catalog, what each speaks, and a reverse index from 109 languages back to the models that cover them |
+| [additional-models.md](additional-models.md) | Judging the specialised and experimental entries — Roman-Hindi output, mixed-script Hindi/English, the newer multilingual models — and installing the optional transcribe.cpp runtime |
 
 ## I just want it running
 
@@ -37,5 +38,3 @@ certificate. HTTP protects neither the bearer token nor the recording.
 `models.md` is generated — run `uv run scripts/generate_model_docs.py` rather
 than editing it; a test asserts `--check`. Everything else on this page is
 hand-written. [AGENTS.md](../AGENTS.md) has the repository conventions.
-
-- [Additional speech-to-text models and optional native runtime](additional-models.md)

@@ -43,3 +43,16 @@ def test_rendered_language_set_anchors_are_be2db() -> None:
 
     linked_targets = re.findall(r"\]\(#(language-set-[^)]+)\)", rendered)
     assert set(linked_targets) <= set(anchor_ids)
+
+
+def test_docs_readme_repeats_the_real_catalog_counts() -> None:
+    """docs/README.md is hand-written, so its summary of the generated page can
+    drift: it claimed 58 models while the catalog held 65. Pin both numbers to
+    the catalog rather than to whoever last remembered to edit the row."""
+    from app.catalog import DEFAULT_CATALOG
+
+    readme = (SCRIPT_PATH.parent.parent / "docs" / "README.md").read_text(encoding="utf-8")
+    row = next(line for line in readme.splitlines() if line.startswith("| [models.md]"))
+    models, languages = (int(number) for number in re.findall(r"\b(\d+)\b", row))
+    assert models == len(DEFAULT_CATALOG)
+    assert languages == len({code for model in DEFAULT_CATALOG for code in model.language_codes})
