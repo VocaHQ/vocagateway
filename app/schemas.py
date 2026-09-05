@@ -91,6 +91,9 @@ class DependencyStatus(BaseModel):
     available: bool
     path: str | None = None
     install_hint: str | None = None
+    # Set when a hint alone cannot carry the setup, as for a tool the project
+    # does not ship and the operator has to build.
+    docs_url: str | None = None
 
 
 class SystemStatus(BaseModel):
@@ -224,6 +227,7 @@ class AdminModelEntry(BaseModel):
     # weights are still correct, so the card warns rather than hiding the button.
     runtime_requirement: str | None = None
     runtime_hint: str | None = None
+    runtime_docs_url: str | None = None
 
 
 class CustomDownloadRequest(BaseModel):

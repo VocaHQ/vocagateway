@@ -18,8 +18,11 @@ PYTHON_PACKAGE_PATH = "Python package"
 # The GGUF models in the catalog need a transcribe-cli this project never ships;
 # the tile names the build and the override so a missing binary is actionable.
 TRANSCRIBE_INSTALL_HINT = (
-    "Build https://github.com/handy-computer/transcribe.cpp, then set "
-    "VOCAGATEWAY_TRANSCRIBE_BINARY to its transcribe-cli"
+    "Install transcribe-cli where the gateway runs, inside the container under "
+    "Docker, and set VOCAGATEWAY_TRANSCRIBE_BINARY if it is not on PATH"
+)
+TRANSCRIBE_DOCS_URL = (
+    "https://github.com/VocaHQ/vocagateway/blob/main/docs/deployment.md#install-transcribecpp"
 )
 PYTHON_ENGINE_INSTALL_HINT = "Install vocagateway[engines] or use the Docker image"
 # One engine paired with the single runtime it needs.
@@ -75,7 +78,11 @@ class _EngineRuntimes:
         unmet = self.missing(engine)
         if unmet is None:
             return {}
-        return {"runtime_requirement": unmet.name, "runtime_hint": unmet.install_hint}
+        return {
+            "runtime_requirement": unmet.name,
+            "runtime_hint": unmet.install_hint,
+            "runtime_docs_url": unmet.docs_url,
+        }
 
     def _build(self) -> list[_EngineRuntime]:
         is_mac = self.system.os_name == "Darwin"
@@ -109,6 +116,7 @@ class _EngineRuntimes:
                     available=self.system.transcribe_cli_path is not None,
                     path=self.system.transcribe_cli_path,
                     install_hint=TRANSCRIBE_INSTALL_HINT,
+                    docs_url=TRANSCRIBE_DOCS_URL,
                 ),
             ),
         ]

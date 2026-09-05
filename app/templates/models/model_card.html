@@ -1,5 +1,4 @@
 {% from "macros/icons.html" import active_label, info as info_icon %}
-{% from "macros/native_requirements.html" import transcribe_requirement %}
 
 {% macro language_chips(names) %}{% for name in names %}<span class="model-language-chip">{{ name }}</span>{% endfor %}{% endmacro %}
 
@@ -73,9 +72,6 @@
     <p class="model-blurb" title="{{ entry.description }}">
       {{ entry.description }}
     </p>
-    {% if entry.engine == "transcribe.cpp" %}
-    {{ transcribe_requirement() }}
-    {% endif %}
     {% if entry.retired %}
     <p class="model-retirement-note muted small">
       Retired{% if entry.replacement_id %}; use {{ entry.replacement_id }}{% endif %}{% if entry.retirement_reason %}. {{ entry.retirement_reason }}{% endif %}
@@ -85,7 +81,12 @@
        missing before the operator spends the bandwidth on them. The badge above
        names the requirement, so this line carries only how to satisfy it. #}
     {% if entry.runtime_requirement and entry.runtime_hint %}
-    <p class="model-runtime-note small">Not installed yet &mdash; {{ entry.runtime_hint }}.</p>
+    <p class="model-runtime-note small">
+      Not installed yet &mdash; {{ entry.runtime_hint }}.
+      {%- if entry.runtime_docs_url %}
+      <a href="{{ entry.runtime_docs_url }}" target="_blank" rel="noopener noreferrer">
+        Installation instructions</a>{% endif %}
+    </p>
     {% endif %}
   </div>
   <div class="model-toolbar">

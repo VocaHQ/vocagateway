@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from app.admin_queries import TRANSCRIBE_INSTALL_HINT, _EngineRuntimes
+from app.admin_queries import TRANSCRIBE_DOCS_URL, TRANSCRIBE_INSTALL_HINT, _EngineRuntimes
 from app.catalog import DEFAULT_CATALOG
 from app.config import Settings
 from app.errors import EngineUnavailableError, LanguageUnsupportedError, TranscriptionProcessError
@@ -291,6 +291,7 @@ def test_engine_runtimes_names_the_missing_binary_only_while_it_is_absent(tmp_pa
     assert absent.entry_fields("transcribe.cpp") == {
         "runtime_requirement": "transcribe.cpp CLI",
         "runtime_hint": TRANSCRIBE_INSTALL_HINT,
+        "runtime_docs_url": TRANSCRIBE_DOCS_URL,
     }
 
     present = _EngineRuntimes(_system(transcribe_cli="/opt/transcribe-cli"), _settings(tmp_path))
@@ -332,15 +333,20 @@ def test_model_card_warns_before_the_download_but_still_offers_it():
     warned = card(
         runtime_requirement="transcribe.cpp CLI",
         runtime_hint=TRANSCRIBE_INSTALL_HINT,
+        runtime_docs_url=TRANSCRIBE_DOCS_URL,
     )
     assert "needs transcribe.cpp CLI" in warned
     assert "Not installed yet" in warned
     assert "VOCAGATEWAY_TRANSCRIBE_BINARY" in warned
+    assert TRANSCRIBE_DOCS_URL in warned
+    assert "Installation instructions" in warned
     # The weights are still correct, so the card must not block the download.
     assert "Download" in warned
 
     ready = card()
     assert "needs transcribe.cpp CLI" not in ready
+    # The old always-on aside warned even once the runtime was installed.
+    assert "Installation instructions" not in ready
     assert "Not installed yet" not in ready
     assert "Download" in ready
 
