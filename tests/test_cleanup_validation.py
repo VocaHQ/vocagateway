@@ -11,6 +11,7 @@ import pytest
 
 from app.cleanup.base import CleanupReason
 from app.cleanup.validation import (
+    OutputChecks,
     SpanGuard,
     comparison_units,
     exceeds_input_ceiling,
@@ -179,3 +180,30 @@ def test_contracted_negation_is_counted_without_its_apostrophe() -> None:
     assert SpanGuard.negations("i can do it") == 0
     assert SpanGuard.negations("i do not want it") == 1
     assert SpanGuard.negations("i don't want it") == 1
+
+
+@pytest.mark.parametrize(
+    ("original", "candidate"),
+    [
+        ("i cant come tomorrow", "I cannot come tomorrow."),
+        ("i wont be able to make it", "I won't be able to make it."),
+        ("i cannot believe it", "I cannot believe it."),
+    ],
+)
+def test_expanding_a_contraction_is_not_mistaken_for_a_refusal(
+    original: str, candidate: str
+) -> None:
+    """A bare "i cannot" marker rejected the very repair this feature exists for."""
+    assert OutputChecks.reject(original, candidate) is None
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        "I cannot help with that request.",
+        "I can't assist with this.",
+        "I am unable to comply.",
+    ],
+)
+def test_an_actual_refusal_is_still_refused(candidate: str) -> None:
+    assert OutputChecks.reject("please fix this text", candidate) is CleanupReason.INVALID_OUTPUT

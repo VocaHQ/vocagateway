@@ -61,6 +61,10 @@ class RuntimeConfig:
     cleanup_timeout_seconds: float = DEFAULT_CLEANUP_TIMEOUT_SECONDS
     cleanup_idle_unload_enabled: bool = False
     cleanup_idle_unload_minutes: int = DEFAULT_CLEANUP_IDLE_UNLOAD_MINUTES
+    # Which language a transcript left on `auto` is corrected as. Empty means
+    # "do not guess", which is the default: `auto` then falls back unless the
+    # writing system names a language on its own.
+    cleanup_auto_language: str = ""
     pairing_url: str | None = None
     pairing_urls: list[str] = field(default_factory=list)
 
@@ -97,6 +101,7 @@ class RuntimeConfig:
             "cleanup_timeout_seconds": self.cleanup_timeout_seconds,
             "cleanup_idle_unload_enabled": self.cleanup_idle_unload_enabled,
             "cleanup_idle_unload_minutes": self.cleanup_idle_unload_minutes,
+            "cleanup_auto_language": self.cleanup_auto_language,
             "pairing_url": self.pairing_url,
             "pairing_urls": self.pairing_urls,
         }
@@ -184,6 +189,7 @@ def _parse_cleanup_fields(payload: dict[str, Any]) -> dict[str, Any]:
         "cleanup_mode": mode if mode in CLEANUP_MODES else DEFAULT_CLEANUP_MODE,
         "cleanup_model": _optional_str(payload.get("cleanup_model")),
         "cleanup_timeout_seconds": clamp_cleanup_timeout(payload.get("cleanup_timeout_seconds")),
+        "cleanup_auto_language": _optional_str(payload.get("cleanup_auto_language")) or "",
         "cleanup_idle_unload_enabled": payload.get("cleanup_idle_unload_enabled") is True,
         "cleanup_idle_unload_minutes": (
             idle_minutes

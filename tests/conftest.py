@@ -149,15 +149,12 @@ class FakeWorkerHost:
         self.offloaded = False
         self.is_running = runtime is not None
         self.stops = 0
-        self.waited = False
+        self.is_loading = False
 
     def runtime_available(self) -> bool:
         return True
 
-    async def runtime(
-        self, model_id: str, model_file: Path, *, wait: bool = False
-    ) -> FakeCleanupRuntime | None:
-        self.waited = wait
+    async def runtime(self, model_id: str, model_file: Path) -> FakeCleanupRuntime | None:
         return self.runtime_value
 
     def stop(self, *, offloaded: bool = False) -> None:

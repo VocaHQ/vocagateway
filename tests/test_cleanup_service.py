@@ -43,7 +43,9 @@ class StubManager:
         model_id: str | None = CLEANUP_MODEL_ID,
         installed: bool = True,
         admit: bool = True,
+        auto: str = "",
     ) -> None:
+        self.auto = auto
         self.runtime = runtime
         self.model_id = model_id
         self.installed = installed
@@ -55,6 +57,9 @@ class StubManager:
 
     def supported_languages(self) -> tuple[str, ...]:
         return LANGUAGES
+
+    def auto_language(self) -> str:
+        return self.auto
 
     def lease(self) -> object:
         return _StubLease(self)
@@ -297,3 +302,33 @@ LANGUAGE_CASES = (
 @pytest.mark.parametrize(("requested", "text", "expected"), LANGUAGE_CASES)
 def test_language_resolution(requested: str, text: str, expected: str | None) -> None:
     assert resolve_language(requested, text, LANGUAGES) == expected
+
+
+async def test_auto_falls_back_when_the_operator_has_not_named_a_language() -> None:
+    """The default stays "do not guess": Latin script does not name a language."""
+    service = service_for("We were going to leave early, but the train was late.")
+    final = await finalize(service, language="auto")
+    assert final.transcript == legacy(language="auto")
+    assert final.cleanup.reason is CleanupReason.UNSUPPORTED_LANGUAGE
+
+
+async def test_auto_uses_the_language_the_operator_configured() -> None:
+    """The one place that knows: nothing in the pipeline detects a language."""
+    service = service_for("We were going to leave early, but the train was late.", auto="en")
+    final = await finalize(service, language="auto")
+    assert final.cleanup.status is CleanupStatus.APPLIED
+
+
+async def test_the_writing_system_still_wins_over_the_configured_default() -> None:
+    """Evidence about this transcript beats a standing preference about all of them."""
+    runtime = FakeCleanupRuntime("यह ठीक है।")
+    service = CleanupService(StubManager(runtime, auto="en"))  # type: ignore[arg-type]
+    await finalize(service, "यह ठीक है", language="auto")
+    assert [language for _, language in runtime.calls] == ["hi"]
+
+
+async def test_a_configured_default_off_the_allowlist_is_ignored_not_honoured() -> None:
+    """Narrowing the allowlist cannot leave this pointing somewhere unsupported."""
+    service = service_for("We were going to leave early, but the train was late.", auto="fr")
+    final = await finalize(service, language="auto")
+    assert final.cleanup.reason is CleanupReason.UNSUPPORTED_LANGUAGE

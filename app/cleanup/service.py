@@ -106,7 +106,9 @@ class CleanupService:
             language=language,
             options=options,
             legacy=text_styles.apply_writing_style(transcript, style, language),
-            resolved=resolve_language(language, transcript, self._supported()),
+            resolved=resolve_language(
+                language, transcript, self._supported(), default=self._auto_language()
+            ),
         )
         bypass = self._bypass(work)
         if bypass is not None:
@@ -215,6 +217,9 @@ class CleanupService:
     def _supported(self) -> tuple[str, ...]:
         return self.manager.supported_languages() if self.manager else ()
 
+    def _auto_language(self) -> str:
+        return self.manager.auto_language() if self.manager else ""
+
     def _skip(self, options: CleanupOptions, reason: CleanupReason) -> CleanupOutcome:
         return CleanupOutcome(requested=options.mode, status=CleanupStatus.SKIPPED, reason=reason)
 
@@ -248,12 +253,17 @@ def _reason_for(failure: BaseException) -> CleanupReason:
     return CleanupReason.RUNTIME_ERROR
 
 
-def resolve_language(language: str, transcript: str, supported: tuple[str, ...]) -> str | None:
+def resolve_language(
+    language: str, transcript: str, supported: tuple[str, ...], *, default: str = ""
+) -> str | None:
     """The language cleanup will run as, or None when it must not run at all.
 
-    A requested language is honoured when it is on the allowlist. `auto` is only
-    resolved when the writing system narrows it to exactly one supported
-    language — never by assuming that Latin script means English.
+    A requested language is honoured when it is on the allowlist. `auto` is
+    resolved from the writing system when that names exactly one supported
+    language — never by assuming that Latin script means English — and
+    otherwise from the operator's configured default, which is empty unless
+    they set one. The script comes first: it is evidence about *this*
+    transcript, while the default is a standing preference about all of them.
     """
     code = language.lower().split("-", maxsplit=1)[0]
     allowed = {name.lower() for name in supported}
@@ -263,7 +273,10 @@ def resolve_language(language: str, transcript: str, supported: tuple[str, ...])
         return code
     if code not in {"auto", ""}:
         return None
-    return _from_script(transcript, allowed)
+    from_script = _from_script(transcript, allowed)
+    if from_script is not None:
+        return from_script
+    return default.lower() if default.lower() in allowed else None
 
 
 def _from_script(transcript: str, allowed: set[str]) -> str | None:

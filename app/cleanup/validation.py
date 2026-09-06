@@ -64,9 +64,17 @@ LEAK_MARKERS = (
     "here is the corrected",
     "here's the corrected",
     "corrected transcript:",
-    "i cannot",
-    "i can't help",
     "as an ai",
+)
+# Refusals, matched on an apostrophe-stripped form so `can't` and `cant` are the
+# same word here as they are for polarity. Spelled out as whole phrases rather
+# than a bare "i cannot", which rejected the ordinary contraction repair this
+# feature exists for: a dictated "i cant come" corrected to "I cannot come" is
+# not a model declining to answer.
+REFUSAL_MARKERS = tuple(
+    f"i {verb} {action}"
+    for verb in ("cannot", "cant", "wont", "am not able to", "am unable to")
+    for action in ("help", "assist", "provide", "do that", "comply", "fulfill", "fulfil")
 )
 
 _SUFFIXES = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None)
@@ -328,12 +336,22 @@ class OutputChecks:
 
     @classmethod
     def _leaked(cls, original: str, candidate: str) -> bool:
-        lowered_original = original.casefold()
-        lowered_candidate = candidate.casefold()
-        return any(
-            marker in lowered_candidate and marker not in lowered_original
-            for marker in LEAK_MARKERS
+        if cls._appeared(original.casefold(), candidate.casefold(), LEAK_MARKERS):
+            return True
+        return cls._appeared(
+            original.casefold().translate(_APOSTROPHES),
+            candidate.casefold().translate(_APOSTROPHES),
+            REFUSAL_MARKERS,
         )
+
+    @classmethod
+    def _appeared(cls, original: str, candidate: str, markers: tuple[str, ...]) -> bool:
+        """Whether a marker is in the answer and was not in the transcript.
+
+        A speaker may well dictate any of these, and that is content to
+        preserve. Only a marker the model added on its own is a rejection.
+        """
+        return any(marker in candidate and marker not in original for marker in markers)
 
 
 class PreservationChecks:

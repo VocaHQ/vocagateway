@@ -23,6 +23,7 @@ STATE_LABELS: MappingProxyType[str, tuple[str, str]] = MappingProxyType(
     {
         "disabled": ("Off", "muted"),
         "unavailable": ("Not available", "warn"),
+        "loading": ("Loading", "warn"),
         "ready": ("Ready", "ok"),
         "offloaded": ("Offloaded", "muted"),
         "error": ("Error", "error"),
@@ -58,7 +59,18 @@ def cleanup_card(
             if MINIMUM_TIMEOUT_SECONDS <= choice <= MAXIMUM_TIMEOUT_SECONDS
         ],
         idle_options=[(minutes, _idle_label(minutes)) for minutes in CLEANUP_IDLE_UNLOAD_MINUTES],
+        auto_language_options=_auto_language_options(config.languages),
     )
+
+
+def _auto_language_options(languages: list[str]) -> list[tuple[str, str]]:
+    """The choices for a transcript whose language is `auto`.
+
+    "Do not guess" leads and is the default, because it is the honest answer
+    when nothing knows the language: the speech engines do not report a
+    detected one, and Latin script does not name one.
+    """
+    return [("", "Do not guess (fall back)"), *((code, code) for code in languages)]
 
 
 def _timeout_label(seconds: float) -> str:

@@ -56,5 +56,9 @@ def _cleanup_capability(ctx: GatewayContextDependency) -> CleanupCapability:
         model_id=report.model_id,
         languages=list(report.languages),
         evaluated_languages=list(report.evaluated_languages),
+        # Empty means a request left on `auto` gets no correction unless its
+        # writing system names a language. A client that wants one either sends
+        # an explicit language or asks the operator to set this.
+        auto_language=report.auto_language,
         timeout_seconds=report.timeout_seconds,
     )

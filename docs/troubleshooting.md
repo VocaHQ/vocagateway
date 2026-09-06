@@ -320,9 +320,10 @@ header.
 | --- | --- | --- |
 | no `cleanup` block at all | The session never opted in | Send `cleanup: "conservative"`, or tick *Correct transcripts by default* in Settings |
 | `raw_style` | Raw is never corrected, whatever a request asks for | Choose any other writing style |
-| `unsupported_language` | The language is not on the allowlist — most often a session left on `auto` | Ask for `en` (or another listed language) explicitly. Latin script does not name a language, so `auto` will not resolve to English |
+| `unsupported_language` | The language is not on the allowlist — most often a session left on `auto` | Ask for `en` (or another listed language) explicitly, or set **When language is auto** in Settings. Latin script does not name a language, and nothing detects one, so `auto` will not resolve to English on its own |
 | `model_unavailable` | No model installed, no `llama-server` found, or the session was pinned to a model that is no longer selected | Settings → Transcript cleanup → install a model and **Load model now**. Natively, install llama.cpp or set `VOCAGATEWAY_CLEANUP_BINARY` |
 | `model_loading` | The model is still being loaded into memory. A request never waits for a cold load — that takes minutes, and a request's budget is seconds | Nothing, or press **Load model now** in Settings to pay the cost once. The next dictation finds the model resident |
+| `context_too_small` | An operator-run `VOCAGATEWAY_CLEANUP_ENDPOINT` reports a context window too small to hold the prompt, which would silently drop the system instruction | Restart that server with a larger `--ctx-size` (8192 or more). A gateway-managed worker sets its own and cannot hit this |
 | `busy` | A correction was already running; cleanup admits one at a time and does not queue | Nothing. The transcript is correct, just uncorrected |
 | `timeout` | The correction did not finish inside the time limit | Raise the limit in Settings, warm the model, or choose the smaller model |
 | `input_too_long` | Past the input ceiling. Nothing is ever half-corrected | Nothing. The full transcript is returned |

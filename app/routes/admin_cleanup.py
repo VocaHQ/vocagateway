@@ -48,6 +48,7 @@ class _CleanupForm:
 
     mode: ModeForm = "conservative"
     model_id: ModelForm = ""
+    auto_language: ModelForm = ""
     timeout_seconds: TimeoutForm = 5.0
     idle_unload_minutes: IdleMinutesForm = 15
     enabled: EnabledForm = False
@@ -59,6 +60,7 @@ class _CleanupForm:
                 "enabled": self.enabled,
                 "mode": self.mode,
                 "model_id": self.model_id,
+                "auto_language": self.auto_language,
                 "timeout_seconds": self.timeout_seconds,
                 "idle_unload_enabled": self.idle_unload_enabled,
                 "idle_unload_minutes": self.idle_unload_minutes,
@@ -107,11 +109,12 @@ async def update_cleanup(
 async def warm_cleanup(
     ctx: GatewayContextDependency, manager: CleanupManagerDependency
 ) -> CleanupConfigResponse:
-    """Load the model now, so the first corrected dictation is not a cold start.
+    """Start loading the model, so the first corrected dictation is not cold.
 
-    Bounded and separate from a request: a cold load that cannot meet a
-    request's deadline returns the ASR result, and this is how the operator pays
-    that cost once, deliberately, from the settings page.
+    Returns as soon as the load is under way rather than holding the request
+    open for it: a multi-gigabyte GGUF takes minutes, and the answer an
+    operator needs is the `state` field, which reads `loading` until it reads
+    `ready`.
     """
     await manager.warmup()
     return admin_queries.cleanup_config(ctx)
@@ -143,8 +146,7 @@ async def ui_warm_cleanup(
     ctx: GatewayContextDependency, manager: CleanupManagerDependency
 ) -> HTMLResponse:
     warmed = await manager.warmup()
-    note = "Model loaded and ready." if warmed else "The model could not be loaded."
-    return _card(ctx, note)
+    return _card(ctx, _warmup_note(manager, warmed=warmed))
 
 
 @router.post("/v1/admin/cleanup/models/{model_id}/download", response_model=CleanupModelEntry)
@@ -195,6 +197,20 @@ async def ui_update_cleanup(
     return _card(ctx, "Transcript cleanup settings saved.")
 
 
+def _warmup_note(manager: CleanupManager, *, warmed: bool) -> str:
+    """What to tell the operator, which is not the same as whether it is ready.
+
+    A load that has only just started is neither a success nor a failure, and
+    reporting it as "could not be loaded" would send someone debugging a
+    working gateway.
+    """
+    if warmed:
+        return "Model loaded and ready."
+    if manager.loading:
+        return "Loading the model. This card refreshes when it is ready."
+    return "The model could not be loaded."
+
+
 def _card(ctx: GatewayContext, message: str = "") -> HTMLResponse:
     """The settings card, rebuilt from live state after every action."""
     return HTMLResponse(
@@ -221,6 +237,7 @@ def _apply(manager: CleanupManager, body: CleanupConfigUpdateRequest) -> None:
             timeout_seconds=body.timeout_seconds,
             idle_unload_enabled=body.idle_unload_enabled,
             idle_unload_minutes=body.idle_unload_minutes,
+            auto_language=body.auto_language,
         )
     )
 

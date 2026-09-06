@@ -485,6 +485,7 @@ def cleanup_config(ctx: GatewayContext) -> schemas.CleanupConfigResponse:
         timeout_seconds=report.timeout_seconds,
         languages=list(report.languages),
         evaluated_languages=list(report.evaluated_languages),
+        auto_language=report.auto_language,
         idle_unload_enabled=report.idle_unload_enabled,
         idle_unload_minutes=report.idle_unload_minutes,
         locked_settings=list(report.locked_settings),

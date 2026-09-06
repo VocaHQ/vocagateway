@@ -99,6 +99,7 @@ variable. `compose.yaml` forwards only the keys it names, so a variable marked
 | `VOCAGATEWAY_CLEANUP_MODEL` | unset | forwarded | Pin a cleanup model id, e.g. `cleanup:qwen3-0.6b` |
 | `VOCAGATEWAY_CLEANUP_TIMEOUT_SECONDS` | unset (`5`) | forwarded | Total deadline for one correction, 1–30 s. Past it the plain transcript is returned |
 | `VOCAGATEWAY_CLEANUP_LANGUAGES` | unset (the model's list) | forwarded | Comma-separated allowlist of languages cleanup may run for |
+| `VOCAGATEWAY_CLEANUP_AUTO_LANGUAGE` | unset (do not guess) | forwarded | Which language a transcript left on `auto` is corrected as. Unset means `auto` falls back uncorrected unless its writing system names a language. Ignored if not on the allowlist |
 | `VOCAGATEWAY_CLEANUP_BINARY` | `llama-server` on `PATH` | ignored — no runtime in the image | Explicit `llama-server` for the gateway to launch and own |
 | `VOCAGATEWAY_CLEANUP_ENDPOINT` | unset | forwarded | `host:port` of a cleanup server the **operator** runs (the Compose sidecar, or one started by hand). Setting it gives up gateway-controlled warm-up and idle unloading, because the gateway then does not own the process. Only loopback, private addresses, and bare container service names are accepted; anything routable is refused at startup |
 | `VOCAGATEWAY_CLEANUP_API_KEY` | unset | forwarded, **and** mounted into the sidecar as the `vocagateway_cleanup_key` secret | Credential the gateway presents to that server. A client's bearer token is never forwarded |

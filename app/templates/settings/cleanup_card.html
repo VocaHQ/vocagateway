@@ -4,7 +4,15 @@
    the pinned catalog — never from a transcript and never from a model. The
    environment is autoescaping, so any text that does reach this panel arrives
    as text rather than as markup. #}
-<div class="card" id="cleanup-settings-card">
+{# While a load is in flight the card refreshes itself. The request that
+   started the load returned immediately — loading a multi-gigabyte GGUF is
+   minutes — so this is what turns "Loading" into "Ready" without the operator
+   reaching for the page reload. The polling attributes are absent once the
+   state settles, which is what stops it. #}
+<div class="card" id="cleanup-settings-card"
+     {%- if config.state == "loading" %}
+     hx-get="/ui/partials/cleanup" hx-trigger="every 2s" hx-swap="outerHTML"
+     {%- endif %}>
   <div class="section-heading">
     <h3>Transcript cleanup</h3>
     <span class="pill {{ state_tone }}">{{ state_label }}</span>
@@ -68,6 +76,18 @@
           <option value="{{ value }}"{% if value == config.timeout_seconds %} selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
+      </label>
+      <label class="settings-field">
+        <span>When language is auto</span>
+        <select name="auto_language">
+          {% for value, label in auto_language_options %}
+          <option value="{{ value }}"{% if value == config.auto_language %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <small>A dictation left on <code>auto</code> is corrected as this language.
+           Nothing detects it: the speech engines do not report one, and Latin
+           script does not name one. Leave it on <em>Do not guess</em> to have
+           <code>auto</code> fall back uncorrected instead.</small>
       </label>
       <label class="settings-field">
         <span>Idle unload</span>

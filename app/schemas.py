@@ -23,10 +23,12 @@ MINIMUM_CUSTOM_MODEL_URL_LENGTH = 12
 MAXIMUM_CUSTOM_MODEL_URL_LENGTH = 2_000
 MAXIMUM_CPU_THREADS = 256
 MAXIMUM_CLEANUP_MODEL_ID_LENGTH = 200
+# Long enough for a tag like `hinglish_roman`, short enough to be a language code.
+MAXIMUM_LANGUAGE_LENGTH = 32
 FORBID_EXTRA_FIELDS: Literal["forbid"] = "forbid"
 CleanupMode = Literal["off", "conservative", "inherit"]
 ResolvedCleanupMode = Literal["off", "conservative"]
-CleanupState = Literal["disabled", "unavailable", "ready", "offloaded", "error"]
+CleanupState = Literal["disabled", "unavailable", "loading", "ready", "offloaded", "error"]
 IdleUnloadMinutes = Literal[5, 15, 30, 60, 120]
 WritingStyle = Literal["raw", "clean", "formal", "casual", "very_casual", "excited"]
 
@@ -96,6 +98,7 @@ class CleanupCapability(BaseModel):
     # apart so a tested language is never confused with an offered one.
     languages: list[str] = []
     evaluated_languages: list[str] = []
+    auto_language: str = ""
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
 
 
@@ -363,6 +366,10 @@ class CleanupConfigResponse(BaseModel):
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
     languages: list[str] = []
     evaluated_languages: list[str] = []
+    # Which language a transcript left on `auto` is corrected as. Empty means
+    # the gateway will not guess, and `auto` falls back unless the writing
+    # system names a language on its own.
+    auto_language: str = ""
     idle_unload_enabled: bool = False
     idle_unload_minutes: int = DEFAULT_CLEANUP_IDLE_UNLOAD_MINUTES
     # Fields an environment variable has taken away from the UI. Shown as
@@ -389,6 +396,9 @@ class CleanupConfigUpdateRequest(BaseModel):
     )
     idle_unload_enabled: bool | None = None
     idle_unload_minutes: IdleUnloadMinutes | None = None
+    # An empty string is a real value here — "stop guessing" — so this is not
+    # the same as the field being absent, which means "leave it alone".
+    auto_language: str | None = Field(default=None, max_length=MAXIMUM_LANGUAGE_LENGTH)
 
 
 class CleanupModelEntry(BaseModel):

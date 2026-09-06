@@ -60,6 +60,7 @@ class CleanupReason(StrEnum):
     RAW_STYLE = "raw_style"
     MODEL_UNAVAILABLE = "model_unavailable"
     MODEL_LOADING = "model_loading"
+    CONTEXT_TOO_SMALL = "context_too_small"
     UNSUPPORTED_LANGUAGE = "unsupported_language"
     INPUT_TOO_LONG = "input_too_long"
     EMPTY_INPUT = "empty_input"

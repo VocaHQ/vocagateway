@@ -544,11 +544,17 @@ asks for. And it cannot fix a word the speech model misheard: it only sees
 text, so a wrong word that reads as a sentence stays. Filler and stutter removal
 are deliberately out — repetition often carries meaning.
 
-**Languages.** A transcript left on `auto` is only corrected when its writing
-system names one supported language on its own. Latin script does not, so ask
-for `en` explicitly rather than relying on detection. The WebUI reports *offered*
-and *tested* languages separately: a language is offered because a model claims
-it, and tested only once an evaluation has signed it off.
+**Languages.** A transcript left on `auto` is corrected when its writing system
+names one supported language on its own. Latin script does not, and nothing
+else in the pipeline detects one — the speech engines do not report a detected
+language — so `auto` on Latin script otherwise falls back uncorrected. Either
+ask for `en` explicitly, or set **When language is auto** in Settings (or
+`VOCAGATEWAY_CLEANUP_AUTO_LANGUAGE`) to the language you dictate in, which is a
+thing you know and the gateway does not. It stays unset by default: guessing
+that Latin script means English is exactly the mistake worth avoiding. The
+WebUI reports *offered* and *tested* languages separately: a language is
+offered because a model claims it, and tested only once an evaluation has
+signed it off.
 
 **Clients.** Sessions and `/v1/stream` take
 `cleanup: "off" | "conservative" | "inherit"`;

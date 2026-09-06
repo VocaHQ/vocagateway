@@ -530,3 +530,40 @@ async def test_the_writing_style_is_applied_exactly_once(gateway: Any) -> None:
         )
     ).json()
     assert payload["transcript"] == CORRECTED
+
+
+async def test_the_auto_language_choice_survives_a_save_and_is_reported(gateway: Any) -> None:
+    """It travels the whole way: form, schema, saved config, status, capability."""
+    client, app = gateway
+    enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
+    saved = await client.put(
+        CLEANUP_CONFIG, json={"model_id": CLEANUP_MODEL_ID, "auto_language": "en"}, headers=AUTH
+    )
+    assert saved.json()["auto_language"] == "en"
+    assert app.state.ctx.cleanup.runtime_config.cleanup_auto_language == "en"
+    capability = (await client.get("/v1/capabilities", headers=AUTH)).json()["cleanup"]
+    assert capability["auto_language"] == "en"
+
+
+async def test_an_auto_language_off_the_allowlist_is_reported_as_unset(gateway: Any) -> None:
+    """Saved as asked, but never reported as something cleanup would honour."""
+    client, app = gateway
+    enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
+    saved = await client.put(
+        CLEANUP_CONFIG, json={"model_id": CLEANUP_MODEL_ID, "auto_language": "fr"}, headers=AUTH
+    )
+    assert saved.json()["auto_language"] == ""
+
+
+async def test_clearing_the_auto_language_is_distinct_from_leaving_it_alone(
+    gateway: Any,
+) -> None:
+    client, app = gateway
+    enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
+    await client.put(CLEANUP_CONFIG, json={"auto_language": "en"}, headers=AUTH)
+    # An absent field leaves it alone...
+    await client.put(CLEANUP_CONFIG, json={"timeout_seconds": 8}, headers=AUTH)
+    assert (await client.get(CLEANUP_CONFIG, headers=AUTH)).json()["auto_language"] == "en"
+    # ...while an empty one is the operator saying "stop guessing".
+    await client.put(CLEANUP_CONFIG, json={"auto_language": ""}, headers=AUTH)
+    assert (await client.get(CLEANUP_CONFIG, headers=AUTH)).json()["auto_language"] == ""

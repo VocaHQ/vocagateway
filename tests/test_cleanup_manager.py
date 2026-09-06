@@ -10,14 +10,23 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 from conftest import CLEANUP_MODEL_ID, FakeCleanupRuntime, FakeWorkerHost
 
 from app.cleanup import host as host_module
-from app.cleanup.base import MODE_CONSERVATIVE, MODE_INHERIT, MODE_OFF, CleanupReason
+from app.cleanup import manager as manager_module
+from app.cleanup.base import (
+    MINIMUM_CONTEXT_TOKENS,
+    MODE_CONSERVATIVE,
+    MODE_INHERIT,
+    MODE_OFF,
+    CleanupReason,
+)
 from app.cleanup.manager import CleanupUpdate, build_manager
 from app.cleanup.transport import Endpoint
 from app.cleanup.worker import LlamaServerWorker, resolve_binary
@@ -317,19 +326,25 @@ async def test_a_cold_load_is_reported_as_loading_not_as_a_full_runtime(
     manager.host.stop()
 
 
-async def test_an_operator_warm_up_does_wait_for_the_load(
+async def test_an_operator_warm_up_starts_the_load_and_reports_it(
     settings: Settings, cold_worker: _NeverReadyWorker, tmp_path: Path
 ) -> None:
-    """The one caller that asked to pay the cold-load cost deliberately."""
-    worker_host = host_module.WorkerHost(settings, RuntimeConfig())
-    warming = asyncio.create_task(
-        worker_host.runtime(CLEANUP_MODEL_ID, tmp_path / "model.gguf", wait=True)
-    )
+    """Pressing "Load model now" returns at once; the card polls until ready.
+
+    Holding the request open would mean an HTTP call that outlives its own
+    timeout for a load running in the background regardless.
+    """
+    manager = manager_for(settings, cleanup_enabled=True, cleanup_model=CLEANUP_MODEL_ID)
+    manager.model_path = lambda: tmp_path / "model.gguf"  # type: ignore[method-assign]
+    assert await asyncio.wait_for(manager.warmup(), timeout=1.0) is False
     await asyncio.sleep(0)
-    assert not warming.done()
+    assert manager.loading is True
+    assert manager.status().state == "loading"
     cold_worker.released.set()
-    assert await asyncio.wait_for(warming, timeout=1.0) is not None
-    worker_host.stop()
+    await asyncio.sleep(0)
+    assert manager.loading is False
+    assert manager.status().state == "ready"
+    manager.host.stop()
 
 
 async def test_concurrent_requests_share_one_load_rather_than_starting_several(
@@ -355,3 +370,85 @@ async def test_stopping_mid_load_abandons_it_rather_than_adopting_it_later(
     cold_worker.released.set()
     await asyncio.sleep(0)
     assert worker_host.is_running is False
+
+
+class _ContextRuntime:
+    """An operator-run server that reports a context window and counts the asks."""
+
+    def __init__(self, tokens: int) -> None:
+        self.tokens = tokens
+        self.asks = 0
+        self.model_id = CLEANUP_MODEL_ID
+
+    async def context_is_sufficient(self) -> bool:
+        self.asks += 1
+        return not self.tokens or self.tokens >= MINIMUM_CONTEXT_TOKENS
+
+    async def available(self) -> bool:
+        return True
+
+
+@pytest.fixture
+def external(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> Callable[[int], tuple[Any, _ContextRuntime]]:
+    """A manager pointed at an operator-run endpoint reporting a given window."""
+
+    def build(tokens: int) -> tuple[Any, _ContextRuntime]:
+        runtime = _ContextRuntime(tokens)
+        monkeypatch.setattr(manager_module, "LlamaServerRuntime", lambda *a, **k: runtime)
+        manager = manager_for(
+            replace(settings, cleanup_endpoint=("127.0.0.1", 9)),
+            cleanup_enabled=True,
+            cleanup_model=CLEANUP_MODEL_ID,
+        )
+        manager.host = FakeWorkerHost(None)
+        return manager, runtime
+
+    return build
+
+
+async def test_an_external_endpoint_with_too_small_a_window_is_refused(
+    external: Callable[[int], tuple[Any, _ContextRuntime]],
+) -> None:
+    """A window too small to hold the prompt drops the system instruction silently.
+
+    The gateway never chose this server's `--ctx-size`, so unlike a managed
+    worker it has to ask.
+    """
+    manager, runtime = external(512)
+    async with manager.lease() as slot:
+        assert slot.runtime is None
+        assert slot.reason is CleanupReason.CONTEXT_TOO_SMALL
+    assert runtime.asks == 1
+
+
+async def test_a_large_enough_window_is_measured_once_not_per_request(
+    external: Callable[[int], tuple[Any, _ContextRuntime]],
+) -> None:
+    manager, runtime = external(32_768)
+    for _ in range(3):
+        async with manager.lease() as slot:
+            assert slot.runtime is not None
+    assert runtime.asks == 1
+
+
+async def test_a_server_that_reports_no_window_is_used_as_before(
+    external: Callable[[int], tuple[Any, _ContextRuntime]],
+) -> None:
+    """An unknown window is not evidence of a bad one."""
+    manager, _ = external(0)
+    async with manager.lease() as slot:
+        assert slot.runtime is not None
+
+
+async def test_switching_the_endpoint_re_measures_the_window(
+    external: Callable[[int], tuple[Any, _ContextRuntime]],
+) -> None:
+    manager, runtime = external(32_768)
+    async with manager.lease() as slot:
+        assert slot.runtime is not None
+    manager.configure(CleanupUpdate(timeout_seconds=8.0))
+    async with manager.lease() as slot:
+        assert slot.runtime is not None
+    assert runtime.asks == 2

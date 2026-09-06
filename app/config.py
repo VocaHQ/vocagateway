@@ -174,6 +174,7 @@ class Settings:
     cleanup_model: str | None = None
     cleanup_timeout_seconds: float | None = None
     cleanup_languages: tuple[str, ...] = ()
+    cleanup_auto_language: str | None = None
     # Operator-only. An explicit `llama-server` executable for the gateway to
     # launch, or an address of a server the operator runs themselves. Setting
     # the address gives up gateway-controlled warm-up and idle unloading,
@@ -264,6 +265,7 @@ class Settings:
             "cleanup_model": _env("VOCAGATEWAY_CLEANUP_MODEL") or None,
             "cleanup_timeout_seconds": _env_seconds("VOCAGATEWAY_CLEANUP_TIMEOUT_SECONDS"),
             "cleanup_languages": _env_codes("VOCAGATEWAY_CLEANUP_LANGUAGES"),
+            "cleanup_auto_language": _env("VOCAGATEWAY_CLEANUP_AUTO_LANGUAGE").lower() or None,
             "cleanup_binary": _optional_path("VOCAGATEWAY_CLEANUP_BINARY"),
             "cleanup_endpoint": (
                 parse_local_endpoint(endpoint, name="VOCAGATEWAY_CLEANUP_ENDPOINT")

@@ -21,6 +21,7 @@ from app.cleanup import prompts, transport
 from app.cleanup.base import (
     MAXIMUM_INPUT_TOKENS,
     MAXIMUM_OUTPUT_BYTES,
+    MINIMUM_CONTEXT_TOKENS,
     CleanupReason,
     CleanupRejected,
     CleanupUnavailable,
@@ -87,6 +88,18 @@ class LlamaServerRuntime:
         if reply.status != transport.HTTP_OK:
             return 0
         return _context_size(reply.json())
+
+    async def context_is_sufficient(self) -> bool:
+        """Whether this server's window can hold the prompt this package sends.
+
+        Asked of a server the gateway did not launch, because it never chose
+        that server's `--ctx-size`. A window too small does not fail loudly: it
+        drops the front of the context, which is the system instruction. A
+        server that reports nothing is trusted as before — an unknown window is
+        not evidence of a bad one.
+        """
+        reported = await self.context_tokens()
+        return not reported or reported >= MINIMUM_CONTEXT_TOKENS
 
     async def count_tokens(self, text: str, *, budget: float) -> int:
         """Token count from the pinned runtime's own tokenizer.

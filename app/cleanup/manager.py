@@ -44,6 +44,7 @@ SECONDS_PER_MINUTE = 60
 # separate from the ASR warm-up vocabulary: the two are unrelated lifecycles.
 STATE_DISABLED = "disabled"
 STATE_UNAVAILABLE = "unavailable"
+STATE_LOADING = "loading"
 STATE_READY = "ready"
 STATE_OFFLOADED = "offloaded"
 STATE_ERROR = "error"
@@ -80,6 +81,8 @@ class CleanupStatusReport:
     timeout_seconds: float
     languages: tuple[str, ...]
     evaluated_languages: tuple[str, ...]
+    auto_language: str
+    loading: bool
     idle_unload_enabled: bool
     idle_unload_minutes: int
     locked_settings: tuple[str, ...]
@@ -133,6 +136,7 @@ class CleanupPreferences:
             ("mode", bool(self.settings.cleanup_mode)),
             ("model", bool(self.settings.cleanup_model)),
             ("timeout_seconds", self.settings.cleanup_timeout_seconds is not None),
+            ("auto_language", self.settings.cleanup_auto_language is not None),
             ("endpoint", self.settings.cleanup_endpoint is not None),
         )
         return tuple(name for name, locked in overrides if locked)
@@ -165,6 +169,24 @@ class CleanupPreferences:
             return override
         selected = catalog.cleanup_model(self.model_id)
         return selected.candidate_languages if selected else catalog.CANDIDATE_LANGUAGES
+
+    @property
+    def auto_language(self) -> str:
+        """The language a transcript left on `auto` is corrected as, if any.
+
+        Empty by default, and empty is a real answer: the gateway will not
+        decide that Latin script means English, because most of the world's
+        languages are written in it. An operator who knows what they dictate in
+        says so once here, which is information nothing else in the pipeline
+        has — the speech engines do not report a detected language.
+
+        A value that is not on the allowlist is ignored rather than honoured,
+        so narrowing the allowlist cannot leave this pointing somewhere unsupported.
+        """
+        override = self.settings.cleanup_auto_language
+        configured = override or self.runtime_config.cleanup_auto_language
+        code = configured.strip().lower()
+        return code if code in {name.lower() for name in self.supported_languages()} else ""
 
     def evaluated_languages(self) -> tuple[str, ...]:
         """Languages this artifact has actually passed the release gates for.
@@ -202,6 +224,10 @@ class CleanupManager:
         self._active_leases = 0
         self._last_used = time.monotonic()
         self._failure = ""
+        # Whether an operator-run endpoint's context window has been measured
+        # and found big enough. A managed worker needs no such check: the
+        # gateway passes its own `--ctx-size`.
+        self._external_ok: bool | None = None
 
     @property
     def enabled(self) -> bool:
@@ -216,6 +242,9 @@ class CleanupManager:
 
     def supported_languages(self) -> tuple[str, ...]:
         return self.preferences.supported_languages()
+
+    def auto_language(self) -> str:
+        return self.preferences.auto_language
 
     def model_path(self) -> Path | None:
         selected = catalog.cleanup_model(self.model_id)
@@ -241,16 +270,23 @@ class CleanupManager:
             self._release()
 
     async def warmup(self) -> bool:
-        """Load the model outside a request, so the first dictation is not cold.
+        """Ask for the model to be loaded, and report whether it is ready yet.
 
-        The one caller allowed to wait for a cold load. A request cannot: its
-        budget is seconds and loading a multi-gigabyte GGUF is minutes, so it
-        takes the ASR result and leaves the load running behind it.
+        Deliberately does not wait. Loading a multi-gigabyte GGUF is minutes,
+        and holding an HTTP request open for that long is a request that times
+        out somewhere in the middle with nothing to show for it. The load runs
+        in the background either way; the settings card polls until the state
+        stops being `loading`.
         """
         if not self.enabled:
             return False
-        runtime = await self._runtime(wait=True)
+        runtime = await self._runtime()
         return runtime is not None and await runtime.available()
+
+    @property
+    def loading(self) -> bool:
+        """Whether a managed worker is being loaded right now."""
+        return self.preferences.managed and self.host.is_loading
 
     def offload_if_idle(self, *, now: float | None = None) -> bool:
         """Release a managed worker after the configured idle period.
@@ -286,6 +322,8 @@ class CleanupManager:
             timeout_seconds=preferences.timeout_seconds,
             languages=preferences.supported_languages(),
             evaluated_languages=preferences.evaluated_languages(),
+            auto_language=preferences.auto_language,
+            loading=self.loading,
             idle_unload_enabled=self.runtime_config.cleanup_idle_unload_enabled,
             idle_unload_minutes=self.runtime_config.cleanup_idle_unload_minutes,
             locked_settings=preferences.locked_settings(),
@@ -304,10 +342,26 @@ class CleanupManager:
         )
         update.apply(self.runtime_config)
         self.runtime_config.save(self.config_path)
+        self._external_ok = None
         if (changed_model or not self.enabled) and self._active_leases == 0:
             # Applies to new work only. An in-flight request keeps the runtime
             # it was admitted against; the swap happens once its lease drains.
             self.host.stop()
+
+    async def _external_runtime(self, endpoint: Endpoint) -> CleanupRuntime | None:
+        """An operator-run server, once its context window has been vouched for.
+
+        The gateway does not launch this one, so it never chose its `--ctx-size`.
+        A window too small for the prompt does not fail loudly — it silently
+        drops the front of the context, which is the system instruction — so it
+        is measured once and cached rather than trusted or re-asked per request.
+        A server that does not report one is used as before: an unknown window
+        is not evidence of a bad one.
+        """
+        runtime = LlamaServerRuntime(endpoint, model_id=self.model_id or EXTERNAL_MODEL_NAME)
+        if self._external_ok is None:
+            self._external_ok = await runtime.context_is_sufficient()
+        return runtime if self._external_ok else None
 
     async def _lease(self) -> Lease:
         runtime = await self._runtime()
@@ -321,11 +375,17 @@ class CleanupManager:
         A load in progress is worth telling apart from an absent one: the first
         is fixed by waiting a moment, the second by installing something.
         """
-        if not self.enabled or self.model_path() is None:
-            return CleanupReason.MODEL_UNAVAILABLE
-        if not self.host.runtime_available() or self.host.failure:
-            return CleanupReason.MODEL_UNAVAILABLE
-        return CleanupReason.MODEL_LOADING
+        if self._external_ok is False:
+            return CleanupReason.CONTEXT_TOO_SMALL
+        return CleanupReason.MODEL_LOADING if self._loadable() else CleanupReason.MODEL_UNAVAILABLE
+
+    def _loadable(self) -> bool:
+        """Whether a managed worker could still turn up, given a moment."""
+        if not self.preferences.managed or not self.enabled:
+            return False
+        if self.model_path() is None or self.host.failure:
+            return False
+        return self.host.runtime_available()
 
     async def _admit(self) -> bool:
         try:
@@ -339,17 +399,17 @@ class CleanupManager:
         self._last_used = time.monotonic()
         self._slot.release()
 
-    async def _runtime(self, *, wait: bool = False) -> CleanupRuntime | None:
+    async def _runtime(self) -> CleanupRuntime | None:
         if not self.enabled:
             return None
         external = self.preferences.external_endpoint()
         if external is not None:
-            return LlamaServerRuntime(external, model_id=self.model_id or EXTERNAL_MODEL_NAME)
+            return await self._external_runtime(external)
         selected_id = self.model_id
         model_file = self.model_path()
         if selected_id is None or model_file is None:
             return None
-        return await self.host.runtime(selected_id, model_file, wait=wait)
+        return await self.host.runtime(selected_id, model_file)
 
     def _can_offload(self) -> bool:
         if not self.runtime_config.cleanup_idle_unload_enabled:
@@ -365,6 +425,8 @@ class CleanupManager:
             return STATE_ERROR
         if not runtime_available or not installed:
             return STATE_UNAVAILABLE
+        if self.loading:
+            return STATE_LOADING
         return STATE_OFFLOADED if self.host.offloaded else STATE_READY
 
 
@@ -378,6 +440,7 @@ class CleanupUpdate:
     timeout_seconds: float | None = None
     idle_unload_enabled: bool | None = None
     idle_unload_minutes: int | None = None
+    auto_language: str | None = None
 
     def apply(self, run_config: runtime_config.RuntimeConfig) -> None:
         if self.enabled is not None:
@@ -394,6 +457,8 @@ class CleanupUpdate:
             run_config.cleanup_idle_unload_enabled = self.idle_unload_enabled
         if self.idle_unload_minutes is not None:
             run_config.cleanup_idle_unload_minutes = self.idle_unload_minutes
+        if self.auto_language is not None:
+            run_config.cleanup_auto_language = self.auto_language.strip().lower()
 
 
 def build_manager(

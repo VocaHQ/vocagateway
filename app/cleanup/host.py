@@ -38,6 +38,11 @@ class WorkerHost:
         self._loading: asyncio.Task[None] | None = None
 
     @property
+    def is_loading(self) -> bool:
+        loading = self._loading
+        return loading is not None and not loading.done()
+
+    @property
     def is_running(self) -> bool:
         active = self._worker
         return active is not None and active.is_running
@@ -46,21 +51,20 @@ class WorkerHost:
         """Whether a `llama-server` executable exists for the gateway to launch."""
         return worker.resolve_binary(self.settings.cleanup_binary) is not None
 
-    async def runtime(
-        self, model_id: str, model_file: Path, *, wait: bool = False
-    ) -> CleanupRuntime | None:
-        """The runtime to use now, or None when this caller must fall back.
+    async def runtime(self, model_id: str, model_file: Path) -> CleanupRuntime | None:
+        """The runtime if it is resident, or None after starting a load for it.
 
-        `wait` separates the two callers that have genuinely different
-        deadlines. A transcription request never waits for a cold load — its
-        budget is seconds and a load is minutes — while an operator pressing
-        "Load model now" is asking to pay that cost deliberately.
+        Nobody waits here. A transcription's budget is seconds and a load is
+        minutes, and an operator pressing "Load model now" would only be
+        holding an HTTP request open for a load that runs in the background
+        regardless — so both callers get an answer immediately and the settings
+        card polls until the state stops being `loading`.
         """
         binary = worker.resolve_binary(self.settings.cleanup_binary)
         if binary is None:
             return None
         active = self._ensure(binary, model_file, model_id)
-        if not await self._resident(active, wait=wait):
+        if not self._resident(active):
             return None
         return LlamaServerRuntime(active.endpoint, model_id=model_id)
 
@@ -100,26 +104,13 @@ class WorkerHost:
             loading.cancel()
         return active
 
-    async def _resident(self, active: worker.LlamaServerWorker, *, wait: bool) -> bool:
+    def _resident(self, active: worker.LlamaServerWorker) -> bool:
+        """Whether the worker is up, starting it in the background if not."""
         if active.is_running:
             self._succeeded()
             return True
-        loading = self._load_task(active)
-        if not wait:
-            return False
-        try:
-            # A task rather than the coroutine: if *this* caller is cancelled
-            # the load carries on, so an abandoned warm-up does not discard a
-            # load other callers are waiting on.
-            await loading
-        except asyncio.CancelledError:
-            if not loading.cancelled():
-                raise
-            # The load itself was cancelled — the model was switched or the
-            # worker stopped underneath us. That is a failed warm-up for this
-            # caller, not a failed request for the operator.
-            return False
-        return active.is_running
+        self._load_task(active)
+        return False
 
     def _load_task(self, active: worker.LlamaServerWorker) -> asyncio.Task[None]:
         current = self._loading
