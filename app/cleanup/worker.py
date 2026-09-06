@@ -21,6 +21,7 @@ import shutil
 import socket
 import subprocess
 import tempfile
+import threading
 import time
 from contextlib import suppress
 from pathlib import Path
@@ -36,6 +37,10 @@ SERVER_BINARY_NAME = "llama-server"
 # worker. Cleanup requests do not wait on it: a cold start falls back to the
 # ASR result while a bounded warm-up runs on its own.
 START_TIMEOUT_SECONDS = 300.0
+# The listen port is chosen by binding one and letting it go, so another
+# process can claim it in between; llama-server then exits instead of serving.
+# A refused start is retried on a fresh port before giving up.
+START_ATTEMPTS = 2
 FIRST_POLL_SECONDS = 0.02
 MAXIMUM_POLL_SECONDS = 0.25
 STOP_TIMEOUT_SECONDS = 5.0
@@ -81,12 +86,22 @@ class LlamaServerWorker:
         self._process: subprocess.Popen[bytes] | None = None
         self._port = 0
         self._stderr: IO[bytes] | None = None
+        self._ready = False
+        self._stopped = False
         self._start_lock = asyncio.Lock()
+        # stop() is synchronous and shutdown runs it off the event loop, so the
+        # lock that covers spawn/adopt cannot be the asyncio start lock.
+        self._lifecycle = threading.Lock()
 
     @property
     def is_running(self) -> bool:
         process = self._process
         return process is not None and process.poll() is None
+
+    @property
+    def is_ready(self) -> bool:
+        """True only once /health has answered. A spawned but loading child is not."""
+        return self._ready and self.is_running
 
     @property
     def endpoint(self) -> transport.Endpoint:
@@ -112,43 +127,88 @@ class LlamaServerWorker:
 
     async def ensure_started(self, *, budget: float = START_TIMEOUT_SECONDS) -> bool:
         """Start the worker unless it is already up. True when this call started it."""
-        if self.is_running:
+        if self.is_ready:
             return False
         async with self._start_lock:
-            if self.is_running:
+            if self.is_ready:
                 return False
-            self.stop()
+            if self._stopped:
+                raise CleanupUnavailable("The cleanup runtime was stopped.")
+            self._reset_process()
             await self._start(budget)
             return True
 
     def stop(self, *, force: bool = False) -> None:
+        with self._lifecycle:
+            self._stopped = True
+            self._ready = False
+            self._drop_locked(force=force)
+
+    async def _start(self, budget: float) -> None:
+        self._validate()
+        attempts = START_ATTEMPTS
+        while attempts:
+            attempts -= 1
+            port = _loopback_port()
+            try:
+                process = self._launch(port)
+            except OSError as error:
+                raise CleanupUnavailable("The cleanup runtime could not be launched.") from error
+            try:
+                ready = await self._await_ready(process, budget)
+            except BaseException:
+                self.stop()
+                raise
+            if ready:
+                self._mark_ready()
+                return
+            if self._stopped:
+                detail = self.diagnostics()
+                self.stop()
+                raise CleanupUnavailable(
+                    f"The cleanup runtime did not become ready. {detail}".strip()
+                )
+            detail = self.diagnostics()
+            died = process.poll() is not None
+            self._reset_process()
+            if died and attempts:
+                continue
+            raise CleanupUnavailable(f"The cleanup runtime did not become ready. {detail}".strip())
+
+    def _launch(self, port: int) -> subprocess.Popen[bytes]:
+        """Spawn and adopt under the lifecycle lock so stop() cannot miss the child."""
+        with self._lifecycle:
+            if self._stopped:
+                raise CleanupUnavailable("The cleanup runtime was stopped.")
+            process = self._spawn(port)
+            # Adopted before anything is awaited, and before this lock is
+            # released: recording it only once it answers would leak a
+            # model-sized process whenever start is cancelled or stop() races
+            # the window between Popen returning and `_process` being set.
+            self._process = process
+            self._port = port
+            return process
+
+    def _mark_ready(self) -> None:
+        with self._lifecycle:
+            if self._stopped:
+                self._drop_locked()
+                raise CleanupUnavailable("The cleanup runtime was stopped.")
+            self._ready = True
+
+    def _reset_process(self) -> None:
+        """Drop a dead child without marking the worker permanently stopped."""
+        with self._lifecycle:
+            self._ready = False
+            self._drop_locked()
+
+    def _drop_locked(self, *, force: bool = False) -> None:
         process = self._process
         self._process = None
         self._port = 0
         if process is not None:
             _terminate(process, force=force)
         self._close_diagnostics()
-
-    async def _start(self, budget: float) -> None:
-        self._validate()
-        port = _loopback_port()
-        try:
-            process = self._spawn(port)
-        except OSError as error:
-            raise CleanupUnavailable("The cleanup runtime could not be launched.") from error
-        # Adopted before anything is awaited: recording it only once it answers
-        # would leak a model-sized process whenever the start is cancelled.
-        self._process = process
-        self._port = port
-        try:
-            ready = await self._await_ready(process, budget)
-        except BaseException:
-            self.stop()
-            raise
-        if not ready:
-            detail = self.diagnostics()
-            self.stop()
-            raise CleanupUnavailable(f"The cleanup runtime did not become ready. {detail}".strip())
 
     def _validate(self) -> None:
         if not _is_executable(self.binary):
@@ -201,7 +261,7 @@ class LlamaServerWorker:
         limit = time.monotonic() + budget
         delay = FIRST_POLL_SECONDS
         while time.monotonic() < limit:
-            if process.poll() is not None:
+            if self._stopped or process.poll() is not None:
                 return False
             if await _health_ok(self.endpoint):
                 return True

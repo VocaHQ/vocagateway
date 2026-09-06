@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -222,8 +222,10 @@ class CleanupManager:
         self.host = WorkerHost(settings, run_config)
         self._slot = asyncio.Semaphore(1)
         self._active_leases = 0
+        self._pending_stop = False
         self._last_used = time.monotonic()
         self._failure = ""
+        self._load_hold_task: asyncio.Task[None] | None = None
         # Whether an operator-run endpoint's context window has been measured
         # and found big enough. A managed worker needs no such check: the
         # gateway passes its own `--ctx-size`.
@@ -263,7 +265,7 @@ class CleanupManager:
         if not await self._admit():
             yield Lease(reason=CleanupReason.BUSY)
             return
-        self._active_leases += 1
+        self._hold()
         try:
             yield await self._lease()
         finally:
@@ -276,12 +278,16 @@ class CleanupManager:
         and holding an HTTP request open for that long is a request that times
         out somewhere in the middle with nothing to show for it. The load runs
         in the background either way; the settings card polls until the state
-        stops being `loading`.
+        stops being `loading`. A lease is held until that load settles so a
+        settings save cannot kill the worker mid-start.
         """
         if not self.enabled:
             return False
         runtime = await self._runtime()
-        return runtime is not None and await runtime.available()
+        if runtime is not None:
+            return await runtime.available()
+        self._schedule_load_hold()
+        return False
 
     @property
     def loading(self) -> bool:
@@ -303,6 +309,12 @@ class CleanupManager:
         return True
 
     async def shutdown(self) -> None:
+        task = self._load_hold_task
+        self._load_hold_task = None
+        if task is not None and not task.done():
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
         await self.host.aclose()
 
     def status(self) -> CleanupStatusReport:
@@ -343,10 +355,15 @@ class CleanupManager:
         update.apply(self.runtime_config)
         self.runtime_config.save(self.config_path)
         self._external_ok = None
-        if (changed_model or not self.enabled) and self._active_leases == 0:
-            # Applies to new work only. An in-flight request keeps the runtime
-            # it was admitted against; the swap happens once its lease drains.
-            self.host.stop()
+        if changed_model or not self.enabled:
+            # Applies to new work only. An in-flight request or load-hold keeps
+            # the runtime it was admitted against; stop is deferred until the
+            # last lease drains.
+            self._stop_or_defer()
+        else:
+            # Re-enable with the current model (or any update that still wants
+            # this worker) must not leave a deferred stop from a prior disable.
+            self._pending_stop = False
 
     async def _external_runtime(self, endpoint: Endpoint) -> CleanupRuntime | None:
         """An operator-run server, once its context window has been vouched for.
@@ -367,7 +384,10 @@ class CleanupManager:
         runtime = await self._runtime()
         if runtime is not None:
             return Lease(runtime=runtime)
-        return Lease(reason=self._missing_reason())
+        reason = self._missing_reason()
+        if reason is CleanupReason.MODEL_LOADING:
+            self._schedule_load_hold()
+        return Lease(reason=reason)
 
     def _missing_reason(self) -> CleanupReason:
         """Why the slot was free but there is still nothing to run on.
@@ -383,7 +403,11 @@ class CleanupManager:
         """Whether a managed worker could still turn up, given a moment."""
         if not self.preferences.managed or not self.enabled:
             return False
-        if self.model_path() is None or self.host.failure:
+        if self.model_path() is None:
+            return False
+        if self.host.is_loading:
+            return True
+        if self.host.failure:
             return False
         return self.host.runtime_available()
 
@@ -394,10 +418,69 @@ class CleanupManager:
             return False
         return True
 
-    def _release(self) -> None:
+    def _hold(self) -> None:
+        self._active_leases += 1
+
+    def _drop_hold(self) -> None:
         self._active_leases -= 1
         self._last_used = time.monotonic()
+        self._stop_if_due()
+
+    def _release(self) -> None:
+        self._drop_hold()
         self._slot.release()
+
+    def _stop_or_defer(self) -> None:
+        """Stop now, or once the last in-flight lease (including a load-hold) drains."""
+        if self._active_leases == 0:
+            self._pending_stop = False
+            self.host.stop()
+            return
+        self._pending_stop = True
+
+    def _stop_if_due(self) -> None:
+        if self._active_leases:
+            return
+        # `_pending_stop` only wakes this check; whether to kill the worker
+        # comes from live state so a disable→re-enable while leased cannot
+        # stop a worker that is wanted again.
+        self._pending_stop = False
+        if not self.enabled or self._hosted_model_stale():
+            self.host.stop()
+
+    def _hosted_model_stale(self) -> bool:
+        loaded = self.host.loaded_model_id
+        return loaded is not None and loaded != self.model_id
+
+    def _schedule_load_hold(self) -> None:
+        """Hold a lease across a background load so configure cannot kill it.
+
+        The hold is taken here, before yielding back to the request, so
+        configure/idle-unload cannot stop the worker in the gap before the
+        hold task first runs.
+        """
+        if not self._should_hold_load():
+            return
+        existing = self._load_hold_task
+        if existing is not None and not existing.done():
+            return
+        self._hold()
+        self._load_hold_task = asyncio.create_task(self._await_load_hold())
+
+    def _should_hold_load(self) -> bool:
+        if not self.enabled or not self.preferences.managed:
+            return False
+        if self.model_path() is None:
+            return False
+        return not self.host.is_ready
+
+    async def _await_load_hold(self) -> None:
+        try:
+            await self.host.wait_for_load()
+        except Exception:
+            pass
+        finally:
+            self._drop_hold()
 
     async def _runtime(self) -> CleanupRuntime | None:
         if not self.enabled:
@@ -416,6 +499,8 @@ class CleanupManager:
             return False
         if not self.preferences.managed or self._active_leases:
             return False
+        if self.host.is_loading:
+            return False
         return self.host.is_running
 
     def _state(self, installed: bool, runtime_available: bool) -> str:
@@ -425,7 +510,7 @@ class CleanupManager:
             return STATE_ERROR
         if not runtime_available or not installed:
             return STATE_UNAVAILABLE
-        if self.loading:
+        if self.loading or (self.host.is_running and not self.host.is_ready):
             return STATE_LOADING
         return STATE_OFFLOADED if self.host.offloaded else STATE_READY
 

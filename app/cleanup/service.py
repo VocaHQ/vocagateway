@@ -54,7 +54,6 @@ _FAILURE_REASONS: tuple[tuple[type[BaseException], CleanupReason], ...] = (
     (ValueError, CleanupReason.RUNTIME_ERROR),
     (OSError, CleanupReason.RUNTIME_ERROR),
 )
-_RUNTIME_FAILURES = tuple(failure for failure, _ in _FAILURE_REASONS)
 # A second copy of the text is stored only where it is actually recoverable
 # information. `disabled` and `skipped` transcripts were never sent to a model,
 # and their "original" would be the same string twice under the same retention.
@@ -114,11 +113,21 @@ class CleanupService:
         if bypass is not None:
             return self._finish(work.legacy, transcript, bypass)
         started = time.monotonic()
-        cleaned, reason = await self._attempt(work)
+        try:
+            cleaned, reason = await self._attempt(work)
+        except Exception:
+            cleaned, reason = None, CleanupReason.RUNTIME_ERROR
         if cleaned is None:
             refused = reason or CleanupReason.RUNTIME_ERROR
             return self._finish(work.legacy, transcript, self._fallback(options, refused, started))
-        return self._accept(work, cleaned, started)
+        try:
+            return self._accept(work, cleaned, started)
+        except Exception:
+            return self._finish(
+                work.legacy,
+                transcript,
+                self._fallback(options, CleanupReason.RUNTIME_ERROR, started),
+            )
 
     def _bypass(self, work: _Work) -> CleanupOutcome | None:
         """Decisions that need no runtime, in the order they must be made."""
@@ -154,19 +163,24 @@ class CleanupService:
         reporting a tidy fallback for work nobody is waiting for would hide that
         the request was abandoned rather than completed.
         """
-        manager = self.manager
-        if manager is None:
-            return None, CleanupReason.MODEL_UNAVAILABLE
-        async with manager.lease() as lease:
-            if lease.runtime is None:
-                return None, lease.reason or CleanupReason.MODEL_UNAVAILABLE
-            candidate = await self._infer(lease.runtime, work)
-        if isinstance(candidate, CleanupReason):
-            return None, candidate
-        rejected = validation.rejection(work.transcript, candidate, work.resolved or work.language)
-        if rejected is not None:
-            return None, rejected
-        return candidate, None
+        try:
+            manager = self.manager
+            if manager is None:
+                return None, CleanupReason.MODEL_UNAVAILABLE
+            async with manager.lease() as lease:
+                if lease.runtime is None:
+                    return None, lease.reason or CleanupReason.MODEL_UNAVAILABLE
+                candidate = await self._infer(lease.runtime, work)
+            if isinstance(candidate, CleanupReason):
+                return None, candidate
+            rejected = validation.rejection(
+                work.transcript, candidate, work.resolved or work.language
+            )
+            if rejected is not None:
+                return None, rejected
+            return candidate, None
+        except Exception:
+            return None, CleanupReason.RUNTIME_ERROR
 
     async def _infer(self, runtime: CleanupRuntime, work: _Work) -> str | CleanupReason:
         budget = work.options.timeout_seconds
@@ -179,7 +193,7 @@ class CleanupService:
             )
         except CleanupRejected as rejection:
             return rejection.reason
-        except _RUNTIME_FAILURES as failure:
+        except Exception as failure:
             return _reason_for(failure)
 
     def _accept(self, work: _Work, cleaned: str, started: float) -> FinalTranscript:
