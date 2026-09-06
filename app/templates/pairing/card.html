@@ -46,15 +46,22 @@
   </div>
   {% endif %}
   <div class="pairing-layout">
+    {# Enlarging is the primary action: the code exists to be scanned, and a
+       160px square is small to catch with a phone at arm's length. Copying
+       stays as its own control for a device that cannot scan at all. #}
     <div class="pairing-qr-wrap">
-      <button type="button" class="pairing-qr pairing-qr-copy" id="copy-pairing-qr"
+      <button type="button" class="pairing-qr" data-enlarge-qr
+              aria-haspopup="dialog"
+              title="Enlarge the QR"
+              aria-label="Pairing QR for {{ selected_url }}. Enlarge it.">
+        {{ qr_svg_inline }}
+        <span class="pairing-qr-hint" aria-hidden="true">Enlarge</span>
+      </button>
+      <button type="button" class="ghost small pairing-qr-copy" id="copy-pairing-qr"
               data-url="{{ selected_url or "" }}"
               data-token="{{ token_plaintext or "" }}"
-              title="Click to copy gateway address and token"
-              aria-label="Pairing QR for {{ selected_url }}. Click to copy
-              gateway address and token.">
-        {{ qr_svg_inline }}
-        <span class="pairing-qr-hint" aria-hidden="true">Click to copy</span>
+              title="Copy gateway address and token">
+        <span class="pairing-qr-copy-label">Copy address &amp; token</span>
       </button>
     </div>
     <div class="pairing-meta">
@@ -142,6 +149,17 @@
     </div>
     {% endif %}
   </details>
+
+  <dialog id="qr-zoom" class="qr-zoom" aria-label="Pairing QR, enlarged">
+    <button type="button" class="dialog-close" data-dialog-close
+            aria-label="Close">&times;</button>
+    <div class="qr-zoom-figure" id="qr-zoom-figure"></div>
+    <p class="qr-zoom-meta">
+      <span>Scan in VocaPhone</span>
+      <code>{{ selected_url }}</code>
+      <span class="muted small">{{ selected_token_label }} &middot; keep this off screen shares</span>
+    </p>
+  </dialog>
 
   <p class="pairing-note">
     Prefer LAN Wi-Fi when the phone is on the same network; use Tailscale when

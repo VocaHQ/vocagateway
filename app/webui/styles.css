@@ -1165,6 +1165,50 @@ button.pairing-qr:active {
   transform: scale(0.98);
 }
 .pairing-qr svg { width: 160px; height: 160px; display: block; pointer-events: none; }
+.pairing-qr-copy { width: 100%; justify-content: center; }
+
+/* ------------------------------------------------------------- QR enlarged */
+/* Sized off the viewport's short edge so it fills a phone screen and stays
+   square on a laptop; white plate and quiet zone kept, since a scanner needs
+   the contrast and the margin. */
+.qr-zoom {
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  overflow: visible;
+}
+.qr-zoom::backdrop { background: rgb(0 0 0 / 68%); }
+.qr-zoom-figure {
+  display: grid;
+  place-items: center;
+  margin: 28px 28px 0;
+  padding: 18px;
+  border-radius: 14px;
+  background: #fff;
+}
+.qr-zoom-figure svg {
+  display: block;
+  width: min(58vmin, 380px);
+  height: min(58vmin, 380px);
+}
+.qr-zoom-meta {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 18px 28px 26px;
+  text-align: center;
+}
+.qr-zoom-meta > span:first-child { font-weight: 600; }
+.qr-zoom-meta code { font-size: 0.9rem; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .qr-zoom-figure { margin: 22px 16px 0; padding: 12px; }
+  .qr-zoom-meta { padding: 14px 16px 20px; }
+}
 .pairing-qr-hint {
   position: absolute;
   inset: auto 8px 8px 8px;
@@ -2778,7 +2822,7 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; b
   overflow: visible;
 }
 .model-detail-dialog::backdrop { background: rgb(0 0 0 / 55%); }
-.model-detail-close {
+.dialog-close {
   position: absolute;
   top: 12px;
   right: 12px;
@@ -2794,7 +2838,7 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; b
   line-height: 1;
   cursor: pointer;
 }
-.model-detail-close:hover { color: var(--text); border-color: var(--muted); }
+.dialog-close:hover { color: var(--text); border-color: var(--muted); }
 #model-detail-body { max-height: min(84vh, 900px); overflow-y: auto; }
 .model-detail { padding: 26px 28px 24px; }
 .model-detail-head { display: flex; flex-wrap: wrap; gap: 10px 16px; padding-right: 34px; }

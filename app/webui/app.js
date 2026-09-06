@@ -558,26 +558,44 @@
   // ------------------------------------------------------- model detail dialog
   // One <dialog> serves every card: the button htmx-swaps its own markup into
   // #model-detail-body, and we open once that lands so it is never shown empty.
+  // Which control opened each dialog, so focus can go back there on close.
+  const dialogOpener = new WeakMap();
+
+  // Every close path routes through here rather than through the dialog's
+  // `close` event: that event does not fire at all in some Chrome builds, and
+  // Escape would otherwise strand focus inside a hidden dialog.
+  function closeDialog(dialog) {
+    if (!dialog?.open) return;
+    dialog.close();
+    dialogOpener.get(dialog)?.focus();
+    dialogOpener.delete(dialog);
+  }
+
+  function openDialog(dialog, opener) {
+    if (!dialog || dialog.open) return;
+    dialogOpener.set(dialog, opener || null);
+    if (!dialog.dataset.bound) {
+      dialog.dataset.bound = "1";
+      dialog.addEventListener("keydown", (keyEvent) => {
+        if (keyEvent.key !== "Escape") return;
+        keyEvent.preventDefault();
+        closeDialog(dialog);
+      });
+    }
+    dialog.showModal();
+    dialog.querySelector("[data-dialog-close]")?.focus();
+  }
+
   let detailOpener = null;
 
   function modelDetailDialog() {
     return document.getElementById("model-detail");
   }
 
-  // Focus goes back to the Details button that opened the dialog. Doing it here
-  // rather than on the dialog's `close` event on purpose: that event does not
-  // fire at all in some Chrome builds, so every close path routes through this.
-  function closeModelDetail() {
-    const dialog = modelDetailDialog();
-    if (!dialog?.open) return;
-    dialog.close();
-    detailOpener?.focus();
-    detailOpener = null;
-  }
-
   document.body.addEventListener("click", (event) => {
-    if (event.target.closest(".model-detail-close")) {
-      closeModelDetail();
+    const closer = event.target.closest("[data-dialog-close]");
+    if (closer) {
+      closeDialog(closer.closest("dialog"));
       return;
     }
     // Remember who opened it so focus can go back there on close.
@@ -587,34 +605,39 @@
 
   document.body.addEventListener("htmx:afterSwap", (event) => {
     if (event.detail?.target?.id !== "model-detail-body") return;
-    const dialog = modelDetailDialog();
-    if (!dialog || dialog.open) return;
-    // Escape closes natively, which would skip closeModelDetail() and strand
-    // focus inside a hidden dialog, so take that path over ourselves.
-    if (!dialog.dataset.bound) {
-      dialog.dataset.bound = "1";
-      dialog.addEventListener("keydown", (keyEvent) => {
-        if (keyEvent.key !== "Escape") return;
-        keyEvent.preventDefault();
-        closeModelDetail();
-      });
-    }
-    dialog.showModal();
-    dialog.querySelector(".model-detail-close")?.focus();
+    openDialog(modelDetailDialog(), detailOpener);
   });
 
   // An action inside the dialog retargets #models-list, so close once its
   // request is away. Waiting for the click instead would dismiss the dialog
   // before hx-confirm had asked anything.
   document.body.addEventListener("htmx:beforeRequest", (event) => {
-    if (event.detail?.elt?.closest?.("[data-close-detail]")) closeModelDetail();
+    if (event.detail?.elt?.closest?.("[data-dialog-close-on-request]")) {
+      closeDialog(modelDetailDialog());
+    }
   });
 
-  // Backdrop click: the dialog element fills the viewport, so a click landing
-  // on it rather than on the panel inside means "outside".
+  // Backdrop click: a dialog element fills the viewport, so a click landing on
+  // it rather than on the panel inside means "outside".
   document.addEventListener("click", (event) => {
-    const dialog = modelDetailDialog();
-    if (dialog?.open && event.target === dialog) closeModelDetail();
+    if (event.target instanceof HTMLDialogElement && event.target.open) {
+      closeDialog(event.target);
+    }
+  });
+
+  // ------------------------------------------------------------ QR enlarge
+  // The QR's whole job is to be scanned, and 160px is small to catch with a
+  // phone at arm's length. Clone rather than re-render server-side so the
+  // enlarged copy cannot drift from the card after an htmx swap.
+  document.body.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-enlarge-qr]");
+    if (!trigger) return;
+    const dialog = document.getElementById("qr-zoom");
+    const figure = document.getElementById("qr-zoom-figure");
+    const source = trigger.querySelector("svg");
+    if (!dialog || !figure || !source) return;
+    figure.replaceChildren(source.cloneNode(true));
+    openDialog(dialog, trigger);
   });
 
   function initModelFilters() {
@@ -1012,17 +1035,17 @@
     event.preventDefault();
     const url = button.getAttribute("data-url") || "";
     const token = button.getAttribute("data-token") || "";
-    const hint = button.querySelector(".pairing-qr-hint");
+    const hint = button.querySelector(".pairing-qr-copy-label");
     const setHint = (text, copied) => {
       if (!hint) return;
       hint.textContent = text;
       button.classList.toggle("is-copied", Boolean(copied));
-      button.title = copied ? "Copied" : "Click to copy gateway address and token";
+      button.title = copied ? "Copied" : "Copy gateway address and token";
     };
     if (!url || !token) {
       setHint("Nothing to copy", false);
       clearTimeout(button._copyHintTimer);
-      button._copyHintTimer = setTimeout(() => setHint("Click to copy", false), 1600);
+      button._copyHintTimer = setTimeout(() => setHint("Copy address & token", false), 1600);
       return;
     }
     // Same JSON shape the QR encodes (see app.pairing.PairingPayload).
@@ -1044,11 +1067,11 @@
       }
       setHint("Copied", true);
       clearTimeout(button._copyHintTimer);
-      button._copyHintTimer = setTimeout(() => setHint("Click to copy", false), 1600);
+      button._copyHintTimer = setTimeout(() => setHint("Copy address & token", false), 1600);
     } catch (_) {
       setHint("Copy failed", false);
       clearTimeout(button._copyHintTimer);
-      button._copyHintTimer = setTimeout(() => setHint("Click to copy", false), 1600);
+      button._copyHintTimer = setTimeout(() => setHint("Copy address & token", false), 1600);
     }
   });
 

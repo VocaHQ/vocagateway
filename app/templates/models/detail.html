@@ -79,21 +79,21 @@
     <span class="muted">Downloading&hellip; {{ download.percent }}%</span>
     <button class="ghost" hx-post="/ui/partials/models/{{ encoded_id }}/cancel"
             hx-include="#models-filter-form" hx-target="#models-list"
-            hx-swap="innerHTML" data-close-detail>Cancel download</button>
+            hx-swap="innerHTML" data-dialog-close-on-request>Cancel download</button>
     {% elif entry.state == "installed" %}
     {% if not entry.active or entry.offloaded %}
     <button class="primary" hx-post="/ui/partials/models/{{ encoded_id }}/select"
             hx-include="#models-filter-form" hx-target="#models-list"
-            hx-swap="innerHTML" hx-disabled-elt="this" data-close-detail>Load this model</button>
+            hx-swap="innerHTML" hx-disabled-elt="this" data-dialog-close-on-request>Load this model</button>
     {% endif %}
     <button class="ghost danger" hx-delete="/ui/partials/models/{{ encoded_id }}"
             hx-include="#models-filter-form" hx-target="#models-list" hx-swap="innerHTML"
             hx-confirm="Delete {{ entry.label }} from this server?"
-            data-close-detail>Delete</button>
+            data-dialog-close-on-request>Delete</button>
     {% else %}
     <button class="primary" hx-post="/ui/partials/models/{{ encoded_id }}/download"
             hx-include="#models-filter-form" hx-target="#models-list"
-            hx-swap="innerHTML" data-close-detail>Download {{ size_label }}</button>
+            hx-swap="innerHTML" data-dialog-close-on-request>Download {{ size_label }}</button>
     {% endif %}
   </footer>
 </div>
