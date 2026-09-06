@@ -601,6 +601,7 @@ main > .card:first-child, #panel > .card:first-child { border-top: none; padding
   justify-content: center;
   width: 32px;
   height: 32px;
+  min-height: 32px;
   margin: 0;
   padding: 0;
   border: none;
@@ -1787,6 +1788,7 @@ button.icon-btn {
   width: 38px;
   height: 38px;
   min-width: 38px;
+  min-height: 38px;
   padding: 0;
   border-radius: var(--r-pill);
 }
@@ -1861,6 +1863,7 @@ button.filter-side-collapse {
   width: 32px;
   height: 32px;
   min-width: 32px;
+  min-height: 32px;
 }
 button.filter-trigger {
   display: inline-flex;
@@ -2742,7 +2745,10 @@ h2, h3 { letter-spacing: -.4px; }
    and radios, where a 40px box turned every filter row into a 72px stripe. */
 button, input, select { min-height: 40px; }
 input[type="checkbox"], input[type="radio"] { min-height: 0; }
-button.text-link { min-height: auto; }
+button.text-link,
+button.icon-btn,
+button.filter-side-collapse,
+.exposure-banner-dismiss { min-height: auto; }
 summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
 @media (max-width: 1050px) {
   :root { --rail-w: 180px; }
@@ -2765,7 +2771,7 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; b
   .brand h1 { font-size: 16px; }
   .header-actions { gap: 5px; }
   .tabs { position: sticky; top: 0; align-self: stretch; max-height: none; overflow: visible; padding: 8px; flex-direction: row; gap: 3px; background: var(--sunken); border-right: 0; border-bottom: 1px solid var(--line); }
-  .tab { flex: 1; flex-direction: column; gap: 4px; padding: 8px 3px; min-width: 0; font-size: 10px; text-align: center; justify-content: center; white-space: nowrap; }
+  .tab { flex: 1; flex-direction: column; gap: 4px; padding: 8px 3px; min-width: 0; font-size: 12px; text-align: center; justify-content: center; white-space: nowrap; }
   .nav-icon { width: 18px; height: 18px; }
   main { padding: 24px 16px 36px; }
   /* Declared here, not in the earlier ≤760 block: the ≤1050 rule above comes

@@ -1174,3 +1174,39 @@ def test_a_filtered_list_warns_which_models_dfdf9() -> None:
     )
     # And never on the unfiltered catalog, where it would just be noise.
     assert MODELS_LANGUAGE_HINT_CLASS not in models_list_fragment(entries)
+
+
+def test_webui_compact_controls_keep_fixed_size() -> None:
+    """Global 40px min-height must not stretch square/icon buttons; height
+    alone loses to min-height. Mobile tab labels stay at least 12px."""
+    import re
+
+    css = (Path(__file__).resolve().parents[1] / "app" / "webui" / "styles.css").read_text()
+    global_min = css.index("button, input, select { min-height: 40px; }")
+    exemptions = css[global_min : global_min + 320]
+    for selector in (
+        "button.text-link",
+        "button.icon-btn",
+        "button.filter-side-collapse",
+        ".exposure-banner-dismiss",
+    ):
+        assert selector in exemptions
+    assert "min-height: auto" in exemptions
+    assert re.search(
+        r"button\.icon-btn\s*\{[^}]*min-height:\s*38px",
+        css,
+    )
+    assert re.search(
+        r"button\.filter-side-collapse\s*\{[^}]*min-height:\s*32px",
+        css,
+    )
+    assert re.search(
+        r"\.exposure-banner-dismiss\s*\{[^}]*min-height:\s*32px",
+        css,
+    )
+    tab_rules = re.findall(r"\.tab \{[^}]+\}", css)
+    assert tab_rules
+    mobile_tab = tab_rules[-1]
+    assert "font-size: 10px" not in mobile_tab
+    size = re.search(r"font-size:\s*(\d+)px", mobile_tab)
+    assert size is not None and int(size.group(1)) >= 12
