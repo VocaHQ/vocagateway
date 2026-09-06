@@ -96,8 +96,8 @@
     </div>
   </div>
 
-  <div class="pairing-advanced">
-    <h3 class="pairing-advanced-title">Optional</h3>
+  <details class="pairing-advanced">
+    <summary>Custom address &amp; device access</summary>
     <div class="pairing-advanced-grid">
       <form class="pairing-panel" hx-get="/ui/partials/pairing"
             hx-target="#pairing-card" hx-swap="outerHTML">
@@ -143,7 +143,7 @@
       </ul>
     </div>
     {% endif %}
-  </div>
+  </details>
 
   <p class="pairing-note">
     Prefer LAN Wi-Fi when the phone is on the same network; use Tailscale when

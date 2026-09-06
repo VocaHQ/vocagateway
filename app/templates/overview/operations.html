@@ -23,12 +23,12 @@
          hx-get="/ui/partials/operations" hx-trigger="every 5s"
          hx-swap="outerHTML" aria-label="Gateway operations">
   <div class="section-heading">
-    <h2>Live operations <span class="muted">&middot; since start</span></h2>
+    <h2>Activity <span class="muted">&middot; since start</span></h2>
     <span class="probe-age">Engine checked {{ probe_age }}s ago &middot;
       {{ sample_note }}</span>
   </div>
   <div class="operations-grid operations-grid-kpis">
-    {% for card in metric_cards %}
+    {% for card in metric_cards[:4] %}
     {{ metric_card(card) }}
     {% endfor %}
   </div>
@@ -44,11 +44,19 @@
       <span class="ops-bar-seg ops-bar-free" style="width:{{ capacity.free_pct }}%"></span>
     </div>
   </div>
-  <div class="ops-charts ops-charts-inline" aria-label="Recent activity">
-    <div class="ops-charts-grid ops-charts-grid-3">
-      {{ ops_chart(latency_chart) }}
-      {{ ops_chart(outcomes_chart) }}
-      {{ ops_chart(pipeline_chart) }}
+  <details class="activity-details">
+    <summary>Performance details</summary>
+    <div class="operations-grid operations-grid-kpis">
+      {% for card in metric_cards[4:] %}
+      {{ metric_card(card) }}
+      {% endfor %}
     </div>
-  </div>
+    <div class="ops-charts ops-charts-inline" aria-label="Recent activity">
+      <div class="ops-charts-grid ops-charts-grid-3">
+        {{ ops_chart(latency_chart) }}
+        {{ ops_chart(outcomes_chart) }}
+        {{ ops_chart(pipeline_chart) }}
+      </div>
+    </div>
+  </details>
 </section>

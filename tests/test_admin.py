@@ -757,7 +757,9 @@ async def test_custom_download_rejects_bad_url(
 async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[str, str]) -> None:
     overview = await admin_client.get("/ui/partials/overview", headers=auth)
     assert overview.status_code == HTTP_200_OK
-    assert "Live operations" in overview.text
+    assert "Activity" in overview.text
+    assert overview.text.index("onboarding") < overview.text.index('id="operations"')
+    assert '<details class="disclosure card">' in overview.text
     assert 'hx-get="/ui/partials/operations"' in overview.text
     assert "Succeeded" in overview.text
     assert "Failed" in overview.text

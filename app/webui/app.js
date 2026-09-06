@@ -140,6 +140,9 @@
     tokenError.classList.toggle("hidden", !message);
     overlay.classList.remove("hidden");
     overlay.setAttribute("aria-hidden", "false");
+    document.querySelectorAll(".app-header, .tabs, main, .site-footer").forEach((el) => {
+      el.inert = true;
+    });
     tokenInput.focus();
   }
 
@@ -147,6 +150,9 @@
     overlay.classList.add("hidden");
     overlay.setAttribute("aria-hidden", "true");
     tokenInput.value = "";
+    document.querySelectorAll(".app-header, .tabs, main, .site-footer").forEach((el) => {
+      el.inert = false;
+    });
   }
 
   // ------------------------------------------------------------------ token
@@ -159,7 +165,7 @@
     }
     localStorage.setItem(TOKEN_KEY, token);
     hideOverlay();
-    htmx.ajax("GET", "/ui/partials/overview", { target: "#panel", swap: "innerHTML" });
+    openTabByName(document.querySelector(".tab.active")?.dataset.tab || "overview");
     htmx.ajax("GET", "/ui/partials/engine-pill", { target: "#engine-pill", swap: "outerHTML" });
     htmx.ajax("GET", "/ui/partials/exposure-banner", {
       target: "#exposure-banner",
@@ -186,8 +192,9 @@
 
   document.body.addEventListener("htmx:responseError", (event) => {
     if (event.detail.xhr.status === 401) {
+      const hadToken = Boolean(getToken());
       localStorage.removeItem(TOKEN_KEY);
-      showOverlay("Token rejected. Paste the current gateway token.");
+      showOverlay(hadToken ? "Token rejected. Paste the current gateway token." : "");
       return;
     }
     let message = `Request failed (${event.detail.xhr.status}).`;
@@ -230,10 +237,13 @@
       activateTab(tab);
     });
     tab.addEventListener("keydown", (event) => {
-      if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
       const tabs = [...document.querySelectorAll(".tab")];
-      const offset = event.key === "ArrowRight" ? 1 : -1;
-      const next = tabs[(tabs.indexOf(tab) + offset + tabs.length) % tabs.length];
+      const offset = ["ArrowRight", "ArrowDown"].includes(event.key) ? 1 : -1;
+      const index = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1
+        : (tabs.indexOf(tab) + offset + tabs.length) % tabs.length;
+      const next = tabs[index];
       next.focus();
       next.click();
     });
@@ -261,8 +271,12 @@
     }
   });
 
+  let performanceDetailsOpen = false;
   document.body.addEventListener("htmx:beforeSwap", (event) => {
     const target = event.detail && event.detail.target;
+    if (target && target.id === "operations") {
+      performanceDetailsOpen = Boolean(target.querySelector(".activity-details[open]"));
+    }
     // Download / Load / Cancel / poll refresh replace #models-list; keep open families.
     if (target && target.id === "models-list") {
       window.__openModelFamilies = openFamilyNames();
@@ -278,6 +292,10 @@
   });
 
   document.body.addEventListener("htmx:afterSwap", (event) => {
+    if (event.detail?.target?.id === "operations") {
+      const details = document.querySelector("#operations .activity-details");
+      if (details) details.open = performanceDetailsOpen;
+    }
     scheduleModelPoll();
     if (document.getElementById("test-language")) syncTestLanguages();
     // Models tab shell (or list refresh) may reintroduce filter controls.
@@ -341,7 +359,7 @@
 
   function isFilterRailCollapsed() {
     try {
-      return localStorage.getItem(FILTER_RAIL_KEY) === "1";
+      return localStorage.getItem(FILTER_RAIL_KEY) !== "0";
     } catch (_) {
       return false;
     }
@@ -503,7 +521,31 @@
       .forEach((tile) => placeModelsAfterRow(tile));
   }
 
+  function syncModelViews() {
+    const installed = document.getElementById("installed-only-toggle")?.checked;
+    const recommended = document.getElementById("recommended-only-toggle")?.checked;
+    document.querySelectorAll("[data-model-view]").forEach((button) => {
+      const view = button.dataset.modelView;
+      button.setAttribute("aria-pressed", String(view === "all" ? !installed && !recommended
+        : view === "installed" ? installed && !recommended : recommended && !installed));
+    });
+  }
+
+  document.body.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-model-view]");
+    if (!button) return;
+    const form = document.getElementById("models-filter-form");
+    const installed = document.getElementById("installed-only-toggle");
+    const recommended = document.getElementById("recommended-only-toggle");
+    if (!form || !installed || !recommended) return;
+    installed.checked = button.dataset.modelView === "installed";
+    recommended.checked = button.dataset.modelView === "recommended";
+    installed.dispatchEvent(new Event("change", { bubbles: true }));
+    syncModelViews();
+  });
+
   function initModelFilters() {
+    syncModelViews();
     const form = document.getElementById("models-filter-form");
     const clear = document.getElementById("filter-clear");
     if (clear && !clear.dataset.bound) {

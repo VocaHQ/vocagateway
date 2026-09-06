@@ -1,3 +1,10 @@
+<div class="page-head">
+  <div>
+    <p class="eyebrow">YOUR WORKSPACE</p>
+    <h2>Overview</h2>
+    <p>Speech-to-text, on the machine you control.</p>
+  </div>
+</div>
 <section class="status-hero">
   <div class="headline">
     <span class="dot {{ "ok" if ready else "warn" }}" aria-hidden="true"></span>
@@ -7,7 +14,13 @@
     </div>
   </div>
 </section>
-{{ operations_html }}
-{{ system_panel_html }}
-{{ dependencies_html }}
 {{ onboarding_html }}
+{{ operations_html }}
+<details class="disclosure card">
+  <summary>
+    <span>Server details</span>
+    <span class="muted small">Hardware, speech engines &amp; dependencies</span>
+  </summary>
+  {{ system_panel_html }}
+  {{ dependencies_html }}
+</details>

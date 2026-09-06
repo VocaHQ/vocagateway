@@ -3,11 +3,13 @@
    swaps cannot stack duplicates. #}
 <div class="page-head">
   <div>
-    <h2>Pair &amp; test</h2>
+    <p class="eyebrow">CONNECT YOUR PHONE</p><h2>Pair &amp; test</h2>
     <p>Connect the phone app with a QR, then record a short clip here to
        verify the same path the phone uses.</p>
   </div>
 </div>
+<div class="flow-step"><span class="step-number">1</span><div><h3>Connect VocaPhone</h3><p class="muted">Keep your phone and gateway on the same trusted network or VPN.</p></div></div>
 {{ pairing_html }}
+<div class="flow-step"><span class="step-number">2</span><div><h3>Try a transcription</h3><p class="muted">Use this browser to check that your selected model can turn speech into text.</p></div></div>
 {{ test_card_html }}
-{{ network_html }}
+<details class="card disclosure"><summary>Connection &amp; network help</summary>{{ network_html }}</details>
