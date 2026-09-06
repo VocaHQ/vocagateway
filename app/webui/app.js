@@ -135,14 +135,23 @@
     showToast.timer = setTimeout(() => toast.classList.add("hidden"), 5000);
   }
 
+  // Everything outside the token dialog, so tab and screen readers cannot reach
+  // the page behind it. The banner and toast sit outside <main>, so name them too.
+  const BACKGROUND_SELECTOR =
+    "#exposure-banner, .app-header, .tabs, main, .site-footer, #toast";
+
+  function setBackgroundInert(inert) {
+    document.querySelectorAll(BACKGROUND_SELECTOR).forEach((el) => {
+      el.inert = inert;
+    });
+  }
+
   function showOverlay(message = "") {
     tokenError.textContent = message;
     tokenError.classList.toggle("hidden", !message);
     overlay.classList.remove("hidden");
     overlay.setAttribute("aria-hidden", "false");
-    document.querySelectorAll(".app-header, .tabs, main, .site-footer").forEach((el) => {
-      el.inert = true;
-    });
+    setBackgroundInert(true);
     tokenInput.focus();
   }
 
@@ -150,9 +159,7 @@
     overlay.classList.add("hidden");
     overlay.setAttribute("aria-hidden", "true");
     tokenInput.value = "";
-    document.querySelectorAll(".app-header, .tabs, main, .site-footer").forEach((el) => {
-      el.inert = false;
-    });
+    setBackgroundInert(false);
   }
 
   // ------------------------------------------------------------------ token
@@ -538,10 +545,76 @@
     const installed = document.getElementById("installed-only-toggle");
     const recommended = document.getElementById("recommended-only-toggle");
     if (!form || !installed || !recommended) return;
-    installed.checked = button.dataset.modelView === "installed";
-    recommended.checked = button.dataset.modelView === "recommended";
+    const view = button.dataset.modelView;
+    // Re-clicking the current view would refetch an unchanged list.
+    if (installed.checked === (view === "installed")
+        && recommended.checked === (view === "recommended")) return;
+    installed.checked = view === "installed";
+    recommended.checked = view === "recommended";
     installed.dispatchEvent(new Event("change", { bubbles: true }));
     syncModelViews();
+  });
+
+  // ------------------------------------------------------- model detail dialog
+  // One <dialog> serves every card: the button htmx-swaps its own markup into
+  // #model-detail-body, and we open once that lands so it is never shown empty.
+  let detailOpener = null;
+
+  function modelDetailDialog() {
+    return document.getElementById("model-detail");
+  }
+
+  // Focus goes back to the Details button that opened the dialog. Doing it here
+  // rather than on the dialog's `close` event on purpose: that event does not
+  // fire at all in some Chrome builds, so every close path routes through this.
+  function closeModelDetail() {
+    const dialog = modelDetailDialog();
+    if (!dialog?.open) return;
+    dialog.close();
+    detailOpener?.focus();
+    detailOpener = null;
+  }
+
+  document.body.addEventListener("click", (event) => {
+    if (event.target.closest(".model-detail-close")) {
+      closeModelDetail();
+      return;
+    }
+    // Remember who opened it so focus can go back there on close.
+    const trigger = event.target.closest("[data-open-detail]");
+    if (trigger) detailOpener = trigger;
+  });
+
+  document.body.addEventListener("htmx:afterSwap", (event) => {
+    if (event.detail?.target?.id !== "model-detail-body") return;
+    const dialog = modelDetailDialog();
+    if (!dialog || dialog.open) return;
+    // Escape closes natively, which would skip closeModelDetail() and strand
+    // focus inside a hidden dialog, so take that path over ourselves.
+    if (!dialog.dataset.bound) {
+      dialog.dataset.bound = "1";
+      dialog.addEventListener("keydown", (keyEvent) => {
+        if (keyEvent.key !== "Escape") return;
+        keyEvent.preventDefault();
+        closeModelDetail();
+      });
+    }
+    dialog.showModal();
+    dialog.querySelector(".model-detail-close")?.focus();
+  });
+
+  // An action inside the dialog retargets #models-list, so close once its
+  // request is away. Waiting for the click instead would dismiss the dialog
+  // before hx-confirm had asked anything.
+  document.body.addEventListener("htmx:beforeRequest", (event) => {
+    if (event.detail?.elt?.closest?.("[data-close-detail]")) closeModelDetail();
+  });
+
+  // Backdrop click: the dialog element fills the viewport, so a click landing
+  // on it rather than on the panel inside means "outside".
+  document.addEventListener("click", (event) => {
+    const dialog = modelDetailDialog();
+    if (dialog?.open && event.target === dialog) closeModelDetail();
   });
 
   function initModelFilters() {

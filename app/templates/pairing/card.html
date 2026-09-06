@@ -17,9 +17,7 @@
    #pairing-card on every token/url change, so a sibling panel outside that
    id would accumulate duplicates. Pair & test mounts it once at page end. #}
 <div class="card" id="pairing-card">
-  <div class="section-heading">
-    <h2>Pair phone</h2>
-  </div>
+  {# Step 1 above ("Connect VocaPhone") is this card's heading. #}
   <p class="muted pairing-lead">Scan in VocaPhone on iPhone or Android.
      The QR includes the live token, so keep this page private while it is on screen.</p>
   {% if token_status == "stale" %}

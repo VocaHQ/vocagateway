@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
-from html import escape
+from collections.abc import Callable, Mapping
+from types import MappingProxyType
+from typing import Any
 from urllib.parse import quote
 
 from app.catalog import DEFAULT_CATALOG, LANGUAGE_NAMES
@@ -19,8 +21,6 @@ _SIZE_FILTER_OPTIONS: tuple[tuple[str, str], ...] = (
     ("800mb", "Under 800 MB"),
     ("1500mb", "Under 1.5 GB"),
 )
-
-LANGUAGE_PREVIEW_COUNT = 4
 
 
 class _FilterOptions:
@@ -63,28 +63,39 @@ class _ModelCardView:
         return label
 
     @classmethod
-    def info_id(cls, model_id: str) -> str:
-        escaped = escape(model_id, quote=True).replace("%", "")
-        sanitized = escaped.replace(":", "-")
-        return f"model-info-{sanitized}"
-
-    @classmethod
     def family_dom_id(cls, family: str) -> str:
         cleaned = re.sub(r"[^a-zA-Z0-9]+", "-", family).strip("-")
         slug = cleaned.lower() or "family"
         return f"family-models-{slug}"
 
     @classmethod
-    def language_disclosure(cls, entry: AdminModelEntry) -> dict[str, object] | None:
+    def spec_chips(cls, entry: AdminModelEntry) -> list[dict[str, str]]:
+        """The three facts that decide a pick, as separate chips.
+
+        They used to run together in one middot-joined line that wrapped
+        mid-phrase ("Fastest · cached / streaming"), which read as one long
+        sentence rather than three comparable specs.
+        """
+        specs = (
+            ("size", _format_bytes(entry.size_bytes)),
+            ("languages", entry.languages),
+            ("quality", entry.quality),
+        )
+        return [{"kind": kind, "text": text} for kind, text in specs if text]
+
+    @classmethod
+    def language_list(cls, entry: AdminModelEntry) -> dict[str, object] | None:
+        """Every language the model handles, for the detail panel.
+
+        The card used to hide these behind a hover popover with its own inner
+        scrollbar; a model covering 25 languages was unreadable there.
+        """
         names = entry.language_names
-        if len(names) < 2:
+        if not names:
             return None
-        show_all = len(names) <= LANGUAGE_PREVIEW_COUNT + 1
         return {
-            "show_all": show_all,
             "names": names,
-            "preview": None if show_all else names[:LANGUAGE_PREVIEW_COUNT],
-            "remaining_count": None if show_all else len(names) - LANGUAGE_PREVIEW_COUNT,
+            "count": len(names),
             "auto": entry.detects_language_automatically,
         }
 
@@ -112,8 +123,7 @@ class _ModelCardView:
             "size_label": _format_bytes(entry.size_bytes),
             "license_name": entry.license_name if has_custom_lic else None,
             "personal_use_only": not entry.commercial_use,
-            "info_id": cls.info_id(entry.id),
-            "language_disclosure": cls.language_disclosure(entry),
+            "spec_chips": cls.spec_chips(entry),
             "download": download,
         }
 
@@ -263,6 +273,126 @@ def _request_model_issue_url() -> str:
     )
 
 
+DEFAULT_PICKER_LANGUAGE = "en"
+
+# What an operator is actually choosing between. Ordered most-distinctive first:
+# picks are drawn in this order and each intent skips models already taken, so
+# three cards never show the same model three times.
+_INTENT_FIELD = "intent"
+_PICKER_INTENTS: tuple[dict[str, str], ...] = (
+    {
+        _INTENT_FIELD: "balanced",
+        "icon": "\u2696\ufe0f",
+        "title": "Best of both",
+        "blurb": "Good speed and good accuracy. Start here if you are unsure.",
+        "lead": "1",
+    },
+    {
+        _INTENT_FIELD: "accurate",
+        "icon": "\U0001f3af",
+        "title": "Best accuracy",
+        "blurb": "Fewest mistakes to fix afterwards. Slower, bigger download.",
+        "lead": "",
+    },
+    {
+        _INTENT_FIELD: "fastest",
+        "icon": "\U0001f40e",
+        "title": "Fastest",
+        "blurb": "Text appears while you speak. Expect more small errors.",
+        "lead": "",
+    },
+)
+
+
+def _fastest_key(entry: AdminModelEntry) -> tuple[bool, int, int, bool, int]:
+    # Streaming first: this card exists for live dictation, where decoding
+    # incrementally is the difference an operator feels, not a rating point.
+    return (
+        not entry.supports_streaming,
+        -entry.speed_rating,
+        -entry.accuracy_rating,
+        not entry.recommended,
+        entry.size_bytes,
+    )
+
+
+def _accurate_key(entry: AdminModelEntry) -> tuple[int, int, bool, int]:
+    return (
+        -entry.accuracy_rating,
+        -entry.speed_rating,
+        not entry.recommended,
+        entry.size_bytes,
+    )
+
+
+def _balanced_key(entry: AdminModelEntry) -> tuple[int, int, bool, int]:
+    return (
+        -(entry.speed_rating + entry.accuracy_rating),
+        abs(entry.speed_rating - entry.accuracy_rating),
+        not entry.recommended,
+        entry.size_bytes,
+    )
+
+
+# Every key ends with `not recommended` then size: among models that score the
+# same, prefer the one this machine was sized for, then the smaller download.
+_INTENT_SORT_KEYS: Mapping[str, Callable[[AdminModelEntry], tuple[Any, ...]]] = MappingProxyType(
+    {"fastest": _fastest_key, "accurate": _accurate_key, "balanced": _balanced_key}
+)
+
+
+def _picker_candidates(entries: list[AdminModelEntry], language: str) -> list[AdminModelEntry]:
+    """Models this host can actually run today, for the chosen language.
+
+    Excludes anything whose runtime is missing (recommending a model the machine
+    cannot load is worse than recommending nothing) and anything retired. An
+    empty `language_codes` means the model takes any language.
+    """
+    return [
+        entry
+        for entry in entries
+        if not entry.retired
+        and entry.runtime_requirement is None
+        and entry.speed_rating
+        and (not entry.language_codes or language in entry.language_codes)
+    ]
+
+
+def model_picker_fragment(
+    entries: list[AdminModelEntry], language: str = DEFAULT_PICKER_LANGUAGE
+) -> str:
+    """Three concrete picks for this machine, one per thing people optimise for."""
+    candidates = _picker_candidates(entries, language)
+    picks: list[dict[str, object]] = []
+    taken: set[str] = set()
+    for intent in _PICKER_INTENTS:
+        ranked = sorted(candidates, key=_INTENT_SORT_KEYS[intent[_INTENT_FIELD]])
+        choice = next((entry for entry in ranked if entry.id not in taken), None)
+        if choice is None:
+            continue
+        taken.add(choice.id)
+        picks.append({**intent, **_ModelCardView.model_card_context(choice)})
+    return render(
+        "models/picker.html",
+        picks=picks,
+        language=language,
+        language_name=LANGUAGE_NAMES.get(language, language),
+        language_options=_FilterOptions.language_options(),
+    )
+
+
+def model_detail_fragment(entry: AdminModelEntry) -> str:
+    """Full record for one model, rendered into the shared detail dialog.
+
+    Everything the card has to truncate lives here at full length: the whole
+    description, every language, and the provenance facts.
+    """
+    context = _ModelCardView.model_card_context(entry)
+    context["language_list"] = _ModelCardView.language_list(entry)
+    context["engine_label"] = ENGINE_LABELS.get(entry.engine, entry.engine)
+    return render("models/detail.html", **context)
+
+
 def models_fragment(entries: list[AdminModelEntry]) -> str:
     installed = sum(entry.state == "installed" for entry in entries)
     families = len({entry.family for entry in entries if entry.family})
@@ -275,6 +405,7 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
         language_options=_FilterOptions.language_options(),
         engine_options=_FilterOptions.engine_options(entries),
         size_options=_SIZE_FILTER_OPTIONS,
+        picker_html=model_picker_fragment(entries),
         list_html=models_list_fragment(entries),
         request_model_issue_url=_request_model_issue_url(),
     )

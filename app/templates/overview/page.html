@@ -5,16 +5,20 @@
     <p>Speech-to-text, on the machine you control.</p>
   </div>
 </div>
+{# When ready, the hero carries the two next actions itself: a second "You're
+   set" card underneath repeated the same sentence. When setup is unfinished the
+   checklist below is doing different work, so it stays a card of its own. #}
 <section class="status-hero">
   <div class="headline">
     <span class="dot {{ "ok" if ready else "warn" }}" aria-hidden="true"></span>
     <div>
-      <h2>{{ "Ready for dictation" if ready else "Setup still needed" }}</h2>
+      <h3>{{ "Ready for dictation" if ready else "Setup still needed" }}</h3>
       <p>{{ hero_copy }}</p>
     </div>
   </div>
+  {% if ready %}{{ onboarding_html }}{% endif %}
 </section>
-{{ onboarding_html }}
+{% if not ready %}{{ onboarding_html }}{% endif %}
 {{ operations_html }}
 <details class="disclosure card">
   <summary>

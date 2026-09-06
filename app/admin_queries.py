@@ -4,7 +4,7 @@ from importlib import util as importlib_util
 from types import MappingProxyType
 from typing import Any
 
-from app import schemas
+from app import model_ratings, schemas
 from app.build_info import current_commit
 from app.catalog import catalog_source_url, language_names, recommended_ids
 from app.config import Settings
@@ -290,6 +290,8 @@ class _ModelEntryHelper:
             license_name=model.license_name,
             commercial_use=model.commercial_use,
             detects_language_automatically=model.detects_language_automatically,
+            speed_rating=model_ratings.speed_rating(model),
+            accuracy_rating=model_ratings.accuracy_rating(model),
             language_names=language_names(model.language_codes),
             language_codes=list(model.language_codes),
             state=resolution[0],

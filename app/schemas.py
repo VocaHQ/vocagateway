@@ -208,6 +208,11 @@ class AdminModelEntry(BaseModel):
     license_name: str = "See model source"
     commercial_use: bool = True
     detects_language_automatically: bool = False
+    # Relative 1-5 ratings derived in app.model_ratings from the catalog's own
+    # `quality` wording and size. Not measured WER — the UI says so too. 0 means
+    # "not rated", which is what a user-supplied custom model gets.
+    speed_rating: int = 0
+    accuracy_rating: int = 0
     # Named languages behind the `languages` summary, and the codes the filter
     # matches on. Empty codes mean "matches any language" rather than none.
     language_names: list[str] = []

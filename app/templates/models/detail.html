@@ -1,0 +1,98 @@
+{% from "macros/icons.html" import active_label %}
+{% from "macros/ratings.html" import speed_and_accuracy %}
+{# Everything the card has to shorten, at full length. Replaces the old hover
+   popover, which overlapped neighbouring cards and put a 25-language list
+   behind its own inner scrollbar. #}
+<div class="model-detail" data-model-id="{{ entry.id }}">
+  <header class="model-detail-head">
+    <div>
+      <p class="eyebrow">{{ entry.family or engine_label }}</p>
+      <h3>{{ entry.label }}</h3>
+    </div>
+    <span class="model-tags">
+      {% if entry.active %}{{ active_label() }}
+      {% elif entry.recommended %}<span class="badge recommended">recommended</span>{% endif %}
+      {% if entry.offloaded %}<span class="badge offloaded">offloaded</span>{% endif %}
+      {% if entry.retired %}<span class="badge retired">retired</span>{% endif %}
+      {% if entry.detects_language_automatically %}
+      <span class="badge auto-language">auto language</span>{% endif %}
+      {% if entry.runtime_requirement %}
+      <span class="badge missing">needs {{ entry.runtime_requirement }}</span>{% endif %}
+    </span>
+  </header>
+
+  <p class="model-detail-blurb">{{ entry.description }}</p>
+
+  {% if entry.retired %}
+  <p class="callout warning model-detail-note">
+    Retired{% if entry.replacement_id %}; use <code>{{ entry.replacement_id }}</code>{% endif %}{% if entry.retirement_reason %}. {{ entry.retirement_reason }}{% endif %}
+  </p>
+  {% endif %}
+  {% if entry.runtime_requirement and entry.runtime_hint %}
+  <p class="callout warning model-detail-note">
+    <strong>{{ entry.runtime_requirement }} is not installed on this host.</strong>
+    The weights still download correctly — {{ entry.runtime_hint }}.
+  </p>
+  {% endif %}
+
+  {% if entry.speed_rating or entry.accuracy_rating %}
+  <section class="model-detail-ratings">
+    {{ speed_and_accuracy(entry) }}
+    <p class="muted small">Relative across this catalog, from each model&rsquo;s size and
+       published description &mdash; not a measured word error rate on your audio.</p>
+  </section>
+  {% endif %}
+
+  <dl class="facts model-detail-facts">
+    <dt>Download size</dt><dd>{{ size_label }}</dd>
+    <dt>Speed / accuracy</dt><dd>{{ entry.quality }}</dd>
+    <dt>Engine</dt><dd>{{ engine_label }}</dd>
+    <dt>Streaming</dt>
+    <dd>{{ "Streams live" if entry.supports_streaming else "Batch only" }}</dd>
+    <dt>Source</dt>
+    <dd>{% if entry.source_url %}<a href="{{ entry.source_url }}" target="_blank"
+           rel="noopener noreferrer">{{ entry.source }}</a>{% else %}{{ entry.source }}{% endif %}</dd>
+    <dt>License</dt>
+    <dd>{{ license_name or entry.license_name }}{% if personal_use_only %}
+        <span class="badge missing">personal use only</span>{% endif %}</dd>
+    <dt>Model id</dt><dd><code>{{ entry.id }}</code></dd>
+  </dl>
+
+  {% if language_list %}
+  <section class="model-detail-languages">
+    <h4>Languages <span class="model-detail-count">{{ language_list.count }}</span></h4>
+    {% if language_list.auto %}
+    <p class="muted small">This model picks the language itself; these are languages it
+       handles well, not options you can force.</p>
+    {% endif %}
+    <div class="model-language-list">
+      {% for name in language_list.names %}
+      <span class="model-language-chip">{{ name }}</span>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <footer class="model-detail-actions">
+    {% if entry.state == "downloading" %}
+    <span class="muted">Downloading&hellip; {{ download.percent }}%</span>
+    <button class="ghost" hx-post="/ui/partials/models/{{ encoded_id }}/cancel"
+            hx-include="#models-filter-form" hx-target="#models-list"
+            hx-swap="innerHTML" data-close-detail>Cancel download</button>
+    {% elif entry.state == "installed" %}
+    {% if not entry.active or entry.offloaded %}
+    <button class="primary" hx-post="/ui/partials/models/{{ encoded_id }}/select"
+            hx-include="#models-filter-form" hx-target="#models-list"
+            hx-swap="innerHTML" hx-disabled-elt="this" data-close-detail>Load this model</button>
+    {% endif %}
+    <button class="ghost danger" hx-delete="/ui/partials/models/{{ encoded_id }}"
+            hx-include="#models-filter-form" hx-target="#models-list" hx-swap="innerHTML"
+            hx-confirm="Delete {{ entry.label }} from this server?"
+            data-close-detail>Delete</button>
+    {% else %}
+    <button class="primary" hx-post="/ui/partials/models/{{ encoded_id }}/download"
+            hx-include="#models-filter-form" hx-target="#models-list"
+            hx-swap="innerHTML" data-close-detail>Download {{ size_label }}</button>
+    {% endif %}
+  </footer>
+</div>

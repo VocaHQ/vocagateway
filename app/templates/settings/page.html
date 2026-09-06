@@ -1,4 +1,4 @@
-<div class="page-head">
+<div class="page-head" data-page="settings">
   <div>
     <p class="eyebrow">PREFERENCES &amp; ACCESS</p><h2>Settings</h2>
     <p>Engine, network paths, device tokens, and browser tools for this gateway.</p>
@@ -7,7 +7,7 @@
 
 <div class="card" id="engine-settings-card">
   <div class="section-heading">
-    <h2>Speech engine</h2>
+    <h3>Speech engine</h3>
   </div>
   <p class="muted">Local engine that transcribes audio. Choosing a model under
      Models usually sets this for you. Only engines this machine can run are listed.</p>
@@ -20,6 +20,7 @@
           <option value="{{ value }}"{% if value == config.engine %} selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
+        {% if engine_hint %}<small>{{ engine_hint }}</small>{% endif %}
       </label>
       <label class="settings-field">
         <span>Compute device</span>
@@ -70,12 +71,12 @@
       <button type="submit" class="primary">Save settings</button>
     </div>
   </form>
-  <p id="engine-result" class="muted settings-engine-result">{{ engine_hint }}</p>
+  <p id="engine-result" class="muted settings-engine-result" role="status" aria-live="polite"></p>
 </div>
 
 <div class="card" id="network-settings-card">
   <div class="section-heading">
-    <h2>Network and storage</h2>
+    <h3>Network and storage</h3>
   </div>
   <p class="muted">Where this process listens and where it keeps config and
      models on disk.</p>
@@ -92,7 +93,7 @@
 
 <div class="card" id="browser-settings-card">
   <div class="section-heading">
-    <h2>This browser</h2>
+    <h3>This browser</h3>
   </div>
   <p class="muted">Diagnostics are a redacted snapshot for bug reports
      (setup, dependencies, hardware, counters). No token, recordings, or

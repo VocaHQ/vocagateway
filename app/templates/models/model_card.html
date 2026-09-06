@@ -1,39 +1,10 @@
 {% from "macros/icons.html" import active_label, info as info_icon %}
+{% from "macros/ratings.html" import speed_and_accuracy %}
 
-{% macro language_chips(names) %}{% for name in names %}<span class="model-language-chip">{{ name }}</span>{% endfor %}{% endmacro %}
-
-{# Language names behind a summary like "25 European languages": the first
-   few show on the closed card so "does this speak my language?" is
-   answerable without opening every model; the rest sit behind a toggle. #}
-{% macro language_disclosure(ld) %}
-{% if ld %}
-{% if ld.show_all %}
-<div class="model-languages">
-  {% if ld.auto %}
-  <p class="model-language-note muted small">This model picks the language itself; these are
-     languages it handles well, not options you can force.</p>
-  {% endif %}
-  <div class="model-language-list">{{ language_chips(ld.names) }}</div>
-</div>
-{% else %}
-<details class="model-languages">
-  <summary>
-    <span class="model-language-preview">{{ language_chips(ld.preview) }}</span>
-    <span class="model-language-more">+{{ ld.remaining_count }} more</span>
-    <span class="model-language-less">Show fewer</span>
-  </summary>
-  {% if ld.auto %}
-  <p class="model-language-note muted small">This model picks the language itself; these are
-     languages it handles well, not options you can force.</p>
-  {% endif %}
-  <div class="model-language-list">{{ language_chips(ld.names) }}</div>
-</details>
-{% endif %}
-{% endif %}
-{% endmacro %}
-
-{# Info icon (left) + actions (right). Hover/focus shows a popover - no
-   in-card accordion that stretches tile height. #}
+{# The card carries only what a scan-and-compare needs: name, three spec chips,
+   a short blurb, and the primary action. "Details" opens the shared dialog with
+   the full description, provenance and language list - that used to be a hover
+   popover which overlapped its neighbours and scrolled internally. #}
 {% macro model_card(card) %}
 {% set entry = card.entry %}
 <article class="model-card" role="listitem"
@@ -68,49 +39,24 @@
         {% endif %}
       </span>
     </div>
-    <p class="model-meta">{{ card.size_label }} &middot; {{ entry.languages }} &middot; {{ entry.quality }}</p>
-    <p class="model-blurb" title="{{ entry.description }}">
-      {{ entry.description }}
+    <p class="model-specs">
+      {% for chip in card.spec_chips %}
+      <span class="model-spec model-spec-{{ chip.kind }}">{{ chip.text }}</span>
+      {% endfor %}
     </p>
-    {% if entry.retired %}
-    <p class="model-retirement-note muted small">
-      Retired{% if entry.replacement_id %}; use {{ entry.replacement_id }}{% endif %}{% if entry.retirement_reason %}. {{ entry.retirement_reason }}{% endif %}
-    </p>
-    {% endif %}
-    {# The weights download fine without their runtime, so say what is still
-       missing before the operator spends the bandwidth on them. The badge above
-       names the requirement, so this line carries only how to satisfy it. #}
-    {% if entry.runtime_requirement and entry.runtime_hint %}
-    <p class="model-runtime-note small">
-      Not installed yet &mdash; {{ entry.runtime_hint }}.
-      {%- if entry.runtime_docs_url %}
-      <a href="{{ entry.runtime_docs_url }}" target="_blank" rel="noopener noreferrer">
-        Installation instructions</a>{% endif %}
-    </p>
-    {% endif %}
+    {{ speed_and_accuracy(entry) }}
+    <p class="model-blurb">{{ entry.description }}</p>
   </div>
   <div class="model-toolbar">
     <div class="model-toolbar-start">
-      <div class="model-info">
-        <button type="button" class="model-info-btn" aria-label="More model details"
-                aria-describedby="{{ card.info_id }}" title="Source, license, languages">
-          {{ info_icon() }}
-        </button>
-        <div class="model-info-pop" id="{{ card.info_id }}" role="tooltip">
-          <p class="model-detail-meta">
-            {% set sep = joiner(" · ") -%}
-            {{ sep() }}{% if entry.source_url %}<a class="model-source-link" href="{{ entry.source_url }}"
-               target="_blank" rel="noopener noreferrer">{{ entry.source }}</a>{% else %}{{ entry.source }}{% endif %}
-            {%- if card.license_name %}{{ sep() }}{{ card.license_name }}{% endif %}
-            {%- if entry.supports_streaming %}{{ sep() }}streams live{% endif %}
-            {%- if card.personal_use_only %}{{ sep() }}personal use only{% endif %}
-          </p>
-          {{ language_disclosure(card.language_disclosure) }}
-        </div>
-      </div>
-      {% if entry.family %}
-      <span class="model-family-pill" title="Family">{{ entry.family }}</span>
-      {% endif %}
+      <button type="button" class="ghost small model-details-btn"
+              hx-get="/ui/partials/models/{{ card.encoded_id }}/detail"
+              hx-target="#model-detail-body" hx-swap="innerHTML"
+              data-open-detail
+              aria-haspopup="dialog"
+              aria-label="Details for {{ entry.label }}">
+        {{ info_icon() }}<span>Details</span>
+      </button>
     </div>
     <div class="model-actions">
       {% if entry.state == "downloading" %}

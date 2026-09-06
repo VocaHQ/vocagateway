@@ -168,7 +168,7 @@ class _OverviewPage:
     @classmethod
     def _hero_copy(cls, ready: bool) -> str:
         if ready:
-            return "Pair a phone or run a quick test when you want."
+            return "Pair a phone or run a quick test. Switch models anytime from the header."
         return "Finish the steps below, then pair your phone."
 
     @classmethod

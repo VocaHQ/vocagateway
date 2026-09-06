@@ -30,10 +30,13 @@
             hx-target="#models-list" hx-swap="innerHTML">{{ refresh_icon() }}</button>
   </div>
 </div>
+{{ picker_html }}
+{# Quick views. These drive the two hidden toggles in the filter form below, so
+   the form stays the single source of truth for every hx-include. #}
 <div class="catalog-views" role="group" aria-label="Browse models">
-  <button type="button" class="ghost" data-model-view="all" aria-pressed="true">All models</button>
-  <button type="button" class="ghost" data-model-view="recommended" aria-pressed="false">Fits this machine</button>
-  <button type="button" class="ghost" data-model-view="installed" aria-pressed="false">Downloaded</button>
+  <button type="button" data-model-view="all" aria-pressed="true">All models</button>
+  <button type="button" data-model-view="recommended" aria-pressed="false">Fits this machine</button>
+  <button type="button" data-model-view="installed" aria-pressed="false">Downloaded</button>
 </div>
 <div class="models-layout" id="models-layout">
   <aside class="models-filter" id="models-filter" aria-label="Model filters">
@@ -79,7 +82,7 @@
       </fieldset>
       <fieldset class="filter-field">
         <legend>Engine</legend>
-        <div class="filter-check-list filter-check-list-engines" id="engine-filter-list">
+        <div class="filter-check-list" id="engine-filter-list">
           {% for value, label in engine_options %}
           <label class="filter-check">
             <input type="checkbox" name="engine" value="{{ value }}" /><span>{{ label }}</span>
@@ -95,19 +98,11 @@
           {% endfor %}
         </select>
       </label>
-      <div class="filter-toggles">
-        <label class="filter-toggle" for="installed-only-toggle">
-          <input type="checkbox" id="installed-only-toggle" name="installed_only"
-                 value="true" class="sr-only" />
-          Installed only
-        </label>
-        <label class="filter-toggle" for="recommended-only-toggle"
-               title="Models picked for this machine (RAM and platform)">
-          <input type="checkbox" id="recommended-only-toggle" name="recommended_only"
-                 value="true" class="sr-only" />
-          Fits this machine
-        </label>
-      </div>
+      {# Driven by the quick views above, not shown twice. #}
+      <input type="checkbox" id="installed-only-toggle" name="installed_only"
+             value="true" class="sr-only" tabindex="-1" aria-hidden="true" />
+      <input type="checkbox" id="recommended-only-toggle" name="recommended_only"
+             value="true" class="sr-only" tabindex="-1" aria-hidden="true" />
       <button type="button" class="ghost small filter-clear" id="filter-clear">
         Clear filters
       </button>
@@ -149,3 +144,10 @@
     </details>
   </div>
 </div>
+
+{# One dialog for all 57 cards: each "Details" button swaps its own markup in. #}
+<dialog id="model-detail" class="model-detail-dialog" aria-label="Model details">
+  <button type="button" class="model-detail-close" data-close-detail
+          aria-label="Close details">&times;</button>
+  <div id="model-detail-body"></div>
+</dialog>

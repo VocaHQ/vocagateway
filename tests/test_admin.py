@@ -865,9 +865,10 @@ def _assert_about_surface(html: str) -> None:
     assert 'id="about-this-build"' in html
     assert 'id="about-family"' in html
     assert 'id="about-talk"' in html
-    assert "<h2>This build</h2>" in html
-    assert "<h2>Part of VocaHQ</h2>" in html
-    assert "<h2>Talk to us</h2>" in html
+    # h3, not h2: the page title is the only h2 under the app's h1.
+    assert "<h3>This build</h3>" in html
+    assert "<h3>Part of VocaHQ</h3>" in html
+    assert "<h3>Talk to us</h3>" in html
     assert "about-kicker" not in html
     assert "about-card-kicker" not in html
     assert "VocaGateway early." not in html
@@ -997,46 +998,64 @@ def test_model_cards_name_their_languages() -> None:
         # exercises the same path production uses, not a private helper.
         return models_list_fragment([entry])
 
-    parakeet = card("sherpa-onnx:parakeet-tdt-0.6b-v3-int8")
-    parakeet_summary = parakeet.split("</summary>")[0]
-    # Named on the closed card, not hidden behind a bare count.
-    assert 'class="model-language-chip">Bulgarian</span>' in parakeet_summary
-    assert 'class="model-language-chip">Croatian</span>' in parakeet_summary
-    assert 'class="model-language-chip">Czech</span>' in parakeet_summary
-    assert "+21 more" in parakeet_summary
-    # The remaining 21 are still on the card, just below the toggle.
-    assert 'class="model-language-chip">Ukrainian</span>' in parakeet
+    def detail(model_id: str) -> str:
+        """The same entry through the detail panel, where languages now live."""
+        from app.fragments.models import model_detail_fragment
+
+        model = next(model for model in DEFAULT_CATALOG if model.id == model_id)
+        return model_detail_fragment(
+            AdminModelEntry(
+                id=model.id,
+                engine=model.engine,
+                label=model.label,
+                size_bytes=model.size_bytes,
+                languages=model.languages,
+                quality=model.quality,
+                family=model.family,
+                description=model.description,
+                source=model.source,
+                state=NOT_INSTALLED_STATE,
+                active=False,
+                recommended=False,
+                detects_language_automatically=model.detects_language_automatically,
+                language_names=language_names(model.language_codes),
+            )
+        )
+
+    parakeet = detail("sherpa-onnx:parakeet-tdt-0.6b-v3-int8")
+    # Every one of the 24, named in full — no preview and no "+N more".
+    for name in ("Bulgarian", "Croatian", "Czech", "Ukrainian"):
+        assert f'class="model-language-chip">{name}</span>' in parakeet
+    assert "more" not in parakeet.split('class="model-detail-languages"')[1]
     # A model that can be pinned carries neither the badge nor the caveat.
     assert "badge auto-language" not in parakeet
     assert "picks the language itself" not in parakeet
 
-    dolphin = card("sherpa-onnx:dolphin-small-ctc-int8")
-    assert "+36 more" in dolphin.split("</summary>")[0]
+    dolphin = detail("sherpa-onnx:dolphin-small-ctc-int8")
     assert HINDI_LANGUAGE in dolphin and "Bengali" in dolphin and "Tamil" in dolphin
     assert 'class="badge auto-language"' in dolphin
     assert "picks the language itself" in dolphin
-    assert 'class="model-language-note' in dolphin
 
-    # Whisper carries its full set too, and every code resolves to a real name
-    # rather than leaking a bare "af, am, be" at the reader.
-    whisper = card("whisper.cpp:ggml-large-v3-turbo.bin")
-    assert "+96 more" in whisper.split("</summary>")[0]
-    assert "Afrikaans" in whisper and HINDI_LANGUAGE in whisper
+    # Every code resolves to a real name rather than leaking a bare "af, am, be".
+    whisper = detail("whisper.cpp:ggml-large-v3-turbo.bin")
     assert 'class="model-language-chip">Afrikaans</span>' in whisper
+    assert HINDI_LANGUAGE in whisper
     assert "badge auto-language" not in whisper
 
-    # An English-only build carries just ENGLISH_LANGUAGE_CODE, and gets no disclosure at all —
-    # its "English only" summary already says everything a list would.
-    english_only = card("whisper.cpp:ggml-small.en.bin")
-    assert "model-languages" not in english_only
+    # An English-only build still names its one language; the panel has room.
+    english_only = detail("whisper.cpp:ggml-small.en.bin")
+    assert 'class="model-language-chip">English</span>' in english_only
 
-    # Card structure: blurb on tile; info icon + actions; extra facts in popover.
-    assert 'class="model-actions"' in parakeet
-    assert 'class="model-info-btn"' in parakeet
-    assert 'class="model-info-pop"' in parakeet
-    assert 'class="model-blurb"' in parakeet
-    assert "model-footer" not in parakeet
-    assert "model-more" not in parakeet
+    # Card structure: specs and blurb on the tile, everything else one click away.
+    parakeet_card = card("sherpa-onnx:parakeet-tdt-0.6b-v3-int8")
+    assert 'class="model-actions"' in parakeet_card
+    assert 'class="model-blurb"' in parakeet_card
+    assert 'class="model-spec ' in parakeet_card
+    assert "model-details-btn" in parakeet_card
+    # The language list and the old hover popover are not on the card.
+    assert "model-language-chip" not in parakeet_card
+    assert "model-info-pop" not in parakeet_card
+    assert "model-footer" not in parakeet_card
 
 
 async def test_recorder_offers_every_language_a_c_ca791(

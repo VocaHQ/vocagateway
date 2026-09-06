@@ -54,34 +54,29 @@ def pairing_token_options(ctx: GatewayContext) -> list[tuple[str, str]]:
 
 
 def forget_stale_lan_addresses(ctx: GatewayContext, discovered: list[str]) -> None:
-    """Drop any remembered LAN/tailnet IP no longer part of fresh discovery.
+    """Forget the remembered *selection* when it is an auto-discovered LAN or
+    tailnet IP that fresh discovery no longer reports.
 
-    A bare LAN or Tailscale IP reflects whichever network the gateway was
-    on when it was picked; keeping it around after switching Wi-Fi just
-    clutters the address list and dropdown with a dead entry. Hostnames
-    (MagicDNS names, custom domains) and public IPs are never touched —
-    the user chose those deliberately and they aren't tied to one network.
+    Such an address reflects whichever network the gateway was on when it was
+    picked, so keeping it after a Wi-Fi switch leaves a dead entry selected.
+
+    `pairing_urls` is never pruned. Only an address that discovery did *not*
+    offer is ever saved there (see `_persist_url`), which makes every entry one
+    the user typed by hand — usually a Tailscale IP or a forwarded router
+    address precisely because discovery cannot see it. Dropping those for
+    looking private is what made a custom address vanish on the next refresh;
+    they are removed only through the explicit Remove button.
     """
     if ctx.engine_manager is None:
         return
     pairing_config = ctx.pairing_config
-    changed = False
     if (
         pairing_config.pairing_url
         and pairing_config.pairing_url not in discovered
+        and pairing_config.pairing_url not in pairing_config.pairing_urls
         and is_ambient_lan_address(pairing_config.pairing_url)
     ):
         pairing_config.pairing_url = None
-        changed = True
-    remaining = [
-        url
-        for url in pairing_config.pairing_urls
-        if url in discovered or not is_ambient_lan_address(url)
-    ]
-    if len(remaining) != len(pairing_config.pairing_urls):
-        pairing_config.pairing_urls = remaining
-        changed = True
-    if changed:
         pairing_config.save(ctx.config_path)
 
 
@@ -161,10 +156,16 @@ class PairingPresenter:
         if self.ctx.engine_manager is None:
             return
         cfg = self.ctx.pairing_config
+        changed = False
         if selected not in self._discovered and selected not in cfg.pairing_urls:
             cfg.pairing_urls.append(selected)
+            changed = True
         if cfg.pairing_url != selected:
             cfg.pairing_url = selected
+            changed = True
+        # Both branches matter: a re-selected address that was pruned from the
+        # saved list would otherwise be appended in memory and never written.
+        if changed:
             cfg.save(self.ctx.config_path)
 
 

@@ -14,8 +14,10 @@
   --r-lg: 16px;
   --r-pill: 999px;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
-  --font-display: "Epilogue", system-ui, sans-serif;
-  --font-body: "Atkinson Hyperlegible", system-ui, sans-serif;
+  /* System stack only: the gateway is self-hosted and often offline, so it must
+     not reach out to a font CDN to render. */
+  --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 
   /* One gutter for the header, the nav and the content, so their left edges line
      up at every width. It tracks `main`'s own max-width and padding. */
@@ -36,13 +38,21 @@ html, html[data-theme="light"] {
   --line-strong: #cdcbc3;
   --text: #1a1c1b;
   --muted: #5c6360;
-  --faint: #8a918d;
-  --accent: #1f8f75;
-  --accent-hover: #176b58;
+  /* Contrast floor, not taste: #8a918d scored 2.85-3.22 against bg, surface and
+     accent-wash, so every hint, caption and metric label failed WCAG AA. */
+  --faint: #666d69;
+  /* The brand teal the logo, favicons and tower mark all use. The lighter
+     #1f8f75 gave white button ink 4.00 — under AA for the primary action. */
+  --accent: #0f6b57;
+  --accent-hover: #0b5344;
   --accent-ink: #ffffff;
-  --accent-line: #1f8f75;
+  --accent-line: #0f6b57;
   --accent-wash: #e6f4ef;
-  --warn: #9a6b16;
+  /* Darkened to clear AA on its own wash (was 3.84): this carries the
+     "listening on every interface" warning, which has to be the most legible
+     thing on the page, not the least. */
+  --warn: #8a5f13;
+  --warn-ink: #ffffff;
   --warn-wash: rgba(154, 107, 22, 0.1);
   --error: #b42318;
   --error-wash: rgba(180, 35, 24, 0.08);
@@ -73,6 +83,7 @@ html[data-theme="dark"] {
   --accent-line: #2f6e5c;
   --accent-wash: rgba(119, 208, 178, 0.12);
   --warn: #e3b778;
+  --warn-ink: #1a1c1b;
   --warn-wash: rgba(227, 183, 120, 0.12);
   --error: #ffb4ab;
   --error-wash: rgba(255, 180, 171, 0.12);
@@ -415,7 +426,7 @@ html[data-theme="dark"] .logo-for-light { display: none; }
 }
 .status-hero .headline { display: flex; gap: 11px; }
 .status-hero .dot { margin-top: 8px; }
-.status-hero h2 { font-size: 1.35rem; margin: 0; line-height: 1.25; }
+.status-hero h3 { font-size: 1.35rem; margin: 0; line-height: 1.25; }
 .status-hero p { color: var(--muted); margin: 2px 0 0; font-size: 0.95rem; }
 
 .tabs {
@@ -490,10 +501,10 @@ main {
   margin: 0 0 26px;
 }
 main > .card:first-child, #panel > .card:first-child { border-top: none; padding-top: 2px; }
-.section-heading h2 .muted { font-weight: 400; }
+.section-heading h3 .muted { font-weight: 400; }
 #models-list { margin-bottom: 26px; }
 #engine-result { margin-top: 14px; }
-.card > h2 + p.muted { margin-bottom: 14px; }
+.card > h3 + p.muted { margin-bottom: 14px; }
 .card > p.muted { max-width: none; }
 .card > .table-scroll, .card > form, .card > .checklist, .card > .facts { margin-top: 14px; }
 
@@ -530,8 +541,6 @@ main > .card:first-child, #panel > .card:first-child { border-top: none; padding
 .callout.success { border-left-color: var(--accent); }
 .callout.success strong { color: var(--accent); }
 .callout.compact { margin: 16px 0 20px; }
-.callout-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
-.callout-actions form { display: contents; }
 .callout .row { margin-top: 8px; }
 
 /* Full-width one-line notification strip (wildcard bind). × dismisses for 24h. */
@@ -563,7 +572,8 @@ main > .card:first-child, #panel > .card:first-child { border-top: none; padding
   height: 20px;
   border-radius: 50%;
   background: var(--warn);
-  color: #1a1c1b;
+  /* Light ink in light theme, dark ink on the pale amber used in dark theme. */
+  color: var(--warn-ink);
   font-size: 0.72rem;
   font-weight: 800;
   line-height: 1;
@@ -946,36 +956,12 @@ html[data-theme="dark"] .sys-vendor-intel { color: #38bdf8; }
 .sys-details {
   border-top: 1px solid var(--line-soft);
   margin: 0;
+  padding: 14px 18px;
 }
-.sys-details > summary {
-  list-style: none;
-  cursor: pointer;
-  padding: 11px 18px;
-  color: var(--muted);
-  font-size: 0.88rem;
-  font-weight: 600;
-  user-select: none;
-}
-.sys-details > summary::-webkit-details-marker { display: none; }
-.sys-details > summary::marker { content: ""; }
-.sys-details > summary::after {
-  content: "▸";
-  display: inline-block;
-  margin-left: 8px;
-  color: var(--faint);
-  font-size: 0.75rem;
-  transition: transform 0.12s ease;
-}
-.sys-details[open] > summary::after {
-  transform: rotate(90deg);
-}
-.sys-details > summary:hover {
-  color: var(--text);
-  background: var(--raised);
-}
+/* `.sys-details > summary` picks up the shared disclosure row further down. */
 .sys-details-facts {
   margin: 0;
-  padding: 4px 18px 16px;
+  padding: 4px 0 0;
   grid-template-columns: minmax(7rem, auto) 1fr;
   gap: 8px 16px;
 }
@@ -1084,9 +1070,6 @@ html[data-theme="dark"] .sys-vendor-intel { color: #38bdf8; }
   font-size: 0.78rem;
   font-weight: 500;
 }
-.lib-tile.is-available .lib-tile-status { color: var(--accent-hover); }
-html[data-theme="dark"] .lib-tile.is-available .lib-tile-status { color: var(--accent); }
-.lib-tile.is-missing { opacity: 0.92; }
 .lib-tile-detail {
   margin: 0;
   overflow: hidden;
@@ -1273,14 +1256,6 @@ html[data-theme="dark"] button.pairing-qr.is-copied .pairing-qr-hint {
   padding-top: 18px;
   border-top: 1px solid var(--line-soft);
 }
-.pairing-advanced-title {
-  margin: 0 0 12px;
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
 .pairing-advanced-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -1319,11 +1294,16 @@ html[data-theme="dark"] button.pairing-qr.is-copied .pairing-qr-hint {
   background: var(--bg);
 }
 .pairing-saved li code { overflow-wrap: anywhere; font-size: 0.85rem; }
+/* A card-level footnote. Sitting flush under the "Custom address" disclosure
+   row, it read as that section's body rather than as advice about the address
+   picker above, so it gets a rule and real space of its own. */
 .pairing-note {
   color: var(--faint);
   font-size: 0.8rem;
   line-height: 1.45;
-  margin: 16px 0 0;
+  margin: 22px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
   max-width: 52rem;
 }
 
@@ -1365,15 +1345,6 @@ html[data-theme="dark"] button.pairing-qr.is-copied .pairing-qr-hint {
   gap: 10px;
   margin-top: 16px;
 }
-.onboarding-ready {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-.onboarding-ready-copy { min-width: 0; flex: 1 1 280px; }
-.onboarding-ready-copy h2 { margin-bottom: 4px; }
 .onboarding-steps { max-width: none; }
 button.text-link {
   display: inline;
@@ -1625,12 +1596,7 @@ html[data-theme="dark"] .family-models-label {
   font-size: 0.98rem;
   line-height: 1.3;
 }
-.family-models .model-meta {
-  margin: 0;
-  line-height: 1.4;
-}
-
-/* Card chrome: title → toolbar (info left, download right). */
+.family-models /* Card chrome: title → toolbar (info left, download right). */
 .model-card {
   position: relative;
   display: flex;
@@ -1644,32 +1610,41 @@ html[data-theme="dark"] .family-models-label {
 .model-title { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .model-title h4 { letter-spacing: -0.01em; font-size: 0.95rem; margin: 0; }
 .model-tags { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-.model-meta { color: var(--faint); font-size: 0.82rem; margin: 2px 0 0; }
+/* Three comparable specs, not one wrapping sentence. Size leads because it is
+   what the operator is actually deciding about. */
+.model-specs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+.model-spec {
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--sunken);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.model-spec-size { color: var(--text); }
 .model-blurb {
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   color: var(--muted);
   font-size: 0.84rem;
   font-weight: 400;
   line-height: 1.45;
+  /* Still clamped so a grid row stays scannable; "Details" carries the rest. */
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   overflow: hidden;
   overflow-wrap: anywhere;
 }
+.model-details-btn { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.model-details-btn svg { width: 15px; height: 15px; }
 /* A model whose engine has no runtime on this host. Warn-coloured rather than
    error-coloured: the weights are fine, only the CLI or package is absent. */
-.model-runtime-note a { color: inherit; font-weight: 500; }
-.model-runtime-note {
-  margin: 6px 0 0;
-  padding-left: 8px;
-  border-left: 2px solid var(--warn);
-  color: var(--warn);
-  font-size: 0.8rem;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
 .model-toolbar {
   display: flex;
   flex-wrap: nowrap;
@@ -1686,21 +1661,6 @@ html[data-theme="dark"] .family-models-label {
   gap: 8px;
   min-width: 0;
   flex: 1 1 auto;
-}
-.model-family-pill {
-  display: inline-block;
-  max-width: 100%;
-  padding: 3px 9px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  background: var(--bg);
-  color: var(--muted);
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1.35;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .model-actions {
   display: flex;
@@ -1746,144 +1706,15 @@ html[data-theme="dark"] .family-models-label {
   overflow-wrap: anywhere;
 }
 
-/* Circular info control + side popover (right of icon; flips left near edge). */
-.model-info {
-  position: relative;
-  flex: 0 0 auto;
-  z-index: 1;
-}
-.model-info:hover,
-.model-info:focus-within {
-  z-index: 50;
-}
-.model-info-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  margin: 0;
-  padding: 0;
-  border: 1px solid var(--line-strong);
-  border-radius: 50%;
-  background: var(--surface);
-  color: var(--muted);
-  cursor: help;
-}
-.model-info-btn svg { display: block; }
-.model-info-btn:hover,
-.model-info:focus-within .model-info-btn {
-  border-color: var(--accent);
-  background: var(--accent-wash);
-  color: var(--accent-hover);
-}
-.model-info-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-.model-info-pop {
-  position: absolute;
-  top: 50%;
-  left: calc(100% + 10px);
-  bottom: auto;
-  z-index: 60;
-  width: min(18.5rem, 55vw);
-  max-height: min(16rem, 45vh);
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 12px 13px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--surface);
-  box-shadow: var(--shadow-soft);
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transform: translateY(-50%) translateX(4px);
-  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s ease;
-}
-/* Cards in the last grid column: open to the left so the pop stays on-screen. */
-.family-models .model-card:last-child .model-info-pop,
-.family-models .model-card:nth-child(3n) .model-info-pop {
-  left: auto;
-  right: calc(100% + 10px);
-  transform: translateY(-50%) translateX(-4px);
-}
-.model-info:hover .model-info-pop,
-.model-info:focus-within .model-info-pop,
-.model-info-pop:hover {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-  transform: translateY(-50%) translateX(0);
-}
-.family-models .model-card:last-child .model-info:hover .model-info-pop,
-.family-models .model-card:last-child .model-info:focus-within .model-info-pop,
-.family-models .model-card:last-child .model-info-pop:hover,
-.family-models .model-card:nth-child(3n) .model-info:hover .model-info-pop,
-.family-models .model-card:nth-child(3n) .model-info:focus-within .model-info-pop,
-.family-models .model-card:nth-child(3n) .model-info-pop:hover {
-  transform: translateY(-50%) translateX(0);
-}
-.model-detail-meta {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.84rem;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-.model-source-link {
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
-}
-.model-source-link:hover { color: var(--accent-hover); }
-
-/* Language chips in a capped scroll box (inside popover). */
-.model-languages { margin-top: 10px; min-width: 0; }
-.model-languages > summary {
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 600;
-  width: fit-content;
-  max-width: 100%;
-  list-style: none;
-  /* The summary now holds chips plus the "+N more" affordance, so it wraps as
-     a row instead of rendering as a single text run. */
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 5px 6px;
-}
-.model-languages > summary::-webkit-details-marker { display: none; }
-.model-languages > summary:hover { color: var(--text); }
-.model-language-preview {
-  display: contents;
-}
-/* Reads as the control; the chips beside it are the content. */
-.model-language-more,
-.model-language-less {
-  color: var(--accent);
-  white-space: nowrap;
-}
-.model-languages > summary:hover .model-language-more,
-.model-languages > summary:hover .model-language-less { color: var(--accent-hover); }
-.model-language-less { display: none; }
-/* Once open the full list is right below, so the preview would be duplication. */
-.model-languages[open] > summary .model-language-preview { display: none; }
-.model-languages[open] > summary .model-language-more { display: none; }
-.model-languages[open] > summary .model-language-less { display: inline; }
-.model-language-note { margin: 6px 0 8px; }
+/* Language chips: a plain wrapping list in the detail dialog. They used to sit
+   in a 7.5rem scroll box inside a hover popover, so a 25-language model showed
+   about six of them behind a nested scrollbar. */
 .model-language-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px 6px;
-  margin: 8px 0 0;
+  gap: 6px;
+  margin: 10px 0 0;
   padding: 0;
-  max-height: 7.5rem;
-  overflow-x: hidden;
-  overflow-y: auto;
   min-width: 0;
 }
 .model-language-chip {
@@ -1962,6 +1793,8 @@ button.families-expand-toggle[data-expanded="true"] .icon-collapse { display: bl
   flex-direction: column;
   gap: 10px;
   max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   min-width: 0;
   padding: 12px 12px 14px;
   border: 1px solid var(--line);
@@ -2097,19 +1930,28 @@ html[data-theme="dark"] button.filter-trigger.has-active {
   outline-offset: 1px;
   border-color: var(--accent);
 }
+/* One scroll region, not four. The rail used to be a fixed-height panel that
+   did not scroll, so Family, Language and Engine each got their own 8.5rem
+   well — Family showed two and a half checkboxes above its own scrollbar. The
+   rail scrolls now and the lists run at their natural length. */
 .filter-check-list {
   display: grid;
   gap: 2px;
-  max-height: 8.5rem;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+/* The one list that cannot run inline: ~100 languages. The search box above it
+   is the real filter; this cap just stops it swallowing the rail. */
+.filter-check-list-tall {
+  max-height: 17rem;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 4px;
+  padding: 2px;
   border: 1px solid var(--line-soft);
   border-radius: var(--r);
   background: var(--bg);
 }
-.filter-check-list-tall { max-height: 11rem; }
-.filter-check-list-engines { max-height: none; }
 .filter-check {
   display: flex;
   align-items: center;
@@ -2143,38 +1985,6 @@ html[data-theme="dark"] .filter-check:has(input:checked) { color: var(--accent);
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.filter-toggles {
-  display: flex;
-  flex-direction: column;
-  flex-wrap: nowrap;
-  gap: 8px;
-}
-.filter-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  cursor: pointer;
-  user-select: none;
-  font: inherit;
-  font-size: 0.86rem;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--line);
-  color: var(--muted);
-  background: none;
-  padding: 7px 12px;
-  width: 100%;
-  box-sizing: border-box;
-  justify-content: center;
-}
-.filter-toggle:hover { color: var(--text); border-color: var(--muted); }
-.filter-toggle:has(input:checked) {
-  color: var(--accent-hover);
-  border-color: var(--accent);
-  background: var(--accent-wash);
-}
-html[data-theme="dark"] .filter-toggle:has(input:checked) { color: var(--accent); }
-.filter-toggle:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .filter-clear { width: 100%; justify-self: stretch; }
 .max-size-filter { max-width: none; }
 
@@ -2190,17 +2000,6 @@ html[data-theme="dark"] .filter-toggle:has(input:checked) { color: var(--accent)
     display: none;
   }
 }
-
-.model-group + .model-group { margin-top: 24px; }
-.model-group-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  padding-left: 1px;
-}
-.model-group-heading h3 { color: var(--text); }
-.model-group-heading span { color: var(--faint); font-size: 12px; }
 
 .model-custom-links {
   display: flex;
@@ -2372,9 +2171,13 @@ select {
 }
 .settings-field {
   display: grid;
+  /* Not stretch: a field with a hint under it is taller than its neighbour, and
+     stretching would grow that neighbour's control instead of leaving a gap. */
+  align-content: start;
   gap: 5px;
   min-width: 0;
 }
+.settings-field small { color: var(--muted); font-size: 0.82rem; line-height: 1.45; }
 .settings-field > span:first-child {
   color: var(--muted);
   font-size: 0.82rem;
@@ -2416,6 +2219,8 @@ select {
 .memory-policy-toggle small { color: var(--muted); line-height: 1.45; }
 .memory-policy-timeout { flex: 0 1 180px; }
 .settings-engine-result { margin-top: 12px; }
+/* Empty until a save responds, so it must not reserve a blank line. */
+.settings-engine-result:empty { display: none; }
 
 .settings-actions { margin-top: 14px; }
 .settings-facts { margin-top: 12px; }
@@ -2427,16 +2232,16 @@ select {
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--line-soft);
-  max-width: 560px;
+  /* No max-width here: it capped the section rule at 560px under a table that
+     runs the full card, so the divider stopped mid-row. The input inside is
+     what should be narrow, and `.tokens-create .row` already caps it. */
 }
 .tokens-empty { padding: 12px 0; }
-.token-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-  align-items: center;
-}
+/* Not `display: flex`: that takes a <td> out of table layout entirely, so the
+   Actions cell stopped lining up under its own header and the row divider ran
+   only as far as the first column. `.align-right` plus the existing
+   `button + button` margin does the same job inside a real cell. */
+.token-actions { white-space: nowrap; }
 button.ghost.danger,
 button.danger.ghost {
   color: var(--error);
@@ -2650,7 +2455,9 @@ button.danger.ghost:hover {
   .tab { padding-inline: 10px; white-space: nowrap; }
   .grid.two { grid-template-columns: 1fr; gap: 0; }
   .status-hero { flex-direction: column; gap: 16px; }
-  .engine-popover { right: auto; left: 0; min-width: min(280px, 88vw); }
+  /* Stay right-aligned with the pill and inside the viewport: anchoring left
+     pushed the card past the right edge and gave the page a horizontal scroll. */
+  .engine-popover { right: 0; left: auto; min-width: 0; width: max-content; max-width: calc(100vw - 24px); }
   .page-head { flex-direction: column; align-items: stretch; gap: 12px; }
   .models-toolbar-actions { flex-wrap: wrap; }
   .operations-grid, .benchmark-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2665,7 +2472,6 @@ button.danger.ghost:hover {
     padding: 12px;
     gap: 10px;
   }
-  .onboarding-ready { flex-direction: column; align-items: stretch; }
   .pairing-layout { gap: 16px; }
   .pairing-advanced-grid { grid-template-columns: 1fr; }
   .test-controls { flex-direction: column; align-items: stretch; }
@@ -2683,10 +2489,6 @@ button.danger.ghost:hover {
 }
 
 /* Workspace shell: persistent navigation and a quieter, task-first hierarchy. */
-:root {
-  --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
 html[data-theme="dark"] {
   --bg: #212121;
   --surface: #262626;
@@ -2696,13 +2498,37 @@ html[data-theme="dark"] {
   --line-soft: #333333;
   --text: #eeeeee;
   --muted: #b0b0b0;
-  --faint: #999999;
+  /* #999999 came to 4.40 over the active tile's accent wash, just under AA. */
+  --faint: #a8a8a8;
 }
-body { font-size: 15px; line-height: 1.6; }
+/* Shell grid. The banner and header span both columns, so the rail always
+   begins below the header no matter how tall the (dismissible, wrapping)
+   exposure banner is — a fixed `top` offset would tuck it under the header. */
+body {
+  font-size: 15px;
+  line-height: 1.6;
+  display: grid;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr auto;
+  grid-template-areas:
+    "banner banner"
+    "header header"
+    "nav    main"
+    "nav    footer";
+  /* Paints the rail and its divider full height. `.tabs` itself is content-sized
+     so that it can stick; a stretched grid item never sticks. */
+  background-image: linear-gradient(to right,
+    var(--sunken) 0 calc(var(--rail-w) - 1px),
+    var(--line-soft) calc(var(--rail-w) - 1px) var(--rail-w),
+    var(--bg) var(--rail-w));
+}
+:root { --rail-w: 220px; --header-h: 84px; }
+#exposure-banner { grid-area: banner; }
 .app-header {
+  grid-area: header;
   position: sticky;
   top: 0;
-  height: 84px;
+  height: var(--header-h);
   padding: 16px 28px;
   background: var(--bg);
   border-bottom: 1px solid var(--line-soft);
@@ -2710,17 +2536,18 @@ body { font-size: 15px; line-height: 1.6; }
 .brand h1 { font-size: 18px; letter-spacing: -.5px; }
 .brand .muted { font-size: 11px; }
 .tabs {
-  position: fixed;
-  top: 84px;
-  bottom: 0;
-  left: 0;
-  width: 220px;
+  grid-area: nav;
+  position: sticky;
+  top: var(--header-h);
+  align-self: start;
+  max-height: calc(100vh - var(--header-h));
+  overflow-y: auto;
   padding: 28px 14px;
   flex-direction: column;
   gap: 6px;
-  background: var(--sunken);
+  background: none;
   border-bottom: 0;
-  border-right: 1px solid var(--line-soft);
+  border-right: 0;
   backdrop-filter: none;
 }
 .tab {
@@ -2738,9 +2565,15 @@ body { font-size: 15px; line-height: 1.6; }
 .tab.active { background: var(--raised); box-shadow: none; }
 .tab:hover { background: var(--raised); }
 .nav-icon { width: 19px; height: 19px; flex-shrink: 0; }
-main { margin: 0 0 0 220px; width: calc(100% - 220px); max-width: none; padding: 40px clamp(24px, 4vw, 64px) 60px; }
+main { grid-area: main; margin: 0; width: auto; max-width: none; padding: 40px clamp(24px, 4vw, 64px) 60px; }
 #panel { max-width: 1240px; margin: 0 auto; outline: none; }
-.site-footer { margin-left: 220px; padding: 18px; }
+/* Form- and prose-heavy pages read badly at the full 1240px: a 640px settings
+   form inside a 1090px card left a third of every card empty. Models and
+   Overview keep the width — their grids and metric rows use it. */
+#panel:has(> .page-head[data-page="settings"]),
+#panel:has(> .page-head[data-page="pair"]),
+#panel:has(> .page-head[data-page="about"]) { max-width: 940px; }
+.site-footer { grid-area: footer; margin-left: 0; padding: 18px; }
 .page-head { margin-bottom: 30px; align-items: center; }
 .page-head h2 { font-size: clamp(26px, 3vw, 34px); letter-spacing: -1px; line-height: 1.25; margin: 4px 0 10px; }
 .page-head p { max-width: 660px; }
@@ -2749,28 +2582,120 @@ h2, h3 { letter-spacing: -.4px; }
 .card { padding: 24px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--surface); margin-bottom: 20px; }
 #panel > .card:first-child { border: 1px solid var(--line-soft); padding: 24px; }
 .status-hero { padding: 20px 24px; border: 1px solid var(--accent-line); border-radius: 12px; background: var(--accent-wash); margin-bottom: 20px; }
-.status-hero h2 { font-size: 19px; }
-.onboarding h2, .onboarding-ready h2 { font-size: 22px; }
+.status-hero h3 { font-size: 19px; }
+.onboarding h3 { font-size: 22px; }
 .onboarding-steps { display: grid; gap: 12px; padding-left: 22px; margin: 20px 0 24px; }
 .onboarding-steps li { padding-left: 8px; }
 .onboarding-steps li::marker { color: var(--accent); font-weight: 700; }
 .onboarding-actions { flex-wrap: wrap; }
+.hero-actions { display: flex; gap: 10px; flex-shrink: 0; }
 .operations { margin: 32px 0; }
 .section-heading { flex-wrap: wrap; }
-.section-heading h2 { font-size: 17px; }
+.section-heading h3 { font-size: 17px; }
 .metric-card { background: var(--surface); border-radius: 10px; }
 .metric-value { letter-spacing: -1px; }
-.disclosure > summary, .activity-details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
-.disclosure > summary .muted { display: block; margin: 4px 0 0 18px; font-weight: 400; }
-.disclosure[open] > summary, .activity-details[open] > summary { margin-bottom: 24px; }
+/* Collapsed sections read as controls, not headings. A bare bold label with a
+   small triangle sat next to real headings ("Pair phone") and people missed it,
+   so every summary is a filled, full-width row with a boxed chevron and an
+   explicit Show / Hide word. Every collapsible in the admin UI uses this,
+   `.sys-details` included — a nested one styled more faintly was the easiest
+   of the lot to walk straight past. */
+.disclosure > summary,
+.activity-details > summary,
+.sys-details > summary,
+.pairing-advanced > summary {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--raised);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 600;
+  user-select: none;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.disclosure > summary::-webkit-details-marker,
+.activity-details > summary::-webkit-details-marker,
+.sys-details > summary::-webkit-details-marker,
+.pairing-advanced > summary::-webkit-details-marker { display: none; }
+.disclosure > summary::marker,
+.activity-details > summary::marker,
+.sys-details > summary::marker,
+.pairing-advanced > summary::marker { content: ""; }
+/* Boxed chevron: a lone glyph was too faint to register as a control. */
+.disclosure > summary::before,
+.activity-details > summary::before,
+.sys-details > summary::before,
+.pairing-advanced > summary::before {
+  content: "\203A";
+  order: -1;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+.disclosure[open] > summary::before,
+.activity-details[open] > summary::before,
+.sys-details[open] > summary::before,
+.pairing-advanced[open] > summary::before { transform: rotate(90deg); }
+/* The word carries the affordance for anyone who reads past the icon. */
+.disclosure > summary::after,
+.activity-details > summary::after,
+.sys-details > summary::after,
+.pairing-advanced > summary::after {
+  content: "Show";
+  order: 2;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+.disclosure[open] > summary::after,
+.activity-details[open] > summary::after,
+.sys-details[open] > summary::after,
+.pairing-advanced[open] > summary::after { content: "Hide"; }
+.disclosure > summary:hover,
+.activity-details > summary:hover,
+.sys-details > summary:hover,
+.pairing-advanced > summary:hover { background: var(--surface); border-color: var(--accent-line); }
+.disclosure > summary:hover::after,
+.activity-details > summary:hover::after,
+.sys-details > summary:hover::after,
+.pairing-advanced > summary:hover::after { color: var(--accent); }
+/* Subtitle drops to its own line, past the chevron. */
+.disclosure > summary .muted { order: 3; flex-basis: 100%; margin: 2px 0 0 32px; font-weight: 400; }
+.disclosure[open] > summary,
+.activity-details[open] > summary,
+.sys-details[open] > summary,
+.pairing-advanced[open] > summary { margin-bottom: 20px; }
+/* A details carrying `.card` drops the card chrome: the summary row already
+   is the surface, and a filled row inside a bordered card gave the same control
+   two different weights depending on where it happened to sit. */
+.card.disclosure { padding: 0; background: none; border: 0; }
 .disclosure .card { background: none; border: 0; border-top: 1px solid var(--line-soft); border-radius: 0; padding: 24px 0 0; }
 .disclosure .card:last-child { margin-bottom: 0; }
 .activity-details { margin-top: 22px; color: var(--muted); }
 .models-toolbar-actions { flex-shrink: 0; }
-.family-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+/* Auto-fill rather than a hard 2 columns: 19 families in two very wide tiles
+   wastes most of the row on a large display. */
+.family-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; }
 .family-tile { background: var(--surface); border-radius: 10px; }
 .family-name { font-size: 16px; }
-.family-summary { min-height: 96px; }
+.family-summary { min-height: 88px; }
+/* Narrower tiles (3 up) clipped the engine list mid-word; let it wrap instead. */
+.family-meta { flex-wrap: wrap; overflow: visible; row-gap: 2px; }
 .models-filter { background: var(--surface); border-radius: 12px; }
 .flow-step { display: flex; gap: 14px; align-items: flex-start; margin: 28px 0 18px; }
 .flow-step h3, .flow-step p { margin: 0; }
@@ -2779,25 +2704,33 @@ h2, h3 { letter-spacing: -.4px; }
 .modal h2 { font-size: 28px; line-height: 1.25; }
 .modal label { display: block; margin: 22px 0 6px; font-size: 13px; font-weight: 600; }
 .modal #token-save { width: 100%; margin-top: 16px; }
+/* Comfortable hit targets for text fields and buttons — but not for checkboxes
+   and radios, where a 40px box turned every filter row into a 72px stripe. */
 button, input, select { min-height: 40px; }
+input[type="checkbox"], input[type="radio"] { min-height: 0; }
 button.text-link { min-height: auto; }
-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; border-radius: 3px; }
+summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
 @media (max-width: 1050px) {
-  .tabs { width: 180px; }
-  main { margin-left: 180px; width: calc(100% - 180px); padding: 28px 24px 48px; }
-  .site-footer { margin-left: 180px; }
+  :root { --rail-w: 180px; }
+  main { padding: 28px 24px 48px; }
   .family-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
+  /* Single column: the rail becomes a sticky bar under the header. */
+  body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "banner" "header" "nav" "main" "footer";
+    grid-template-rows: auto auto auto 1fr auto;
+    background-image: none;
+  }
   .app-header { position: relative; height: auto; min-height: 76px; padding: 16px; gap: 10px; }
   .brand .muted { display: none; }
   .brand h1 { font-size: 16px; }
   .header-actions { gap: 5px; }
-  .tabs { position: sticky; top: 0; bottom: auto; width: 100%; padding: 8px; flex-direction: row; gap: 3px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .tabs { position: sticky; top: 0; align-self: stretch; max-height: none; overflow: visible; padding: 8px; flex-direction: row; gap: 3px; background: var(--sunken); border-right: 0; border-bottom: 1px solid var(--line); }
   .tab { flex: 1; flex-direction: column; gap: 4px; padding: 8px 3px; min-width: 0; font-size: 10px; text-align: center; justify-content: center; white-space: nowrap; }
   .nav-icon { width: 18px; height: 18px; }
-  main { margin: 0; width: 100%; padding: 24px 16px 36px; }
-  .site-footer { margin-left: 0; }
+  main { padding: 24px 16px 36px; }
   .page-head { flex-wrap: wrap; gap: 16px; margin-bottom: 22px; }
   .card, #panel > .card:first-child { padding: 20px; }
   .status-hero { padding: 18px; }
@@ -2805,13 +2738,188 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; b
   .probe-age { white-space: normal; }
   .modal { padding: 24px; }
 }
-.catalog-views { display: flex; gap: 8px; flex-wrap: wrap; margin: -8px 0 24px; }
-.catalog-views button { border-radius: 8px; font-size: 13px; }
-.catalog-views button[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
+/* One joined segmented control rather than three loose pills, so it reads as a
+   single "which models am I looking at" switch. */
+.catalog-views {
+  display: inline-flex;
+  margin: -8px 0 24px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--sunken);
+  max-width: 100%;
+  overflow-x: auto;
+}
+.catalog-views button {
+  flex: 0 0 auto;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.catalog-views button:hover { color: var(--text); }
+.catalog-views button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+}
+.catalog-views button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ------------------------------------------------------ model detail dialog */
+.model-detail-dialog {
+  width: min(680px, calc(100vw - 32px));
+  max-height: min(84vh, 900px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  overflow: visible;
+}
+.model-detail-dialog::backdrop { background: rgb(0 0 0 / 55%); }
+.model-detail-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.model-detail-close:hover { color: var(--text); border-color: var(--muted); }
+#model-detail-body { max-height: min(84vh, 900px); overflow-y: auto; }
+.model-detail { padding: 26px 28px 24px; }
+.model-detail-head { display: flex; flex-wrap: wrap; gap: 10px 16px; padding-right: 34px; }
+.model-detail-head h3 { margin: 2px 0 0; font-size: 22px; letter-spacing: -0.4px; }
+.model-detail-head .eyebrow { margin-bottom: 2px; }
+.model-detail-blurb { margin: 16px 0 0; color: var(--muted); line-height: 1.6; }
+.model-detail-note { margin: 16px 0 0; }
+.model-detail-facts {
+  display: grid;
+  grid-template-columns: minmax(8rem, auto) 1fr;
+  gap: 8px 20px;
+  margin: 22px 0 0;
+  padding: 18px 0 0;
+  border-top: 1px solid var(--line-soft);
+}
+.model-detail-facts dt { color: var(--muted); font-size: 0.86rem; }
+/* Prose values, not machine output: `.facts dd` is monospace so that paths and
+   ports line up, but "Fastest · cached streaming" is a sentence. */
+.model-detail-facts dd {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+.model-detail-facts dd code { font-family: var(--mono); font-size: 0.85rem; }
+.model-detail-languages { margin: 22px 0 0; padding: 18px 0 0; border-top: 1px solid var(--line-soft); }
+.model-detail-languages h4 { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: 0.95rem; }
+.model-detail-count {
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.model-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 24px 0 0;
+  padding: 18px 0 0;
+  border-top: 1px solid var(--line-soft);
+}
+@media (max-width: 560px) {
+  .model-detail { padding: 22px 18px 20px; }
+  .model-detail-facts { grid-template-columns: 1fr; gap: 2px; }
+  .model-detail-facts dd { margin-bottom: 10px; }
+  .model-detail-actions > button { flex: 1 1 auto; }
+}
 .activity-details .operations-grid { margin-bottom: 18px; }
-.pairing-advanced > summary { cursor: pointer; font-weight: 600; }
 .pairing-advanced[open] > summary { margin-bottom: 16px; }
 .family-models-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); }
 @media (max-width: 760px) {
   .models-toolbar-actions { justify-content: flex-start; width: 100%; }
+}
+
+/* ------------------------------------------------- speed / accuracy ratings */
+/* Five fixed-width pips per row so two models line up down a column: the emoji
+   is the filled state, a dot the empty one. */
+.ratings { display: grid; gap: 3px; margin: 10px 0 0; }
+.rating { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; }
+.rating-label { min-width: 4.6rem; color: var(--muted); font-weight: 600; }
+.rating-pips { display: inline-flex; gap: 2px; }
+.rating-pip { font-size: 0.86rem; line-height: 1.4; }
+.rating-pip.is-off { filter: grayscale(1); opacity: 0.25; }
+.model-detail-ratings {
+  margin: 20px 0 0;
+  padding: 16px 18px;
+  border-radius: 10px;
+  background: var(--raised);
+}
+.model-detail-ratings .ratings { margin: 0 0 8px; }
+.model-detail-ratings .rating { font-size: 0.86rem; }
+.model-detail-ratings p { margin: 0; }
+
+/* ---------------------------------------------------------- model picker */
+.picker {
+  margin: 0 0 22px;
+  padding: 20px 22px 22px;
+  border: 1px solid var(--accent-line);
+  border-radius: 12px;
+  background: var(--accent-wash);
+}
+.picker-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 20px;
+}
+.picker-head h3 { margin: 0; font-size: 1.05rem; }
+.picker-head p { margin: 4px 0 0; font-size: 0.88rem; }
+.picker-language { display: grid; gap: 4px; }
+.picker-language > span { color: var(--muted); font-size: 0.78rem; font-weight: 600; }
+.picker-language select { min-width: 11rem; }
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+.picker-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+/* The suggested starting point reads first, so give it the accent border. */
+.picker-card[data-lead] { border-color: var(--accent); }
+.picker-intent { margin: 0; font-size: 0.86rem; font-weight: 700; }
+.picker-why { margin: 2px 0 0; }
+.picker-model { margin: 12px 0 0; font-size: 0.98rem; line-height: 1.3; }
+.picker-card .ratings { margin: 8px 0 0; }
+.picker-size { margin: 8px 0 0; }
+/* Pushed down so the buttons line up across cards of unequal text length. */
+.picker-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 14px; }
+@media (max-width: 760px) {
+  .picker { padding: 16px; }
+  .picker-language, .picker-language select { width: 100%; }
 }
