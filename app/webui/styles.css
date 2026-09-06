@@ -2365,6 +2365,32 @@ button.danger.ghost:hover {
 }
 .cleanup-model p { margin: 0; }
 .cleanup-model .settings-actions { margin-top: 4px; }
+.diff-legend { display: inline-flex; gap: 8px; margin-left: 10px; font-weight: 400; font-size: 11px; }
+.diff-legend span { opacity: 0.9; }
+
+/* What cleanup changed. Both marks lean on the existing theme tokens, so they
+   stay legible in light and dark without a second palette to keep in step. */
+.diff-add {
+  background: var(--accent-wash);
+  border-bottom: 2px solid var(--accent-line);
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.diff-remove {
+  background: var(--warn-wash);
+  border-radius: 3px;
+  padding: 0 1px;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  opacity: 0.85;
+}
+/* A colour-blind reader gets the underline and the strike-through; the wash is
+   the redundant cue, not the only one. */
+@media (prefers-contrast: more) {
+  .diff-add { outline: 1px solid var(--accent-line); }
+  .diff-remove { outline: 1px solid var(--warn); }
+}
+
 .result-subheading {
   margin: 14px 0 4px;
   font-size: 0.82rem;

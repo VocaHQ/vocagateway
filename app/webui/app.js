@@ -43,6 +43,12 @@
     dismissExposureBanner();
   });
 
+  document.addEventListener("change", (event) => {
+    if (event.target.id === "test-language" || event.target.id === "test-cleanup") {
+      syncTestCleanupWarning();
+    }
+  });
+
   document.body.addEventListener("htmx:afterSwap", (event) => {
     if (event.detail && event.detail.target && event.detail.target.id === "exposure-banner") {
       applyExposureBanner(event.detail.target);
@@ -306,7 +312,6 @@
     scheduleModelPoll();
     if (document.getElementById("test-language")) {
       syncTestLanguages();
-  syncTestCleanup();
       syncTestCleanup();
     }
     // Models tab shell (or list refresh) may reintroduce filter controls.
@@ -884,38 +889,169 @@
     // never asked for, and it leaves an orphan on the tile row.
     const tile = document.getElementById("benchmark-cleanup-tile");
     if (tile) tile.classList.toggle("hidden", !cleanup.supported);
+    cleanupCapability = cleanup;
+    syncTestCleanupWarning();
   }
 
-  // Renders the original text beside the final one, and says in words what
-  // cleanup did. Both texts go in through textContent: a transcript is data,
-  // never markup, and never Markdown a browser would render.
+  // The combination that silently does nothing: cleanup on, language left on
+  // "Detect language", and no gateway default for what "auto" means. Cleanup
+  // then declines and returns the plain transcript, which looks exactly like a
+  // feature that is not working. Say so before the clip is recorded.
+  let cleanupCapability = {};
+
+  function syncTestCleanupWarning() {
+    const warning = document.getElementById("test-cleanup-warning");
+    const language = document.getElementById("test-language");
+    const mode = document.getElementById("test-cleanup");
+    if (!warning || !language || !mode) return;
+    const stranded = mode.value === "conservative"
+      && language.value === "auto"
+      && !cleanupCapability.auto_language;
+    warning.textContent = stranded
+      ? "Cleanup cannot run on \u201cDetect language\u201d: nothing reports which language "
+        + "was spoken. Pick a language above, or set one under Settings \u2192 Transcript "
+        + "cleanup \u2192 When language is auto."
+      : "";
+    warning.classList.toggle("hidden", !stranded);
+  }
+
+  // Word-level diff between the plain transcript and the corrected one.
+  //
+  // The point of this panel is to answer "did the model actually do anything",
+  // and two similar paragraphs of prose do not answer it — a reader cannot spot
+  // an added comma by eye. Marking the words that moved is what makes the
+  // difference legible, and a count says so in one number.
+  //
+  // Tokens are inserted with textContent on elements built here, never as
+  // innerHTML: a transcript is data, and a dictated angle bracket is a
+  // character rather than a tag.
+  const DIFF_TOKEN_LIMIT = 400;
+
+  function tokenize(text) {
+    return text.match(/\S+\s*/g) || [];
+  }
+
+  // Which tokens survive unchanged, as a pair of boolean arrays. Classic LCS:
+  // a dictation is short, and the limit above keeps a pathological one from
+  // turning a quadratic table into a frozen tab.
+  function commonTokens(before, after) {
+    const kept = {
+      before: new Array(before.length).fill(false),
+      after: new Array(after.length).fill(false),
+    };
+    if (before.length > DIFF_TOKEN_LIMIT || after.length > DIFF_TOKEN_LIMIT) return null;
+    const table = Array.from({ length: before.length + 1 }, () =>
+      new Uint32Array(after.length + 1));
+    for (let i = before.length - 1; i >= 0; i -= 1) {
+      for (let j = after.length - 1; j >= 0; j -= 1) {
+        table[i][j] = before[i] === after[j]
+          ? table[i + 1][j + 1] + 1
+          : Math.max(table[i + 1][j], table[i][j + 1]);
+      }
+    }
+    let i = 0;
+    let j = 0;
+    while (i < before.length && j < after.length) {
+      if (before[i] === after[j]) {
+        kept.before[i] = true;
+        kept.after[j] = true;
+        i += 1;
+        j += 1;
+      } else if (table[i + 1][j] >= table[i][j + 1]) {
+        i += 1;
+      } else {
+        j += 1;
+      }
+    }
+    return kept;
+  }
+
+  function paintDiff(target, tokens, kept, markClass) {
+    target.textContent = "";
+    tokens.forEach((token, index) => {
+      if (kept && !kept[index]) {
+        const mark = document.createElement("span");
+        mark.className = markClass;
+        mark.textContent = token;
+        target.appendChild(mark);
+        return;
+      }
+      target.appendChild(document.createTextNode(token));
+    });
+  }
+
+  // Renders the corrected text with what changed marked, the plain transcript
+  // beneath it with what was replaced marked, and a plain-language line saying
+  // what happened — including, when nothing happened, what to do about it.
   function renderCleanupComparison(payload) {
     const block = document.getElementById("test-original-block");
     const original = document.getElementById("test-original");
+    const transcript = document.getElementById("test-transcript");
     const statusLine = document.getElementById("test-cleanup-status");
-    if (!block || !original || !statusLine) return;
+    if (!block || !original || !statusLine || !transcript) return;
     const cleanup = payload.cleanup;
-    const changed = Boolean(cleanup && payload.original_transcript
-      && payload.original_transcript !== payload.transcript);
-    original.textContent = payload.original_transcript || "";
+    const before = payload.original_transcript || "";
+    const after = payload.transcript || "";
+    const changed = Boolean(cleanup && before && before !== after);
+    const edits = changed ? paintComparison(transcript, original, before, after) : 0;
     block.classList.toggle("hidden", !changed);
-    statusLine.textContent = cleanup ? describeCleanup(cleanup) : "";
-    statusLine.classList.toggle("hidden", !cleanup);
+    statusLine.textContent = describeCleanup(cleanup, edits);
+    statusLine.classList.toggle("hidden", !statusLine.textContent);
   }
 
-  function describeCleanup(cleanup) {
-    const reason = cleanup.reason ? ` (${cleanup.reason.replace(/_/g, " ")})` : "";
-    const wording = {
-      applied: "Cleanup applied.",
-      unchanged: "Cleanup ran and changed nothing.",
-      skipped: "Cleanup skipped",
-      fallback: "Cleanup did not run; this is the plain transcript",
-      disabled: "Cleanup is off.",
-    };
-    const base = wording[cleanup.status] || `Cleanup: ${cleanup.status}`;
-    return cleanup.status === "skipped" || cleanup.status === "fallback"
-      ? `${base}${reason}.`
-      : base;
+  function paintComparison(transcript, original, before, after) {
+    const beforeTokens = tokenize(before);
+    const afterTokens = tokenize(after);
+    const kept = commonTokens(
+      beforeTokens.map((token) => token.trim()),
+      afterTokens.map((token) => token.trim()),
+    );
+    paintDiff(transcript, afterTokens, kept && kept.after, "diff-add");
+    paintDiff(original, beforeTokens, kept && kept.before, "diff-remove");
+    return kept ? kept.after.filter((survived) => !survived).length : 0;
+  }
+
+  // What the reason actually means for the person reading it, and what they can
+  // do next. A bare "(unsupported language)" is accurate and useless: it does
+  // not say that "Detect language" is the thing to change.
+  const CLEANUP_ADVICE = {
+    unsupported_language:
+      "Cleanup needs to know the language. Pick one above instead of "
+      + "\u201cDetect language\u201d, or set one under Settings \u2192 Transcript "
+      + "cleanup \u2192 When language is auto.",
+    model_unavailable:
+      "No cleanup model is loaded. Install one under Settings \u2192 Transcript cleanup.",
+    model_loading:
+      "The cleanup model is still loading. Try again in a moment.",
+    busy: "Another correction was already running. The transcript is fine, just uncorrected.",
+    timeout: "The correction ran out of time. Raise the time limit in Settings, or warm the model.",
+    input_too_long: "The transcript is longer than cleanup will process in one pass.",
+    unsafe_edit:
+      "The model\u2019s answer changed something it should not have \u2014 a number, a name, "
+      + "or a negation \u2014 so it was thrown away and the plain transcript kept.",
+    invalid_output: "The model answered with something unusable, so the plain transcript was kept.",
+    context_too_small:
+      "The cleanup server\u2019s context window is too small. Restart it with a larger --ctx-size.",
+    raw_style: "Raw style is never corrected, by design.",
+    empty_input: "There was nothing to correct.",
+    runtime_error: "The cleanup runtime failed. Check Settings \u2192 Transcript cleanup.",
+  };
+
+  function describeCleanup(cleanup, edits) {
+    if (!cleanup) return "";
+    if (cleanup.status === "applied") {
+      return edits === 1
+        ? "Cleanup changed 1 word."
+        : `Cleanup changed ${edits} words.`;
+    }
+    if (cleanup.status === "unchanged") {
+      return "Cleanup ran and found nothing to change \u2014 the transcript was already correct.";
+    }
+    if (cleanup.status === "disabled") return "Cleanup is off for this run.";
+    const advice = CLEANUP_ADVICE[cleanup.reason];
+    return advice
+      ? `Cleanup did not run. ${advice}`
+      : `Cleanup did not run (${String(cleanup.reason || cleanup.status).replace(/_/g, " ")}).`;
   }
 
   // ---------------------------------------------------------------- recorder

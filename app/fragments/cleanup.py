@@ -52,7 +52,7 @@ def cleanup_card(
         state_tone=tone,
         summary=CLEANUP_SUMMARY,
         caveat=CLEANUP_CAVEAT,
-        mode_options=[("conservative", "Conservative"), ("off", "Off")],
+        mode_options=[("conservative", "Conservative (recommended)"), ("off", "Off")],
         timeout_options=[
             (choice, _timeout_label(choice))
             for choice in TIMEOUT_CHOICES

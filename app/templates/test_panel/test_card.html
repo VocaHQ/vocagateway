@@ -48,8 +48,8 @@
     <label class="test-field hidden" id="test-cleanup-field">
       <span>Cleanup</span>
       <select id="test-cleanup">
-        <option value="off">Off (raw)</option>
-        <option value="conservative">Conservative</option>
+        <option value="off">Off &mdash; speech model only</option>
+        <option value="conservative">On &mdash; fix grammar and punctuation</option>
       </select>
     </label>
     <label class="test-field">
@@ -65,6 +65,11 @@
     </div>
   </div>
   <p id="test-language-note" class="muted test-status hidden"></p>
+  {# Shown by syncTestCleanupWarning() for the one combination that silently
+     does nothing: correcting a clip whose language is left on "Detect", when
+     the gateway has not been told what to treat "auto" as. Saying so here beats
+     explaining it after the recording is already spent. #}
+  <p id="test-cleanup-warning" class="muted small settings-hint hidden" role="status"></p>
   <p id="record-status" class="muted test-status" aria-live="polite"></p>
   <div id="test-result" class="result hidden">
     <div class="result-header">
@@ -72,10 +77,16 @@
       <button id="copy-transcript" type="button" class="ghost small">Copy</button>
     </div>
     <p id="test-transcript"></p>
-    {# Both texts are inserted with textContent, never innerHTML: a transcript is
+    {# Both texts are built from text nodes, never innerHTML: a transcript is
        data, and a dictated angle bracket is a character rather than a tag. #}
     <div id="test-original-block" class="hidden">
-      <h4 class="result-subheading">Before cleanup</h4>
+      <h4 class="result-subheading">
+        Before cleanup
+        <span class="diff-legend">
+          <span class="diff-remove">replaced</span>
+          <span class="diff-add">added or corrected</span>
+        </span>
+      </h4>
       <p id="test-original" class="muted"></p>
     </div>
     <p id="test-cleanup-status" class="muted hidden"></p>

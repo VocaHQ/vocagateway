@@ -567,3 +567,44 @@ async def test_clearing_the_auto_language_is_distinct_from_leaving_it_alone(
     # ...while an empty one is the operator saying "stop guessing".
     await client.put(CLEANUP_CONFIG, json={"auto_language": ""}, headers=AUTH)
     assert (await client.get(CLEANUP_CONFIG, headers=AUTH)).json()["auto_language"] == ""
+
+
+async def test_the_settings_card_explains_what_each_control_does(gateway: Any) -> None:
+    """A control named "Mode" with options "Conservative" and "Off" explains nothing."""
+    client, app = gateway
+    enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
+    body = _flattened(await client.get("/ui/partials/cleanup", headers=AUTH))
+    assert "Conservative (recommended)" in body
+    for explanation in (
+        "grammar, punctuation, capitalisation, and paragraph breaks",
+        "How long a correction may take before it is abandoned",
+        "The text model that does the correcting",
+        "How long the model stays in memory with nothing to do",
+    ):
+        assert explanation in body
+
+
+async def test_the_card_says_when_it_is_on_but_will_still_correct_nothing(
+    gateway: Any,
+) -> None:
+    """On, installed, and no default for `auto` is the silent-no-op configuration."""
+    client, app = gateway
+    enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
+    stranded = _flattened(await client.get("/ui/partials/cleanup", headers=AUTH))
+    assert "will still come back uncorrected" in stranded
+    await client.put(CLEANUP_CONFIG, json={"auto_language": "en"}, headers=AUTH)
+    covered = _flattened(await client.get("/ui/partials/cleanup", headers=AUTH))
+    assert "will still come back uncorrected" not in covered
+
+
+def _flattened(response: Any) -> str:
+    """Body with runs of whitespace collapsed, so a wrapped sentence still matches."""
+    return " ".join(response.text.split())
+
+
+async def test_the_mic_test_offers_a_before_and_after_with_a_legend(gateway: Any) -> None:
+    client, _ = gateway
+    body = (await client.get("/ui/partials/test", headers=AUTH)).text
+    assert 'id="test-original-block"' in body
+    assert 'class="diff-legend"' in body
+    assert 'id="test-cleanup-warning"' in body

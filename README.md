@@ -538,6 +538,13 @@ publishes no port:
 docker compose --profile cleanup up -d
 ```
 
+**Seeing it work.** Under **Pair & test**, pick a language (not *Detect
+language*), set Cleanup to *On*, and record a sentence without pausing for
+punctuation. The result marks every word it changed and says how many, with the
+uncorrected transcript underneath it — so "did the model do anything" is a
+question you can answer by looking rather than by comparing two paragraphs by
+eye. If it corrected nothing, the same line says why, and what to change.
+
 **What it will not do.** It does not translate, summarise, answer questions,
 add content, or invent facts. **Raw is never corrected**, whatever a request
 asks for. And it cannot fix a word the speech model misheard: it only sees
