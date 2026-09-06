@@ -89,3 +89,33 @@ def test_a_turbo_decoder_outruns_its_weight_class() -> None:
     plain = _model(size_bytes=1500 * MEGABYTE, label="Whisper Large v3")
     turbo = _model(size_bytes=1500 * MEGABYTE, label="Whisper Large v3 Turbo")
     assert speed_rating(turbo) > speed_rating(plain)
+
+
+def test_parakeet_rates_faster_on_a_cpu_only_host() -> None:
+    """A transducer pairs a full encoder with a tiny decoder, so on a machine
+    with no GPU it costs a fraction of what Whisper's autoregressive decoder
+    costs at the same download size. The rating is otherwise host-agnostic,
+    which understated exactly this case."""
+    parakeet = _model(id="sherpa-onnx:parakeet-tdt-0.6b-v3-int8", size_bytes=640 * MEGABYTE)
+    assert speed_rating(parakeet, cpu_only=True) > speed_rating(parakeet)
+
+
+def test_the_cpu_bonus_is_only_for_parakeet() -> None:
+    """It is a claim about one architecture, not about quantisation or about
+    sherpa-onnx in general."""
+    other = _model(id="sherpa-onnx:sensevoice-small-int8", size_bytes=640 * MEGABYTE)
+    assert speed_rating(other, cpu_only=True) == speed_rating(other)
+
+
+def test_the_cpu_marker_moves_speed_only() -> None:
+    """Parakeet is not more accurate for being on a CPU box. Same wording and
+    same size must score the same accuracy whichever family it belongs to."""
+    shared = {"size_bytes": 640 * MEGABYTE, "quality": "Accurate multilingual · punctuation"}
+    parakeet = _model(id="sherpa-onnx:parakeet-tdt-0.6b-v3-int8", **shared)
+    other = _model(id="sherpa-onnx:something-else-int8", **shared)
+    assert accuracy_rating(parakeet) == accuracy_rating(other)
+
+
+def test_the_cpu_bonus_still_respects_the_scale() -> None:
+    tiny = _model(id="sherpa-onnx:parakeet-tiny", size_bytes=40 * MEGABYTE, supports_streaming=True)
+    assert speed_rating(tiny, cpu_only=True) == MAXIMUM_RATING

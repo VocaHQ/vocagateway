@@ -92,6 +92,21 @@ def _accuracy_size_nudge(size_bytes: int) -> int:
     return _LARGE_MODEL_ACCURACY_NUDGE
 
 
+# Parakeet TDT on a host with no GPU. The ratings are otherwise host-agnostic,
+# which understates this one badly: a transducer pairs a full encoder with a
+# tiny decoder, so on CPU it costs a fraction of what Whisper's 32-layer
+# autoregressive decoder costs at the same download size. Kept narrow on
+# purpose — it is a claim about this architecture, not about sherpa-onnx or
+# quantisation in general — and it moves speed only. Parakeet is not more
+# accurate for being on a CPU box, so "Best accuracy" is unaffected.
+_CPU_FAVOURED_MARKERS = ("parakeet",)
+_CPU_ONLY_SPEED_BONUS = 1
+
+
+def _is_cpu_favoured(model: CatalogModel) -> bool:
+    return any(marker in model.id.lower() for marker in _CPU_FAVOURED_MARKERS)
+
+
 def _speed_word_nudge(model: CatalogModel) -> int:
     # Label as well as quality: "Turbo" and "Distil" are named in the model
     # name, and a turbo decoder is the clearest case of a build outrunning its
@@ -105,9 +120,16 @@ def _speed_word_nudge(model: CatalogModel) -> int:
     return nudge
 
 
-def speed_rating(model: CatalogModel) -> int:
-    """How quickly this model turns speech into text, 1 (slowest) to 5."""
+def speed_rating(model: CatalogModel, *, cpu_only: bool = False) -> int:
+    """How quickly this model turns speech into text, 1 (slowest) to 5.
+
+    `cpu_only` describes the host, not the model: pass it when the machine
+    reports no GPU accelerator, so a Parakeet transducer is not rated against
+    Whisper as though both were running on a graphics card.
+    """
     bonus = _STREAMING_SPEED_BONUS if model.supports_streaming else 0
+    if cpu_only and _is_cpu_favoured(model):
+        bonus += _CPU_ONLY_SPEED_BONUS
     return _clamp(_speed_by_size(model.size_bytes) + _speed_word_nudge(model) + bonus)
 
 

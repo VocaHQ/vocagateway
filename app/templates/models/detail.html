@@ -38,8 +38,9 @@
   {% if entry.speed_rating or entry.accuracy_rating %}
   <section class="model-detail-ratings">
     {{ speed_and_accuracy(entry) }}
-    <p class="muted small">Relative across this catalog, from each model&rsquo;s size and
-       published description &mdash; not a measured word error rate on your audio.</p>
+    <p class="muted small">Relative across this catalog, from each model&rsquo;s size, its
+       published description and what this machine can run it on &mdash; not a measured
+       word error rate on your audio.</p>
   </section>
   {% endif %}
 

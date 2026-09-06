@@ -126,3 +126,22 @@ def test_picker_says_so_when_nothing_covers_the_language() -> None:
     html = model_picker_fragment([_entry(language_codes=["en"])], "ja")
     assert "empty-state" in html
     assert "Japanese" in html
+
+
+def test_the_cpu_preference_never_wins_best_accuracy() -> None:
+    """Parakeet's edge on CPU is throughput, not transcript quality. If a
+    genuinely more accurate model is available it must still take that card,
+    or the panel would be recommending the wrong thing for the stated intent.
+    """
+    entries = [
+        # What a CPU-only host's ratings look like: Parakeet carries the speed
+        # bonus, Whisper large-v3 keeps the higher accuracy.
+        _entry(id="a:parakeet", label="Parakeet", speed_rating=4, accuracy_rating=4),
+        _entry(id="a:whisper", label="WhisperLarge", speed_rating=2, accuracy_rating=5),
+        _entry(id="a:tiny", label="Tiny", speed_rating=5, accuracy_rating=2),
+    ]
+    html = model_picker_fragment(entries)
+    accurate = html.split('data-intent="accurate"')[1].split("</article>")[0]
+    assert "WhisperLarge" in accurate
+    balanced = html.split('data-intent="balanced"')[1].split("</article>")[0]
+    assert "Parakeet" in balanced
