@@ -279,6 +279,7 @@
 
   document.body.addEventListener("htmx:afterSwap", (event) => {
     scheduleModelPoll();
+    if (document.getElementById("test-language")) syncTestLanguages();
     // Models tab shell (or list refresh) may reintroduce filter controls.
     if (
       event.detail &&
@@ -675,6 +676,49 @@
 
   document.addEventListener("visibilitychange", () => scheduleModelPoll());
 
+  // ------------------------------------------------------- test language sync
+
+  // The picker lists every language a client may ask for, which is right for
+  // most models: they either detect the language or ignore the hint. A few
+  // decoders instead reject anything they do not cover — Cohere Transcribe
+  // fails the whole request on "auto" -- so the active model's real coverage
+  // has to reach the picker, or the default selection just errors.
+  async function syncTestLanguages() {
+    const select = document.getElementById("test-language");
+    const note = document.getElementById("test-language-note");
+    if (!select || !note) return;
+    let health;
+    try {
+      const response = await fetch("/health");
+      if (!response.ok) return;
+      health = await response.json();
+    } catch (_) {
+      return;
+    }
+    // An empty list means "unknown" (older gateway, no model, imported model),
+    // and must leave every choice available rather than emptying the picker.
+    const supported = Array.isArray(health.languages) ? health.languages : [];
+    const detects = Boolean(health.detects_language_automatically);
+    const mustChoose = Boolean(health.requires_explicit_language);
+    const options = Array.from(select.options);
+    options.forEach((option) => {
+      const isAuto = option.hasAttribute("data-auto-language");
+      const unsupported = isAuto
+        ? mustChoose
+        : supported.length > 0 && !detects && !supported.includes(option.value);
+      option.hidden = unsupported;
+      option.disabled = unsupported;
+    });
+    if (select.selectedOptions[0] && select.selectedOptions[0].disabled) {
+      const fallback = options.find((option) => !option.disabled);
+      if (fallback) select.value = fallback.value;
+    }
+    note.textContent = mustChoose
+      ? "This model cannot detect the language — pick the one you will speak."
+      : "";
+    note.classList.toggle("hidden", !mustChoose);
+  }
+
   // ---------------------------------------------------------------- recorder
 
   let recorder = null;
@@ -712,6 +756,10 @@
       recorder.stop();
       return;
     }
+
+    // The engine can change from another tab without this panel reswapping,
+    // so the picker is reconciled against the live model, not the last swap.
+    await syncTestLanguages();
 
     const mimeType = pickMimeType();
     if (!mimeType) {
@@ -904,6 +952,7 @@
 
   initTheme();
   applyExposureBanner();
+  syncTestLanguages();
 
   if (!getToken()) {
     showOverlay();

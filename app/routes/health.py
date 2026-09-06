@@ -32,6 +32,9 @@ async def health(ctx: GatewayContextDependency) -> HealthResponse:
         detects_language_automatically=(
             active_model is not None and active_model.detects_language_automatically
         ),
+        requires_explicit_language=(
+            active_model is not None and active_model.requires_explicit_language
+        ),
     )
 
 

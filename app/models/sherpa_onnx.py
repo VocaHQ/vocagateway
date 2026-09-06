@@ -311,6 +311,67 @@ class _SherpaOnnxStreamAdapter:
             self._listener(line)
 
 
+def _model_files_present(root: Path | None, model: catalog.CatalogModel | None) -> bool:
+    if root is None or model is None:
+        return False
+    return (root / MODEL_METADATA).is_file() and all(
+        (root / name).is_file() for name in model.required_files
+    )
+
+
+class _ResidentRecognizer:
+    """One cached sherpa recognizer, its builder, and the language it was built for.
+
+    An engine holds one of these per export it can run. A model whose streaming
+    export is buffered keeps a second for whole-file work, so the two never
+    share a cache slot and neither evicts the other on a language rebuild.
+    """
+
+    def __init__(
+        self, model_root: Path | None, catalog_model: catalog.CatalogModel | None, threads: int
+    ) -> None:
+        self.model_root = model_root
+        self.catalog_model = catalog_model
+        self.builder = _SherpaRecognizerBuilder(model_root, catalog_model, threads)
+        self._recognizer: Any | None = None
+        self._language: str | None = None
+        self._lock = asyncio.Lock()
+
+    @property
+    def is_online(self) -> bool:
+        """Whether decoding goes through the chunked online API rather than offline."""
+        return (
+            self.catalog_model is not None and self.catalog_model.model_type == STREAMING_MODEL_TYPE
+        )
+
+    @property
+    def is_resident(self) -> bool:
+        return self._recognizer is not None
+
+    @property
+    def files_present(self) -> bool:
+        return _model_files_present(self.model_root, self.catalog_model)
+
+    def unload(self) -> None:
+        self._recognizer = None
+        self._language = None
+
+    async def ensure(self, language: str = AUTO_LANGUAGE) -> tuple[Any, bool]:
+        wanted = self.builder.build_language(language)
+        if self._recognizer is not None and not self._needs_rebuild(wanted):
+            return self._recognizer, False
+        async with self._lock:
+            if self._recognizer is not None and not self._needs_rebuild(wanted):
+                return self._recognizer, False
+            self._recognizer = await asyncio.to_thread(self.builder.build, language)
+            self._language = wanted
+            return self._recognizer, True
+
+    def _needs_rebuild(self, wanted: str) -> bool:
+        """A language-pinned recognizer built for another language is the wrong one."""
+        return self.builder.pins_language_at_build() and self._language != wanted
+
+
 class SherpaOnnxEngine:
     """Persistent CPU recognizer for compact sherpa-onnx model exports."""
 
@@ -320,20 +381,29 @@ class SherpaOnnxEngine:
         catalog_model: catalog.CatalogModel | None,
         *,
         cpu_threads: int = 0,
+        batch_root: Path | None = None,
+        batch_model: catalog.CatalogModel | None = None,
     ) -> None:
         self.model_root = model_root
         self.catalog_model = catalog_model
         self.cpu_threads = cpu_threads
-        self._recognizer: Any | None = None
-        self._recognizer_language: str | None = None
-        self._load_lock = asyncio.Lock()
         self._inference_lock = asyncio.Lock()
         self.streaming_lock = self._inference_lock
         self.supports_streaming: bool = (
             catalog_model is not None and catalog_model.model_type == STREAMING_MODEL_TYPE
         )
         threads = system.inference_thread_count(cpu_threads)
-        self._builder = _SherpaRecognizerBuilder(model_root, catalog_model, threads)
+        self._selected = _ResidentRecognizer(model_root, catalog_model, threads)
+        # A buffered streaming export re-encodes its whole context window every
+        # step, so transcribing a finished file through it costs many times what
+        # the batch export of the same weights costs — and buys nothing, since
+        # there are no partials to deliver early. When the twin is installed,
+        # send whole-file work there and keep the streaming export for live audio.
+        self._twin: _ResidentRecognizer | None = (
+            _ResidentRecognizer(batch_root, batch_model, threads)
+            if batch_root is not None and batch_model is not None
+            else None
+        )
 
     async def create_stream(self) -> _SherpaOnnxStreamAdapter:
         if not self.supports_streaming:
@@ -342,35 +412,27 @@ class SherpaOnnxEngine:
             raise errors.EngineUnavailableError(
                 "sherpa-onnx or its selected streaming model is unavailable."
             )
-        recognizer, _ = await self._ensure_recognizer()
+        recognizer, _ = await self._selected.ensure()
         stream = await asyncio.to_thread(recognizer.create_stream)
+        builder = self._selected.builder
         return _SherpaOnnxStreamAdapter(
             recognizer,
             stream,
             language_mapper=(
-                self._builder.stream_language
-                if self._builder.uses_stream_language_locale()
-                else None
+                builder.stream_language if builder.uses_stream_language_locale() else None
             ),
         )
 
     def configure_stream(self, stream: object, language: str) -> None:
         """Validate and configure a newly-created stream for a request."""
-        self._builder.validate_language(language)
+        self._selected.builder.validate_language(language)
         setter = getattr(stream, "set_language", None)
         if callable(setter):
             setter(language)
 
     async def health(self) -> EngineHealth:
         package_ready = importlib_util.find_spec("sherpa_onnx") is not None
-        model_ready = (
-            self.model_root is not None
-            and self.catalog_model is not None
-            and (self.model_root / MODEL_METADATA).is_file()
-            and all(
-                (self.model_root / name).is_file() for name in self.catalog_model.required_files
-            )
-        )
+        model_ready = _model_files_present(self.model_root, self.catalog_model)
         model_name = self.model_root.name if self.model_root else "no-model-selected"
         return EngineHealth(
             ready=package_ready and model_ready,
@@ -380,7 +442,10 @@ class SherpaOnnxEngine:
     async def transcribe(
         self, audio_path: Path, options: TranscriptionOptions
     ) -> EngineTranscription:
-        self._builder.validate_language(options.language)
+        # Validated against the selected model, not whichever export decodes it:
+        # the twin shares its weights and its language coverage, and a client
+        # asking for something the selection cannot do should hear so either way.
+        self._selected.builder.validate_language(options.language)
         if not (await self.health()).ready:
             raise errors.EngineUnavailableError(
                 "sherpa-onnx or its selected model is unavailable. Install the engines extra "
@@ -388,7 +453,7 @@ class SherpaOnnxEngine:
             )
         async with self._inference_lock:
             start_time = time.monotonic()
-            recognizer, loaded_now = await self._ensure_recognizer(options.language)
+            batch, recognizer, loaded_now = await self._load_batch(options.language)
             load_ms = 0
             if loaded_now:
                 load_ms = max(0, int((time.monotonic() - start_time) * 1000))
@@ -396,8 +461,8 @@ class SherpaOnnxEngine:
             text = await _run_sherpa_inference(
                 recognizer,
                 audio_path,
-                self.supports_streaming,
-                self._builder.language_policy(options.language),
+                batch.is_online,
+                batch.builder.language_policy(options.language),
             )
             if not text:
                 if options.language != AUTO_LANGUAGE:
@@ -414,39 +479,76 @@ class SherpaOnnxEngine:
             )
 
     async def warmup(self) -> int:
+        """Preload the export each request path will actually reach.
+
+        With a batch twin in play that is two recognizers, because an engine
+        that reports itself warm and still pays a cold load on the first
+        dictation has warmed the wrong one. The selection is warmed first so a
+        twin that cannot load leaves the streaming path ready regardless.
+        """
         if not (await self.health()).ready or not self.model_root:
             return 0
-        await self._ensure_recognizer()
-        total = 0
-        for entry in self.model_root.rglob("*"):
-            if entry.is_file():
-                total += entry.stat().st_size
-        return total
+        await self._selected.ensure()
+        await self._load_batch(AUTO_LANGUAGE)
+        return sum(
+            _directory_bytes(resident.model_root)
+            for resident in self._residents()
+            if resident.is_resident
+        )
 
     @property
     def model_is_resident(self) -> bool:
-        return self._recognizer is not None
+        return any(resident.is_resident for resident in self._residents())
 
     def unload(self) -> None:
-        self._recognizer = None
+        for resident in self._residents():
+            resident.unload()
 
-    async def _ensure_recognizer(self, language: str = AUTO_LANGUAGE) -> tuple[Any, bool]:
-        wanted = self._builder.build_language(language)
-        if self._recognizer is not None and not self._needs_rebuild(wanted):
-            return self._recognizer, False
-        async with self._load_lock:
-            if self._recognizer is not None and not self._needs_rebuild(wanted):
-                return self._recognizer, False
-            self._recognizer = await asyncio.to_thread(self._load_recognizer_sync, language)
-            self._recognizer_language = wanted
-            return self._recognizer, True
+    @property
+    def _batch(self) -> _ResidentRecognizer:
+        """The export that decodes a finished file, re-resolved on every use.
 
-    def _needs_rebuild(self, wanted: str) -> bool:
-        """A language-pinned recognizer built for another language is the wrong one."""
-        return self._builder.pins_language_at_build() and self._recognizer_language != wanted
+        Deliberately not a snapshot taken in `__init__`: models are downloaded
+        and deleted from the Models tab without rebuilding the engine, so a
+        value fixed there would never notice a twin that arrived afterwards and
+        would keep pointing at one that has since been removed.
+        """
+        twin = self._twin
+        return twin if twin is not None and twin.files_present else self._selected
 
-    def _load_recognizer_sync(self, language: str = AUTO_LANGUAGE) -> Any:
-        return self._builder.build(language)
+    async def _load_batch(self, language: str) -> tuple[_ResidentRecognizer, Any, bool]:
+        """Load the export that decodes a finished file.
+
+        The twin is an optimisation, so it is never allowed to fail a request
+        the selection could have served: a download whose files are all in
+        place but corrupt, or a machine too small to hold both exports at once,
+        falls back instead of taking a working engine down with it.
+        """
+        batch = self._batch
+        try:
+            recognizer, loaded_now = await batch.ensure(language)
+        except Exception:
+            if batch is self._selected:
+                raise
+            batch = self._selected
+            recognizer, loaded_now = await batch.ensure(language)
+        return batch, recognizer, loaded_now
+
+    def _residents(self) -> tuple[_ResidentRecognizer, ...]:
+        """Every holder this engine owns, whether or not it is currently used.
+
+        A twin deleted from disk keeps its weights in memory until something
+        unloads them, so idle offload has to be able to reach it here.
+        """
+        if self._twin is None:
+            return (self._selected,)
+        return (self._selected, self._twin)
+
+
+def _directory_bytes(root: Path | None) -> int:
+    if root is None:
+        return 0
+    return sum(entry.stat().st_size for entry in root.rglob("*") if entry.is_file())
 
 
 def _read_wave_samples(audio_path: Path) -> tuple[int, Any]:

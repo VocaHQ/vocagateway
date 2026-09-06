@@ -113,6 +113,7 @@ async def test_health_is_public_and_separates_eng_aa(
         # clients keep every language selectable.
         LANGUAGES_KEY: [],
         "detects_language_automatically": False,
+        "requires_explicit_language": False,
     }
 
     liveness = await client.get("/health/live")
@@ -312,8 +313,41 @@ async def test_health_reports_what_the_loaded_mod_a(settings: Settings, audio_by
         payload = (await client.get("/health")).json()
 
     assert payload["detects_language_automatically"] is True
+    assert payload["requires_explicit_language"] is False
     assert "hi" in payload[LANGUAGES_KEY] and "bn" in payload[LANGUAGES_KEY]
     assert "en" not in payload[LANGUAGES_KEY]  # Dolphin is not trained on English
+
+
+async def test_health_warns_clients_off_auto_for_a_m_a(settings: Settings) -> None:
+    """A client left on its default `auto` gets an error, not a transcript, from a
+    decoder that refuses to guess — so /health has to say so before the request."""
+    from app.catalog import DEFAULT_CATALOG
+    from app.models.base import EngineHealth
+
+    cohere = next(
+        model
+        for model in DEFAULT_CATALOG
+        if model.id == "sherpa-onnx:cohere-transcribe-14-lang-int8"
+    )
+
+    class CohereLikeEngine:
+        catalog_model = cohere
+
+        async def health(self) -> EngineHealth:
+            return EngineHealth(ready=True, name="sherpa-onnx:cohere")
+
+        async def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> str:
+            return "unused"
+
+    app = create_app(settings, engine=CohereLikeEngine(), normalizer=FakeNormalizer())
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://gateway") as client:
+        payload = (await client.get("/health")).json()
+
+    assert payload["requires_explicit_language"] is True
+    assert payload["detects_language_automatically"] is False
+    assert "auto" not in payload[LANGUAGES_KEY]
+    assert "en" in payload[LANGUAGES_KEY]
 
 
 class BoomEngine:
