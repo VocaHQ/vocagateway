@@ -547,59 +547,46 @@ main > .card:first-child, #panel > .card:first-child { border-top: none; padding
 .exposure-banner {
   width: 100%;
   border-bottom: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line));
-  background: var(--warn-wash);
+  /* Opaque: --warn-wash is ~12% alpha, and the shell paints the sidebar rail
+     across the full height of <body>, so the rail and its divider showed
+     through the banner as a stray block and a vertical line near the left. */
+  background: linear-gradient(0deg, var(--warn-wash), var(--warn-wash)), var(--bg);
   color: var(--text);
 }
 .exposure-banner[hidden] { display: none !important; }
 .exposure-banner-inner {
-  position: relative;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px 12px;
+  align-items: flex-start;
+  gap: 12px;
   width: 100%;
   box-sizing: border-box;
   margin: 0;
-  /* Symmetric inset so mark+copy stay centered; room for the absolute × */
-  padding: 9px 48px;
+  /* Left-aligned on the header's own gutter, so banner, brand and page title
+     share one left edge. Centred text floated free of everything else. */
+  padding: 11px 16px 11px 28px;
 }
+/* A drawn warning triangle rather than an "!" in a filled circle: it matches
+   the stroked icon set the rest of the UI uses, and reads at a glance. */
 .exposure-banner-mark {
   flex: 0 0 auto;
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--warn);
-  /* Light ink in light theme, dark ink on the pale amber used in dark theme. */
-  color: var(--warn-ink);
-  font-size: 0.72rem;
-  font-weight: 800;
-  line-height: 1;
-}
-.exposure-banner-copy {
-  flex: 0 1 auto;
-  min-width: 0;
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.88rem;
-  line-height: 1.35;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.exposure-banner-copy strong {
   color: var(--warn);
-  font-weight: 700;
-  margin-right: 0.35em;
+  margin-top: 1px;
 }
+/* Wraps rather than truncating. It used to be one nowrap line with an
+   ellipsis, so on a narrower window the security advice was cut off mid
+   sentence — the one piece of copy that must never be. */
+.exposure-banner-copy {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+.exposure-banner-copy strong { color: var(--warn); font-weight: 700; margin-right: 0.3em; }
+.exposure-banner-copy > span { color: var(--muted); }
 .exposure-banner-dismiss {
-  position: absolute;
-  top: 50%;
-  right: 12px;
-  transform: translateY(-50%);
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -662,13 +649,7 @@ main > .card:first-child, #panel > .card:first-child { border-top: none; padding
 .exposure-panel .muted.small { margin: 0; }
 
 @media (max-width: 760px) {
-  .exposure-banner-inner { padding-inline: 40px 40px; }
-  .exposure-banner-copy {
-    white-space: normal;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-  }
+  .exposure-banner-inner { padding: 10px 12px 10px 16px; }
 }
 
 /* ------------------------------------------------------- overview: operations */
