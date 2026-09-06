@@ -114,7 +114,8 @@ class CleanupService:
         started = time.monotonic()
         cleaned, reason = await self._attempt(work)
         if cleaned is None:
-            return self._finish(work.legacy, transcript, self._fallback(options, reason, started))
+            refused = reason or CleanupReason.RUNTIME_ERROR
+            return self._finish(work.legacy, transcript, self._fallback(options, refused, started))
         return self._accept(work, cleaned, started)
 
     def _bypass(self, work: _Work) -> CleanupOutcome | None:
@@ -144,7 +145,7 @@ class CleanupService:
             return CleanupReason.INPUT_TOO_LONG
         return None
 
-    async def _attempt(self, work: _Work) -> tuple[str | None, CleanupReason]:
+    async def _attempt(self, work: _Work) -> tuple[str | None, CleanupReason | None]:
         """The candidate text, or None with the single reason it was refused.
 
         `asyncio.CancelledError` deliberately escapes: the caller went away, and
@@ -154,16 +155,16 @@ class CleanupService:
         manager = self.manager
         if manager is None:
             return None, CleanupReason.MODEL_UNAVAILABLE
-        async with manager.lease() as runtime:
-            if runtime is None:
-                return None, self._unavailable_reason(manager)
-            candidate = await self._infer(runtime, work)
+        async with manager.lease() as lease:
+            if lease.runtime is None:
+                return None, lease.reason or CleanupReason.MODEL_UNAVAILABLE
+            candidate = await self._infer(lease.runtime, work)
         if isinstance(candidate, CleanupReason):
             return None, candidate
         rejected = validation.rejection(work.transcript, candidate, work.resolved or work.language)
         if rejected is not None:
             return None, rejected
-        return candidate, CleanupReason.INVALID_OUTPUT
+        return candidate, None
 
     async def _infer(self, runtime: CleanupRuntime, work: _Work) -> str | CleanupReason:
         budget = work.options.timeout_seconds
@@ -178,12 +179,6 @@ class CleanupService:
             return rejection.reason
         except _RUNTIME_FAILURES as failure:
             return _reason_for(failure)
-
-    def _unavailable_reason(self, manager: CleanupManager) -> CleanupReason:
-        """Tell a full runtime apart from a missing one; the two need different fixes."""
-        if manager.model_path() is None:
-            return CleanupReason.MODEL_UNAVAILABLE
-        return CleanupReason.BUSY
 
     def _accept(self, work: _Work, cleaned: str, started: float) -> FinalTranscript:
         final = text_styles.apply_writing_style_paragraphs(cleaned, work.style, work.language)

@@ -32,6 +32,7 @@ from app.cleanup.base import (
     PROMPT_VERSION,
     RESOLVED_MODES,
     CleanupOptions,
+    CleanupReason,
     CleanupRuntime,
 )
 from app.cleanup.host import WorkerHost
@@ -47,6 +48,21 @@ STATE_READY = "ready"
 STATE_OFFLOADED = "offloaded"
 STATE_ERROR = "error"
 EXTERNAL_MODEL_NAME = "external"
+
+
+@dataclass(frozen=True, slots=True)
+class Lease:
+    """One admitted inference slot: a runtime to use, or the reason there is none.
+
+    The reason travels with the lease because only the manager can tell the
+    three apart — a full slot, a runtime still loading, and a model or
+    executable that is simply not there. Inferring it afterwards from the model
+    path reported "busy" for a missing `llama-server`, which points an operator
+    at the wrong fix.
+    """
+
+    runtime: CleanupRuntime | None = None
+    reason: CleanupReason | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,27 +224,32 @@ class CleanupManager:
         return self.models.installed_path(selected.id)
 
     @asynccontextmanager
-    async def lease(self) -> AsyncIterator[CleanupRuntime | None]:
-        """Admit one inference, or yield None rather than queueing behind others.
+    async def lease(self) -> AsyncIterator[Lease]:
+        """Admit one inference, or say why not rather than queueing behind others.
 
         Concurrency is one per runtime and the wait is bounded, so a burst of
         dictations degrades to the plain ASR result instead of building a queue
         whose tail would miss its deadline anyway.
         """
         if not await self._admit():
-            yield None
+            yield Lease(reason=CleanupReason.BUSY)
             return
         self._active_leases += 1
         try:
-            yield await self._runtime()
+            yield await self._lease()
         finally:
             self._release()
 
     async def warmup(self) -> bool:
-        """Load the model outside a request, so the first dictation is not cold."""
+        """Load the model outside a request, so the first dictation is not cold.
+
+        The one caller allowed to wait for a cold load. A request cannot: its
+        budget is seconds and loading a multi-gigabyte GGUF is minutes, so it
+        takes the ASR result and leaves the load running behind it.
+        """
         if not self.enabled:
             return False
-        runtime = await self._runtime()
+        runtime = await self._runtime(wait=True)
         return runtime is not None and await runtime.available()
 
     def offload_if_idle(self, *, now: float | None = None) -> bool:
@@ -246,7 +267,7 @@ class CleanupManager:
         return True
 
     async def shutdown(self) -> None:
-        await asyncio.to_thread(self.host.stop)
+        await self.host.aclose()
 
     def status(self) -> CleanupStatusReport:
         preferences = self.preferences
@@ -288,6 +309,24 @@ class CleanupManager:
             # it was admitted against; the swap happens once its lease drains.
             self.host.stop()
 
+    async def _lease(self) -> Lease:
+        runtime = await self._runtime()
+        if runtime is not None:
+            return Lease(runtime=runtime)
+        return Lease(reason=self._missing_reason())
+
+    def _missing_reason(self) -> CleanupReason:
+        """Why the slot was free but there is still nothing to run on.
+
+        A load in progress is worth telling apart from an absent one: the first
+        is fixed by waiting a moment, the second by installing something.
+        """
+        if not self.enabled or self.model_path() is None:
+            return CleanupReason.MODEL_UNAVAILABLE
+        if not self.host.runtime_available() or self.host.failure:
+            return CleanupReason.MODEL_UNAVAILABLE
+        return CleanupReason.MODEL_LOADING
+
     async def _admit(self) -> bool:
         try:
             await asyncio.wait_for(self._slot.acquire(), timeout=ADMISSION_WAIT_SECONDS)
@@ -300,7 +339,7 @@ class CleanupManager:
         self._last_used = time.monotonic()
         self._slot.release()
 
-    async def _runtime(self) -> CleanupRuntime | None:
+    async def _runtime(self, *, wait: bool = False) -> CleanupRuntime | None:
         if not self.enabled:
             return None
         external = self.preferences.external_endpoint()
@@ -310,7 +349,7 @@ class CleanupManager:
         model_file = self.model_path()
         if selected_id is None or model_file is None:
             return None
-        return await self.host.runtime(selected_id, model_file)
+        return await self.host.runtime(selected_id, model_file, wait=wait)
 
     def _can_offload(self) -> bool:
         if not self.runtime_config.cleanup_idle_unload_enabled:

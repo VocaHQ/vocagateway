@@ -158,10 +158,21 @@ async def _read_exactly(reader: asyncio.StreamReader, length: int) -> bytes:
 
 
 async def _read_until_eof(reader: asyncio.StreamReader) -> bytes:
-    body = await reader.read(MAXIMUM_BODY_BYTES + 1)
-    if len(body) > MAXIMUM_BODY_BYTES:
-        raise TransportError("The cleanup runtime sent an oversized body.")
-    return body
+    """Drain to EOF, bounded.
+
+    Looped rather than read in one call because `StreamReader.read(n)` returns
+    *up to* n bytes: it stops at whatever the first segment happened to carry,
+    so a single call truncates any answer that arrives in more than one piece
+    and hands the caller a half a JSON document.
+    """
+    body = bytearray()
+    while True:
+        chunk = await reader.read(MAXIMUM_BODY_BYTES + 1 - len(body))
+        if not chunk:
+            return bytes(body)
+        body.extend(chunk)
+        if len(body) > MAXIMUM_BODY_BYTES:
+            raise TransportError("The cleanup runtime sent an oversized body.")
 
 
 async def _read_chunked(reader: asyncio.StreamReader) -> bytes:

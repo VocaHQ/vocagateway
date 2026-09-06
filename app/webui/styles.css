@@ -2315,7 +2315,9 @@ button.danger.ghost:hover {
 #test-transcript { font-size: 16px; margin: 10px 0 4px; }
 .benchmark-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  /* Auto-fit rather than a fixed six: the cleanup tile is present only where a
+     cleanup model is, so the row has to hold six or seven without orphaning. */
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
   gap: 1px;
   background: var(--line-soft);
   border: 1px solid var(--line-soft);
@@ -2332,6 +2334,45 @@ button.danger.ghost:hover {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }
+/* Transcript cleanup: the settings card's model list and the mic-test
+   before-and-after comparison. */
+.settings-subheading {
+  margin: 22px 0 6px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cleanup-models { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.cleanup-model {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  padding: 14px 16px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.cleanup-model-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.cleanup-model p { margin: 0; }
+.cleanup-model .settings-actions { margin-top: 4px; }
+.result-subheading {
+  margin: 14px 0 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+#test-original { margin: 0; overflow-wrap: anywhere; }
+
 .record-timer {
   min-width: 46px;
   color: var(--error);

@@ -517,9 +517,16 @@ once the model is installed. Audio never reaches it — only the recognised text
 does.
 
 The design rule is that it can improve a transcript and never lose one. Every
-way it can fail — no model, wrong language, text too long, busy, timed out, or
-an edit the safety checks refuse — returns exactly the transcript you would have
-got with the feature switched off, plus a bounded reason saying why.
+way it can fail — no model, wrong language, text too long, still loading, busy,
+timed out, or an edit the safety checks refuse — returns exactly the transcript
+you would have got with the feature switched off, plus a bounded reason saying
+why.
+
+A dictation never waits for a cold model load. Loading a multi-gigabyte GGUF is
+minutes and a request's budget is seconds, so the first dictation after a start
+or an idle unload takes the plain speech result, reports `model_loading`, and
+leaves the load running behind it; the next one finds the model resident.
+**Load model now** is how you pay that cost once, deliberately.
 
 **Setup.** Settings → Transcript cleanup → install a model → **Load model now**
 → tick *Correct transcripts by default*. Natively the gateway launches and owns

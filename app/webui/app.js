@@ -879,6 +879,11 @@
     }
     const cleanup = capabilities.cleanup || {};
     field.classList.toggle("hidden", !cleanup.supported);
+    // The benchmark tile goes with it: a permanent em dash in the pipeline
+    // breakdown reads as a measurement that failed rather than one that was
+    // never asked for, and it leaves an orphan on the tile row.
+    const tile = document.getElementById("benchmark-cleanup-tile");
+    if (tile) tile.classList.toggle("hidden", !cleanup.supported);
   }
 
   // Renders the original text beside the final one, and says in words what

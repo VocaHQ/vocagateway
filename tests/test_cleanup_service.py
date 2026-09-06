@@ -24,6 +24,7 @@ from app.cleanup.base import (
     CleanupStatus,
     CleanupUnavailable,
 )
+from app.cleanup.manager import Lease
 from app.cleanup.service import CleanupService, resolve_language
 from app.cleanup.transport import TransportError
 from tests.conftest import CLEANUP_MODEL_ID, FakeCleanupRuntime, cleanup_options
@@ -63,11 +64,13 @@ class _StubLease:
     def __init__(self, manager: StubManager) -> None:
         self.manager = manager
 
-    async def __aenter__(self) -> CleanupRuntime | None:
+    async def __aenter__(self) -> Lease:
         if not self.manager.admit:
-            return None
+            return Lease(reason=CleanupReason.BUSY)
+        if self.manager.runtime is None or not self.manager.installed:
+            return Lease(reason=CleanupReason.MODEL_UNAVAILABLE)
         self.manager.leases += 1
-        return self.manager.runtime
+        return Lease(runtime=self.manager.runtime)
 
     async def __aexit__(self, *_: object) -> None:
         return None

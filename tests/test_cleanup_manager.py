@@ -8,6 +8,7 @@ after the model was switched, an idle unload that fires mid-request.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -15,8 +16,10 @@ from pathlib import Path
 import pytest
 from conftest import CLEANUP_MODEL_ID, FakeCleanupRuntime, FakeWorkerHost
 
-from app.cleanup.base import MODE_CONSERVATIVE, MODE_INHERIT, MODE_OFF
+from app.cleanup import host as host_module
+from app.cleanup.base import MODE_CONSERVATIVE, MODE_INHERIT, MODE_OFF, CleanupReason
 from app.cleanup.manager import CleanupUpdate, build_manager
+from app.cleanup.transport import Endpoint
 from app.cleanup.worker import LlamaServerWorker, resolve_binary
 from app.config import Settings
 from app.runtime_config import RuntimeConfig
@@ -118,9 +121,10 @@ async def test_the_admission_bound_yields_none_rather_than_queueing(
     manager.host = FakeWorkerHost(FakeCleanupRuntime())
     manager.model_path = lambda: Path("model.gguf")  # type: ignore[method-assign]
     async with manager.lease() as first:
-        assert first is not None
+        assert first.runtime is not None
         async with manager.lease() as second:
-            assert second is None
+            assert second.runtime is None
+            assert second.reason is CleanupReason.BUSY
 
 
 async def test_idle_unload_never_fires_while_a_lease_is_out(settings: Settings) -> None:
@@ -254,3 +258,100 @@ def test_a_routable_cleanup_endpoint_is_refused_at_startup(
     monkeypatch.setenv("VOCAGATEWAY_CLEANUP_ENDPOINT", endpoint)
     with pytest.raises(RuntimeError):
         Settings.from_env()
+
+
+class _NeverReadyWorker:
+    """A worker whose model load never finishes, like a cold multi-gigabyte GGUF."""
+
+    def __init__(self, *_: object, **__: object) -> None:
+        self.is_running = False
+        self.starts = 0
+        self.endpoint = Endpoint("127.0.0.1", 1)
+        self.released = asyncio.Event()
+
+    async def ensure_started(self, *, budget: float = 0.0) -> bool:
+        self.starts += 1
+        await self.released.wait()
+        self.is_running = True
+        return True
+
+    def stop(self, *, force: bool = False) -> None:
+        self.is_running = False
+
+
+@pytest.fixture
+def cold_worker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> _NeverReadyWorker:
+    built = _NeverReadyWorker()
+    monkeypatch.setattr(host_module.worker, "LlamaServerWorker", lambda *a, **k: built)
+    monkeypatch.setattr(host_module.worker, "resolve_binary", lambda _=None: tmp_path / "llama")
+    return built
+
+
+async def test_a_cold_load_never_makes_a_request_wait_for_it(
+    settings: Settings, cold_worker: _NeverReadyWorker, tmp_path: Path
+) -> None:
+    """A request's budget is seconds; loading a model is minutes.
+
+    Waiting for the load inside the lease put the whole start timeout — five
+    minutes — in front of a transcription that had already succeeded.
+    """
+    worker_host = host_module.WorkerHost(settings, RuntimeConfig())
+    leased = await asyncio.wait_for(
+        worker_host.runtime(CLEANUP_MODEL_ID, tmp_path / "model.gguf"), timeout=1.0
+    )
+    assert leased is None
+    await asyncio.sleep(0)  # let the background load actually begin
+    assert cold_worker.starts == 1
+    worker_host.stop()
+
+
+async def test_a_cold_load_is_reported_as_loading_not_as_a_full_runtime(
+    settings: Settings, cold_worker: _NeverReadyWorker, tmp_path: Path
+) -> None:
+    """`busy` sends an operator looking for a queue that is not there."""
+    manager = manager_for(settings, cleanup_enabled=True, cleanup_model=CLEANUP_MODEL_ID)
+    manager.model_path = lambda: tmp_path / "model.gguf"  # type: ignore[method-assign]
+    async with manager.lease() as slot:
+        assert slot.runtime is None
+        assert slot.reason is CleanupReason.MODEL_LOADING
+    manager.host.stop()
+
+
+async def test_an_operator_warm_up_does_wait_for_the_load(
+    settings: Settings, cold_worker: _NeverReadyWorker, tmp_path: Path
+) -> None:
+    """The one caller that asked to pay the cold-load cost deliberately."""
+    worker_host = host_module.WorkerHost(settings, RuntimeConfig())
+    warming = asyncio.create_task(
+        worker_host.runtime(CLEANUP_MODEL_ID, tmp_path / "model.gguf", wait=True)
+    )
+    await asyncio.sleep(0)
+    assert not warming.done()
+    cold_worker.released.set()
+    assert await asyncio.wait_for(warming, timeout=1.0) is not None
+    worker_host.stop()
+
+
+async def test_concurrent_requests_share_one_load_rather_than_starting_several(
+    settings: Settings, cold_worker: _NeverReadyWorker, tmp_path: Path
+) -> None:
+    worker_host = host_module.WorkerHost(settings, RuntimeConfig())
+    model = tmp_path / "model.gguf"
+    for _ in range(3):
+        assert await worker_host.runtime(CLEANUP_MODEL_ID, model) is None
+        await asyncio.sleep(0)
+    assert cold_worker.starts == 1
+    worker_host.stop()
+
+
+async def test_stopping_mid_load_abandons_it_rather_than_adopting_it_later(
+    settings: Settings, cold_worker: _NeverReadyWorker, tmp_path: Path
+) -> None:
+    """A model switch during a load must not leave the old one arriving after it."""
+    worker_host = host_module.WorkerHost(settings, RuntimeConfig())
+    assert await worker_host.runtime(CLEANUP_MODEL_ID, tmp_path / "model.gguf") is None
+    await asyncio.sleep(0)
+    worker_host.stop()
+    cold_worker.released.set()
+    await asyncio.sleep(0)
+    assert worker_host.is_running is False

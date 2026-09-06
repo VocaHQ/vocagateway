@@ -292,3 +292,37 @@ async def test_a_redirect_is_never_followed(serve: Any) -> None:
     runtime = await serve(routed({"/v1/chat/completions": redirect}))
     with pytest.raises(CleanupUnavailable):
         await runtime.clean("fix it", "en", budget_seconds=BUDGET)
+
+
+async def test_a_body_with_no_length_is_reassembled_from_every_segment() -> None:
+    """A reply with neither `Content-Length` nor chunked encoding still arrives whole.
+
+    `StreamReader.read(n)` returns *up to* n bytes, so it stops at whatever the
+    first segment happened to carry. Reading once truncated any answer that
+    crossed a segment boundary and handed the caller half a JSON document,
+    which surfaced as a malformed-body rejection of a perfectly good
+    correction.
+    """
+    reader = asyncio.StreamReader()
+    payload = json.dumps({"text": "correct " * 900}).encode("utf-8")
+
+    async def feed() -> None:
+        # Interleaved with the read on purpose: segments already sitting in the
+        # buffer would be returned by a single `read` and hide the bug.
+        for start in range(0, len(payload), 512):
+            reader.feed_data(payload[start : start + 512])
+            await asyncio.sleep(0)
+        reader.feed_eof()
+
+    feeding = asyncio.create_task(feed())
+    body = await transport._read_body(reader, {})
+    await feeding
+    assert body == payload
+
+
+async def test_a_body_with_no_length_is_still_bounded() -> None:
+    reader = asyncio.StreamReader()
+    reader.feed_data(b"x" * (transport.MAXIMUM_BODY_BYTES + 1))
+    reader.feed_eof()
+    with pytest.raises(transport.TransportError):
+        await transport._read_body(reader, {})
