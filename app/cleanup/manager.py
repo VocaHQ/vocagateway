@@ -264,7 +264,7 @@ class CleanupManager:
         if not await self._admit():
             yield Lease(reason=CleanupReason.BUSY)
             return
-        self._hold()
+        _hold(self)
         try:
             yield await self._lease()
         finally:
@@ -285,7 +285,7 @@ class CleanupManager:
         runtime = await self._runtime()
         if runtime is not None:
             return await runtime.available()
-        self._schedule_load_hold()
+        _schedule_load_hold(self)
         return False
 
     @property
@@ -354,13 +354,13 @@ class CleanupManager:
         update.apply(self.runtime_config)
         self.runtime_config.save(self.config_path)
         self._external_ok = None
-        if changed_model or not self.enabled:
-            # Applies to new work only. An in-flight request or load-hold keeps
-            # the runtime it was admitted against; stop is deferred until the
-            # last lease drains. Re-enable is a no-op here: _stop_if_due reads
-            # live enabled/model state, so a disable then re-enable while
-            # leased cannot kill a worker that is wanted again.
-            self._stop_or_defer()
+        # Applies to new work only. An in-flight request or load-hold keeps
+        # the runtime it was admitted against; stop is deferred until the
+        # last lease drains. Re-enable is a no-op here: _stop_if_due reads
+        # live enabled/model state, so a disable then re-enable while
+        # leased cannot kill a worker that is wanted again.
+        if (changed_model or not self.enabled) and self._active_leases == 0:
+            self.host.stop()
 
     async def _external_runtime(self, endpoint: Endpoint) -> CleanupRuntime | None:
         """An operator-run server, once its context window has been vouched for.
@@ -383,7 +383,7 @@ class CleanupManager:
             return Lease(runtime=runtime)
         reason = self._missing_reason()
         if reason is CleanupReason.MODEL_LOADING:
-            self._schedule_load_hold()
+            _schedule_load_hold(self)
         return Lease(reason=reason)
 
     def _missing_reason(self) -> CleanupReason:
@@ -415,66 +415,9 @@ class CleanupManager:
             return False
         return True
 
-    def _hold(self) -> None:
-        self._active_leases += 1
-        self.host.pin()
-
-    def _drop_hold(self) -> None:
-        self._active_leases -= 1
-        self.host.unpin()
-        self._last_used = time.monotonic()
-        self._stop_if_due()
-
     def _release(self) -> None:
-        self._drop_hold()
+        _drop_hold(self)
         self._slot.release()
-
-    def _stop_or_defer(self) -> None:
-        """Stop now, or once the last in-flight lease (including a load-hold) drains."""
-        if self._active_leases == 0:
-            self.host.stop()
-
-    def _stop_if_due(self) -> None:
-        if self._active_leases:
-            return
-        # Live state, not a sticky flag: disable then re-enable while leased
-        # must keep the worker that is wanted again.
-        if not self.enabled or self._hosted_model_stale():
-            self.host.stop()
-
-    def _hosted_model_stale(self) -> bool:
-        loaded = self.host.loaded_model_id
-        return loaded is not None and loaded != self.model_id
-
-    def _schedule_load_hold(self) -> None:
-        """Hold a lease across a background load so configure cannot kill it.
-
-        The hold is taken here, before yielding back to the request, so
-        configure/idle-unload cannot stop the worker in the gap before the
-        hold task first runs.
-        """
-        if not self._should_hold_load():
-            return
-        existing = self._load_hold_task
-        if existing is not None and not existing.done():
-            return
-        self._hold()
-        self._load_hold_task = asyncio.create_task(self._await_load_hold())
-
-    def _should_hold_load(self) -> bool:
-        if not self.enabled or not self.preferences.managed:
-            return False
-        if self.model_path() is None:
-            return False
-        return not self.host.is_ready
-
-    async def _await_load_hold(self) -> None:
-        try:
-            await self.host.wait_for_load()
-        except Exception:
-            pass
-        finally:
-            self._drop_hold()
 
     async def _runtime(self) -> CleanupRuntime | None:
         if not self.enabled:
@@ -507,6 +450,58 @@ class CleanupManager:
         if self.loading or (self.host.is_running and not self.host.is_ready):
             return STATE_LOADING
         return STATE_OFFLOADED if self.host.offloaded else STATE_READY
+
+
+def _hold(manager: CleanupManager) -> None:
+    manager._active_leases += 1
+    manager.host.pin()
+
+
+def _drop_hold(manager: CleanupManager) -> None:
+    manager._active_leases -= 1
+    manager.host.unpin()
+    manager._last_used = time.monotonic()
+    _stop_if_due(manager)
+
+
+def _stop_if_due(manager: CleanupManager) -> None:
+    if manager._active_leases:
+        return
+    # Live state, not a sticky flag: disable then re-enable while leased
+    # must keep the worker that is wanted again.
+    loaded = manager.host.loaded_model_id
+    stale = loaded is not None and loaded != manager.model_id
+    if not manager.enabled or stale:
+        manager.host.stop()
+
+
+def _schedule_load_hold(manager: CleanupManager) -> None:
+    """Hold a lease across a background load so configure cannot kill it.
+
+    The hold is taken here, before yielding back to the request, so
+    configure/idle-unload cannot stop the worker in the gap before the
+    hold task first runs.
+    """
+    if not manager.enabled or not manager.preferences.managed:
+        return
+    if manager.model_path() is None:
+        return
+    if manager.host.is_ready:
+        return
+    existing = manager._load_hold_task
+    if existing is not None and not existing.done():
+        return
+    _hold(manager)
+    manager._load_hold_task = asyncio.create_task(_await_load_hold(manager))
+
+
+async def _await_load_hold(manager: CleanupManager) -> None:
+    try:
+        await manager.host.wait_for_load()
+    except Exception:
+        return
+    finally:
+        _drop_hold(manager)
 
 
 @dataclass(frozen=True, slots=True)

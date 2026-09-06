@@ -176,9 +176,7 @@ class CleanupService:
             rejected = validation.rejection(
                 work.transcript, candidate, work.resolved or work.language
             )
-            if rejected is not None:
-                return None, rejected
-            return candidate, None
+            return (candidate, None) if rejected is None else (None, rejected)
         except Exception:
             return None, CleanupReason.RUNTIME_ERROR
 
