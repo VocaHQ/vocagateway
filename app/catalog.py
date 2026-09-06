@@ -6,7 +6,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from app.system import SystemInfo
+from app.system import SystemInfo, is_cpu_only
 
 # Integrity pins live beside the catalog rather than inline in the model table
 # because they are machine-generated (scripts/harvest-model-pins.py) while the
@@ -2019,14 +2019,36 @@ def catalog_by_id(catalog: tuple[CatalogModel, ...] = DEFAULT_CATALOG) -> dict[s
     return {model.id: model for model in catalog}
 
 
+# Parakeet TDT INT8 asks only 4 GB and is the strongest CPU performer in the
+# catalog, so on a machine with no GPU it belongs in every tier that can hold
+# it — including the sub-8 GB rung, which offered nothing from this family.
+PARAKEET_MULTILINGUAL_ID = f"{ENGINE_SHERPA_ONNX}:parakeet-tdt-0.6b-v3-int8"
+PARAKEET_ENGLISH_ID = f"{ENGINE_SHERPA_ONNX}:parakeet-tdt-0.6b-v2-int8"
+PARAKEET_MINIMUM_RAM_GB = 4.0
+
+
 class _CatalogRecommender:
     @classmethod
     def recommended_ids(cls, system: SystemInfo) -> set[str]:
         """Pick the models that best fit this machine."""
         ram = system.ram_gb or DEFAULT_RECOMMENDATION_RAM_GB
         if ram >= VERY_HIGH_MEMORY_RAM_GB:
-            return cls._high_ram_ids(system.is_apple_silicon)
-        return cls._standard_ram_ids(system.is_apple_silicon, ram)
+            picks = cls._high_ram_ids(system.is_apple_silicon)
+        else:
+            picks = cls._standard_ram_ids(system.is_apple_silicon, ram)
+        return picks | cls._cpu_only_picks(system, ram)
+
+    @classmethod
+    def _cpu_only_picks(cls, system: SystemInfo, ram: float) -> set[str]:
+        """Parakeet, on a host that has nothing but a CPU.
+
+        Untested on Linux at the time of writing; it encodes the operator's
+        experience that Parakeet is the family to reach for on CPU. Drop this
+        method to go back to the RAM-tier picks alone.
+        """
+        if not is_cpu_only(system) or ram < PARAKEET_MINIMUM_RAM_GB:
+            return set()
+        return {PARAKEET_MULTILINGUAL_ID, PARAKEET_ENGLISH_ID}
 
     @classmethod
     def _high_ram_ids(cls, is_apple: bool) -> set[str]:

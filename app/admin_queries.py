@@ -4,7 +4,7 @@ from importlib import util as importlib_util
 from types import MappingProxyType
 from typing import Any, cast
 
-from app import schemas
+from app import model_ratings, schemas
 from app.build_info import current_commit
 from app.catalog import catalog_source_url, language_names, recommended_ids
 from app.cleanup import catalog as cleanup_catalog
@@ -13,7 +13,7 @@ from app.context import BOOTSTRAP_TOKEN_ID, TOKEN_FILE_HINT, VERSION, GatewayCon
 from app.engine_state import active_model_path, available_engines, engine_id
 from app.runtime_config import DEFAULT_IDLE_OFFLOAD_MINUTES
 from app.serializers import metrics_status, model_covers
-from app.system import SystemInfo, detect_system
+from app.system import SystemInfo, detect_system, is_cpu_only
 
 PYTHON_PACKAGE_PATH = "Python package"
 INSTALLED_STATE = "installed"
@@ -241,6 +241,9 @@ class _ModelEntryHelper:
             vocamac_app=ctx.settings.vocamac_app,
         )
         self.runtimes = _EngineRuntimes(self.system, ctx.settings)
+        # Speed depends on the host, so the ratings need to know whether this
+        # machine has anything but a CPU to run a model on.
+        self._cpu_only = is_cpu_only(self.system)
         self.recommended = recommended_ids(self.system)
         self.installed = {model.id: model for model in ctx.manager.installed()}
         self.active_path = active_model_path(ctx)
@@ -294,6 +297,8 @@ class _ModelEntryHelper:
             license_name=model.license_name,
             commercial_use=model.commercial_use,
             detects_language_automatically=model.detects_language_automatically,
+            speed_rating=model_ratings.speed_rating(model, cpu_only=self._cpu_only),
+            accuracy_rating=model_ratings.accuracy_rating(model),
             language_names=language_names(model.language_codes),
             language_codes=list(model.language_codes),
             state=resolution[0],

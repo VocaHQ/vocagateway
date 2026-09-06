@@ -1,0 +1,30 @@
+{# Speed and accuracy as filled/empty pips.
+
+   The emoji is the filled state and a dot is the empty one, so five pips always
+   occupy the same width and two models can be compared down a column. Screen
+   readers get "Speed 4 out of 5" from the label rather than eight emoji names,
+   and the emoji themselves are aria-hidden. #}
+{% macro rating_row(kind, value, label, icon) %}
+{% if value %}
+<span class="rating rating-{{ kind }}">
+  <span class="rating-label">{{ label }}</span>
+  <span class="rating-pips" role="img" aria-label="{{ value }} out of 5">
+    {#- The same glyph in every slot, greyed out when unearned: a different
+        character for the empty state would not share the emoji's advance width,
+        so the rows would not line up between two models. -#}
+    {%- for step in range(1, 6) -%}
+    <span class="rating-pip{{ ' is-off' if step > value else '' }}" aria-hidden="true">{{ icon }}</span>
+    {%- endfor -%}
+  </span>
+</span>
+{% endif %}
+{% endmacro %}
+
+{% macro speed_and_accuracy(entry) %}
+{% if entry.speed_rating or entry.accuracy_rating %}
+<div class="ratings">
+  {{ rating_row("speed", entry.speed_rating, "Speed", "🐎") }}
+  {{ rating_row("accuracy", entry.accuracy_rating, "Accuracy", "🎯") }}
+</div>
+{% endif %}
+{% endmacro %}

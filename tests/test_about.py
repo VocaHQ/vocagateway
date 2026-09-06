@@ -12,6 +12,9 @@ WEB_UI_DIRECTORY = "webui"
 UTF8_ENCODING = "utf-8"
 BRAND_ACCENT = "#0F6B57"
 ABOUT_STYLES_MARKER = "/* About reuses"
+# The About rules end where the next top-level section comment begins. Slicing to
+# end-of-file instead would make this test fail on any later, unrelated rule.
+ABOUT_STYLES_END_MARKER = "/* ------"
 BRAND = Path(__file__).resolve().parents[1] / APPLICATION_DIRECTORY / WEB_UI_DIRECTORY / "brand"
 SOCIAL = BRAND / "social"
 PLATFORM = BRAND / "platform"
@@ -125,14 +128,14 @@ def test_about_styles_reuse_webui_chrome() -> None:
         / WEB_UI_DIRECTORY
         / "styles.css"
     ).read_text()
-    assert "text-transform: uppercase" not in css.split(ABOUT_STYLES_MARKER)[1]
+    about_css = css.split(ABOUT_STYLES_MARKER)[1].split(ABOUT_STYLES_END_MARKER)[0]
+    assert "text-transform: uppercase" not in about_css
     assert "about-kicker" not in css
     assert "about-card-kicker" not in css
     assert ".about-icon" in css
     assert ".about-info" in css
     assert ".about-host-mark" in css
     assert "about-family-links" not in css
-    assert "about-1u" not in css.split(ABOUT_STYLES_MARKER)[1]
-    assert "5865F2" not in css.split(ABOUT_STYLES_MARKER)[1]
-    about_css = css.split(ABOUT_STYLES_MARKER)[1]
+    assert "about-1u" not in about_css
+    assert "5865F2" not in about_css
     assert "linear-gradient" not in about_css

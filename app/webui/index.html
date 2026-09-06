@@ -16,9 +16,6 @@
   <!-- Favicon: circular mark. Header uses the square app icon (same kit as vocahq.com). -->
   <link rel="icon" type="image/svg+xml" href="/assets/favicon-light.svg" id="favicon" />
   <link rel="apple-touch-icon" href="/assets/favicon-light.svg" id="apple-touch-icon" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Epilogue:wght@500;600;700&display=swap" />
   <link rel="stylesheet" href="/assets/styles.css" />
   <!-- External boot script (CSP script-src 'self') so theme applies before paint. -->
   <script src="/assets/theme-boot.js"></script>
@@ -32,17 +29,18 @@
 
   <div id="token-overlay" class="overlay hidden" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="token-title">
-      <h2 id="token-title">Gateway token</h2>
-      <p class="muted">Stored only in this browser. On this host:</p>
+      <p class="eyebrow">WELCOME TO VOCAGATEWAY</p>
+      <h2 id="token-title">Connect to your gateway</h2>
+      <p class="muted">Enter your gateway token to manage speech models and connect your phone. Stored only in this browser. On the gateway machine, run:</p>
       <code class="block">cat ~/.config/vocagateway/token</code>
-      <label class="sr-only" for="token-input">Bearer token</label>
+      <label for="token-input">Gateway token</label>
       <input id="token-input" type="password" placeholder="Bearer token" autocomplete="off" spellcheck="false" />
       <p id="token-error" class="error hidden" role="alert"></p>
       <button id="token-save" type="button" class="primary">Connect</button>
     </div>
   </div>
 
-  <header>
+  <header class="app-header">
     <div class="brand">
       <span class="logo-stack" aria-hidden="true">
         <img class="logo logo-for-light" src="/assets/voca-logo.svg" width="28" height="28" alt="" />
@@ -50,7 +48,7 @@
       </span>
       <div>
         <h1>VocaGateway</h1>
-        <span class="muted">Private transcription gateway</span>
+        <span class="muted">Your self-hosted workspace</span>
       </div>
     </div>
     <div class="header-actions">
@@ -79,22 +77,22 @@
   <nav class="tabs" role="tablist" aria-label="Gateway sections">
     <button type="button" class="tab active" data-tab="overview" role="tab"
             aria-selected="true" aria-controls="panel" id="tab-overview"
-            hx-get="/ui/partials/overview" hx-target="#panel" hx-swap="innerHTML">Overview</button>
+            hx-get="/ui/partials/overview" hx-target="#panel" hx-swap="innerHTML"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10l9-7 9 7v10H3z M9 20v-7h6v7" /></svg><span>Overview</span></button>
     <button type="button" class="tab" data-tab="models" role="tab"
             aria-selected="false" aria-controls="panel" id="tab-models"
-            hx-get="/ui/partials/models" hx-target="#panel" hx-swap="innerHTML">Models</button>
+            hx-get="/ui/partials/models" hx-target="#panel" hx-swap="innerHTML"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v6H4z M4 14h16v6H4z" /></svg><span>Models</span></button>
     <button type="button" class="tab" data-tab="pair" role="tab"
             aria-selected="false" aria-controls="panel" id="tab-pair"
-            hx-get="/ui/partials/test" hx-target="#panel" hx-swap="innerHTML">Pair &amp; test</button>
+            hx-get="/ui/partials/test" hx-target="#panel" hx-swap="innerHTML"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2h8v20H8z M11 18h2" /></svg><span>Pair &amp; test</span></button>
     <button type="button" class="tab" data-tab="settings" role="tab"
             aria-selected="false" aria-controls="panel" id="tab-settings"
-            hx-get="/ui/partials/settings" hx-target="#panel" hx-swap="innerHTML">Settings</button>
+            hx-get="/ui/partials/settings" hx-target="#panel" hx-swap="innerHTML"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6" /></svg><span>Settings</span></button>
     <button type="button" class="tab" data-tab="about" role="tab"
             aria-selected="false" aria-controls="panel" id="tab-about"
-            hx-get="/ui/partials/about" hx-target="#panel" hx-swap="innerHTML">About</button>
+            hx-get="/ui/partials/about" hx-target="#panel" hx-swap="innerHTML"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 11v6M12 7h.01 M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0" /></svg><span>About</span></button>
   </nav>
 
-  <main>
+  <main id="workspace">
     <div id="panel" role="tabpanel" aria-labelledby="tab-overview" aria-live="polite"
          hx-get="/ui/partials/overview" hx-trigger="load" hx-swap="innerHTML">
       <p class="muted loading">Loading&hellip;</p>
