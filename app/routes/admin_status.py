@@ -3,11 +3,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import HTMLResponse
 
-from app.admin_queries import config_response, status_payload
+from app.admin_queries import cleanup_config, config_response, status_payload
 from app.context import GatewayContextDependency, require_token
 from app.diagnostics import build_diagnostics_bundle
 from app.engine_state import engine_id
-from app.fragments import about, engine, exposure, overview
+from app.fragments import about, cleanup, engine, exposure, overview
 from app.schemas import AdminStatusResponse, DiagnosticsBundle, EngineStatus, ReadinessStatus
 from app.serializers import metrics_status
 
@@ -81,3 +81,8 @@ async def ui_exposure_banner(ctx: GatewayContextDependency) -> HTMLResponse:
             is_mac=platform.system() == "Darwin",
         )
     )
+
+
+@router.get("/ui/partials/cleanup/pill", response_class=HTMLResponse)
+async def ui_cleanup_pill(ctx: GatewayContextDependency) -> HTMLResponse:
+    return HTMLResponse(cleanup.cleanup_pill(cleanup_config(ctx)))

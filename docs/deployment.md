@@ -12,7 +12,7 @@ portability.
 - [Host tool requirements](#host-tool-requirements)
 - [Native macOS deployment](#native-macos-deployment) — [install](#install-and-run) · [run at login](#run-at-login)
 - [Native Linux deployment](#native-linux-deployment) — [install](#install-and-run-1) · [systemd user service](#run-as-a-systemd-user-service)
-- [Docker Compose deployment](#docker-compose-deployment) — [prerequisites](#prerequisites) · [first model](#first-model) · [routine operations](#routine-operations) · [backup](#persistent-data-and-backup) · [performance profiles](#performance-profiles) · [Vulkan GPU access](#giving-the-vulkan-container-access-to-the-gpu) · [build tuning](#tuning-the-whispercpp-build)
+- [Docker Compose deployment](#docker-compose-deployment) — [prerequisites](#prerequisites) · [first model](#first-model) · [routine operations](#routine-operations) · [backup](#persistent-data-and-backup) · [performance profiles](#performance-profiles) · [cleanup sidecar](#transcript-cleanup-sidecar) · [Vulkan GPU access](#giving-the-vulkan-container-access-to-the-gpu) · [build tuning](#tuning-the-whispercpp-build)
 - [Multi-architecture image](#multi-architecture-image)
 - [Gateway URL and network placement](#gateway-url-and-network-placement) — [trusted LAN](#trusted-local-network) · [Tailscale Serve](#tailscale-serve) · [VPS or public DNS](#vps-or-public-dns)
 - [Configuration paths and env vars](#configuration-paths-and-env-vars)
@@ -348,6 +348,46 @@ issues a matmul from one thread at a time rather than from each of its workers,
 so the two pools never nest. Pinned to 1 and unset were within run-to-run noise
 for `ggml-tiny.en` and `ggml-base.en`, at `--cpus 4` and `--cpus 2` on a 10-CPU
 host. Pinning it would only cap OpenBLAS's own parallelism for no gain.
+
+### Transcript-cleanup sidecar
+
+Optional, opt-in, and off unless the profile is up. The gateway image ships no
+text model and no llama.cpp runtime, so this is a separate service that the
+gateway talks to over Compose's own private network.
+
+```sh
+export VOCAGATEWAY_CLEANUP_MODEL_DIR="$HOME/.local/share/vocagateway/models/cleanup"
+export VOCAGATEWAY_CLEANUP_MODEL_FILE=/models/llama.cpp/Qwen3-0.6B-Q8_0.gguf
+export VOCAGATEWAY_CLEANUP_ENDPOINT=cleanup:8080
+export VOCAGATEWAY_CLEANUP_API_KEY="$(openssl rand -hex 24)"
+docker compose --profile cleanup up -d
+```
+
+Install the model first through the WebUI (Cleanup tab), which
+verifies it against the pinned SHA-256, then point
+`VOCAGATEWAY_CLEANUP_MODEL_DIR` at the directory it landed in and mount it.
+
+What the profile does and does not do:
+
+- **No published port.** The sidecar is reachable only from the gateway, by
+  service name, on the project's private network. `VOCAGATEWAY_CLEANUP_ENDPOINT`
+  refuses any address that is not loopback, a private range, or a bare service
+  name, so a routable address cannot quietly turn "runs on your gateway" into a
+  request to somebody else.
+- **A credential of its own.** `VOCAGATEWAY_CLEANUP_API_KEY` is what the gateway
+  presents. A client's bearer token is never forwarded.
+- **Read-only model mount**, read-only root filesystem, no new privileges, and
+  every capability dropped, matching the gateway service.
+- **No lifecycle promises.** The gateway does not own this process, so it cannot
+  warm it, unload it when idle, or restart it. Those are only available for the
+  `llama-server` a native gateway launches itself.
+- **Pin the image by digest** before relying on it. The default is a moving tag,
+  which would change the runtime under a gateway that was tested against a
+  specific one.
+
+Memory is the constraint worth checking: the sidecar holds its model resident
+alongside whatever the gateway's speech engine is holding. Measure both together
+on the host you actually run on before enabling it by default.
 
 ## Multi-architecture image
 

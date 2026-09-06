@@ -376,6 +376,10 @@ class _StyleApplier:
         return f"{_SentenceCaser.capitalize(body)}{mark}"
 
 
+PARAGRAPH_BREAK = "\n\n"
+_PARAGRAPH_SPLIT = re.compile(r"\n[^\S\n]*\n\s*")
+
+
 def apply_writing_style(text: str, style: str, language: str = "auto") -> str:
     if style == "raw":
         return text.strip()
@@ -388,4 +392,27 @@ def apply_writing_style(text: str, style: str, language: str = "auto") -> str:
             style, protected[0], _PunctuationRegistry.resolve(language, text)
         ),
         _SpanProtector.sanitize_tokens(protected[1], style),
+    )
+
+
+def apply_writing_style_paragraphs(text: str, style: str, language: str = "auto") -> str:
+    """Apply a writing style without flattening paragraph boundaries.
+
+    Every style normalises whitespace, which collapses a blank line between two
+    paragraphs into a single space. That is right for a transcript that arrived
+    as one run of speech, and wrong for one where a cleanup pass has already
+    decided where the topic changed — so each paragraph is styled on its own and
+    the breaks are put back.
+
+    Single-paragraph text takes the ordinary path unchanged, which is what keeps
+    every existing caller byte-for-byte identical.
+    """
+    if style == "raw":
+        return text.strip()
+    blocks = (part.strip() for part in _PARAGRAPH_SPLIT.split(text))
+    paragraphs = [block for block in blocks if block]
+    if len(paragraphs) < 2:
+        return apply_writing_style(text, style, language)
+    return PARAGRAPH_BREAK.join(
+        apply_writing_style(paragraph, style, language) for paragraph in paragraphs
     )

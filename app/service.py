@@ -12,7 +12,18 @@ from uuid import UUID, uuid4
 
 from starlette import status
 
-from app import config, engines, errors, metrics, scripts, storage, text_styles
+from app import config, engines, errors, metrics, scripts, storage
+from app.cleanup.base import (
+    DEFAULT_TIMEOUT_SECONDS,
+    MODE_OFF,
+    PROMPT_VERSION,
+    CleanupOptions,
+    CleanupOutcome,
+    CleanupStatus,
+    FinalTranscript,
+)
+from app.cleanup.manager import CleanupManager
+from app.cleanup.service import CleanupService
 from app.models.base import (
     AudioNormalizer,
     EngineTranscription,
@@ -22,6 +33,17 @@ from app.models.base import (
 
 TRANSCRIPTION_SLOT_TIMEOUT_SECONDS = 0.05
 FAILED_SESSION_STATE = "failed"
+COMPLETED_SESSION_STATE = "completed"
+RAW_STYLE = "raw"
+# The formatting an explicit `/v1/audio/transcriptions` cleanup request gets.
+# That endpoint has no writing-style field, and routing an opt-in through the
+# unconditional raw bypass would make the option do nothing at all.
+#
+# `formal` is a tone-neutral name for a tone-neutral transform: it capitalises
+# sentence starts and ensures a terminator, and does nothing else. The styles
+# that actually change register are `very_casual` and `excited`, and neither
+# belongs in an endpoint whose caller never asked for a voice.
+ADHOC_CLEANUP_STYLE = "formal"
 _MILLISECONDS_PER_SECOND = 1000
 _DARWIN_RSS_DIVISOR = 1024 * 1024
 _LINUX_RSS_DIVISOR = 1024
@@ -32,6 +54,43 @@ class AdhocTranscription:
     transcript: str
     engine: str
     timing: metrics.PipelineTiming
+    original_transcript: str | None = None
+    cleanup: CleanupOutcome | None = None
+
+
+def snapshot_options(snapshot: storage.CleanupSnapshot) -> CleanupOptions:
+    """Rebuild the pinned decision a session was created under.
+
+    Read back from the row rather than from current settings, so finishing a
+    session recorded weeks ago uses the options it was promised — and falls back
+    if the model it named is no longer the selected one.
+    """
+    timeout_ms = snapshot.timeout_ms
+    return CleanupOptions(
+        mode=snapshot.mode,
+        model_id=snapshot.model_id,
+        prompt_version=snapshot.prompt_version or PROMPT_VERSION,
+        timeout_seconds=(
+            timeout_ms / _MILLISECONDS_PER_SECOND if timeout_ms else DEFAULT_TIMEOUT_SECONDS
+        ),
+    )
+
+
+def cleanup_record(outcome: CleanupOutcome) -> storage.CleanupRecord:
+    """What gets stored beside the transcript.
+
+    A session that never opted in stores nothing, so its row and its response
+    are indistinguishable from one written before this feature existed. The
+    counters still see the decision — they are fed from the service, not from
+    the database.
+    """
+    if outcome.status is CleanupStatus.DISABLED:
+        return storage.CleanupRecord()
+    return storage.CleanupRecord(
+        status=str(outcome.status),
+        reason=outcome.reason_name,
+        duration_ms=outcome.duration_ms,
+    )
 
 
 class TranscriptionService:
@@ -41,6 +100,7 @@ class TranscriptionService:
         repository: storage.SessionRepository,
         engine_provider: engines.EngineProvider,
         normalizer: AudioNormalizer,
+        cleanup_manager: CleanupManager | None = None,
     ) -> None:
         self.settings = settings
         self.repository = repository
@@ -50,10 +110,23 @@ class TranscriptionService:
         self._engine_provider = engine_provider
         self._normalizer = normalizer
         self._transcription_slots = asyncio.Semaphore(settings.maximum_concurrent_transcriptions)
+        # One shared finalization service for sessions, one-shot requests and
+        # streaming finals, so the three cannot drift into different decisions.
+        # Independent of the speech pipeline on purpose: cleanup has its own
+        # admission bound, and a busy corrector must never look like a busy
+        # transcriber to a client.
+        self.cleanup = CleanupService(cleanup_manager, record=self._record_cleanup)
 
     async def finish(self, session_id: UUID) -> storage.StoredSession:
+        """Transcribe a session exactly once, however many callers ask.
+
+        A completed session answers from storage — including its original text
+        and cleanup metadata — without another model call, after a settings
+        change, a fallback, or a restart. There is no implicit re-clean here:
+        reprocessing an existing result would need its own contract.
+        """
         stored = self.require(session_id)
-        if stored.state == "completed":
+        if stored.state == COMPLETED_SESSION_STATE:
             return stored
         if stored.audio_name is None:
             raise errors.APIProblem(
@@ -62,18 +135,30 @@ class TranscriptionService:
                 "Upload audio before finishing the session.",
             )
         if stored.state == "transcribing":
-            raise errors.APIProblem(
-                status.HTTP_409_CONFLICT,
-                "transcription_in_progress",
-                "Transcription is already in progress.",
-            )
+            raise self._in_progress()
         await self._acquire_transcription_slot()
-        return await _SessionJob(self, stored).run()
+        claimed = self.repository.claim_transcribing(session_id)
+        if claimed is None:
+            self._release_slot()
+            return self._resolve_lost_claim(session_id)
+        return await _SessionJob(self, claimed).run()
 
-    async def transcribe_adhoc(self, source: Path, language: str) -> AdhocTranscription:
-        """One-shot transcription for the WebUI test recorder (no session stored)."""
+    async def transcribe_adhoc(
+        self,
+        source: Path,
+        language: str,
+        *,
+        style: str = RAW_STYLE,
+        cleanup: CleanupOptions | None = None,
+    ) -> AdhocTranscription:
+        """One-shot transcription with no session stored.
+
+        The default is unchanged and deliberately raw: the OpenAI-compatible
+        endpoint and the WebUI benchmark both depend on getting the model's own
+        text back. Callers opt into anything else explicitly.
+        """
         await self._acquire_transcription_slot()
-        return await _AdhocJob(self, source, language).run()
+        return await _AdhocJob(self, source, language, style, cleanup).run()
 
     def require(self, session_id: UUID) -> storage.StoredSession:
         session = self.repository.get(session_id)
@@ -97,6 +182,33 @@ class TranscriptionService:
         for session in expired:
             self.delete(session.session_id)
         return len(expired)
+
+    def _record_cleanup(self, outcome: CleanupOutcome) -> None:
+        self.metrics.record_cleanup(str(outcome.status), outcome.reason_name, outcome.duration_ms)
+
+    def _in_progress(self) -> errors.APIProblem:
+        return errors.APIProblem(
+            status.HTTP_409_CONFLICT,
+            "transcription_in_progress",
+            "Transcription is already in progress.",
+        )
+
+    def _resolve_lost_claim(self, session_id: UUID) -> storage.StoredSession:
+        """What a caller that lost the race is told.
+
+        Losing means somebody else already owns this session's transcription, so
+        this call never starts a second one: it returns the finished result if
+        the winner is done, and otherwise reports the same in-progress conflict
+        a plain second `finish` would have.
+        """
+        current = self.require(session_id)
+        if current.state == COMPLETED_SESSION_STATE:
+            return current
+        raise self._in_progress()
+
+    def _release_slot(self) -> None:
+        self._transcription_slots.release()
+        self.metrics.finished()
 
     async def _acquire_transcription_slot(self) -> None:
         self.metrics.queued()
@@ -312,30 +424,47 @@ class _SessionJob(_TranscriptionJob[storage.StoredSession]):
         return self.service.normalized_dir / f"{session_id}.wav"
 
     async def _complete(self, normalized: Path, started: float) -> storage.StoredSession:
-        self.service.repository.update(self.stored.session_id, state="transcribing")
-        source = _Pipeline.safe_audio_path(self.service.upload_dir, self.stored.audio_name or "")
+        stored = self.stored
+        source = _Pipeline.safe_audio_path(self.service.upload_dir, stored.audio_name or "")
         outcome, normalization_ms, engine = await _EnginePass(
-            self.service, self.stored.language, self.stored.style
+            self.service, stored.language, stored.style
         ).run(source, normalized)
-        _require_matching_script(outcome.text, self.stored.language)
-        completed = self._persist(source, outcome.text)
+        _require_matching_script(outcome.text, stored.language)
+        # The engine lease is already released here, so the optional text model
+        # never runs while a speech model is held open behind it.
+        final = await self.service.cleanup.finalize(
+            outcome.text,
+            style=stored.style,
+            language=stored.language,
+            options=snapshot_options(stored.cleanup),
+        )
+        completed = self._persist(source, final)
         await self._record_success(engine, started, normalization_ms, outcome, normalized)
         return completed
 
-    def _persist(self, source: Path, raw: str) -> storage.StoredSession:
+    def _persist(self, source: Path, final: FinalTranscript) -> storage.StoredSession:
+        """Store the final text, the original, and the cleanup result in one write.
+
+        The state test lives inside the statement, so a session deleted or
+        re-uploaded while this job was running is neither resurrected nor
+        overwritten — the write matches no row and this reports a conflict.
+        """
         stored = self.stored
-        transcript = text_styles.apply_writing_style(raw, stored.style, stored.language)
-        keep_audio = stored.audio_name
-        if self.service.settings.delete_successful_audio:
-            keep_audio = None
-        completed = self.service.repository.update(
+        delete_audio = self.service.settings.delete_successful_audio
+        completed = self.service.repository.complete(
             stored.session_id,
-            state="completed",
-            transcript=transcript,
-            error_code=None,
-            audio_name=keep_audio,
+            transcript=final.transcript,
+            original_transcript=final.original_transcript,
+            cleanup=cleanup_record(final.cleanup),
+            audio_name=None if delete_audio else stored.audio_name,
         )
-        if self.service.settings.delete_successful_audio:
+        if completed is None:
+            raise errors.APIProblem(
+                status.HTTP_409_CONFLICT,
+                "session_superseded",
+                "The session was deleted or replaced while it was being transcribed.",
+            )
+        if delete_audio:
             source.unlink(missing_ok=True)
         return completed
 
@@ -368,27 +497,46 @@ class _SessionJob(_TranscriptionJob[storage.StoredSession]):
         if isinstance(mapped, errors.APIProblem) and mapped.code == "language_unsupported":
             # Retrying replays the same language against the same model.
             code = "language_unsupported"
-        self.service.repository.update(
-            self.stored.session_id, state=FAILED_SESSION_STATE, error_code=code
-        )
+        # Conditional on the job still owning the session: a delete or a fresh
+        # upload during transcription must not be turned into a failed state by
+        # the job it superseded.
+        self.service.repository.fail_transcribing(self.stored.session_id, code)
         return mapped
 
 
 class _AdhocJob(_TranscriptionJob[AdhocTranscription]):
-    def __init__(self, service: TranscriptionService, source: Path, language: str) -> None:
+    def __init__(
+        self,
+        service: TranscriptionService,
+        source: Path,
+        language: str,
+        style: str = RAW_STYLE,
+        cleanup: CleanupOptions | None = None,
+    ) -> None:
         super().__init__(service)
         self.source = source
         self.language = language
+        self.style = style
+        self.options = cleanup or CleanupOptions(mode=MODE_OFF)
 
     def _normalized_path(self) -> Path:
         return self.service.normalized_dir / f"adhoc-{uuid4()}.wav"
 
     async def _complete(self, normalized: Path, started: float) -> AdhocTranscription:
+        # The engine is always asked for raw text; the writing style is applied
+        # afterwards, so opting into cleanup cannot change what the model is
+        # asked to produce.
         outcome, normalization_ms, engine = await _EnginePass(
-            self.service, self.language, "raw"
+            self.service, self.language, RAW_STYLE
         ).run(self.source, normalized)
         _require_matching_script(outcome.text, self.language)
-        return await self._success(engine, outcome, normalization_ms, normalized, started)
+        final = await self.service.cleanup.finalize(
+            outcome.text,
+            style=self.style,
+            language=self.language,
+            options=self.options,
+        )
+        return await self._success(engine, outcome, normalization_ms, normalized, started, final)
 
     async def _success(
         self,
@@ -397,6 +545,7 @@ class _AdhocJob(_TranscriptionJob[AdhocTranscription]):
         normalization_ms: int,
         normalized: Path,
         started: float,
+        final: FinalTranscript,
     ) -> AdhocTranscription:
         name = (await engine.health()).name
         duration_ms = _Pipeline.elapsed_ms(started)
@@ -408,4 +557,10 @@ class _AdhocJob(_TranscriptionJob[AdhocTranscription]):
             name,
         )
         self.service.metrics.record_result(duration_ms, success=True, timing=timing)
-        return AdhocTranscription(outcome.text.strip(), name, timing)
+        return AdhocTranscription(
+            final.transcript.strip(),
+            name,
+            timing,
+            original_transcript=final.original_transcript,
+            cleanup=final.cleanup,
+        )

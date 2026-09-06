@@ -43,6 +43,12 @@
     dismissExposureBanner();
   });
 
+  document.addEventListener("change", (event) => {
+    if (event.target.id === "test-language" || event.target.id === "test-cleanup") {
+      syncTestCleanupWarning();
+    }
+  });
+
   document.body.addEventListener("htmx:afterSwap", (event) => {
     if (event.detail && event.detail.target && event.detail.target.id === "exposure-banner") {
       applyExposureBanner(event.detail.target);
@@ -174,6 +180,7 @@
     hideOverlay();
     openTabByName(document.querySelector(".tab.active")?.dataset.tab || "overview");
     htmx.ajax("GET", "/ui/partials/engine-pill", { target: "#engine-pill", swap: "outerHTML" });
+    htmx.ajax("GET", "/ui/partials/cleanup/pill", { target: "#cleanup-pill", swap: "outerHTML" });
     htmx.ajax("GET", "/ui/partials/exposure-banner", {
       target: "#exposure-banner",
       swap: "outerHTML",
@@ -304,7 +311,10 @@
       if (details) details.open = performanceDetailsOpen;
     }
     scheduleModelPoll();
-    if (document.getElementById("test-language")) syncTestLanguages();
+    if (document.getElementById("test-language")) {
+      syncTestLanguages();
+      syncTestCleanup();
+    }
     // Models tab shell (or list refresh) may reintroduce filter controls.
     if (
       event.detail &&
@@ -857,6 +867,275 @@
     note.classList.toggle("hidden", !mustChoose);
   }
 
+  // Only offer the cleanup switch where it can actually do something. A
+  // gateway with no model installed would otherwise show a control whose only
+  // possible outcome is a fallback.
+  async function syncTestCleanup() {
+    const field = document.getElementById("test-cleanup-field");
+    if (!field) return;
+    let capabilities;
+    try {
+      const response = await fetch("/v1/capabilities", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!response.ok) return;
+      capabilities = await response.json();
+    } catch (_) {
+      return;
+    }
+    const cleanup = capabilities.cleanup || {};
+    field.classList.toggle("hidden", !cleanup.supported);
+    // The benchmark tile goes with it: a permanent em dash in the pipeline
+    // breakdown reads as a measurement that failed rather than one that was
+    // never asked for, and it leaves an orphan on the tile row.
+    const tile = document.getElementById("benchmark-cleanup-tile");
+    if (tile) tile.classList.toggle("hidden", !cleanup.supported);
+    cleanupCapability = cleanup;
+    syncTestCleanupWarning();
+  }
+
+  // The combination that silently does nothing: cleanup on, language left on
+  // "Detect language", and no gateway default for what "auto" means. Cleanup
+  // then declines and returns the plain transcript, which looks exactly like a
+  // feature that is not working. Say so before the clip is recorded.
+  let cleanupCapability = {};
+
+  function syncTestCleanupWarning() {
+    const warning = document.getElementById("test-cleanup-warning");
+    const language = document.getElementById("test-language");
+    const mode = document.getElementById("test-cleanup");
+    if (!warning || !language || !mode) return;
+    const stranded = mode.value === "conservative"
+      && language.value === "auto"
+      && !cleanupCapability.auto_language;
+    warning.textContent = stranded
+      ? "Cleanup cannot run on \u201cDetect language\u201d: nothing reports which language "
+        + "was spoken. Pick a language above, or set one on the Cleanup tab under "
+        + "\u201cWhen language is auto\u201d."
+      : "";
+    warning.classList.toggle("hidden", !stranded);
+  }
+
+  // Word-level diff between the plain transcript and the corrected one.
+  //
+  // The point of this panel is to answer "did the model actually do anything",
+  // and two similar paragraphs of prose do not answer it — a reader cannot spot
+  // an added comma by eye. Marking the words that moved is what makes the
+  // difference legible, and a count says so in one number.
+  //
+  // Tokens are inserted with textContent on elements built here, never as
+  // innerHTML: a transcript is data, and a dictated angle bracket is a
+  // character rather than a tag.
+  const DIFF_TOKEN_LIMIT = 400;
+
+  function tokenize(text) {
+    return text.match(/\S+\s*/g) || [];
+  }
+
+  // Which tokens survive unchanged, as a pair of boolean arrays. Classic LCS:
+  // a dictation is short, and the limit above keeps a pathological one from
+  // turning a quadratic table into a frozen tab.
+  function commonTokens(before, after) {
+    const kept = {
+      before: new Array(before.length).fill(false),
+      after: new Array(after.length).fill(false),
+    };
+    if (before.length > DIFF_TOKEN_LIMIT || after.length > DIFF_TOKEN_LIMIT) return null;
+    const table = Array.from({ length: before.length + 1 }, () =>
+      new Uint32Array(after.length + 1));
+    for (let i = before.length - 1; i >= 0; i -= 1) {
+      for (let j = after.length - 1; j >= 0; j -= 1) {
+        table[i][j] = before[i] === after[j]
+          ? table[i + 1][j + 1] + 1
+          : Math.max(table[i + 1][j], table[i][j + 1]);
+      }
+    }
+    let i = 0;
+    let j = 0;
+    while (i < before.length && j < after.length) {
+      if (before[i] === after[j]) {
+        kept.before[i] = true;
+        kept.after[j] = true;
+        i += 1;
+        j += 1;
+      } else if (table[i + 1][j] >= table[i][j + 1]) {
+        i += 1;
+      } else {
+        j += 1;
+      }
+    }
+    return kept;
+  }
+
+  function paintDiff(target, tokens, kept, markClass) {
+    target.textContent = "";
+    tokens.forEach((token, index) => {
+      if (kept && !kept[index]) {
+        const mark = document.createElement("span");
+        mark.className = markClass;
+        mark.textContent = token;
+        target.appendChild(mark);
+        return;
+      }
+      target.appendChild(document.createTextNode(token));
+    });
+  }
+
+  // Renders the corrected text with what changed marked, the plain transcript
+  // beneath it with what was replaced marked, and a plain-language line saying
+  // what happened — including, when nothing happened, what to do about it.
+  function renderCleanupComparison(payload) {
+    const block = document.getElementById("test-original-block");
+    const original = document.getElementById("test-original");
+    const transcript = document.getElementById("test-transcript");
+    const statusLine = document.getElementById("test-cleanup-status");
+    if (!block || !original || !statusLine || !transcript) return;
+    const cleanup = payload.cleanup;
+    const before = payload.original_transcript || "";
+    const after = payload.transcript || "";
+    const changed = Boolean(cleanup && before && before !== after);
+    const edits = changed ? paintComparison(transcript, original, before, after) : 0;
+    block.classList.toggle("hidden", !changed);
+    statusLine.textContent = describeCleanup(cleanup, edits);
+    statusLine.classList.toggle("hidden", !statusLine.textContent);
+  }
+
+  function paintComparison(transcript, original, before, after) {
+    const beforeTokens = tokenize(before);
+    const afterTokens = tokenize(after);
+    const kept = commonTokens(
+      beforeTokens.map((token) => token.trim()),
+      afterTokens.map((token) => token.trim()),
+    );
+    paintDiff(transcript, afterTokens, kept && kept.after, "diff-add");
+    paintDiff(original, beforeTokens, kept && kept.before, "diff-remove");
+    return kept ? kept.after.filter((survived) => !survived).length : 0;
+  }
+
+  // What the reason actually means for the person reading it, and what they can
+  // do next. A bare "(unsupported language)" is accurate and useless: it does
+  // not say that "Detect language" is the thing to change.
+  const CLEANUP_ADVICE = {
+    unsupported_language:
+      "Cleanup needs to know the language. Pick one above instead of "
+      + "\u201cDetect language\u201d, or set one on the Cleanup tab under "
+      + "\u201cWhen language is auto\u201d.",
+    model_unavailable:
+      "No cleanup model is loaded. Download one on the Cleanup tab.",
+    model_loading:
+      "The cleanup model is still loading. Try again in a moment.",
+    busy: "Another correction was already running. The transcript is fine, just uncorrected.",
+    timeout: "The correction ran out of time. Raise the time limit in Settings, or warm the model.",
+    input_too_long: "The transcript is longer than cleanup will process in one pass.",
+    unsafe_edit:
+      "The model\u2019s answer changed something it should not have \u2014 a number, a name, "
+      + "or a negation \u2014 so it was thrown away and the plain transcript kept.",
+    invalid_output: "The model answered with something unusable, so the plain transcript was kept.",
+    context_too_small:
+      "The cleanup server\u2019s context window is too small. Restart it with a larger --ctx-size.",
+    raw_style: "Raw style is never corrected, by design.",
+    empty_input: "There was nothing to correct.",
+    runtime_error: "The cleanup runtime failed. Check the Cleanup tab for the reason.",
+  };
+
+  function describeCleanup(cleanup, edits) {
+    if (!cleanup) return "";
+    if (cleanup.status === "applied") {
+      return edits === 1
+        ? "Cleanup changed 1 word."
+        : `Cleanup changed ${edits} words.`;
+    }
+    if (cleanup.status === "unchanged") {
+      return "Cleanup ran and found nothing to change \u2014 the transcript was already correct.";
+    }
+    if (cleanup.status === "disabled") return "Cleanup is off for this run.";
+    const advice = CLEANUP_ADVICE[cleanup.reason];
+    return advice
+      ? `Cleanup did not run. ${advice}`
+      : `Cleanup did not run (${String(cleanup.reason || cleanup.status).replace(/_/g, " ")}).`;
+  }
+
+  // ------------------------------------------------------- cleanup try-it box
+  //
+  // The shortest path from "is this doing anything" to an answer: type a
+  // sentence, press a button, see which words changed. No microphone, no
+  // pairing, and the same finalization a real dictation goes through.
+
+  const CLEANUP_SAMPLE =
+    "so i told the team we cant ship on friday because the api isnt ready "
+    + "and we still need to review the migration";
+
+  async function runCleanupPreview() {
+    const input = document.getElementById("cleanup-try-input");
+    const result = document.getElementById("cleanup-try-result");
+    const errorBox = document.getElementById("cleanup-try-error");
+    const button = document.getElementById("cleanup-try-run");
+    if (!input || !result || !errorBox || !button) return;
+    const text = input.value.trim();
+    if (!text) {
+      input.focus();
+      return;
+    }
+    button.disabled = true;
+    button.textContent = "Correcting\u2026";
+    try {
+      const payload = await requestCleanupPreview(text);
+      paintPreview(payload);
+      result.classList.remove("hidden");
+      errorBox.classList.add("hidden");
+    } catch (error) {
+      errorBox.textContent = String(error.message || error);
+      errorBox.classList.remove("hidden");
+      result.classList.add("hidden");
+    } finally {
+      button.disabled = false;
+      button.textContent = "Correct this text";
+    }
+  }
+
+  async function requestCleanupPreview(text) {
+    const language = document.getElementById("cleanup-try-language");
+    const response = await fetch("/v1/admin/cleanup/preview", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getToken()}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ text, language: language ? language.value : "en" }),
+    });
+    if (!response.ok) {
+      throw new Error("The gateway could not run that correction.");
+    }
+    return response.json();
+  }
+
+  // The comparison is "with the model" against "without it", not against the
+  // text as typed. The gateway fixes spacing and sentence case on its own, and
+  // marking that as the model's work would overstate what it does.
+  function paintPreview(payload) {
+    const after = document.getElementById("cleanup-try-after");
+    const before = document.getElementById("cleanup-try-before");
+    const status = document.getElementById("cleanup-try-status");
+    const baseline = payload.without_cleanup;
+    const changed = baseline !== payload.transcript;
+    const edits = changed
+      ? paintComparison(after, before, baseline, payload.transcript)
+      : 0;
+    if (!changed) {
+      after.textContent = payload.transcript;
+      before.textContent = baseline;
+    }
+    status.textContent = describeCleanup(payload.cleanup, edits);
+  }
+
+  document.addEventListener("click", (event) => {
+    if (event.target.id === "cleanup-try-run") runCleanupPreview();
+    if (event.target.id === "cleanup-try-sample") {
+      const input = document.getElementById("cleanup-try-input");
+      if (input) {
+        input.value = CLEANUP_SAMPLE;
+        input.focus();
+      }
+    }
+  });
+
   // ---------------------------------------------------------------- recorder
 
   let recorder = null;
@@ -898,6 +1177,7 @@
     // The engine can change from another tab without this panel reswapping,
     // so the picker is reconciled against the live model, not the last swap.
     await syncTestLanguages();
+    await syncTestCleanup();
 
     const mimeType = pickMimeType();
     if (!mimeType) {
@@ -929,18 +1209,24 @@
       const blob = new Blob(chunks, { type: mimeType.split(";")[0] });
       try {
         const language = document.getElementById("test-language").value;
+        // Sent explicitly on every run. The gateway default is deliberately not
+        // inherited here, so "Off (raw)" measures the raw pipeline whatever the
+        // operator has enabled for their clients.
+        const cleanupMode = document.getElementById("test-cleanup").value;
         const runs = Number(document.getElementById("test-runs").value) || 1;
         const payloads = [];
         for (let run = 0; run < runs; run += 1) {
           status.textContent = runs > 1 ? `Benchmarking... run ${run + 1} of ${runs}` : "Transcribing...";
-          const response = await fetch(`/v1/admin/test-transcription?language=${language}`, {
+          const response = await fetch(
+            `/v1/admin/test-transcription?language=${language}&cleanup_mode=${cleanupMode}`, {
             method: "POST",
             headers: {
               Authorization: `Bearer ${getToken()}`,
               "Content-Type": blob.type,
             },
             body: blob,
-          });
+          },
+          );
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error?.message || "Transcription failed.");
           payloads.push(payload);
@@ -952,6 +1238,7 @@
         ) / measuredPayloads.length;
         const formatMs = (value) => value >= 1000 ? `${(value / 1000).toFixed(2)}s` : `${Math.round(value)}ms`;
         document.getElementById("test-transcript").textContent = payload.transcript;
+        renderCleanupComparison(payload);
         document.getElementById("test-meta").textContent =
           runs > 1
             ? `${payload.engine} · warm average of runs 2-${runs}; model load is run 1`
@@ -960,6 +1247,8 @@
         document.getElementById("benchmark-normalize").textContent = formatMs(average("normalization_ms"));
         document.getElementById("benchmark-load").textContent = formatMs(payloads[0].model_load_ms);
         document.getElementById("benchmark-inference").textContent = formatMs(average("inference_ms"));
+        document.getElementById("benchmark-cleanup").textContent =
+          payload.cleanup ? formatMs(average("cleanup_ms")) : "—";
         document.getElementById("benchmark-rtf").textContent =
           payload.real_time_factor == null ? "—" : `${average("real_time_factor").toFixed(2)}×`;
         document.getElementById("benchmark-memory").textContent =
@@ -1091,6 +1380,7 @@
   initTheme();
   applyExposureBanner();
   syncTestLanguages();
+  syncTestCleanup();
 
   if (!getToken()) {
     showOverlay();

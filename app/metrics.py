@@ -10,6 +10,13 @@ HISTORY_MAX = 60
 SAMPLE_MIN_INTERVAL_S = 4.0
 # A deliberately old value guarantees the first requested sample is retained.
 INITIAL_SAMPLE_TIMESTAMP = -SAMPLE_MIN_INTERVAL_S
+# The cleanup reason vocabulary is a closed enum, so this cap is a belt-and-
+# braces guard rather than a real bound: a counter map must never be able to
+# grow with request content.
+MAXIMUM_CLEANUP_REASONS = 24
+CLEANUP_APPLIED = "applied"
+CLEANUP_UNCHANGED = "unchanged"
+CLEANUP_FALLBACK = "fallback"
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +44,19 @@ class MetricsSample:
 
 
 @dataclass(frozen=True, slots=True)
+class CleanupCounters:
+    """Text-free cleanup tallies: how often each outcome happened, never what."""
+
+    applied: int = 0
+    unchanged: int = 0
+    fallback: int = 0
+    disabled: int = 0
+    skipped: int = 0
+    last_ms: int | None = None
+    reasons: tuple[tuple[str, int], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class MetricsSnapshot:
     uptime_seconds: int
     queue_depth: int
@@ -49,6 +69,7 @@ class MetricsSnapshot:
     last_latency_ms: int | None
     last_pipeline: PipelineTiming | None
     history: tuple[MetricsSample, ...]
+    cleanup: CleanupCounters = CleanupCounters()
 
 
 class RuntimeMetrics:
@@ -68,6 +89,9 @@ class RuntimeMetrics:
         self._last_pipeline: PipelineTiming | None = None
         self._history: deque[MetricsSample] = deque(maxlen=HISTORY_MAX)
         self._last_sample_at = INITIAL_SAMPLE_TIMESTAMP
+        self._cleanup_totals: dict[str, int] = {}
+        self._cleanup_reasons: dict[str, int] = {}
+        self._cleanup_last_ms: int | None = None
 
     def queued(self) -> None:
         with self._lock:
@@ -79,9 +103,10 @@ class RuntimeMetrics:
             if rejected:
                 self._rejected_transcriptions += 1
 
-    def started(self) -> None:
+    def started(self, *, queued: bool = True) -> None:
         with self._lock:
-            self._queue_depth = max(0, self._queue_depth - 1)
+            if queued:
+                self._queue_depth = max(0, self._queue_depth - 1)
             self._active_transcriptions += 1
 
     def finished(self) -> None:
@@ -94,10 +119,25 @@ class RuntimeMetrics:
         with self._lock:
             if success:
                 self._successful_transcriptions += 1
-                self._last_pipeline = timing
             else:
                 self._failed_transcriptions += 1
+            self._last_pipeline = timing if success else None
             _record_latency(self, latency_ms)
+
+    def record_cleanup(self, status: str, reason: str | None, duration_ms: int) -> None:
+        """Count one cleanup decision.
+
+        Called for every outcome including `disabled`, so the ratio of applied
+        to fallback is measured against real traffic rather than against the
+        subset that happened to reach a model.
+        """
+        with self._lock:
+            self._cleanup_totals[status] = self._cleanup_totals.get(status, 0) + 1
+            if reason is not None and len(self._cleanup_reasons) < MAXIMUM_CLEANUP_REASONS:
+                self._cleanup_reasons[reason] = self._cleanup_reasons.get(reason, 0) + 1
+            elif reason is not None and reason in self._cleanup_reasons:
+                self._cleanup_reasons[reason] += 1
+            self._cleanup_last_ms = max(0, duration_ms)
 
     def snapshot(self, *, sample: bool = False) -> MetricsSnapshot:
         with self._lock:
@@ -118,7 +158,20 @@ class RuntimeMetrics:
                 last_latency_ms=self._last_latency_ms,
                 last_pipeline=self._last_pipeline,
                 history=tuple(self._history),
+                cleanup=self._cleanup_counters(),
             )
+
+    def _cleanup_counters(self) -> CleanupCounters:
+        totals = self._cleanup_totals
+        return CleanupCounters(
+            applied=totals.get(CLEANUP_APPLIED, 0),
+            unchanged=totals.get(CLEANUP_UNCHANGED, 0),
+            fallback=totals.get(CLEANUP_FALLBACK, 0),
+            disabled=totals.get("disabled", 0),
+            skipped=totals.get("skipped", 0),
+            last_ms=self._cleanup_last_ms,
+            reasons=tuple(sorted(self._cleanup_reasons.items())),
+        )
 
 
 def _maybe_sample_locked(metrics: RuntimeMetrics, uptime_seconds: int) -> None:

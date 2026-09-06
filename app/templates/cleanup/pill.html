@@ -1,0 +1,7 @@
+<button type="button" id="cleanup-pill" class="engine-status cleanup-header-status"
+        data-open-tab="cleanup" title="{{ config.model_label or 'No cleanup model selected' }} · {{ state_label }}. Open Cleanup."
+        aria-label="Cleanup: {{ state_label }}. {{ config.model_label or 'No model selected' }}. Opens Cleanup."
+        hx-get="/ui/partials/cleanup/pill" hx-trigger="every 5s" hx-swap="outerHTML">
+  <span class="dot {{ state_tone }}" aria-hidden="true"></span>
+  <span>Cleanup <span class="cleanup-header-state">{{ state_label }}</span></span>
+</button>

@@ -76,6 +76,7 @@ contract is in [configuration.md](docs/configuration.md).
 - [WebUI](#webui)
   - [Fast model guide](#fast-model-guide)
 - [Model download integrity](#model-download-integrity)
+- [Transcript cleanup](#transcript-cleanup) — optional local grammar and punctuation repair
 - [Engine selection](#engine-selection)
 - [Configuration](#configuration) — every `VOCAGATEWAY_*` variable and its default
 - [Listener and network access](#listener-and-network-access)
@@ -490,13 +491,96 @@ change; `--only` explicitly refreshes the matching model or family.
 uv run scripts/harvest-model-pins.py                     # newly added models
 uv run scripts/harvest-model-pins.py --only whisperkit:  # refresh one family
 uv run scripts/harvest-model-pins.py --refresh           # refresh everything
+uv run scripts/harvest-model-pins.py --cleanup           # transcript-cleanup models
 ```
+
+Transcript-cleanup artifacts have their own catalog and their own pin file,
+[`app/cleanup_model_pins.json`](app/cleanup_model_pins.json). They are held to a
+stricter rule than speech models: an entry with no pinned revision and digest
+cannot be installed **at all**, because unverifiable weights must never reach a
+runtime launch.
 
 Each revision and its digests are written as one snapshot. If the complete
 snapshot cannot be collected, the command fails and preserves the previous
 record rather than combining a new revision with stale hashes. Review the
 resulting diff as carefully as code. A changed digest means the upstream bytes
 changed, and the commit message should say why.
+
+## Transcript cleanup
+
+Optional. Off by default, and off until you install a model and turn it on.
+
+A small text model runs **after** speech recognition and fixes grammar,
+punctuation, capitalization, and paragraph breaks while keeping what you said.
+It runs on your gateway, needs no Voca account, and needs no internet access
+once the model is installed. Audio never reaches it — only the recognised text
+does.
+
+The design rule is that it can improve a transcript and never lose one. Every
+way it can fail — no model, wrong language, text too long, still loading, busy,
+timed out, or an edit the safety checks refuse — returns exactly the transcript
+you would have got with the feature switched off, plus a bounded reason saying
+why.
+
+A dictation never waits for a cold model load. Loading a multi-gigabyte GGUF is
+minutes and a request's budget is seconds, so the first dictation after a start
+or an idle unload takes the plain speech result, reports `model_loading`, and
+leaves the load running behind it; the next one finds the model resident.
+**Load model now** is how you pay that cost once, deliberately.
+
+**Setup.** Open the **Cleanup** tab → download a model → **Load model now**
+→ tick *Correct transcripts by default*. Natively the gateway launches and owns
+a `llama-server` on loopback (install llama.cpp, or set
+`VOCAGATEWAY_CLEANUP_BINARY`). Under Compose it is an opt-in sidecar that
+publishes no port:
+
+```sh
+docker compose --profile cleanup up -d
+```
+
+**Seeing it work.** The **Cleanup** tab has a *See what it changes* box: type
+or paste a sentence the way a speech model hands it over — no capitals, no
+punctuation — and correct it right there, no microphone involved. It runs the
+same finalization a dictation runs and marks exactly which words the model
+added, against a baseline of what the gateway does *without* a model, so the
+marks credit the model only for its own work. Nothing typed there is stored,
+logged, or written to a diagnostics bundle.
+
+The same before-and-after appears under **Pair & test** on a real recording.
+Either way, if it corrected nothing, the status line says why and what to
+change — and the Cleanup tab's checklist names which of the four setup steps is
+still outstanding.
+
+**What it will not do.** It does not translate, summarise, answer questions,
+add content, or invent facts. **Raw is never corrected**, whatever a request
+asks for. And it cannot fix a word the speech model misheard: it only sees
+text, so a wrong word that reads as a sentence stays. Filler and stutter removal
+are deliberately out — repetition often carries meaning.
+
+**Languages.** A transcript left on `auto` is corrected when its writing system
+names one supported language on its own. Latin script does not, and nothing
+else in the pipeline detects one — the speech engines do not report a detected
+language — so `auto` on Latin script otherwise falls back uncorrected. Either
+ask for `en` explicitly, or set **When language is auto** on the Cleanup tab (or
+`VOCAGATEWAY_CLEANUP_AUTO_LANGUAGE`) to the language you dictate in, which is a
+thing you know and the gateway does not. It stays unset by default: guessing
+that Latin script means English is exactly the mistake worth avoiding. The
+WebUI reports *offered* and *tested* languages separately: a language is
+offered because a model claims it, and tested only once an evaluation has
+signed it off.
+
+**Clients.** Sessions and `/v1/stream` take
+`cleanup: "off" | "conservative" | "inherit"`;
+`POST /v1/audio/transcriptions` takes a multipart `cleanup=off|conservative`
+that defaults to `off` and answers in the unchanged `{"text": ...}` shape, with
+status in optional `X-Voca-Cleanup-*` headers. `GET /v1/capabilities` says what
+this gateway supports; a gateway that predates the feature answers `404`, and a
+client must then omit the new fields. Session responses carry
+`original_transcript` beside `transcript` whenever cleanup was asked for, under
+the same retention rules, so the recognised text is always recoverable.
+
+See [configuration.md](docs/configuration.md#transcript-cleanup) for the
+`VOCAGATEWAY_CLEANUP_*` variables and both deployment shapes.
 
 ## Engine selection
 

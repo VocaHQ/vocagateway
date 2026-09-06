@@ -16,7 +16,7 @@
   <!-- Favicon: circular mark. Header uses the square app icon (same kit as vocahq.com). -->
   <link rel="icon" type="image/svg+xml" href="/assets/favicon-light.svg" id="favicon" />
   <link rel="apple-touch-icon" href="/assets/favicon-light.svg" id="apple-touch-icon" />
-  <link rel="stylesheet" href="/assets/styles.css" />
+  <link rel="stylesheet" href="/assets/styles.css?v=cleanup-layout-2" />
   <!-- External boot script (CSP script-src 'self') so theme applies before paint. -->
   <script src="/assets/theme-boot.js"></script>
 </head>
@@ -59,6 +59,10 @@
               hx-get="/ui/partials/engine-pill" hx-trigger="load, every 5s" hx-swap="outerHTML">
         <span class="dot" aria-hidden="true"></span><span>connecting&hellip;</span>
       </button>
+      <button type="button" id="cleanup-pill" class="engine-status" data-open-tab="cleanup"
+              hx-get="/ui/partials/cleanup/pill" hx-trigger="load, every 5s" hx-swap="outerHTML">
+        <span class="dot" aria-hidden="true"></span><span>Cleanup · connecting…</span>
+      </button>
       <button type="button" id="theme-toggle" class="theme-toggle" data-preference="system"
               aria-label="Theme: system. Click for light." title="Theme: system">
         <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -81,6 +85,9 @@
     <button type="button" class="tab" data-tab="models" role="tab"
             aria-selected="false" aria-controls="panel" id="tab-models"
             hx-get="/ui/partials/models" hx-target="#panel" hx-swap="innerHTML"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v6H4z M4 14h16v6H4z" /></svg><span>Models</span></button>
+    <button type="button" class="tab" data-tab="cleanup" role="tab"
+            aria-selected="false" aria-controls="panel" id="tab-cleanup"
+            hx-get="/ui/partials/cleanup" hx-target="#panel" hx-swap="innerHTML"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h11M4 12h7M4 17h9M16.5 14.5l1.6 3.4 3.4 1.6-3.4 1.6-1.6 3.4-1.6-3.4L11.5 19.5l3.4-1.6z" /></svg><span>Cleanup</span></button>
     <button type="button" class="tab" data-tab="pair" role="tab"
             aria-selected="false" aria-controls="panel" id="tab-pair"
             hx-get="/ui/partials/test" hx-target="#panel" hx-swap="innerHTML"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2h8v20H8z M11 18h2" /></svg><span>Pair &amp; test</span></button>

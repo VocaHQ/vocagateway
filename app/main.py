@@ -23,12 +23,15 @@ from app import (
     templating,
     tokens,
 )
+from app.cleanup.manager import CleanupManager, build_manager
 from app.models.base import AudioNormalizer, TranscriptionEngine
 from app.routes import (
+    admin_cleanup,
     admin_config,
     admin_models,
     admin_status,
     admin_tokens,
+    capabilities,
     health,
     pairing,
     sessions,
@@ -45,8 +48,12 @@ SECURITY_CSP = (
     "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
     "form-action 'self'"
 )
+# How often the cleanup idle-unload check runs. Cheap: it compares two floats
+# unless a managed worker is actually resident and past its idle window.
+CLEANUP_IDLE_POLL_SECONDS = 5.0
 ROUTERS = (
     health.router,
+    capabilities.router,
     sessions.router,
     transcriptions.router,
     streaming.router,
@@ -54,6 +61,7 @@ ROUTERS = (
     admin_tokens.router,
     admin_models.router,
     admin_config.router,
+    admin_cleanup.router,
     pairing.router,
 )
 
@@ -98,6 +106,17 @@ class _AppBuilder:
         setup = self._build_engine_setup(cfg, mgr)
         return self._assemble_context(cfg, repo, mgr, setup)
 
+    def _build_cleanup(
+        self, cfg: config.Settings, run_cfg: runtime_config.RuntimeConfig
+    ) -> CleanupManager:
+        """Always constructed, and off until an operator turns it on.
+
+        Building it unconditionally is what keeps one code path: the disabled
+        manager answers every question with "no" rather than leaving callers to
+        branch on whether cleanup exists at all.
+        """
+        return build_manager(cfg, run_cfg, cfg.config_path)
+
     def _build_engine_setup(
         self, cfg: config.Settings, mgr: model_manager.ModelManager
     ) -> tuple[engines.EngineProvider, engines.EngineManager | None, runtime_config.RuntimeConfig]:
@@ -123,8 +142,13 @@ class _AppBuilder:
         ],
     ) -> context.GatewayContext:
         provider, eng_mgr, pair_cfg = setup
+        cleanup_manager = self._build_cleanup(cfg, pair_cfg)
         srv = service.TranscriptionService(
-            cfg, repo, provider, self.normalizer or audio.FFmpegNormalizer()
+            cfg,
+            repo,
+            provider,
+            self.normalizer or audio.FFmpegNormalizer(),
+            cleanup_manager=cleanup_manager,
         )
         return context.GatewayContext(
             settings=cfg,
@@ -137,6 +161,7 @@ class _AppBuilder:
             readiness=readiness.ReadinessMonitor(provider),
             pairing_config=pair_cfg,
             config_path=cfg.config_path,
+            cleanup=cleanup_manager,
         )
 
     def _setup_routes(self, app: FastAPI, ctx: context.GatewayContext) -> None:
@@ -182,12 +207,28 @@ async def _app_lifespan(app: FastAPI) -> Any:
     ctx.service.cleanup_expired()
     warmup_task = asyncio.create_task(ctx.readiness.warmup())
     idle_offload_task = asyncio.create_task(ctx.readiness.monitor_idle_offload())
+    cleanup_task = asyncio.create_task(_monitor_cleanup_idle(ctx))
     app.state.warmup_task = warmup_task
     app.state.idle_offload_task = idle_offload_task
+    app.state.cleanup_idle_task = cleanup_task
     try:
         yield
     finally:
-        await _shutdown_runtime(ctx, (warmup_task, idle_offload_task))
+        await _shutdown_runtime(ctx, (warmup_task, idle_offload_task, cleanup_task))
+
+
+async def _monitor_cleanup_idle(ctx: context.GatewayContext) -> None:
+    """Release a managed cleanup worker once it has been idle long enough.
+
+    Entirely separate from the speech engine's idle offload: this can never
+    unload an ASR model, and it never runs while a cleanup lease is out.
+    """
+    manager = ctx.cleanup
+    if manager is None:
+        return
+    while True:
+        await asyncio.sleep(CLEANUP_IDLE_POLL_SECONDS)
+        manager.offload_if_idle()
 
 
 async def _shutdown_runtime(
@@ -197,6 +238,8 @@ async def _shutdown_runtime(
     for task in pending_tasks:
         task.cancel()
     await asyncio.gather(*pending_tasks, return_exceptions=True)
+    if ctx.cleanup is not None:
+        await ctx.cleanup.shutdown()
     await asyncio.to_thread(engines.close_engine, ctx.engine_provider.current())
 
 
@@ -214,6 +257,8 @@ async def _browser_security_middleware(
     path = request.url.path
     if path == "/" or path.startswith(("/ui/", "/v1/")):
         headers["Cache-Control"] = "no-store"
+    elif path.startswith("/assets/"):
+        headers["Cache-Control"] = "no-cache"
     return response
 
 

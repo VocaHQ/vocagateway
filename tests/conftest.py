@@ -5,10 +5,18 @@ import wave
 from array import array
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
 
+from app.cleanup.base import (
+    MODE_CONSERVATIVE,
+    CleanupOptions,
+    CleanupReason,
+    CleanupRejected,
+    CleanupUnavailable,
+)
 from app.config import Settings
 from app.main import create_app
 from app.models.base import EngineHealth, TranscriptionOptions
@@ -58,6 +66,9 @@ def settings(tmp_path: Path) -> Settings:
         whisper_binary=tmp_path / "whisper-cli",
         whisper_model=tmp_path / "model.bin",
         maximum_upload_bytes=TEST_MAXIMUM_UPLOAD_BYTES,
+        # Never the operator's real file: a settings save in a test must not be
+        # able to reach ~/.config.
+        config_path=tmp_path / "config.json",
     )
 
 
@@ -100,3 +111,97 @@ def audio_bytes(tmp_path: Path) -> bytes:
         output.setframerate(TEST_SAMPLE_RATE_HZ)
         output.writeframes(samples.tobytes())
     return path.read_bytes()
+
+
+CLEANUP_MODEL_ID = "cleanup:qwen3-0.6b"
+
+
+class FakeCleanupRuntime:
+    """A cleanup runtime that answers from a script instead of from a model.
+
+    `answers` may hold strings (returned as the corrected text) or exceptions
+    (raised), which is what lets one fake cover the whole failure vocabulary
+    without a real `llama-server` anywhere in CI.
+    """
+
+    def __init__(self, *answers: str | BaseException) -> None:
+        self.answers: list[str | BaseException] = list(answers)
+        self.calls: list[tuple[str, str]] = []
+        self.model_id = CLEANUP_MODEL_ID
+
+    async def available(self) -> bool:
+        return True
+
+    async def clean(self, transcript: str, language: str, *, budget_seconds: float) -> str:
+        self.calls.append((transcript, language))
+        answer = self.answers.pop(0) if self.answers else transcript
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer
+
+
+class FakeWorkerHost:
+    """Stands in for the managed `llama-server` process the gateway owns."""
+
+    def __init__(self, runtime: FakeCleanupRuntime | None) -> None:
+        self.runtime_value = runtime
+        self.failure = ""
+        self.offloaded = False
+        self.is_running = runtime is not None
+        self.stops = 0
+        self.is_loading = False
+
+    def runtime_available(self) -> bool:
+        return True
+
+    async def runtime(self, model_id: str, model_file: Path) -> FakeCleanupRuntime | None:
+        return self.runtime_value
+
+    def stop(self, *, offloaded: bool = False) -> None:
+        self.stops += 1
+        self.is_running = False
+        self.offloaded = offloaded
+
+    async def aclose(self) -> None:
+        self.stop()
+
+
+def enable_cleanup(
+    app: Any,
+    runtime: FakeCleanupRuntime | None,
+    *,
+    installed: bool = True,
+    mode: str = MODE_CONSERVATIVE,
+) -> Any:
+    """Turn cleanup on for one app, with a scripted runtime behind it."""
+    manager = app.state.ctx.cleanup
+    manager.runtime_config.cleanup_enabled = True
+    manager.runtime_config.cleanup_mode = mode
+    manager.runtime_config.cleanup_model = CLEANUP_MODEL_ID
+    manager.host = FakeWorkerHost(runtime)
+    if installed:
+        installed_file = manager.models.models_dir / "llama.cpp" / "model.gguf"
+        installed_file.parent.mkdir(parents=True, exist_ok=True)
+        installed_file.write_bytes(b"gguf")
+        manager.model_path = lambda: installed_file  # type: ignore[method-assign]
+    else:
+        manager.model_path = lambda: None  # type: ignore[method-assign]
+    return manager
+
+
+def cleanup_options(**overrides: Any) -> CleanupOptions:
+    fields: dict[str, Any] = {"mode": MODE_CONSERVATIVE, "model_id": CLEANUP_MODEL_ID}
+    fields.update(overrides)
+    return CleanupOptions(**fields)
+
+
+__all__ = [
+    "CLEANUP_MODEL_ID",
+    "CleanupRejected",
+    "CleanupReason",
+    "CleanupUnavailable",
+    "FakeCleanupRuntime",
+    "FakeWorkerHost",
+    "cleanup_options",
+    "enable_cleanup",
+]

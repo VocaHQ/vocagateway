@@ -1,0 +1,98 @@
+{# One installable cleanup model, in the same shape as a speech model card so
+   the two libraries read as one product rather than two. What differs is what
+   a text model is judged on: where the weights came from, who quantized them,
+   and which languages have actually been tested — provenance a speech card has
+   no field for. #}
+{% macro cleanup_model_card(model) %}
+<article class="model-card cleanup-model-card" role="listitem"
+         data-model-id="{{ model.id }}" data-state="{{ model.state }}"
+         {%- if model.active %} data-active="1"{% endif %}>
+  <div class="model-main">
+    <div class="model-title">
+      <h4 title="{{ model.label }}">{{ model.label }}</h4>
+      <span class="model-tags">
+        {% if model.active %}<span class="badge ok">selected</span>{% endif %}
+        {% if model.state == "installed" %}<span class="badge">downloaded</span>{% endif %}
+        {% if not model.installable %}
+        <span class="badge missing" title="No pinned checksum, so the exact bytes cannot be verified">
+          unverifiable
+        </span>
+        {% endif %}
+      </span>
+    </div>
+    <p class="model-specs" aria-label="Model requirements">
+      <span class="model-spec model-spec-size">{{ model.size_bytes | format_bytes }} download</span>
+      <span class="model-spec">{{ model.minimum_ram_gb | int }} GB RAM minimum</span>
+      <span class="model-spec">{{ model.quantization }}</span>
+    </p>
+    <p class="model-blurb">{% if model.id == "cleanup:qwen3-0.6b" %}Smaller download. Lower memory requirement.{% elif model.id == "cleanup:qwen3-1.7b" %}Larger model. Needs more memory alongside speech recognition.{% else %}{{ model.description }}{% endif %}</p>
+    <p class="cleanup-languages"><span class="muted">Languages</span>
+      {% for code in model.languages %}
+      {{ {"en": "English", "hi": "Hindi", "hinglish_roman": "Hinglish (Roman)"}.get(code, code) }}{% if not loop.last %} · {% endif %}
+      {% endfor %}
+    </p>
+    <details class="cleanup-model-details">
+    <summary>Model details &amp; source</summary>
+    <dl class="cleanup-facts">
+      <dt>Benchmarked</dt>
+      <dd>
+        {%- if model.evaluated_languages -%}
+        {{ model.evaluated_languages | join(", ") }}
+        {%- else -%}
+        <span class="muted">Not yet evaluated for cleanup</span>
+        {%- endif -%}
+      </dd>
+      <dt>Runtime</dt>
+      <dd>{{ model.runtime }}</dd>
+      <dt>License</dt>
+      <dd>{{ model.license_name }}</dd>
+      <dt>Weights</dt>
+      <dd>{{ model.upstream_model }}</dd>
+      <dt>Quantized by</dt>
+      <dd>{{ model.conversion_source }}</dd>
+    </dl>
+    </details>
+    {% if model.error %}
+    <p class="error small model-action-error">{{ model.error }}</p>
+    {% endif %}
+  </div>
+  <div class="model-toolbar">
+    <div class="model-toolbar-start">
+      <a class="ghost small" href="{{ model.source_url }}"
+         rel="noreferrer noopener" target="_blank">Model card</a>
+    </div>
+    <div class="model-actions">
+      {% if model.state == "downloading" %}
+      <div class="model-download-status">
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+             aria-label="Download {{ model.label }}"
+             aria-valuenow="{{ ((model.progress or 0) * 100) | round | int }}">
+          <div class="bar" style="width:{{ ((model.progress or 0) * 100) | round | int }}%"></div>
+        </div>
+        <span class="muted small progress-copy">
+          Downloading {{ ((model.progress or 0) * 100) | round | int }}%
+        </span>
+      </div>
+      {% elif model.state == "installed" %}
+      {% if not model.active %}
+      <button type="button" class="primary small"
+              hx-put="/ui/partials/cleanup/select/{{ model.id | urlpath }}"
+              hx-target="#cleanup-page" hx-select="#cleanup-page" hx-swap="outerHTML"
+              hx-disabled-elt="this">Use this model</button>
+      {% endif %}
+      <button type="button" class="ghost small danger"
+              hx-delete="/ui/partials/cleanup/models/{{ model.id | urlpath }}"
+              hx-target="#cleanup-page" hx-select="#cleanup-page" hx-swap="outerHTML"
+              hx-confirm="Delete {{ model.label }} from this server?">Delete</button>
+      {% else %}
+      <button type="button" class="primary small"
+              {% if not model.installable %}disabled
+              title="This entry has no pinned checksum and cannot be installed"{% endif %}
+              hx-post="/ui/partials/cleanup/models/{{ model.id | urlpath }}"
+              hx-target="#cleanup-page" hx-select="#cleanup-page" hx-swap="outerHTML"
+              hx-disabled-elt="this">Download</button>
+      {% endif %}
+    </div>
+  </div>
+</article>
+{% endmacro %}

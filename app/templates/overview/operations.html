@@ -44,6 +44,17 @@
       <span class="ops-bar-seg ops-bar-free" style="width:{{ capacity.free_pct }}%"></span>
     </div>
   </div>
+  <div class="cleanup-activity" aria-label="Cleanup statistics">
+    <div class="section-heading"><h3>Transcript cleanup</h3><span class="muted small">Since start · includes text previews</span></div>
+    <div class="operations-grid operations-grid-kpis">
+      {{ metric_card(dict(label="Cleaned up", value=cleanup_metrics.cleanup_applied, detail="Transcripts changed", css="success")) }}
+      {{ metric_card(dict(label="Kept as is", value=cleanup_metrics.cleanup_unchanged, detail="Model returned no change", css="")) }}
+      {{ metric_card(dict(label="Fallbacks", value=cleanup_metrics.cleanup_fallback, detail="Standard transcript kept", css="")) }}
+      {{ metric_card(dict(label="Last cleanup", value=cleanup_latency, detail="Latest decision time", css="")) }}
+    </div>
+    <p class="muted small">{{ cleanup_metrics.cleanup_disabled }} disabled · {{ cleanup_metrics.cleanup_skipped }} skipped (for example, Raw text)</p>
+  </div>
+  <p class="muted small">Counts reset on server restart. Live-stream latency includes recording time; batch pipeline stages are unavailable for streams.</p>
   <details class="activity-details">
     <summary>Performance details</summary>
     <div class="operations-grid operations-grid-kpis">

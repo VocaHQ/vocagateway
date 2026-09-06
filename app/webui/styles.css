@@ -2315,7 +2315,9 @@ button.danger.ghost:hover {
 #test-transcript { font-size: 16px; margin: 10px 0 4px; }
 .benchmark-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  /* Auto-fit rather than a fixed six: the cleanup tile is present only where a
+     cleanup model is, so the row has to hold six or seven without orphaning. */
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
   gap: 1px;
   background: var(--line-soft);
   border: 1px solid var(--line-soft);
@@ -2332,6 +2334,146 @@ button.danger.ghost:hover {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }
+/* Transcript cleanup: the settings card's model list and the mic-test
+   before-and-after comparison. */
+.settings-subheading {
+  margin: 22px 0 6px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cleanup-models { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.cleanup-model {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  padding: 14px 16px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.cleanup-model-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.cleanup-model p { margin: 0; }
+.cleanup-model .settings-actions { margin-top: 4px; }
+/* ------------------------------------------------------- transcript cleanup */
+
+.cleanup-status-card { display: grid; gap: 14px; }
+.cleanup-status-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cleanup-status-line { margin: 0; flex: 1 1 240px; font-size: 0.95rem; }
+.cleanup-status-actions { margin-left: auto; }
+
+/* The four preconditions, together. Each one fails the same way — the
+   transcript comes back unchanged — so seeing them side by side is what turns
+   "it does nothing" into a specific missing step. */
+.cleanup-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--line-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.cleanup-step {
+  display: flex;
+  gap: 9px;
+  padding: 12px 14px;
+  background: var(--surface);
+  align-items: start;
+}
+.cleanup-step strong { display: block; font-size: 0.86rem; font-weight: 600; }
+.cleanup-step small { display: block; margin-top: 2px; color: var(--muted); line-height: 1.45; }
+.cleanup-step-mark {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  line-height: 1;
+}
+.cleanup-step.done .cleanup-step-mark { background: var(--accent); color: var(--accent-ink); }
+.cleanup-step.todo .cleanup-step-mark { background: var(--warn-wash); color: var(--warn); }
+.cleanup-step.todo strong { color: var(--warn); }
+
+.cleanup-try-controls { display: flex; align-items: end; gap: 14px; flex-wrap: wrap; margin: 12px 0 10px; }
+.cleanup-try-language { max-width: 180px; }
+.cleanup-try-input {
+  width: 100%;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.55;
+  padding: 11px 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+.cleanup-try-result { margin-top: 18px; border-top: 1px solid var(--line-soft); padding-top: 14px; }
+.cleanup-try-text { margin: 0 0 4px; font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
+
+/* A cleanup card carries provenance a speech card has no field for: which
+   weights, quantized by whom, and which languages were actually measured. */
+.cleanup-model-list { display: grid; gap: 10px; margin-top: 14px; }
+.cleanup-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 14px;
+  margin: 8px 0 0;
+  font-size: 12.5px;
+}
+.cleanup-facts dt { color: var(--muted); }
+.cleanup-facts dd { margin: 0; overflow-wrap: anywhere; }
+
+.diff-legend { display: inline-flex; gap: 8px; margin-left: 10px; font-weight: 400; font-size: 11px; }
+.diff-legend span { opacity: 0.9; }
+
+/* What cleanup changed. Both marks lean on the existing theme tokens, so they
+   stay legible in light and dark without a second palette to keep in step. */
+.diff-add {
+  background: var(--accent-wash);
+  border-bottom: 2px solid var(--accent-line);
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.diff-remove {
+  background: var(--warn-wash);
+  border-radius: 3px;
+  padding: 0 1px;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  opacity: 0.85;
+}
+/* A colour-blind reader gets the underline and the strike-through; the wash is
+   the redundant cue, not the only one. */
+@media (prefers-contrast: more) {
+  .diff-add { outline: 1px solid var(--accent-line); }
+  .diff-remove { outline: 1px solid var(--warn); }
+}
+
+.result-subheading {
+  margin: 14px 0 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+#test-original { margin: 0; overflow-wrap: anywhere; }
+
 .record-timer {
   min-width: 46px;
   color: var(--error);
@@ -2963,3 +3105,81 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; b
   .picker { padding: 16px; }
   .picker-language, .picker-language select { width: 100%; }
 }
+
+/* Cleanup cards live outside speech-model families and own their card layout. */
+.cleanup-model-list {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 16px;
+}
+.cleanup-model-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 22px;
+  gap: 20px;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: var(--sunken);
+}
+.cleanup-model-card[data-active="1"] { border-color: var(--accent); }
+.cleanup-model-card .model-title { flex-direction: column; align-items: flex-start; gap: 12px; }
+.cleanup-model-card .model-title h4 { font-size: 1.12rem; line-height: 1.4; }
+.cleanup-model-card .model-specs { margin-top: 16px; }
+.cleanup-model-card .model-spec { background: var(--surface); }
+.cleanup-model-card .model-blurb { display: block; margin-top: 14px; line-height: 1.6; }
+.cleanup-languages { font-size: 0.8rem; line-height: 1.7; margin: 14px 0; }
+.cleanup-languages > span { display: block; }
+.cleanup-model-details { font-size: 0.8rem; }
+.cleanup-model-details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
+.cleanup-model-details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.cleanup-model-card .model-toolbar { border-top: 1px solid var(--line-soft); padding-top: 16px; flex-wrap: wrap; }
+.cleanup-model-card .cleanup-facts { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+.cleanup-model-card .cleanup-facts dd { margin-bottom: 8px; }
+@media (max-width: 480px) {
+  .cleanup-model-card { padding: 16px; }
+  .cleanup-model-card .model-actions { flex-wrap: wrap; }
+}
+
+/* Cleanup settings use the full card, with related controls kept together. */
+.cleanup-settings-form { display: grid; gap: 24px; }
+.cleanup-enable {
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  padding: 18px 20px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--sunken);
+}
+.cleanup-enable input { flex-shrink: 0; width: 22px; height: 22px; }
+.cleanup-preferences { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; }
+.cleanup-preference-group { display: grid; align-content: start; gap: 22px; min-width: 0; }
+.cleanup-preference-group h4 { margin: 0; font-size: 0.85rem; color: var(--muted); }
+.cleanup-preference-group .settings-field { gap: 9px; }
+.cleanup-preference-group .settings-field > span:first-child { font-size: 0.9rem; color: var(--text); }
+.cleanup-memory-toggle { flex: none; }
+.cleanup-settings-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; border-top: 1px solid var(--line-soft); padding-top: 20px; }
+.cleanup-settings-footer p, .cleanup-library-note { margin: 0; color: var(--muted); font-size: 0.8rem; line-height: 1.5; }
+.cleanup-library-note { margin-top: 18px; }
+.cleanup-model-card .model-title { min-height: 64px; }
+.cleanup-model-card .model-blurb { min-height: 44px; }
+.cleanup-model-details summary { padding: 10px 12px; background: var(--surface); border-radius: 8px; }
+.cleanup-model-details[open] .cleanup-facts { padding: 10px 12px; }
+@media (max-width: 700px) {
+  .cleanup-preferences { grid-template-columns: 1fr; gap: 28px; }
+  .cleanup-enable { padding: 14px; }
+  .cleanup-settings-footer { align-items: stretch; flex-direction: column; }
+  .cleanup-settings-footer button { align-self: flex-start; }
+}
+.cleanup-settings-card { container: cleanup-settings / inline-size; }
+@container cleanup-settings (max-width: 620px) {
+  .cleanup-preferences { grid-template-columns: 1fr; gap: 28px; }
+  .cleanup-settings-footer { align-items: stretch; flex-direction: column; }
+  .cleanup-settings-footer button { align-self: flex-start; }
+}
+
+.cleanup-header-state { color: var(--muted); margin-left: 6px; }
+.cleanup-header-status .dot.muted { background: var(--muted); }
+.cleanup-header-status .dot.error { background: var(--error); }
+.cleanup-activity { border-top: 1px solid var(--line-soft); margin-top: 24px; padding-top: 20px; }
+.header-actions { flex-wrap: wrap; }

@@ -6,13 +6,34 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.runtime_config import AUTO_ENGINE, DEFAULT_IDLE_OFFLOAD_MINUTES
+from app.cleanup.base import (
+    DEFAULT_TIMEOUT_SECONDS,
+    MAXIMUM_TIMEOUT_SECONDS,
+    MINIMUM_TIMEOUT_SECONDS,
+    PROMPT_VERSION,
+)
+from app.runtime_config import (
+    AUTO_ENGINE,
+    DEFAULT_CLEANUP_IDLE_UNLOAD_MINUTES,
+    DEFAULT_IDLE_OFFLOAD_MINUTES,
+)
 
 MAXIMUM_LANGUAGE_TAG_LENGTH = 20
 MINIMUM_CUSTOM_MODEL_URL_LENGTH = 12
 MAXIMUM_CUSTOM_MODEL_URL_LENGTH = 2_000
 MAXIMUM_CPU_THREADS = 256
+MAXIMUM_CLEANUP_MODEL_ID_LENGTH = 200
+# Long enough for a tag like `hinglish_roman`, short enough to be a language code.
+MAXIMUM_LANGUAGE_LENGTH = 32
+# A preview is a sentence or two to see the feature work, not a transcript
+# ceiling; the service applies its own input limit either way.
+MAXIMUM_PREVIEW_CHARACTERS = 2_000
 FORBID_EXTRA_FIELDS: Literal["forbid"] = "forbid"
+CleanupMode = Literal["off", "conservative", "inherit"]
+ResolvedCleanupMode = Literal["off", "conservative"]
+CleanupState = Literal["disabled", "unavailable", "loading", "ready", "offloaded", "error"]
+IdleUnloadMinutes = Literal[5, 15, 30, 60, 120]
+WritingStyle = Literal["raw", "clean", "formal", "casual", "very_casual", "excited"]
 
 
 class CreateSessionRequest(BaseModel):
@@ -24,14 +45,29 @@ class CreateSessionRequest(BaseModel):
         max_length=MAXIMUM_LANGUAGE_TAG_LENGTH,
         pattern=r"^(?:[A-Za-z-]+|hinglish_roman)$",
     )
-    style: Literal[
-        "raw",
-        "clean",
-        "formal",
-        "casual",
-        "very_casual",
-        "excited",
-    ] = "casual"
+    style: WritingStyle = "casual"
+    # Resolved once, here, against the gateway default. `inherit` keeps an
+    # older client's request meaning exactly what it means today; an explicit
+    # value neither installs a model nor overrides an operator who turned
+    # cleanup off. An unsupported value is a validation error, never a silent
+    # reinterpretation.
+    cleanup: CleanupMode = "inherit"
+
+
+class CleanupResult(BaseModel):
+    """Redacted metadata about one cleanup decision.
+
+    Carries no prompt, no backend message, and no runtime address — `reason` is
+    a bounded enum precisely so an operator's diagnosis never depends on
+    forwarding text a model produced.
+    """
+
+    requested: ResolvedCleanupMode
+    status: Literal["disabled", "skipped", "unchanged", "applied", "fallback"]
+    reason: str | None = None
+    model_id: str | None = None
+    prompt_version: str | None = None
+    duration_ms: int = 0
 
 
 class SessionResponse(BaseModel):
@@ -41,9 +77,39 @@ class SessionResponse(BaseModel):
     language: str
     style: str
     transcript: str | None = None
+    # The recognised text before correction, for a session that opted in —
+    # including one where cleanup fell back. Null for legacy and cleanup-off
+    # sessions, which have no second copy and never had one.
+    original_transcript: str | None = None
+    cleanup: CleanupResult | None = None
     error_code: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class CleanupCapability(BaseModel):
+    """What a client may ask this gateway for, without describing its insides."""
+
+    supported: bool
+    enabled: bool
+    default_mode: ResolvedCleanupMode
+    modes: list[str]
+    model_id: str | None = None
+    prompt_version: str = PROMPT_VERSION
+    # Languages cleanup will run for. `evaluated_languages` is the subset that
+    # has actually passed the published release gates; the two are reported
+    # apart so a tested language is never confused with an offered one.
+    languages: list[str] = []
+    evaluated_languages: list[str] = []
+    auto_language: str = ""
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
+
+
+class CapabilitiesResponse(BaseModel):
+    version: str
+    styles: list[str]
+    streaming_supported: bool
+    cleanup: CleanupCapability
 
 
 class HealthResponse(BaseModel):
@@ -158,6 +224,15 @@ class OperationalMetricsStatus(BaseModel):
     audio_duration_ms: int | None = None
     real_time_factor: float | None = None
     peak_memory_mb: float | None = None
+    # Cleanup counters, bounded and text-free: how often each outcome happened
+    # and how long the last pass took, never what was corrected.
+    cleanup_applied: int = 0
+    cleanup_unchanged: int = 0
+    cleanup_fallback: int = 0
+    cleanup_disabled: int = 0
+    cleanup_skipped: int = 0
+    cleanup_last_ms: int | None = None
+    cleanup_reasons: dict[str, int] = {}
     history: list[MetricsHistoryPoint] = []
 
 
@@ -277,6 +352,118 @@ class DownloadResponse(BaseModel):
     status: str
 
 
+class CleanupConfigResponse(BaseModel):
+    """The cleanup block of the gateway configuration, safe for diagnostics.
+
+    Deliberately omits the runtime executable path and endpoint: those are
+    operator-only settings, and a redacted bundle attached to a bug report has
+    no reason to carry the deployment's internal topology.
+    """
+
+    enabled: bool = False
+    mode: ResolvedCleanupMode = "off"
+    model_id: str | None = None
+    model_label: str | None = None
+    model_installed: bool = False
+    runtime_available: bool = False
+    managed: bool = True
+    state: CleanupState = "disabled"
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
+    languages: list[str] = []
+    evaluated_languages: list[str] = []
+    # Which language a transcript left on `auto` is corrected as. Empty means
+    # the gateway will not guess, and `auto` falls back unless the writing
+    # system names a language on its own.
+    auto_language: str = ""
+    idle_unload_enabled: bool = False
+    idle_unload_minutes: int = DEFAULT_CLEANUP_IDLE_UNLOAD_MINUTES
+    # Fields an environment variable has taken away from the UI. Shown as
+    # locked rather than pretending a save changed them.
+    locked_settings: list[str] = []
+    detail: str = ""
+
+
+class CleanupConfigUpdateRequest(BaseModel):
+    """A partial update: every field is optional and only what is sent changes.
+
+    Partial by design. Changing whether transcripts are corrected must not reset
+    the speech engine, the hardware options, or the ASR idle-offload policy,
+    which is exactly what a whole-object save of the shared config would do.
+    """
+
+    model_config = ConfigDict(extra=FORBID_EXTRA_FIELDS)
+
+    enabled: bool | None = None
+    mode: ResolvedCleanupMode | None = None
+    model_id: str | None = Field(default=None, max_length=MAXIMUM_CLEANUP_MODEL_ID_LENGTH)
+    timeout_seconds: float | None = Field(
+        default=None, ge=MINIMUM_TIMEOUT_SECONDS, le=MAXIMUM_TIMEOUT_SECONDS
+    )
+    idle_unload_enabled: bool | None = None
+    idle_unload_minutes: IdleUnloadMinutes | None = None
+    # An empty string is a real value here — "stop guessing" — so this is not
+    # the same as the field being absent, which means "leave it alone".
+    auto_language: str | None = Field(default=None, max_length=MAXIMUM_LANGUAGE_LENGTH)
+
+
+class CleanupPreviewRequest(BaseModel):
+    """Text an operator wants corrected, to see what cleanup does to it."""
+
+    model_config = ConfigDict(extra=FORBID_EXTRA_FIELDS)
+
+    text: str = Field(min_length=1, max_length=MAXIMUM_PREVIEW_CHARACTERS)
+    language: str = Field(default="en", max_length=MAXIMUM_LANGUAGE_LENGTH)
+
+
+class CleanupPreviewResponse(BaseModel):
+    """Three versions of one preview, plus the outcome a dictation would report.
+
+    Three rather than two, because the interesting comparison is not "typed text
+    versus final text". The gateway already fixes spacing and sentence case
+    without any model at all, and crediting the model for that would overstate
+    what it does. `without_cleanup` is what this text becomes with the feature
+    switched off, so the difference between it and `transcript` is the model's
+    contribution and nothing else.
+
+    Held only for the length of the response: a preview is never stored, never
+    logged, and never reaches a diagnostics bundle.
+    """
+
+    original: str
+    without_cleanup: str
+    transcript: str
+    cleanup: CleanupResult
+
+
+class CleanupModelEntry(BaseModel):
+    """One installable cleanup artifact, with the provenance behind it."""
+
+    id: str
+    label: str
+    description: str
+    runtime: str
+    size_bytes: int
+    minimum_ram_gb: float
+    upstream_model: str
+    quantization: str
+    conversion_source: str
+    chat_template_source: str
+    license_name: str
+    license_notice: str
+    source_url: str
+    revision: str | None = None
+    sha256: str | None = None
+    installable: bool = False
+    languages: list[str] = []
+    evaluated_languages: list[str] = []
+    state: Literal["installed", "downloading", "not_installed"]
+    active: bool = False
+    progress: float | None = None
+    downloaded_bytes: int | None = None
+    total_bytes: int | None = None
+    error: str | None = None
+
+
 class ConfigResponse(BaseModel):
     engine: str
     available_engines: list[str]
@@ -292,6 +479,7 @@ class ConfigResponse(BaseModel):
     cpu_threads: int = 0
     idle_offload_enabled: bool = False
     idle_offload_minutes: int = DEFAULT_IDLE_OFFLOAD_MINUTES
+    cleanup: CleanupConfigResponse = CleanupConfigResponse()
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -333,6 +521,11 @@ class TestTranscriptionResponse(BaseModel):
     audio_duration_ms: int
     real_time_factor: float | None
     peak_memory_mb: float | None
+    # The mic test shows both texts side by side so an operator can see what
+    # cleanup changed. Null whenever cleanup did not run.
+    original_transcript: str | None = None
+    cleanup: CleanupResult | None = None
+    cleanup_ms: int = 0
 
 
 class OpenAITranscriptionResponse(BaseModel):

@@ -93,6 +93,7 @@ def test_authenticated_moonshine_stream_ret_df9ab(tmp_path: Path, monkeypatch: M
     ):
         websocket.send_json({MESSAGE_TYPE_KEY: "start", "sample_rate": 16_000, "style": "formal"})
         assert websocket.receive_json() == {MESSAGE_TYPE_KEY: "ready", ENGINE_KEY: "moonshine"}
+        assert app.state.ctx.service.metrics.snapshot().active_transcriptions == 1
         websocket.send_bytes(array("f", [0.1, -0.1]).tobytes())
         assert websocket.receive_json() == {MESSAGE_TYPE_KEY: "partial", TRANSCRIPT_KEY: "hello"}
         websocket.send_json({MESSAGE_TYPE_KEY: "finish"})
@@ -100,6 +101,13 @@ def test_authenticated_moonshine_stream_ret_df9ab(tmp_path: Path, monkeypatch: M
             MESSAGE_TYPE_KEY: "complete",
             TRANSCRIPT_KEY: "Hello world.",
         }
+
+    snapshot = app.state.ctx.service.metrics.snapshot()
+    assert snapshot.successful_transcriptions == 1
+    assert snapshot.failed_transcriptions == 0
+    assert snapshot.active_transcriptions == 0
+    assert snapshot.last_latency_ms is not None
+    assert snapshot.last_pipeline is None
 
 
 def test_health_advertises_ready_moonshine_dbde8(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
@@ -222,3 +230,33 @@ def test_authenticated_batch_engine_gets_st_aa(tmp_path: Path) -> None:
             "reason": "active_engine",
             ENGINE_KEY: "whisperkit:test-model",
         }
+
+
+def test_stream_error_counts_once_and_releases_activity(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    engine = moonshine_engine(tmp_path)
+
+    async def health() -> EngineHealth:
+        return EngineHealth(ready=True, name="moonshine:en")
+
+    monkeypatch.setattr(engine, "health", health)
+    app = create_app(
+        Settings(
+            token=TOKEN,
+            data_dir=tmp_path,
+            whisper_binary=tmp_path / WHISPER_BINARY_NAME,
+            whisper_model=tmp_path / MODEL_FILE_NAME,
+        ),
+        engine=engine,
+    )
+    with TestClient(app) as client:
+        with client.websocket_connect(
+            STREAM_PATH, headers={"Authorization": f"Bearer {TOKEN}"}
+        ) as ws:
+            ws.send_json({"type": "start", "sample_rate": 1})
+            assert ws.receive_json()["type"] == "error"
+        snapshot = app.state.ctx.service.metrics.snapshot()
+        assert snapshot.failed_transcriptions == 1
+        assert snapshot.successful_transcriptions == 0
+        assert snapshot.active_transcriptions == 0
