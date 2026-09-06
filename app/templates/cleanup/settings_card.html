@@ -1,0 +1,98 @@
+{# The controls, with every one of them explained. A select labelled "Mode"
+   offering "Conservative" and "Off" tells an operator nothing about what either
+   does, which is exactly the feedback this section was built from. #}
+<div class="card" id="cleanup-settings">
+  <div class="section-heading">
+    <h3>Settings</h3>
+  </div>
+
+  {% if config.locked_settings %}
+  <p class="muted small settings-hint">
+    Set by environment variables and locked here:
+    {{ config.locked_settings | join(", ") }}. Saving does not change them.
+  </p>
+  {% endif %}
+
+  <form hx-put="/ui/partials/cleanup/settings" hx-target="#cleanup-page" hx-swap="outerHTML">
+    <div class="memory-policy">
+      <label class="memory-policy-toggle" for="cleanup-enabled">
+        <input id="cleanup-enabled" name="enabled" type="checkbox" value="true"
+               {% if config.enabled %}checked{% endif %} />
+        <span>
+          <strong>Correct transcripts by default</strong>
+          <small>Applies to clients that do not ask for something else. A client
+             can always opt out per request, and Raw is never corrected.</small>
+        </span>
+      </label>
+    </div>
+    <div class="settings-grid">
+      <label class="settings-field">
+        <span>How much to change</span>
+        <select name="mode">
+          {% for value, label in mode_options %}
+          <option value="{{ value }}"{% if value == config.mode %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <small><strong>Conservative</strong> is the only setting that corrects
+           anything, and it is deliberately narrow: grammar, punctuation,
+           capitalisation, and paragraph breaks. It never rewrites your wording,
+           never answers a question it finds in the text, and never changes a
+           number, name, date, or negation &mdash; an answer that does is thrown
+           away and your plain transcript is kept.</small>
+      </label>
+      <label class="settings-field">
+        <span>Time limit</span>
+        <select name="timeout_seconds">
+          {% for value, label in timeout_options %}
+          <option value="{{ value }}"{% if value == config.timeout_seconds %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <small>How long a correction may take before it is abandoned and the
+           plain transcript is returned instead. It is a ceiling, not a wait:
+           a warm model on a short dictation finishes well inside a second.
+           Raise it if you see <em>timeout</em> on long dictations.</small>
+      </label>
+      <label class="settings-field">
+        <span>When language is auto</span>
+        <select name="auto_language">
+          {% for value, label in auto_language_options %}
+          <option value="{{ value }}"{% if value == config.auto_language %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <small>Clients that send &ldquo;detect language&rdquo; rather than naming
+           one are corrected as this language. Nothing can work it out for them:
+           the speech models do not report which language they heard, and an
+           alphabet does not name a language &mdash; English, French, and Turkish
+           all use this one. Left on <em>Do not guess</em>, those dictations come
+           back uncorrected.</small>
+      </label>
+      <label class="settings-field">
+        <span>Free memory after</span>
+        <select name="idle_unload_minutes">
+          {% for value, label in idle_options %}
+          <option value="{{ value }}"{% if value == config.idle_unload_minutes %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <small>How long the model stays in memory with nothing to do, when the
+           checkbox below is ticked. Only used if it is.</small>
+      </label>
+    </div>
+    <label class="memory-policy-toggle" for="cleanup-idle-unload">
+      <input id="cleanup-idle-unload" name="idle_unload_enabled" type="checkbox" value="true"
+             {% if config.idle_unload_enabled %}checked{% endif %} />
+      <span>
+        <strong>Release the cleanup model when idle</strong>
+        <small>Frees its memory after no corrections for the chosen time. The
+           next correction loads it again, which costs a cold start once.</small>
+      </span>
+    </label>
+    <p class="muted small settings-hint">
+      A correction that cannot finish inside the time limit is abandoned and the
+      plain transcript is returned. Nothing is ever half-corrected.
+    </p>
+    <div class="row settings-actions">
+      <button type="submit" class="primary">Save settings</button>
+    </div>
+  </form>
+
+</div>

@@ -909,8 +909,8 @@
       && !cleanupCapability.auto_language;
     warning.textContent = stranded
       ? "Cleanup cannot run on \u201cDetect language\u201d: nothing reports which language "
-        + "was spoken. Pick a language above, or set one under Settings \u2192 Transcript "
-        + "cleanup \u2192 When language is auto."
+        + "was spoken. Pick a language above, or set one on the Cleanup tab under "
+        + "\u201cWhen language is auto\u201d."
       : "";
     warning.classList.toggle("hidden", !stranded);
   }
@@ -1017,10 +1017,10 @@
   const CLEANUP_ADVICE = {
     unsupported_language:
       "Cleanup needs to know the language. Pick one above instead of "
-      + "\u201cDetect language\u201d, or set one under Settings \u2192 Transcript "
-      + "cleanup \u2192 When language is auto.",
+      + "\u201cDetect language\u201d, or set one on the Cleanup tab under "
+      + "\u201cWhen language is auto\u201d.",
     model_unavailable:
-      "No cleanup model is loaded. Install one under Settings \u2192 Transcript cleanup.",
+      "No cleanup model is loaded. Download one on the Cleanup tab.",
     model_loading:
       "The cleanup model is still loading. Try again in a moment.",
     busy: "Another correction was already running. The transcript is fine, just uncorrected.",
@@ -1034,7 +1034,7 @@
       "The cleanup server\u2019s context window is too small. Restart it with a larger --ctx-size.",
     raw_style: "Raw style is never corrected, by design.",
     empty_input: "There was nothing to correct.",
-    runtime_error: "The cleanup runtime failed. Check Settings \u2192 Transcript cleanup.",
+    runtime_error: "The cleanup runtime failed. Check the Cleanup tab for the reason.",
   };
 
   function describeCleanup(cleanup, edits) {
@@ -1053,6 +1053,87 @@
       ? `Cleanup did not run. ${advice}`
       : `Cleanup did not run (${String(cleanup.reason || cleanup.status).replace(/_/g, " ")}).`;
   }
+
+  // ------------------------------------------------------- cleanup try-it box
+  //
+  // The shortest path from "is this doing anything" to an answer: type a
+  // sentence, press a button, see which words changed. No microphone, no
+  // pairing, and the same finalization a real dictation goes through.
+
+  const CLEANUP_SAMPLE =
+    "so i told the team we cant ship on friday because the api isnt ready "
+    + "and we still need to review the migration";
+
+  async function runCleanupPreview() {
+    const input = document.getElementById("cleanup-try-input");
+    const result = document.getElementById("cleanup-try-result");
+    const errorBox = document.getElementById("cleanup-try-error");
+    const button = document.getElementById("cleanup-try-run");
+    if (!input || !result || !errorBox || !button) return;
+    const text = input.value.trim();
+    if (!text) {
+      input.focus();
+      return;
+    }
+    button.disabled = true;
+    button.textContent = "Correcting\u2026";
+    try {
+      const payload = await requestCleanupPreview(text);
+      paintPreview(payload);
+      result.classList.remove("hidden");
+      errorBox.classList.add("hidden");
+    } catch (error) {
+      errorBox.textContent = String(error.message || error);
+      errorBox.classList.remove("hidden");
+      result.classList.add("hidden");
+    } finally {
+      button.disabled = false;
+      button.textContent = "Correct this text";
+    }
+  }
+
+  async function requestCleanupPreview(text) {
+    const language = document.getElementById("cleanup-try-language");
+    const response = await fetch("/v1/admin/cleanup/preview", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getToken()}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ text, language: language ? language.value : "en" }),
+    });
+    if (!response.ok) {
+      throw new Error("The gateway could not run that correction.");
+    }
+    return response.json();
+  }
+
+  // The comparison is "with the model" against "without it", not against the
+  // text as typed. The gateway fixes spacing and sentence case on its own, and
+  // marking that as the model's work would overstate what it does.
+  function paintPreview(payload) {
+    const after = document.getElementById("cleanup-try-after");
+    const before = document.getElementById("cleanup-try-before");
+    const status = document.getElementById("cleanup-try-status");
+    const baseline = payload.without_cleanup;
+    const changed = baseline !== payload.transcript;
+    const edits = changed
+      ? paintComparison(after, before, baseline, payload.transcript)
+      : 0;
+    if (!changed) {
+      after.textContent = payload.transcript;
+      before.textContent = baseline;
+    }
+    status.textContent = describeCleanup(payload.cleanup, edits);
+  }
+
+  document.addEventListener("click", (event) => {
+    if (event.target.id === "cleanup-try-run") runCleanupPreview();
+    if (event.target.id === "cleanup-try-sample") {
+      const input = document.getElementById("cleanup-try-input");
+      if (input) {
+        input.value = CLEANUP_SAMPLE;
+        input.focus();
+      }
+    }
+  });
 
   // ---------------------------------------------------------------- recorder
 

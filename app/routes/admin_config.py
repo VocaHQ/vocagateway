@@ -12,7 +12,7 @@ from starlette.status import HTTP_409_CONFLICT, HTTP_422_UNPROCESSABLE_CONTENT
 from app import admin_queries, audio, errors, pairing_view, serializers, service
 from app.cleanup.base import MODE_CONSERVATIVE, MODE_OFF, CleanupOptions, CleanupStatus
 from app.context import TOKEN_FILE_HINT, GatewayContextDependency, require_token
-from app.fragments import cleanup, settings, test_panel, tokens
+from app.fragments import settings, test_panel, tokens
 from app.fragments.engine import engine_update_fragment
 from app.runtime_config import DEFAULT_IDLE_OFFLOAD_MINUTES
 from app.schemas import (
@@ -159,9 +159,6 @@ async def ui_settings(ctx: GatewayContextDependency) -> HTMLResponse:
             ctx.settings.bind_host,
             ctx.settings.port,
             tokens.tokens_fragment_str(ctx),
-            cleanup.cleanup_card(
-                admin_queries.cleanup_config(ctx), admin_queries.cleanup_model_entries(ctx)
-            ),
         )
     )
 

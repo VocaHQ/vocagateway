@@ -1,0 +1,39 @@
+{# The one-glance answer to "is this on, and will it actually correct anything".
+   Its own partial because it is the only region that polls: a load takes
+   minutes, and refreshing the whole page underneath someone mid-sentence in the
+   try-it box would be its own bug. #}
+<div class="card cleanup-status-card" id="cleanup-status"
+     {%- if config.state == "loading" %}
+     hx-get="/ui/partials/cleanup/status" hx-trigger="every 2s" hx-swap="outerHTML"
+     {%- endif %}>
+  <div class="cleanup-status-head">
+    <span class="pill {{ state_tone }}">{{ state_label }}</span>
+    <p class="cleanup-status-line">{{ state_sentence }}</p>
+    <div class="cleanup-status-actions">
+      {% if config.model_installed and config.state != "loading" %}
+      <button type="button" class="ghost small"
+              hx-post="/ui/partials/cleanup/warmup"
+              hx-target="#cleanup-status" hx-swap="outerHTML">Load model now</button>
+      {% endif %}
+    </div>
+  </div>
+
+  <ol class="cleanup-steps">
+    {% for step in steps %}
+    <li class="cleanup-step {{ 'done' if step.done else 'todo' }}">
+      <span class="cleanup-step-mark" aria-hidden="true">{{ "✓" if step.done else "•" }}</span>
+      <span>
+        <strong>{{ step.title }}</strong>
+        <small>{{ step.detail }}</small>
+      </span>
+    </li>
+    {% endfor %}
+  </ol>
+
+  {% if config.detail %}
+  <p class="error small settings-hint">{{ config.detail }}</p>
+  {% endif %}
+  {% if message %}
+  <p class="muted small settings-hint" role="status">{{ message }}</p>
+  {% endif %}
+</div>

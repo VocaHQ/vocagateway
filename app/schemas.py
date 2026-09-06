@@ -25,6 +25,9 @@ MAXIMUM_CPU_THREADS = 256
 MAXIMUM_CLEANUP_MODEL_ID_LENGTH = 200
 # Long enough for a tag like `hinglish_roman`, short enough to be a language code.
 MAXIMUM_LANGUAGE_LENGTH = 32
+# A preview is a sentence or two to see the feature work, not a transcript
+# ceiling; the service applies its own input limit either way.
+MAXIMUM_PREVIEW_CHARACTERS = 2_000
 FORBID_EXTRA_FIELDS: Literal["forbid"] = "forbid"
 CleanupMode = Literal["off", "conservative", "inherit"]
 ResolvedCleanupMode = Literal["off", "conservative"]
@@ -399,6 +402,35 @@ class CleanupConfigUpdateRequest(BaseModel):
     # An empty string is a real value here — "stop guessing" — so this is not
     # the same as the field being absent, which means "leave it alone".
     auto_language: str | None = Field(default=None, max_length=MAXIMUM_LANGUAGE_LENGTH)
+
+
+class CleanupPreviewRequest(BaseModel):
+    """Text an operator wants corrected, to see what cleanup does to it."""
+
+    model_config = ConfigDict(extra=FORBID_EXTRA_FIELDS)
+
+    text: str = Field(min_length=1, max_length=MAXIMUM_PREVIEW_CHARACTERS)
+    language: str = Field(default="en", max_length=MAXIMUM_LANGUAGE_LENGTH)
+
+
+class CleanupPreviewResponse(BaseModel):
+    """Three versions of one preview, plus the outcome a dictation would report.
+
+    Three rather than two, because the interesting comparison is not "typed text
+    versus final text". The gateway already fixes spacing and sentence case
+    without any model at all, and crediting the model for that would overstate
+    what it does. `without_cleanup` is what this text becomes with the feature
+    switched off, so the difference between it and `transcript` is the model's
+    contribution and nothing else.
+
+    Held only for the length of the response: a preview is never stored, never
+    logged, and never reaches a diagnostics bundle.
+    """
+
+    original: str
+    without_cleanup: str
+    transcript: str
+    cleanup: CleanupResult
 
 
 class CleanupModelEntry(BaseModel):

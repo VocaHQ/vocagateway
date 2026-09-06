@@ -363,7 +363,7 @@ export VOCAGATEWAY_CLEANUP_API_KEY="$(openssl rand -hex 24)"
 docker compose --profile cleanup up -d
 ```
 
-Install the model first through the WebUI (Settings → Transcript cleanup), which
+Install the model first through the WebUI (Cleanup tab), which
 verifies it against the pinned SHA-256, then point
 `VOCAGATEWAY_CLEANUP_MODEL_DIR` at the directory it landed in and mount it.
 

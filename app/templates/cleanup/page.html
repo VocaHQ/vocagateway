@@ -1,0 +1,90 @@
+{% from "cleanup/model_card.html" import cleanup_model_card %}
+{# Transcript cleanup, as its own section rather than a card buried in Settings.
+   It is a second model with its own library, its own lifecycle and its own
+   failure modes, and the thing an operator most needs from it — proof that it
+   is doing something — needs more room than a settings card has.
+
+   Everything here comes from the gateway's own configuration and the pinned
+   catalog. Never from a transcript, and never from a model. #}
+<div class="page-head" data-page="cleanup">
+  <div>
+    <p class="eyebrow">LOCAL TEXT MODEL</p>
+    <h2>Transcript cleanup</h2>
+    <p>A second, text-only model that fixes grammar and punctuation after speech
+       recognition. It runs on this machine, never sees your audio, and returns
+       your original transcript untouched whenever it is not confident.</p>
+  </div>
+</div>
+
+<div id="cleanup-page">
+  {{ status_html }}
+
+  {# The answer to "is this actually doing anything". No microphone, no pairing:
+     type a sentence, press the button, see exactly which words changed. #}
+  <div class="card cleanup-try" id="cleanup-try">
+    <div class="section-heading">
+      <h3>See what it changes</h3>
+    </div>
+    {% if config.state == "ready" or config.state == "loading" or config.state == "offloaded" %}
+    <p class="muted">Paste a sentence the way a speech model would hand it over
+       &mdash; no capitals, no punctuation &mdash; and correct it here. This is
+       the same code path a dictation takes.</p>
+    <div class="cleanup-try-controls">
+      <label class="settings-field cleanup-try-language">
+        <span>Language</span>
+        <select id="cleanup-try-language">
+          {% for code in config.languages %}
+          <option value="{{ code }}">{{ code }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="button" class="ghost small" id="cleanup-try-sample">Use an example</button>
+    </div>
+    <label class="sr-only" for="cleanup-try-input">Text to correct</label>
+    <textarea id="cleanup-try-input" class="cleanup-try-input" rows="3" spellcheck="false"
+              placeholder="so i told the team we cant ship on friday because the api isnt ready"></textarea>
+    <div class="row settings-actions">
+      <button type="button" class="primary" id="cleanup-try-run">Correct this text</button>
+    </div>
+    <div id="cleanup-try-result" class="cleanup-try-result hidden">
+      <h4 class="result-subheading">
+        With the cleanup model
+        <span class="diff-legend"><span class="diff-add">what the model added</span></span>
+      </h4>
+      <p id="cleanup-try-after" class="cleanup-try-text"></p>
+      <h4 class="result-subheading">
+        Without it
+        <span class="diff-legend"><span class="diff-remove">what it replaced</span></span>
+      </h4>
+      <p id="cleanup-try-before" class="cleanup-try-text muted"></p>
+      <p class="muted small">
+        &ldquo;Without it&rdquo; is not your raw text: the gateway already fixes
+        spacing and sentence case with no model at all. The marks are what the
+        model added on top of that, and nothing else.
+      </p>
+      <p id="cleanup-try-status" class="muted small"></p>
+    </div>
+    <p id="cleanup-try-error" class="error small hidden"></p>
+    {% else %}
+    <p class="muted">Download a model below and turn cleanup on, and you can try
+       it here without recording anything.</p>
+    {% endif %}
+  </div>
+
+  {{ settings_html }}
+
+  <div class="card" id="cleanup-library">
+    <div class="section-heading">
+      <h3>Cleanup models</h3>
+    </div>
+    <p class="muted">Text models, kept separately from the speech library: one of
+       these never transcribes audio and never appears as a speech engine. Every
+       download is checked against a checksum pinned to a named revision, and an
+       entry without one cannot be installed at all.</p>
+    <div class="model-list cleanup-model-list" role="list">
+      {% for model in models %}
+      {{ cleanup_model_card(model) }}
+      {% endfor %}
+    </div>
+  </div>
+</div>

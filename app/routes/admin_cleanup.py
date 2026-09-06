@@ -22,12 +22,19 @@ from starlette.status import (
     HTTP_507_INSUFFICIENT_STORAGE,
 )
 
-from app import admin_queries, errors, model_manager
+from app import admin_queries, errors, model_manager, serializers, service, text_styles
 from app.cleanup import catalog
+from app.cleanup.base import MODE_CONSERVATIVE
 from app.cleanup.manager import CleanupManager, CleanupUpdate
 from app.context import GatewayContext, GatewayContextDependency, require_token
 from app.fragments import cleanup as cleanup_fragment
-from app.schemas import CleanupConfigResponse, CleanupConfigUpdateRequest, CleanupModelEntry
+from app.schemas import (
+    CleanupConfigResponse,
+    CleanupConfigUpdateRequest,
+    CleanupModelEntry,
+    CleanupPreviewRequest,
+    CleanupPreviewResponse,
+)
 
 router = APIRouter(dependencies=[Depends(require_token)])
 EnabledForm = Annotated[bool, Form()]
@@ -47,7 +54,6 @@ class _CleanupForm:
     """
 
     mode: ModeForm = "conservative"
-    model_id: ModelForm = ""
     auto_language: ModelForm = ""
     timeout_seconds: TimeoutForm = 5.0
     idle_unload_minutes: IdleMinutesForm = 15
@@ -59,7 +65,6 @@ class _CleanupForm:
             {
                 "enabled": self.enabled,
                 "mode": self.mode,
-                "model_id": self.model_id,
                 "auto_language": self.auto_language,
                 "timeout_seconds": self.timeout_seconds,
                 "idle_unload_enabled": self.idle_unload_enabled,
@@ -120,6 +125,40 @@ async def warm_cleanup(
     return admin_queries.cleanup_config(ctx)
 
 
+@router.post("/v1/admin/cleanup/preview", response_model=CleanupPreviewResponse)
+async def preview_cleanup(
+    body: CleanupPreviewRequest, ctx: GatewayContextDependency, manager: CleanupManagerDependency
+) -> CleanupPreviewResponse:
+    """Correct one piece of text supplied by the operator, and say what happened.
+
+    The point is evidence. "Does this actually do anything" was answerable only
+    by recording a clip and comparing two paragraphs by eye, which is a poor way
+    to see a comma appear. This runs the same finalization the dictation path
+    runs — same prompt, same validators, same fallback — on text typed into the
+    settings page, so the answer takes one click.
+
+    Nothing is stored: the text goes to the model and comes back, and no session
+    row, log line, or diagnostic bundle sees either version.
+    """
+    final = await ctx.service.cleanup.finalize(
+        body.text,
+        style=service.ADHOC_CLEANUP_STYLE,
+        language=body.language,
+        options=manager.options(MODE_CONSERVATIVE),
+    )
+    return CleanupPreviewResponse(
+        original=body.text,
+        # The same deterministic pass the service runs first and independently,
+        # so the panel can show what the model added rather than claiming the
+        # rule-based capitalisation as its own work.
+        without_cleanup=text_styles.apply_writing_style(
+            body.text, service.ADHOC_CLEANUP_STYLE, body.language
+        ),
+        transcript=final.transcript,
+        cleanup=serializers.cleanup_result(final.cleanup),
+    )
+
+
 @router.get("/v1/admin/cleanup/models", response_model=list[CleanupModelEntry])
 async def cleanup_models(ctx: GatewayContextDependency) -> list[CleanupModelEntry]:
     return admin_queries.cleanup_model_entries(ctx)
@@ -130,7 +169,7 @@ async def ui_install_cleanup_model(
     model_id: str, ctx: GatewayContextDependency, manager: CleanupManagerDependency
 ) -> HTMLResponse:
     await download_cleanup_model(model_id, ctx, manager)
-    return _card(ctx, "Downloading. The card refreshes as it lands.")
+    return _page(ctx, "Downloading. This page refreshes as it lands.")
 
 
 @router.delete("/ui/partials/cleanup/models/{model_id}", response_class=HTMLResponse)
@@ -138,7 +177,7 @@ async def ui_delete_cleanup_model(
     model_id: str, ctx: GatewayContextDependency, manager: CleanupManagerDependency
 ) -> HTMLResponse:
     await delete_cleanup_model(model_id, ctx, manager)
-    return _card(ctx, "Model deleted.")
+    return _page(ctx, "Model deleted.")
 
 
 @router.post("/ui/partials/cleanup/warmup", response_class=HTMLResponse)
@@ -146,7 +185,11 @@ async def ui_warm_cleanup(
     ctx: GatewayContextDependency, manager: CleanupManagerDependency
 ) -> HTMLResponse:
     warmed = await manager.warmup()
-    return _card(ctx, _warmup_note(manager, warmed=warmed))
+    return HTMLResponse(
+        cleanup_fragment.cleanup_status(
+            admin_queries.cleanup_config(ctx), _warmup_note(manager, warmed=warmed)
+        )
+    )
 
 
 @router.post("/v1/admin/cleanup/models/{model_id}/download", response_model=CleanupModelEntry)
@@ -184,17 +227,38 @@ async def delete_cleanup_model(
 
 @router.get("/ui/partials/cleanup", response_class=HTMLResponse)
 async def ui_cleanup(ctx: GatewayContextDependency) -> HTMLResponse:
-    return _card(ctx)
+    """The whole section, as the left-nav tab loads it."""
+    return _page(ctx)
 
 
-@router.put("/ui/partials/cleanup", response_class=HTMLResponse)
+@router.get("/ui/partials/cleanup/status", response_class=HTMLResponse)
+async def ui_cleanup_status(ctx: GatewayContextDependency) -> HTMLResponse:
+    """Just the status strip, which is the only region that polls.
+
+    Swapping the whole page every two seconds during a load would clear whatever
+    someone had typed into the try-it box.
+    """
+    return HTMLResponse(cleanup_fragment.cleanup_status(admin_queries.cleanup_config(ctx)))
+
+
+@router.put("/ui/partials/cleanup/settings", response_class=HTMLResponse)
 async def ui_update_cleanup(
     ctx: GatewayContextDependency,
     manager: CleanupManagerDependency,
     form: Annotated[_CleanupForm, Depends()],
 ) -> HTMLResponse:
     _apply(manager, form.as_request())
-    return _card(ctx, "Transcript cleanup settings saved.")
+    return _page(ctx, "Settings saved.")
+
+
+@router.put("/ui/partials/cleanup/select/{model_id}", response_class=HTMLResponse)
+async def ui_select_cleanup_model(
+    model_id: str, ctx: GatewayContextDependency, manager: CleanupManagerDependency
+) -> HTMLResponse:
+    """Choose which downloaded model does the correcting."""
+    selected = _known(model_id)
+    manager.configure(CleanupUpdate(model_id=model_id))
+    return _page(ctx, f"{selected.label} is now the cleanup model.")
 
 
 def _warmup_note(manager: CleanupManager, *, warmed: bool) -> str:
@@ -207,14 +271,14 @@ def _warmup_note(manager: CleanupManager, *, warmed: bool) -> str:
     if warmed:
         return "Model loaded and ready."
     if manager.loading:
-        return "Loading the model. This card refreshes when it is ready."
+        return "Loading the model. This panel refreshes when it is ready."
     return "The model could not be loaded."
 
 
-def _card(ctx: GatewayContext, message: str = "") -> HTMLResponse:
-    """The settings card, rebuilt from live state after every action."""
+def _page(ctx: GatewayContext, message: str = "") -> HTMLResponse:
+    """The section, rebuilt from live state after every action."""
     return HTMLResponse(
-        cleanup_fragment.cleanup_card(
+        cleanup_fragment.cleanup_page(
             admin_queries.cleanup_config(ctx),
             admin_queries.cleanup_model_entries(ctx),
             message=message,

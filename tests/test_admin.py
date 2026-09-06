@@ -937,9 +937,10 @@ async def test_webui_shell_is_public(admin_client: httpx.AsyncClient) -> None:
     assert "htmx.min.js" in response.text
     assert 'data-tab="about"' in response.text
     assert 'hx-get="/ui/partials/about"' in response.text
-    # Fifth tab, after the existing four. Hash routing uses data-tab="about".
+    # Cleanup sits beside Models: it is a second model library with its own
+    # lifecycle, not a preference. Hash routing uses data-tab="about".
     tabs = [part.split('"', 1)[0] for part in response.text.split('data-tab="')[1:]]
-    assert tabs[:5] == ["overview", "models", "pair", "settings", "about"]
+    assert tabs[:6] == ["overview", "models", "cleanup", "pair", "settings", "about"]
     assert "footer-copy" in response.text
     assert "footer-links" not in response.text
     assert "© 2026" in response.text or "&copy; 2026" in response.text

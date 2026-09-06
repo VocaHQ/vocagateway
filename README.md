@@ -528,7 +528,7 @@ or an idle unload takes the plain speech result, reports `model_loading`, and
 leaves the load running behind it; the next one finds the model resident.
 **Load model now** is how you pay that cost once, deliberately.
 
-**Setup.** Settings → Transcript cleanup → install a model → **Load model now**
+**Setup.** Open the **Cleanup** tab → download a model → **Load model now**
 → tick *Correct transcripts by default*. Natively the gateway launches and owns
 a `llama-server` on loopback (install llama.cpp, or set
 `VOCAGATEWAY_CLEANUP_BINARY`). Under Compose it is an opt-in sidecar that
@@ -538,12 +538,18 @@ publishes no port:
 docker compose --profile cleanup up -d
 ```
 
-**Seeing it work.** Under **Pair & test**, pick a language (not *Detect
-language*), set Cleanup to *On*, and record a sentence without pausing for
-punctuation. The result marks every word it changed and says how many, with the
-uncorrected transcript underneath it — so "did the model do anything" is a
-question you can answer by looking rather than by comparing two paragraphs by
-eye. If it corrected nothing, the same line says why, and what to change.
+**Seeing it work.** The **Cleanup** tab has a *See what it changes* box: type
+or paste a sentence the way a speech model hands it over — no capitals, no
+punctuation — and correct it right there, no microphone involved. It runs the
+same finalization a dictation runs and marks exactly which words the model
+added, against a baseline of what the gateway does *without* a model, so the
+marks credit the model only for its own work. Nothing typed there is stored,
+logged, or written to a diagnostics bundle.
+
+The same before-and-after appears under **Pair & test** on a real recording.
+Either way, if it corrected nothing, the status line says why and what to
+change — and the Cleanup tab's checklist names which of the four setup steps is
+still outstanding.
 
 **What it will not do.** It does not translate, summarise, answer questions,
 add content, or invent facts. **Raw is never corrected**, whatever a request
@@ -555,7 +561,7 @@ are deliberately out — repetition often carries meaning.
 names one supported language on its own. Latin script does not, and nothing
 else in the pipeline detects one — the speech engines do not report a detected
 language — so `auto` on Latin script otherwise falls back uncorrected. Either
-ask for `en` explicitly, or set **When language is auto** in Settings (or
+ask for `en` explicitly, or set **When language is auto** on the Cleanup tab (or
 `VOCAGATEWAY_CLEANUP_AUTO_LANGUAGE`) to the language you dictate in, which is a
 thing you know and the gateway does not. It stays unset by default: guessing
 that Latin script means English is exactly the mistake worth avoiding. The

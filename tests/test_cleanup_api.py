@@ -256,11 +256,11 @@ def replace_settings(settings: Settings, **changes: Any) -> Settings:
 async def test_the_settings_page_renders_transcripts_as_text(gateway: Any) -> None:
     client, app = gateway
     enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
-    body = (await client.get("/ui/partials/settings", headers=AUTH)).text
+    body = (await client.get("/ui/partials/cleanup", headers=AUTH)).text
     assert "Transcript cleanup" in body
-    assert "Fix grammar and punctuation while keeping your meaning" in body
+    assert "fixes grammar and punctuation after speech" in " ".join(body.split())
     # The caveat about recognition errors is not optional wording.
-    assert "never the audio" in body
+    assert "never sees your audio" in " ".join(body.split())
 
 
 async def test_diagnostics_carry_the_cleanup_block_and_no_text(gateway: Any) -> None:
@@ -569,7 +569,7 @@ async def test_clearing_the_auto_language_is_distinct_from_leaving_it_alone(
     assert (await client.get(CLEANUP_CONFIG, headers=AUTH)).json()["auto_language"] == ""
 
 
-async def test_the_settings_card_explains_what_each_control_does(gateway: Any) -> None:
+async def test_the_cleanup_section_explains_what_each_control_does(gateway: Any) -> None:
     """A control named "Mode" with options "Conservative" and "Off" explains nothing."""
     client, app = gateway
     enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
@@ -578,23 +578,26 @@ async def test_the_settings_card_explains_what_each_control_does(gateway: Any) -
     for explanation in (
         "grammar, punctuation, capitalisation, and paragraph breaks",
         "How long a correction may take before it is abandoned",
-        "The text model that does the correcting",
         "How long the model stays in memory with nothing to do",
+        "one of these never transcribes audio and never appears as a speech engine",
     ):
         assert explanation in body
 
 
-async def test_the_card_says_when_it_is_on_but_will_still_correct_nothing(
-    gateway: Any,
-) -> None:
-    """On, installed, and no default for `auto` is the silent-no-op configuration."""
+async def test_the_setup_checklist_names_the_step_that_is_not_done(gateway: Any) -> None:
+    """Four preconditions share one symptom: the transcript comes back unchanged.
+
+    Listing them turns "it does nothing" into "step four is not done".
+    """
     client, app = gateway
     enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
     stranded = _flattened(await client.get("/ui/partials/cleanup", headers=AUTH))
-    assert "will still come back uncorrected" in stranded
+    assert "A runtime to run it" in stranded
+    assert "come back uncorrected. Set one below" in stranded
     await client.put(CLEANUP_CONFIG, json={"auto_language": "en"}, headers=AUTH)
     covered = _flattened(await client.get("/ui/partials/cleanup", headers=AUTH))
-    assert "will still come back uncorrected" not in covered
+    assert "come back uncorrected. Set one below" not in covered
+    assert "corrected as en" in covered
 
 
 def _flattened(response: Any) -> str:
@@ -608,3 +611,75 @@ async def test_the_mic_test_offers_a_before_and_after_with_a_legend(gateway: Any
     assert 'id="test-original-block"' in body
     assert 'class="diff-legend"' in body
     assert 'id="test-cleanup-warning"' in body
+
+
+async def test_the_preview_corrects_supplied_text_without_a_recording(gateway: Any) -> None:
+    """The shortest answer to "is this doing anything": type a sentence, see it fixed."""
+    client, app = gateway
+    enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
+    response = await client.post(
+        "/v1/admin/cleanup/preview", json={"text": SPOKEN, "language": "en"}, headers=AUTH
+    )
+    assert response.status_code == HTTP_200_OK
+    body = response.json()
+    assert body["original"] == SPOKEN
+    assert body["transcript"] == CORRECTED
+    # The baseline the panel compares against: what this text becomes with the
+    # feature off, so the marks credit the model only for what it added.
+    assert body["without_cleanup"] == "We was going to leave early but the train was late."
+    assert body["cleanup"]["status"] == "applied"
+
+
+async def test_a_preview_that_cannot_run_still_answers_with_the_original(gateway: Any) -> None:
+    """Same contract as a dictation: never an error the caller has to handle."""
+    client, app = gateway
+    enable_cleanup(app, None, installed=False)
+    body = (
+        await client.post(
+            "/v1/admin/cleanup/preview", json={"text": SPOKEN, "language": "en"}, headers=AUTH
+        )
+    ).json()
+    # Identical to the baseline, so the panel shows no marks and says why.
+    assert body["transcript"] == body["without_cleanup"]
+    assert body["cleanup"]["reason"] == "model_unavailable"
+
+
+async def test_the_preview_needs_the_admin_token(gateway: Any) -> None:
+    client, _ = gateway
+    response = await client.post("/v1/admin/cleanup/preview", json={"text": SPOKEN})
+    assert response.status_code == HTTP_401_UNAUTHORIZED
+
+
+async def test_the_preview_refuses_an_empty_or_oversized_body(gateway: Any) -> None:
+    client, app = gateway
+    enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
+    for text in ("", "x" * 2_001):
+        response = await client.post("/v1/admin/cleanup/preview", json={"text": text}, headers=AUTH)
+        assert response.status_code == HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_selecting_a_model_from_the_library_does_not_reset_other_settings(
+    gateway: Any,
+) -> None:
+    """The card's button and the settings form write to the same partial update."""
+    client, app = gateway
+    manager = enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
+    await client.put(
+        CLEANUP_CONFIG, json={"timeout_seconds": 8, "auto_language": "en"}, headers=AUTH
+    )
+    await client.put(f"/ui/partials/cleanup/select/{CLEANUP_MODEL_ID}", headers=AUTH)
+    assert manager.runtime_config.cleanup_model == CLEANUP_MODEL_ID
+    assert manager.runtime_config.cleanup_timeout_seconds == 8
+    assert manager.runtime_config.cleanup_auto_language == "en"
+
+
+async def test_saving_settings_does_not_clear_the_selected_model(gateway: Any) -> None:
+    """The form no longer carries the model, so it must not blank it either."""
+    client, app = gateway
+    manager = enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
+    await client.put(
+        "/ui/partials/cleanup/settings",
+        data={"mode": "conservative", "timeout_seconds": "5", "idle_unload_minutes": "15"},
+        headers=AUTH,
+    )
+    assert manager.runtime_config.cleanup_model == CLEANUP_MODEL_ID

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from types import MappingProxyType
 
 from app.cleanup.base import MAXIMUM_TIMEOUT_SECONDS, MINIMUM_TIMEOUT_SECONDS
@@ -29,29 +30,65 @@ STATE_LABELS: MappingProxyType[str, tuple[str, str]] = MappingProxyType(
         "error": ("Error", "error"),
     }
 )
+# What the state means for the transcripts going through right now, in one
+# sentence. The pill says what the runtime is doing; this says what an operator
+# actually gets, which is not always the same thing.
+STATE_SENTENCES: MappingProxyType[str, str] = MappingProxyType(
+    {
+        "disabled": "Transcripts are returned exactly as the speech model produced them.",
+        "unavailable": "Nothing is being corrected: there is no usable model on this host yet.",
+        "loading": "The model is loading. Dictations are returned uncorrected until it is ready.",
+        "ready": "Transcripts are being corrected.",
+        "offloaded": "Ready, but unloaded to save memory. The next correction loads it again.",
+        "error": "The cleanup runtime failed to start, so transcripts are returned uncorrected.",
+    }
+)
+# The example the try-it box offers. Deliberately a sentence a speech model
+# really does produce — no capitals, no punctuation, a contraction with the
+# apostrophe dropped — so what comes back is a fair demonstration rather than a
+# rigged one.
+SAMPLE_TEXT = (
+    "so i told the team we cant ship on friday because the api isnt ready "
+    "and we still need to review the migration"
+)
 
 
-def cleanup_card(
+def cleanup_page(
     config: CleanupConfigResponse,
     models: list[CleanupModelEntry],
     message: str = "",
 ) -> str:
-    """See app/templates/settings/cleanup_card.html for the markup.
+    """The whole section: status, a live demonstration, settings, and a library.
 
-    Both transcripts anywhere in this panel are rendered as escaped text by the
-    autoescaping template environment — never as HTML, and never as Markdown a
-    browser would execute.
+    See app/templates/cleanup/*.html for the markup.
     """
-    label, tone = STATE_LABELS.get(config.state, ("Unknown", "muted"))
     return render(
-        "settings/cleanup_card.html",
+        "cleanup/page.html",
         config=config,
         models=models,
+        status_html=cleanup_status(config, message),
+        settings_html=cleanup_settings(config),
+    )
+
+
+def cleanup_status(config: CleanupConfigResponse, message: str = "") -> str:
+    """The one-glance answer, plus the steps still standing between here and it."""
+    label, tone = STATE_LABELS.get(config.state, ("Unknown", "muted"))
+    return render(
+        "cleanup/status_card.html",
+        config=config,
         message=message,
         state_label=label,
         state_tone=tone,
-        summary=CLEANUP_SUMMARY,
-        caveat=CLEANUP_CAVEAT,
+        state_sentence=STATE_SENTENCES.get(config.state, ""),
+        steps=setup_steps(config),
+    )
+
+
+def cleanup_settings(config: CleanupConfigResponse) -> str:
+    return render(
+        "cleanup/settings_card.html",
+        config=config,
         mode_options=[("conservative", "Conservative (recommended)"), ("off", "Off")],
         timeout_options=[
             (choice, _timeout_label(choice))
@@ -63,6 +100,54 @@ def cleanup_card(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class SetupStep:
+    """One thing that has to be true before a transcript gets corrected."""
+
+    title: str
+    detail: str
+    done: bool
+
+
+def setup_steps(config: CleanupConfigResponse) -> list[SetupStep]:
+    """Every precondition, shown together and in order.
+
+    Four separate things have to line up, and when one is missing the symptom is
+    identical to the other three: the transcript comes back unchanged. Listing
+    them turns "it does nothing" into "step three is not done".
+    """
+    return [
+        SetupStep(
+            "A runtime to run it",
+            "llama-server found on this host"
+            if config.runtime_available
+            else "No llama-server found. Install llama.cpp, or set VOCAGATEWAY_CLEANUP_BINARY",
+            config.runtime_available,
+        ),
+        SetupStep(
+            "A model downloaded",
+            f"Using {config.model_label}"
+            if config.model_installed and config.model_label
+            else "Pick one from the library below and download it",
+            config.model_installed,
+        ),
+        SetupStep(
+            "Corrections turned on",
+            "On by default for clients that do not ask for something else"
+            if config.enabled and config.mode == "conservative"
+            else "Tick 'Correct transcripts by default' in Settings below",
+            config.enabled and config.mode == "conservative",
+        ),
+        SetupStep(
+            "A language to correct in",
+            f"Clients sending 'detect language' are corrected as {config.auto_language}"
+            if config.auto_language
+            else "Clients that send 'detect language' come back uncorrected. Set one below",
+            bool(config.auto_language),
+        ),
+    ]
+
+
 def _auto_language_options(languages: list[str]) -> list[tuple[str, str]]:
     """The choices for a transcript whose language is `auto`.
 
@@ -70,7 +155,7 @@ def _auto_language_options(languages: list[str]) -> list[tuple[str, str]]:
     when nothing knows the language: the speech engines do not report a
     detected one, and Latin script does not name one.
     """
-    return [("", "Do not guess (fall back)"), *((code, code) for code in languages)]
+    return [("", "Do not guess (leave uncorrected)"), *((code, code) for code in languages)]
 
 
 def _timeout_label(seconds: float) -> str:
