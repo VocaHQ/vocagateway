@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -224,6 +224,7 @@ class CleanupManager:
         self._active_leases = 0
         self._last_used = time.monotonic()
         self._failure = ""
+        self._load_hold_task: asyncio.Task[None] | None = None
         # Whether an operator-run endpoint's context window has been measured
         # and found big enough. A managed worker needs no such check: the
         # gateway passes its own `--ctx-size`.
@@ -263,7 +264,7 @@ class CleanupManager:
         if not await self._admit():
             yield Lease(reason=CleanupReason.BUSY)
             return
-        self._active_leases += 1
+        _hold(self)
         try:
             yield await self._lease()
         finally:
@@ -276,12 +277,16 @@ class CleanupManager:
         and holding an HTTP request open for that long is a request that times
         out somewhere in the middle with nothing to show for it. The load runs
         in the background either way; the settings card polls until the state
-        stops being `loading`.
+        stops being `loading`. A lease is held until that load settles so a
+        settings save cannot kill the worker mid-start.
         """
         if not self.enabled:
             return False
         runtime = await self._runtime()
-        return runtime is not None and await runtime.available()
+        if runtime is not None:
+            return await runtime.available()
+        _schedule_load_hold(self)
+        return False
 
     @property
     def loading(self) -> bool:
@@ -303,6 +308,12 @@ class CleanupManager:
         return True
 
     async def shutdown(self) -> None:
+        task = self._load_hold_task
+        self._load_hold_task = None
+        if task is not None and not task.done():
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
         await self.host.aclose()
 
     def status(self) -> CleanupStatusReport:
@@ -343,9 +354,12 @@ class CleanupManager:
         update.apply(self.runtime_config)
         self.runtime_config.save(self.config_path)
         self._external_ok = None
+        # Applies to new work only. An in-flight request or load-hold keeps
+        # the runtime it was admitted against; stop is deferred until the
+        # last lease drains. Re-enable is a no-op here: _stop_if_due reads
+        # live enabled/model state, so a disable then re-enable while
+        # leased cannot kill a worker that is wanted again.
         if (changed_model or not self.enabled) and self._active_leases == 0:
-            # Applies to new work only. An in-flight request keeps the runtime
-            # it was admitted against; the swap happens once its lease drains.
             self.host.stop()
 
     async def _external_runtime(self, endpoint: Endpoint) -> CleanupRuntime | None:
@@ -367,7 +381,10 @@ class CleanupManager:
         runtime = await self._runtime()
         if runtime is not None:
             return Lease(runtime=runtime)
-        return Lease(reason=self._missing_reason())
+        reason = self._missing_reason()
+        if reason is CleanupReason.MODEL_LOADING:
+            _schedule_load_hold(self)
+        return Lease(reason=reason)
 
     def _missing_reason(self) -> CleanupReason:
         """Why the slot was free but there is still nothing to run on.
@@ -383,7 +400,11 @@ class CleanupManager:
         """Whether a managed worker could still turn up, given a moment."""
         if not self.preferences.managed or not self.enabled:
             return False
-        if self.model_path() is None or self.host.failure:
+        if self.model_path() is None:
+            return False
+        if self.host.is_loading:
+            return True
+        if self.host.failure:
             return False
         return self.host.runtime_available()
 
@@ -395,8 +416,7 @@ class CleanupManager:
         return True
 
     def _release(self) -> None:
-        self._active_leases -= 1
-        self._last_used = time.monotonic()
+        _drop_hold(self)
         self._slot.release()
 
     async def _runtime(self) -> CleanupRuntime | None:
@@ -416,6 +436,8 @@ class CleanupManager:
             return False
         if not self.preferences.managed or self._active_leases:
             return False
+        if self.host.is_loading:
+            return False
         return self.host.is_running
 
     def _state(self, installed: bool, runtime_available: bool) -> str:
@@ -425,9 +447,61 @@ class CleanupManager:
             return STATE_ERROR
         if not runtime_available or not installed:
             return STATE_UNAVAILABLE
-        if self.loading:
+        if self.loading or (self.host.is_running and not self.host.is_ready):
             return STATE_LOADING
         return STATE_OFFLOADED if self.host.offloaded else STATE_READY
+
+
+def _hold(manager: CleanupManager) -> None:
+    manager._active_leases += 1
+    manager.host.pin()
+
+
+def _drop_hold(manager: CleanupManager) -> None:
+    manager._active_leases -= 1
+    manager.host.unpin()
+    manager._last_used = time.monotonic()
+    _stop_if_due(manager)
+
+
+def _stop_if_due(manager: CleanupManager) -> None:
+    if manager._active_leases:
+        return
+    # Live state, not a sticky flag: disable then re-enable while leased
+    # must keep the worker that is wanted again.
+    loaded = manager.host.loaded_model_id
+    stale = loaded is not None and loaded != manager.model_id
+    if not manager.enabled or stale:
+        manager.host.stop()
+
+
+def _schedule_load_hold(manager: CleanupManager) -> None:
+    """Hold a lease across a background load so configure cannot kill it.
+
+    The hold is taken here, before yielding back to the request, so
+    configure/idle-unload cannot stop the worker in the gap before the
+    hold task first runs.
+    """
+    if not manager.enabled or not manager.preferences.managed:
+        return
+    if manager.model_path() is None:
+        return
+    if manager.host.is_ready:
+        return
+    existing = manager._load_hold_task
+    if existing is not None and not existing.done():
+        return
+    _hold(manager)
+    manager._load_hold_task = asyncio.create_task(_await_load_hold(manager))
+
+
+async def _await_load_hold(manager: CleanupManager) -> None:
+    try:
+        await manager.host.wait_for_load()
+    except Exception:
+        return
+    finally:
+        _drop_hold(manager)
 
 
 @dataclass(frozen=True, slots=True)

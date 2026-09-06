@@ -33,6 +33,8 @@ from app.cleanup.worker import LlamaServerWorker, resolve_binary
 from app.config import Settings
 from app.runtime_config import RuntimeConfig
 
+OTHER_CLEANUP_MODEL_ID = "cleanup:qwen3-1.7b"
+
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
@@ -111,7 +113,7 @@ def test_switching_the_model_stops_the_worker(settings: Settings) -> None:
     manager = manager_for(settings, cleanup_enabled=True, cleanup_model=CLEANUP_MODEL_ID)
     host = FakeWorkerHost(FakeCleanupRuntime())
     manager.host = host
-    manager.configure(CleanupUpdate(model_id="cleanup:qwen3-1.7b"))
+    manager.configure(CleanupUpdate(model_id=OTHER_CLEANUP_MODEL_ID))
     assert host.stops == 1
 
 
@@ -134,6 +136,115 @@ async def test_the_admission_bound_yields_none_rather_than_queueing(
         async with manager.lease() as second:
             assert second.runtime is None
             assert second.reason is CleanupReason.BUSY
+
+
+async def test_a_cold_request_falls_back_without_waiting_for_start(settings: Settings) -> None:
+    """Transcription must not sit on a 300s model load. The load-hold runs alone."""
+    manager = manager_for(settings, cleanup_enabled=True, cleanup_model=CLEANUP_MODEL_ID)
+    host = _HangingHost(FakeCleanupRuntime("ok"))
+    manager.host = host
+    manager.model_path = lambda: Path("model.gguf")  # type: ignore[method-assign]
+
+    async with manager.lease() as slot:
+        assert slot.runtime is None
+        assert slot.reason is CleanupReason.MODEL_LOADING
+    assert manager._active_leases >= 1
+    manager.configure(CleanupUpdate(model_id=OTHER_CLEANUP_MODEL_ID))
+    assert host.stops == 0
+    host.release.set()
+    await _settle_load_hold(manager)
+    assert host.stops == 1
+
+
+async def test_warmup_holds_a_lease_so_configure_cannot_stop_the_start(
+    settings: Settings,
+) -> None:
+    manager = manager_for(settings, cleanup_enabled=True, cleanup_model=CLEANUP_MODEL_ID)
+    host = _HangingHost(FakeCleanupRuntime("ok"))
+    manager.host = host
+    manager.model_path = lambda: Path("model.gguf")  # type: ignore[method-assign]
+
+    assert await asyncio.wait_for(manager.warmup(), timeout=1.0) is False
+    assert manager._active_leases >= 1
+    manager.configure(CleanupUpdate(enabled=False))
+    assert host.stops == 0
+    host.release.set()
+    await _settle_load_hold(manager)
+    assert host.stops == 1
+    assert host.is_running is False
+
+
+async def test_disable_while_leased_stops_the_worker_once_the_lease_drains(
+    settings: Settings,
+) -> None:
+    manager = manager_for(settings, cleanup_enabled=True, cleanup_model=CLEANUP_MODEL_ID)
+    host = FakeWorkerHost(FakeCleanupRuntime("ok"))
+    manager.host = host
+    manager.model_path = lambda: Path("model.gguf")  # type: ignore[method-assign]
+
+    async with manager.lease():
+        manager.configure(CleanupUpdate(enabled=False))
+        assert host.stops == 0
+        assert host.is_running is True
+    assert host.stops == 1
+    assert host.is_running is False
+
+
+async def test_disable_during_warmup_stops_the_worker_once_the_lease_drains(
+    settings: Settings,
+) -> None:
+    """configure cannot kill a start in flight; it must stop the worker after."""
+    manager = manager_for(settings, cleanup_enabled=True, cleanup_model=CLEANUP_MODEL_ID)
+    host = _HangingHost(FakeCleanupRuntime("ok"))
+    manager.host = host
+    manager.model_path = lambda: Path("model.gguf")  # type: ignore[method-assign]
+
+    assert await manager.warmup() is False
+    manager.configure(CleanupUpdate(enabled=False))
+    assert host.stops == 0
+    host.release.set()
+    await _settle_load_hold(manager)
+    assert host.stops == 1
+    assert host.is_running is False
+
+
+async def test_reenable_during_warmup_keeps_the_worker_once_the_lease_drains(
+    settings: Settings,
+) -> None:
+    """A deferred disable must not stick after the operator turns cleanup back on."""
+    manager = manager_for(settings, cleanup_enabled=True, cleanup_model=CLEANUP_MODEL_ID)
+    host = _HangingHost(FakeCleanupRuntime("ok"))
+    manager.host = host
+    manager.model_path = lambda: Path("model.gguf")  # type: ignore[method-assign]
+
+    assert await manager.warmup() is False
+    manager.configure(CleanupUpdate(enabled=False))
+    assert host.stops == 0
+    manager.configure(CleanupUpdate(enabled=True))
+    assert host.stops == 0
+    host.release.set()
+    await _settle_load_hold(manager)
+    assert host.stops == 0
+    assert host.is_running is True
+    assert manager.enabled is True
+
+
+async def test_reenable_while_leased_keeps_the_worker_once_the_lease_drains(
+    settings: Settings,
+) -> None:
+    manager = manager_for(settings, cleanup_enabled=True, cleanup_model=CLEANUP_MODEL_ID)
+    host = FakeWorkerHost(FakeCleanupRuntime("ok"))
+    manager.host = host
+    manager.model_path = lambda: Path("model.gguf")  # type: ignore[method-assign]
+
+    async with manager.lease():
+        manager.configure(CleanupUpdate(enabled=False))
+        assert host.stops == 0
+        manager.configure(CleanupUpdate(enabled=True))
+        assert host.stops == 0
+        assert manager.enabled is True
+    assert host.stops == 0
+    assert host.is_running is True
 
 
 async def test_idle_unload_never_fires_while_a_lease_is_out(settings: Settings) -> None:
@@ -270,22 +381,88 @@ def test_a_routable_cleanup_endpoint_is_refused_at_startup(
 
 
 class _NeverReadyWorker:
-    """A worker whose model load never finishes, like a cold multi-gigabyte GGUF."""
+    """A worker whose model load never finishes, like a cold multi-gigabyte GGUF.
+
+    `is_running` flips as soon as the child would have been spawned; `is_ready`
+    stays false until `/health` would have answered. That gap is the mid-load
+    window a concurrent request must not treat as a usable runtime.
+    """
 
     def __init__(self, *_: object, **__: object) -> None:
         self.is_running = False
+        self.is_ready = False
         self.starts = 0
+        self.stop_calls = 0
         self.endpoint = Endpoint("127.0.0.1", 1)
         self.released = asyncio.Event()
 
     async def ensure_started(self, *, budget: float = 0.0) -> bool:
         self.starts += 1
-        await self.released.wait()
         self.is_running = True
+        await self.released.wait()
+        self.is_ready = True
         return True
 
     def stop(self, *, force: bool = False) -> None:
+        self.stop_calls += 1
         self.is_running = False
+        self.is_ready = False
+
+
+class _WorkerRecorder:
+    """Builds a new scripted worker for each WorkerHost generation."""
+
+    def __init__(self) -> None:
+        self.workers: list[_NeverReadyWorker] = []
+
+    def __call__(self, *_: object, **__: object) -> _NeverReadyWorker:
+        built = _NeverReadyWorker()
+        self.workers.append(built)
+        return built
+
+
+def _bind_model_files(manager: object, tmp_path: Path) -> None:
+    files = {
+        CLEANUP_MODEL_ID: tmp_path / "qwen3-0.6b.gguf",
+        OTHER_CLEANUP_MODEL_ID: tmp_path / "qwen3-1.7b.gguf",
+    }
+    for path in files.values():
+        path.write_bytes(b"gguf")
+
+    def model_path() -> Path | None:
+        return files.get(manager.model_id)  # type: ignore[attr-defined]
+
+    manager.model_path = model_path  # type: ignore[method-assign]
+
+
+class _HangingHost(FakeWorkerHost):
+    """A host whose load never finishes until `release` is set."""
+
+    def __init__(self, runtime: FakeCleanupRuntime) -> None:
+        super().__init__(runtime)
+        self.is_running = False
+        self.is_ready = False
+        self.is_loading = True
+        self.release = asyncio.Event()
+
+    async def runtime(self, model_id: str, model_file: Path) -> FakeCleanupRuntime | None:
+        if not self.is_ready:
+            return None
+        self.loaded_model_id = model_id
+        return self.runtime_value
+
+    async def wait_for_load(self) -> None:
+        await self.release.wait()
+        self.is_loading = False
+        self.is_running = True
+        self.is_ready = True
+        self.loaded_model_id = CLEANUP_MODEL_ID
+
+
+async def _settle_load_hold(manager: object) -> None:
+    task = getattr(manager, "_load_hold_task", None)
+    if task is not None:
+        await asyncio.wait({task})
 
 
 @pytest.fixture
@@ -294,6 +471,32 @@ def cold_worker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> _NeverReadyW
     monkeypatch.setattr(host_module.worker, "LlamaServerWorker", lambda *a, **k: built)
     monkeypatch.setattr(host_module.worker, "resolve_binary", lambda _=None: tmp_path / "llama")
     return built
+
+
+@pytest.fixture
+def scripted_workers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> _WorkerRecorder:
+    recorder = _WorkerRecorder()
+    monkeypatch.setattr(host_module.worker, "LlamaServerWorker", recorder)
+    monkeypatch.setattr(host_module.worker, "resolve_binary", lambda _=None: tmp_path / "llama")
+    return recorder
+
+
+async def _wait_for_stop(worker: _NeverReadyWorker) -> None:
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline:
+        if worker.stop_calls:
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("worker was not stopped")
+
+
+async def _load_until_ready(manager: object, recorder: _WorkerRecorder) -> _NeverReadyWorker:
+    assert await manager.warmup() is False  # type: ignore[union-attr]
+    worker = recorder.workers[0]
+    worker.released.set()
+    await _settle_load_hold(manager)
+    assert manager.host.is_ready  # type: ignore[union-attr]
+    return worker
 
 
 async def test_a_cold_load_never_makes_a_request_wait_for_it(
@@ -311,6 +514,8 @@ async def test_a_cold_load_never_makes_a_request_wait_for_it(
     assert leased is None
     await asyncio.sleep(0)  # let the background load actually begin
     assert cold_worker.starts == 1
+    assert worker_host.is_running is True
+    assert worker_host.is_ready is False
     worker_host.stop()
 
 
@@ -324,6 +529,7 @@ async def test_a_cold_load_is_reported_as_loading_not_as_a_full_runtime(
         assert slot.runtime is None
         assert slot.reason is CleanupReason.MODEL_LOADING
     manager.host.stop()
+    await _settle_load_hold(manager)
 
 
 async def test_an_operator_warm_up_starts_the_load_and_reports_it(
@@ -341,7 +547,7 @@ async def test_an_operator_warm_up_starts_the_load_and_reports_it(
     assert manager.loading is True
     assert manager.status().state == "loading"
     cold_worker.released.set()
-    await asyncio.sleep(0)
+    await _settle_load_hold(manager)
     assert manager.loading is False
     assert manager.status().state == "ready"
     manager.host.stop()
@@ -359,6 +565,40 @@ async def test_concurrent_requests_share_one_load_rather_than_starting_several(
     worker_host.stop()
 
 
+async def test_a_running_but_unready_worker_is_not_handed_out(
+    settings: Settings, cold_worker: _NeverReadyWorker, tmp_path: Path
+) -> None:
+    """is_running is not ready: a later request must not get a half-loaded runtime."""
+    worker_host = host_module.WorkerHost(settings, RuntimeConfig())
+    model = tmp_path / "model.gguf"
+    assert await worker_host.runtime(CLEANUP_MODEL_ID, model) is None
+    await asyncio.sleep(0)
+    assert cold_worker.is_running is True
+    assert cold_worker.is_ready is False
+    assert worker_host.is_running is True
+    assert worker_host.is_ready is False
+    assert await worker_host.runtime(CLEANUP_MODEL_ID, model) is None
+    worker_host.stop()
+
+
+async def test_a_mid_load_lease_reports_loading_not_a_runtime(
+    settings: Settings, cold_worker: _NeverReadyWorker, tmp_path: Path
+) -> None:
+    manager = manager_for(settings, cleanup_enabled=True, cleanup_model=CLEANUP_MODEL_ID)
+    manager.model_path = lambda: tmp_path / "model.gguf"  # type: ignore[method-assign]
+    async with manager.lease() as first:
+        assert first.runtime is None
+        assert first.reason is CleanupReason.MODEL_LOADING
+    await asyncio.sleep(0)
+    assert cold_worker.is_running is True
+    assert cold_worker.is_ready is False
+    async with manager.lease() as second:
+        assert second.runtime is None
+        assert second.reason is CleanupReason.MODEL_LOADING
+    manager.host.stop()
+    await _settle_load_hold(manager)
+
+
 async def test_stopping_mid_load_abandons_it_rather_than_adopting_it_later(
     settings: Settings, cold_worker: _NeverReadyWorker, tmp_path: Path
 ) -> None:
@@ -370,6 +610,111 @@ async def test_stopping_mid_load_abandons_it_rather_than_adopting_it_later(
     cold_worker.released.set()
     await asyncio.sleep(0)
     assert worker_host.is_running is False
+
+
+async def test_a_pinned_worker_is_not_replaced_on_a_key_change(
+    settings: Settings, scripted_workers: _WorkerRecorder, tmp_path: Path
+) -> None:
+    """_ensure must refuse to reap a generation the manager still covers."""
+    worker_host = host_module.WorkerHost(settings, RuntimeConfig())
+    first = tmp_path / "a.gguf"
+    second = tmp_path / "b.gguf"
+    assert await worker_host.runtime(CLEANUP_MODEL_ID, first) is None
+    await asyncio.sleep(0)
+    assert len(scripted_workers.workers) == 1
+    worker_host.pin()
+    assert await worker_host.runtime(OTHER_CLEANUP_MODEL_ID, second) is None
+    assert worker_host.loaded_model_id == CLEANUP_MODEL_ID
+    assert scripted_workers.workers[0].stop_calls == 0
+    assert len(scripted_workers.workers) == 1
+    worker_host.unpin()
+    assert await worker_host.runtime(OTHER_CLEANUP_MODEL_ID, second) is None
+    await asyncio.sleep(0)
+    assert worker_host.loaded_model_id == OTHER_CLEANUP_MODEL_ID
+    assert len(scripted_workers.workers) == 2
+    worker_host.stop()
+
+
+async def test_warmup_does_not_reap_a_leased_worker_on_model_switch(
+    settings: Settings, scripted_workers: _WorkerRecorder, tmp_path: Path
+) -> None:
+    """B1/C1: configure defers stop, but warmup/_ensure must not reap the lease."""
+    manager = manager_for(settings, cleanup_enabled=True, cleanup_model=CLEANUP_MODEL_ID)
+    _bind_model_files(manager, tmp_path)
+    worker_a = await _load_until_ready(manager, scripted_workers)
+
+    async with manager.lease() as slot:
+        assert slot.runtime is not None
+        manager.configure(CleanupUpdate(model_id=OTHER_CLEANUP_MODEL_ID))
+        assert await manager.warmup() is False
+        assert manager.host._worker is worker_a
+        assert manager.host.loaded_model_id == CLEANUP_MODEL_ID
+        assert worker_a.stop_calls == 0
+        assert len(scripted_workers.workers) == 1
+
+    assert manager.host.loaded_model_id is None
+    await _wait_for_stop(worker_a)
+
+
+async def test_load_hold_survives_a_concurrent_admit_and_model_switch(
+    settings: Settings, scripted_workers: _WorkerRecorder, tmp_path: Path
+) -> None:
+    """B2/C2: load-hold does not take _slot, but it must still pin the worker."""
+    manager = manager_for(settings, cleanup_enabled=True, cleanup_model=CLEANUP_MODEL_ID)
+    _bind_model_files(manager, tmp_path)
+    assert await manager.warmup() is False
+    await asyncio.sleep(0)
+    worker_a = scripted_workers.workers[0]
+    assert manager._active_leases >= 1
+    assert manager.host.is_loading
+
+    manager.configure(CleanupUpdate(model_id=OTHER_CLEANUP_MODEL_ID))
+    async with manager.lease() as slot:
+        assert slot.runtime is None
+        assert manager.host._worker is worker_a
+        assert manager.host.loaded_model_id == CLEANUP_MODEL_ID
+        assert worker_a.stop_calls == 0
+        assert len(scripted_workers.workers) == 1
+
+    assert manager.host._worker is worker_a
+    worker_a.released.set()
+    await _settle_load_hold(manager)
+    assert manager.host.loaded_model_id is None
+    await _wait_for_stop(worker_a)
+
+
+async def test_a_replacement_load_is_not_started_under_another_models_hold(
+    settings: Settings, scripted_workers: _WorkerRecorder, tmp_path: Path
+) -> None:
+    """C3: swapping A→B under A's hold would leave B uncovered when A settles."""
+    manager = manager_for(settings, cleanup_enabled=True, cleanup_model=CLEANUP_MODEL_ID)
+    _bind_model_files(manager, tmp_path)
+    assert await manager.warmup() is False
+    await asyncio.sleep(0)
+    worker_a = scripted_workers.workers[0]
+
+    manager.configure(CleanupUpdate(model_id=OTHER_CLEANUP_MODEL_ID))
+    assert await manager.warmup() is False
+    await asyncio.sleep(0)
+    assert len(scripted_workers.workers) == 1
+    assert manager.host._worker is worker_a
+
+    worker_a.released.set()
+    await _settle_load_hold(manager)
+    assert manager.host._worker is None
+    await _wait_for_stop(worker_a)
+
+    assert await manager.warmup() is False
+    await asyncio.sleep(0)
+    assert len(scripted_workers.workers) == 2
+    worker_b = scripted_workers.workers[1]
+    assert manager._active_leases >= 1
+    manager.configure(CleanupUpdate(enabled=False))
+    assert manager.host._worker is worker_b
+    worker_b.released.set()
+    await _settle_load_hold(manager)
+    assert manager.host._worker is None
+    await _wait_for_stop(worker_b)
 
 
 class _ContextRuntime:

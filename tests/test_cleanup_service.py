@@ -170,6 +170,8 @@ FALLBACKS = (
     (CleanupRejected(CleanupReason.INPUT_TOO_LONG), CleanupReason.INPUT_TOO_LONG),
     (ValueError("bad"), CleanupReason.RUNTIME_ERROR),
     (OSError("io"), CleanupReason.RUNTIME_ERROR),
+    (RuntimeError("boom"), CleanupReason.RUNTIME_ERROR),
+    (KeyError("missing"), CleanupReason.RUNTIME_ERROR),
 )
 
 
@@ -203,6 +205,19 @@ async def test_a_missing_model_is_reported_as_unavailable() -> None:
     service = CleanupService(StubManager(None, installed=False))  # type: ignore[arg-type]
     final = await finalize(service)
     assert final.cleanup.reason is CleanupReason.MODEL_UNAVAILABLE
+
+
+async def test_a_broken_lease_still_returns_the_legacy_result() -> None:
+    """A recognition that succeeded stays a success, even if admission explodes."""
+
+    class BrokenManager(StubManager):
+        def lease(self) -> object:
+            raise RuntimeError("lease exploded")
+
+    final = await finalize(CleanupService(BrokenManager(FakeCleanupRuntime("nope"))))
+    assert final.transcript == legacy()
+    assert final.cleanup.status is CleanupStatus.FALLBACK
+    assert final.cleanup.reason is CleanupReason.RUNTIME_ERROR
 
 
 async def test_no_manager_at_all_still_returns_the_legacy_result() -> None:

@@ -10,13 +10,15 @@ Loading is deliberately not something a request waits for. A multi-gigabyte
 GGUF on a cold page cache takes minutes to reach the point where `/health`
 turns green, and that is a model load rather than a hung worker. A request that
 arrives cold starts the load in the background and takes the plain ASR result;
-the next one finds the worker resident. Only an operator who asked for a
-warm-up explicitly waits for the whole thing.
+the next one finds the worker resident. An operator pressing "Load model now"
+gets the same immediate answer; the settings card polls until the state stops
+being `loading`.
 """
 
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
 
 from app import config, runtime_config
@@ -36,6 +38,8 @@ class WorkerHost:
         self._worker: worker.LlamaServerWorker | None = None
         self._key: tuple[str, str] | None = None
         self._loading: asyncio.Task[None] | None = None
+        self._pins = 0
+        self._lock = threading.Lock()
 
     @property
     def is_loading(self) -> bool:
@@ -47,9 +51,29 @@ class WorkerHost:
         active = self._worker
         return active is not None and active.is_running
 
+    @property
+    def is_ready(self) -> bool:
+        active = self._worker
+        return active is not None and active.is_ready
+
+    @property
+    def loaded_model_id(self) -> str | None:
+        key = self._key
+        return None if key is None else key[0]
+
     def runtime_available(self) -> bool:
         """Whether a `llama-server` executable exists for the gateway to launch."""
         return worker.resolve_binary(self.settings.cleanup_binary) is not None
+
+    def pin(self) -> None:
+        """Cover the current worker so a key change cannot reap it."""
+        with self._lock:
+            self._pins += 1
+
+    def unpin(self) -> None:
+        with self._lock:
+            if self._pins:
+                self._pins -= 1
 
     async def runtime(self, model_id: str, model_file: Path) -> CleanupRuntime | None:
         """The runtime if it is resident, or None after starting a load for it.
@@ -59,14 +83,30 @@ class WorkerHost:
         holding an HTTP request open for a load that runs in the background
         regardless — so both callers get an answer immediately and the settings
         card polls until the state stops being `loading`.
+
+        A pinned worker of a different key is left running and this returns
+        None, so a settings save cannot kill a lease or load-hold mid-flight.
         """
         binary = worker.resolve_binary(self.settings.cleanup_binary)
         if binary is None:
             return None
         active = self._ensure(binary, model_file, model_id)
-        if not self._resident(active):
+        if active is None or not self._resident(active):
             return None
         return LlamaServerRuntime(active.endpoint, model_id=model_id)
+
+    async def wait_for_load(self) -> None:
+        """Wait until the current background load settles.
+
+        The request path never calls this. The manager uses it to hold a lease
+        across a load it already kicked, so configure and idle-unload cannot
+        kill the worker while it is still starting.
+        """
+        with self._lock:
+            loading = self._loading
+        if loading is None or loading.done():
+            return
+        await asyncio.wait({loading})
 
     def stop(self, *, offloaded: bool = False) -> None:
         """Detach and terminate, without blocking the caller.
@@ -89,12 +129,13 @@ class WorkerHost:
             await asyncio.to_thread(active.stop)
 
     def _detach(self, *, offloaded: bool) -> worker.LlamaServerWorker | None:
-        loading = self._loading
-        active = self._worker
-        self._loading = None
-        self._worker = None
-        self._key = None
-        self.offloaded = offloaded
+        with self._lock:
+            loading = self._loading
+            active = self._worker
+            self._loading = None
+            self._worker = None
+            self._key = None
+            self.offloaded = offloaded
         if loading is not None:
             # Cancelling propagates into `LlamaServerWorker._start`, which
             # terminates the child it adopted rather than leaving a model-sized
@@ -105,20 +146,28 @@ class WorkerHost:
         return active
 
     def _resident(self, active: worker.LlamaServerWorker) -> bool:
-        """Whether the worker is up, starting it in the background if not."""
-        if active.is_running:
+        """Whether the worker is ready, starting it in the background if not.
+
+        `is_running` is not enough: a spawned child that has not answered
+        `/health` is still loading, and handing out a runtime against it would
+        send inference at a server that is not listening yet.
+        """
+        if active.is_ready:
             self._succeeded()
             return True
         self._load_task(active)
         return False
 
-    def _load_task(self, active: worker.LlamaServerWorker) -> asyncio.Task[None]:
-        current = self._loading
-        if current is not None and not current.done():
-            return current
-        task = asyncio.create_task(self._load(active))
-        self._loading = task
-        return task
+    def _load_task(self, active: worker.LlamaServerWorker) -> asyncio.Task[None] | None:
+        with self._lock:
+            current = self._loading
+            if current is not None and not current.done():
+                return current
+            if self._worker is not active:
+                return current
+            task = asyncio.create_task(self._load(active))
+            self._loading = task
+            return task
 
     async def _load(self, active: worker.LlamaServerWorker) -> None:
         """Start the worker, recording a failure instead of raising one.
@@ -127,31 +176,50 @@ class WorkerHost:
         would be an unretrieved one. A failed load is a fallback for the
         request and a red badge for the operator, never a failed transcription.
         """
+        if self._worker is active:
+            self.failure = ""
         try:
             await active.ensure_started()
         except CleanupUnavailable as error:
-            self.failure = str(error)
+            if self._worker is active:
+                self.failure = str(error)
             return
-        self._succeeded()
+        if self._worker is active:
+            self._succeeded()
 
     def _succeeded(self) -> None:
         self.failure = ""
         self.offloaded = False
 
-    def _ensure(self, binary: Path, model_file: Path, model_id: str) -> worker.LlamaServerWorker:
+    def _ensure(
+        self, binary: Path, model_file: Path, model_id: str
+    ) -> worker.LlamaServerWorker | None:
         key = (model_id, str(model_file))
-        current = self._worker
-        if current is not None and self._key == key:
-            return current
-        self.stop()
-        self._worker = worker.LlamaServerWorker(
-            binary,
-            model_file,
-            context_tokens=_context_tokens(model_id),
-            cpu_threads=self.runtime_config.cpu_threads,
-        )
-        self._key = key
-        return self._worker
+        with self._lock:
+            current = self._worker
+            if current is not None and self._key == key:
+                return current
+            # A lease or load-hold still covers this generation. Reaping it
+            # here would bypass the manager's deferred stop.
+            if current is not None and self._pins:
+                return None
+            replacement = worker.LlamaServerWorker(
+                binary,
+                model_file,
+                context_tokens=_context_tokens(model_id),
+                cpu_threads=self.runtime_config.cpu_threads,
+            )
+            loading = self._loading
+            self._worker = replacement
+            self._key = key
+            self._loading = None
+            self.failure = ""
+            old = current
+        if loading is not None:
+            loading.cancel()
+        if old is not None:
+            _reap(old)
+        return replacement
 
 
 def _reap(active: worker.LlamaServerWorker) -> None:
