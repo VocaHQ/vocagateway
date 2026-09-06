@@ -120,6 +120,38 @@ class _ModelPathResolver:
         chosen = min(installed, key=lambda model: model.size_bytes)
         return chosen.path, self.model_manager.catalog_model(chosen.id)
 
+    def sherpa_engine(
+        self,
+        selection: tuple[Path | None, catalog.CatalogModel | None],
+        rc: runtime_config.RuntimeConfig,
+    ) -> sherpa_onnx.SherpaOnnxEngine:
+        """Build the sherpa engine, handing it a batch twin when one is installed."""
+        root, model = selection
+        twin_root, twin_model = self.batch_twin(model)
+        return sherpa_onnx.SherpaOnnxEngine(
+            root,
+            model,
+            cpu_threads=rc.cpu_threads,
+            batch_root=twin_root,
+            batch_model=twin_model,
+        )
+
+    def batch_twin(
+        self, model: catalog.CatalogModel | None
+    ) -> tuple[Path | None, catalog.CatalogModel | None]:
+        """Where the batch twin lives, whether or not it is installed yet.
+
+        The engine re-checks that directory on every use, so handing it the
+        path the twin *would* occupy is what lets a twin downloaded after the
+        engine was built start being used -- and one deleted afterwards stop --
+        without a rebuild that nothing on those paths triggers.
+        """
+        twin_id = model.batch_twin_id if model else None
+        twin_model = self.model_manager.catalog_model(twin_id) if twin_id else None
+        if twin_model is None:
+            return None, None
+        return self.model_manager.model_path(twin_model), twin_model
+
     def catalog_model_for_path(self, path: Path | None) -> catalog.CatalogModel | None:
         if path is None:
             return None
@@ -196,7 +228,7 @@ class _ModelPathResolver:
             return mlx_audio.MLXAudioEngine(mlx_sel[0], mlx_sel[1])
         shp_sel = self.catalog_selection(rc.sherpa_model, catalog.ENGINE_SHERPA_ONNX)
         if shp_sel[0] is not None:
-            return sherpa_onnx.SherpaOnnxEngine(shp_sel[0], shp_sel[1], cpu_threads=rc.cpu_threads)
+            return self.sherpa_engine(shp_sel, rc)
         fw_p = self.resolve_path(catalog.ENGINE_FASTER_WHISPER, rc)
         if fw_p is not None:
             return faster_whisper.FasterWhisperEngine(
@@ -286,7 +318,7 @@ class _EngineBuilder:
             model_id = rc.sherpa_model if sherpa else rc.mlx_audio_model
             sel = self.resolver.catalog_selection(model_id, engine)
             return (
-                sherpa_onnx.SherpaOnnxEngine(sel[0], sel[1], cpu_threads=rc.cpu_threads)
+                self.resolver.sherpa_engine(sel, rc)
                 if sherpa
                 else mlx_audio.MLXAudioEngine(sel[0], sel[1])
             )

@@ -59,6 +59,10 @@ class HealthResponse(BaseModel):
     # True when the model picks the language itself. `languages` then describes
     # what it transcribes well, not what a client may ask for.
     detects_language_automatically: bool = False
+    # True when the model refuses to run without being told the language. The
+    # opposite of the flag above: a client must drop "detect language" from its
+    # picker, because sending it fails the request rather than guessing.
+    requires_explicit_language: bool = False
 
 
 class LivenessResponse(BaseModel):

@@ -189,7 +189,7 @@ def test_sherpa_nemo_ctc_loads_with_its_own_files(
         lambda _: machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
-    SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
+    SherpaOnnxEngine(root, catalog_model)._selected.builder.build()
 
     assert len(constructions) == 1
     assert constructions[0]["model"] == str(root / SHERPA_MODEL_FILE)
@@ -208,7 +208,7 @@ def test_sherpa_nemo_canary_loads_english_o_aa(
         lambda _: machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
-    SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
+    SherpaOnnxEngine(root, catalog_model)._selected.builder.build()
 
     assert len(constructions) == 1
     assert constructions[0][ENCODER_COMPONENT] == str(root / ENCODER_INT8_FILE)
@@ -236,7 +236,7 @@ def test_sherpa_nemo_transducer_uses_each_f_bf636(
         lambda _: machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
-    SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
+    SherpaOnnxEngine(root, catalog_model)._selected.builder.build()
 
     assert constructions[0][ENCODER_COMPONENT] == str(root / ENCODER_INT8_FILE)
     assert constructions[0][DECODER_COMPONENT] == str(root / DECODER_FILE)
@@ -256,7 +256,7 @@ def test_sherpa_dolphin_loads_a_single_file_ctc(
             lambda _: machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
         )
 
-        SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
+        SherpaOnnxEngine(root, catalog_model)._selected.builder.build()
 
         assert constructions[0]["model"] == str(root / SHERPA_MODEL_FILE)
         assert constructions[0][TOKENS_COMPONENT] == str(root / TOKENS_FILE)
@@ -285,7 +285,7 @@ def test_sherpa_qwen3_asr_loads_a_tokenizer_fe25a(
         lambda _: machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
-    SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
+    SherpaOnnxEngine(root, catalog_model)._selected.builder.build()
 
     assert constructions[0]["conv_frontend"] == str(root / "conv_frontend.onnx")
     assert constructions[0][ENCODER_COMPONENT] == str(root / ENCODER_INT8_FILE)
@@ -311,7 +311,7 @@ def test_streaming_zipformer_loads_via_onli_aaa(
         lambda _: machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
     )
 
-    SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
+    SherpaOnnxEngine(root, catalog_model)._selected.builder.build()
 
     assert constructions[0][ENCODER_COMPONENT] == str(root / ENCODER_FILE)
     assert constructions[0][DECODER_COMPONENT] == str(root / DECODER_FILE)
@@ -386,7 +386,7 @@ def test_every_shipped_sherpa_model_type_ha_aaaaa(
     assert shipped, "expected sherpa-onnx entries in the default catalog"
     for model in shipped:
         root = _model_root(tmp_path, model)
-        SherpaOnnxEngine(root, model)._load_recognizer_sync()
+        SherpaOnnxEngine(root, model)._selected.builder.build()
 
 
 def test_sherpa_rejects_unknown_model_type(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -395,7 +395,7 @@ def test_sherpa_rejects_unknown_model_type(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setitem(sys.modules, SHERPA_ONNX_MODULE, types.ModuleType(SHERPA_ONNX_MODULE))
 
     with pytest.raises(EngineUnavailableError, match="Unsupported sherpa-onnx model type"):
-        SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
+        SherpaOnnxEngine(root, catalog_model)._selected.builder.build()
 
 
 async def test_sherpa_rejects_unsupported_language(tmp_path: Path) -> None:
@@ -754,15 +754,15 @@ async def test_cohere_recognizer_is_rebuilt_when_the_language_changes(
     engine = SherpaOnnxEngine(tmp_path, model)
     built: list[str] = []
     monkeypatch.setattr(
-        engine._builder, "build", lambda language=None: built.append(language) or object()
+        engine._selected.builder, "build", lambda language=None: built.append(language) or object()
     )
 
-    await engine._ensure_recognizer("fr-FR")
-    await engine._ensure_recognizer("fr")
+    await engine._selected.ensure("fr-FR")
+    await engine._selected.ensure("fr")
     assert built == ["fr-FR"]
-    await engine._ensure_recognizer("de")
+    await engine._selected.ensure("de")
     assert built == ["fr-FR", "de"]
-    assert engine._builder.build_language("auto") == "en"
+    assert engine._selected.builder.build_language("auto") == "en"
 
 
 def test_cohere_builder_uses_external_data_encoder(
@@ -776,6 +776,224 @@ def test_cohere_builder_uses_external_data_encoder(
     root = _model_root(tmp_path, model)
     calls = []
     _fake_recognizer_module("from_cohere_transcribe", calls, monkeypatch)
-    SherpaOnnxEngine(root, model)._load_recognizer_sync()
+    SherpaOnnxEngine(root, model)._selected.builder.build()
     assert calls[0]["encoder"] == str(root / "encoder.int8.onnx")
     assert (root / "encoder.int8.onnx.data").is_file()
+
+
+def _twin_root(tmp_path: Path, name: str, model: CatalogModel) -> Path:
+    """`_model_root` creates one level, and a twin needs its own parent."""
+    parent = tmp_path / name
+    parent.mkdir()
+    return _model_root(parent, model)
+
+
+def _unified_pair() -> tuple[CatalogModel, CatalogModel]:
+    streaming = next(
+        entry for entry in DEFAULT_CATALOG if entry.key == "parakeet-unified-en-0.6b-560ms-int8"
+    )
+    batch = next(entry for entry in DEFAULT_CATALOG if entry.key == "parakeet-unified-en-0.6b-int8")
+    return streaming, batch
+
+
+def test_buffered_streaming_model_names_its_batch_twin() -> None:
+    """The 560 ms export re-encodes a 6.2s window per 160 ms step, so decoding a
+    finished file through it costs ~20x the batch export for an identical result."""
+    streaming, batch = _unified_pair()
+    assert streaming.batch_twin_id == batch.id
+    assert batch.batch_twin_id is None
+    # A twin only makes sense between exports of the same weights and coverage.
+    assert streaming.language_codes == batch.language_codes
+
+
+async def test_transcribe_prefers_the_batch_twin_while_streaming_keeps_its_export(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    streaming, batch = _unified_pair()
+    engine = SherpaOnnxEngine(
+        _twin_root(tmp_path, "s", streaming),
+        streaming,
+        batch_root=_twin_root(tmp_path, "b", batch),
+        batch_model=batch,
+    )
+    assert engine.supports_streaming
+    assert engine._batch is not engine._selected
+    # The twin decodes offline; routing it through the online decoder would
+    # reintroduce the very chunking the fallback exists to avoid.
+    assert engine._selected.is_online
+    assert not engine._batch.is_online
+
+    decoded: list[str] = []
+    monkeypatch.setattr(engine._batch, "ensure", _stub_ensure(decoded, "batch"), raising=True)
+    monkeypatch.setattr(engine._selected, "ensure", _stub_ensure(decoded, "selected"), raising=True)
+    monkeypatch.setattr(IMPORTLIB_FIND_SPEC_PATH, lambda name: object())
+    monkeypatch.setattr(
+        "app.models.sherpa_onnx._run_sherpa_inference",
+        _stub_inference(decoded),
+    )
+    _wave(tmp_path / "audio.wav")
+    result = await engine.transcribe(
+        tmp_path / "audio.wav", TranscriptionOptions(language="en", style="raw")
+    )
+    assert result.text == EXPECTED_TRANSCRIPT
+    assert decoded == ["batch", "offline"]
+
+
+def _stub_ensure(seen: list[str], name: str):
+    async def ensure(language: str = "auto") -> tuple[object, bool]:
+        seen.append(name)
+        return object(), False
+
+    return ensure
+
+
+def _stub_inference(seen: list[str]):
+    async def run(recognizer: object, path: Path, is_streaming: bool, policy: object) -> str:
+        seen.append("online" if is_streaming else "offline")
+        return EXPECTED_TRANSCRIPT
+
+    return run
+
+
+def test_missing_batch_twin_falls_back_to_the_selected_export(tmp_path: Path) -> None:
+    """A twin named in the catalog but not installed must not break the engine."""
+    streaming, batch = _unified_pair()
+    engine = SherpaOnnxEngine(
+        _twin_root(tmp_path, "s", streaming),
+        streaming,
+        batch_root=tmp_path / "never-downloaded",
+        batch_model=batch,
+    )
+    assert engine._batch is engine._selected
+
+
+def test_the_twin_is_resolved_per_use_not_snapshotted_at_construction(
+    tmp_path: Path,
+) -> None:
+    """Models are downloaded and deleted from the Models tab without rebuilding
+    the engine, so a twin captured in __init__ would never start being used and
+    would keep being used after it was removed."""
+    streaming, batch = _unified_pair()
+    twin_root = tmp_path / "b" / batch.key
+    engine = SherpaOnnxEngine(
+        _twin_root(tmp_path, "s", streaming),
+        streaming,
+        batch_root=twin_root,
+        batch_model=batch,
+    )
+    assert engine._batch is engine._selected
+
+    _twin_root(tmp_path, "b", batch)  # the download lands
+    assert engine._batch is engine._twin
+
+    (twin_root / ".vocagateway-model.json").unlink()  # and is deleted again
+    assert engine._batch is engine._selected
+
+
+async def test_a_twin_that_cannot_load_falls_back_to_the_selected_export(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The twin is an optimisation. A download with every file in place but
+    corrupt contents must not take the working selected export down with it."""
+    streaming, batch = _unified_pair()
+    engine = SherpaOnnxEngine(
+        _twin_root(tmp_path, "s", streaming),
+        streaming,
+        batch_root=_twin_root(tmp_path, "b", batch),
+        batch_model=batch,
+    )
+    assert engine._twin is not None
+
+    def explode(language: str | None = None) -> object:
+        raise RuntimeError("Load model from encoder.int8.onnx failed")
+
+    monkeypatch.setattr(engine._twin.builder, "build", explode)
+    monkeypatch.setattr(engine._selected.builder, "build", lambda language=None: object())
+    monkeypatch.setattr(IMPORTLIB_FIND_SPEC_PATH, lambda name: object())
+    decoded: list[str] = []
+    monkeypatch.setattr("app.models.sherpa_onnx._run_sherpa_inference", _stub_inference(decoded))
+    _wave(tmp_path / "audio.wav")
+
+    result = await engine.transcribe(
+        tmp_path / "audio.wav", TranscriptionOptions(language="en", style="raw")
+    )
+    assert result.text == EXPECTED_TRANSCRIPT
+    # Decoded by the streaming export, so through the online decoder.
+    assert decoded == ["online"]
+
+
+async def test_a_failing_selected_export_still_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the twin gets a second chance -- a broken selection is a real error."""
+    streaming, _ = _unified_pair()
+    engine = SherpaOnnxEngine(_twin_root(tmp_path, "s", streaming), streaming)
+
+    def explode(language: str | None = None) -> object:
+        raise RuntimeError("no such file")
+
+    monkeypatch.setattr(engine._selected.builder, "build", explode)
+    monkeypatch.setattr(IMPORTLIB_FIND_SPEC_PATH, lambda name: object())
+    _wave(tmp_path / "audio.wav")
+    with pytest.raises(RuntimeError):
+        await engine.transcribe(
+            tmp_path / "audio.wav", TranscriptionOptions(language="en", style="raw")
+        )
+
+
+def test_unload_and_residency_span_both_exports(tmp_path: Path) -> None:
+    streaming, batch = _unified_pair()
+    engine = SherpaOnnxEngine(
+        _twin_root(tmp_path, "s", streaming),
+        streaming,
+        batch_root=_twin_root(tmp_path, "b", batch),
+        batch_model=batch,
+    )
+    assert not engine.model_is_resident
+    assert engine._twin is not None
+    engine._twin._recognizer = object()
+    assert engine.model_is_resident
+    engine.unload()
+    assert not engine.model_is_resident
+    assert engine._twin._language is None
+
+
+def test_unload_reaches_a_twin_that_is_no_longer_installed(tmp_path: Path) -> None:
+    """Its weights stay in memory after the directory goes, so idle offload has
+    to be able to reclaim them even though nothing routes work there any more."""
+    streaming, batch = _unified_pair()
+    twin_root = _twin_root(tmp_path, "b", batch)
+    engine = SherpaOnnxEngine(
+        _twin_root(tmp_path, "s", streaming),
+        streaming,
+        batch_root=twin_root,
+        batch_model=batch,
+    )
+    assert engine._twin is not None
+    engine._twin._recognizer = object()
+    (twin_root / ".vocagateway-model.json").unlink()
+
+    assert engine._batch is engine._selected
+    assert engine.model_is_resident
+    engine.unload()
+    assert not engine.model_is_resident
+
+
+def test_cohere_is_flagged_as_needing_an_explicit_language() -> None:
+    """Every client defaults its language field to auto, so a decoder that rejects
+    auto has to say so in the catalog or it simply never works."""
+    model = next(
+        entry for entry in DEFAULT_CATALOG if entry.key == "cohere-transcribe-14-lang-int8"
+    )
+    assert model.requires_explicit_language
+    assert not model.detects_language_automatically
+    assert "auto" not in model.language_codes
+    engine = SherpaOnnxEngine(None, model)
+    with pytest.raises(LanguageUnsupportedError):
+        engine._selected.builder.validate_language("auto")
+    engine._selected.builder.validate_language("en")
+
+
+def test_only_models_that_reject_auto_are_flagged() -> None:
+    flagged = {entry.id for entry in DEFAULT_CATALOG if entry.requires_explicit_language}
+    assert flagged == {"sherpa-onnx:cohere-transcribe-14-lang-int8"}

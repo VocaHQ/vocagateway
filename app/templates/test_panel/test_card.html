@@ -11,7 +11,9 @@
       <select id="test-language">
         {# Same languages, in the same order, as TranscriptionLanguage on iOS and
            Android, so anything a client can ask for can also be tested here. #}
-        <option value="auto">Detect language</option>
+        {# Hidden by syncTestLanguages() for a model whose decoder rejects
+           "auto" outright rather than picking a language itself. #}
+        <option value="auto" data-auto-language>Detect language</option>
         <option value="ar">Arabic</option>
         <option value="as">Assamese</option>
         <option value="bn">Bengali</option>
@@ -53,6 +55,7 @@
       <span id="record-timer" class="record-timer hidden">0:00</span>
     </div>
   </div>
+  <p id="test-language-note" class="muted test-status hidden"></p>
   <p id="record-status" class="muted test-status" aria-live="polite"></p>
   <div id="test-result" class="result hidden">
     <div class="result-header">

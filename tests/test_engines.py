@@ -358,3 +358,91 @@ def test_select_engine_accepts_sherpa_and_mlx(tmp_path: Path) -> None:
         except Exception:
             # Missing model/binary paths are fine for this test.
             pass
+
+
+def _install(manager: ModelManager, model: CatalogModel) -> None:
+    root = manager.model_path(model)
+    root.mkdir(parents=True, exist_ok=True)
+    if model.marker_file:
+        (root / model.marker_file).write_bytes(b"model")
+    for filename in model.required_files:
+        (root / filename).parent.mkdir(parents=True, exist_ok=True)
+        (root / filename).write_bytes(b"model")
+
+
+def _unified_models() -> tuple[CatalogModel, CatalogModel]:
+    from app.catalog import DEFAULT_CATALOG
+
+    streaming = next(
+        entry for entry in DEFAULT_CATALOG if entry.key == "parakeet-unified-en-0.6b-560ms-int8"
+    )
+    batch = next(entry for entry in DEFAULT_CATALOG if entry.key == "parakeet-unified-en-0.6b-int8")
+    return streaming, batch
+
+
+def _select_streaming(tmp_path: Path, install_twin: bool) -> SherpaOnnxEngine:
+    streaming, batch = _unified_models()
+    manager = ModelManager(tmp_path / MODELS_DIRECTORY, catalog=(streaming, batch))
+    _install(manager, streaming)
+    if install_twin:
+        _install(manager, batch)
+    engines = EngineManager(_settings(tmp_path), RuntimeConfig(), tmp_path / "config.json", manager)
+    engines.select_model(streaming.id)
+    engine = engines.current()
+    assert isinstance(engine, SherpaOnnxEngine)
+    return engine
+
+
+def test_selecting_a_buffered_streaming_model_wires_up_its_installed_twin(
+    tmp_path: Path,
+) -> None:
+    """Whole-file work goes to the batch export when the user has it; live
+    streaming keeps the streaming export either way."""
+    engine = _select_streaming(tmp_path, install_twin=True)
+    assert engine._batch is not engine._selected
+    assert engine.supports_streaming
+    assert engine._selected.catalog_model is not None
+    assert engine._selected.catalog_model.key == "parakeet-unified-en-0.6b-560ms-int8"
+    assert engine._batch.catalog_model is not None
+    assert engine._batch.catalog_model.key == "parakeet-unified-en-0.6b-int8"
+
+
+def test_a_twin_that_is_not_installed_is_simply_not_used(tmp_path: Path) -> None:
+    engine = _select_streaming(tmp_path, install_twin=False)
+    assert engine._batch is engine._selected
+    assert engine.supports_streaming
+    # Still wired to the directory the twin would occupy, so a later download
+    # is noticed: nothing on the download path rebuilds the engine.
+    assert engine._twin is not None
+    assert engine._twin.model_root is not None
+    assert engine._twin.model_root.name == "parakeet-unified-en-0.6b-int8"
+
+
+def test_a_twin_downloaded_later_is_used_without_an_engine_rebuild(tmp_path: Path) -> None:
+    """Only select-model, engine config, and deleting the *active* model rebuild
+    the engine, so a twin resolved once at build time would never take effect."""
+    streaming, batch = _unified_models()
+    manager = ModelManager(tmp_path / MODELS_DIRECTORY, catalog=(streaming, batch))
+    _install(manager, streaming)
+    engines = EngineManager(_settings(tmp_path), RuntimeConfig(), tmp_path / "config.json", manager)
+    engines.select_model(streaming.id)
+    engine = engines.current()
+    assert isinstance(engine, SherpaOnnxEngine)
+    assert engine._batch is engine._selected
+
+    _install(manager, batch)
+
+    assert engine._batch is engine._twin
+
+
+def test_deleting_the_twin_stops_it_being_used(tmp_path: Path) -> None:
+    """Deleting a model that is not the active one does not rebuild the engine,
+    so a twin held from build time would keep pointing at a gone directory."""
+    engine = _select_streaming(tmp_path, install_twin=True)
+    assert engine._batch is engine._twin
+    assert engine._twin is not None
+    assert engine._twin.model_root is not None
+
+    (engine._twin.model_root / ".vocagateway-model.json").unlink()
+
+    assert engine._batch is engine._selected

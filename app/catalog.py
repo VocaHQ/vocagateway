@@ -115,6 +115,10 @@ FASTER_WHISPER_LARGE_V3_SIZE_BYTES = 3_090_839_273
 FASTER_WHISPER_MEDIUM_SIZE_BYTES = 1_530_575_217
 FASTER_WHISPER_MEDIUM_EN_SIZE_BYTES = 1_530_460_562
 ACCURATE_QUALITY = "Accurate"
+# Buffered streaming exports pay for their low latency in throughput: they
+# re-encode a whole context window per step, so they must not sit in a picker
+# under a label like "Fast" beside the batch export of the same weights.
+LOW_LATENCY_HIGH_CPU_QUALITY = "Low latency · high CPU"
 # Turbo is not the most accurate Whisper — the Open ASR Leaderboard puts it at
 # 6.36 average WER against full Large v3's 5.78 — so it must not claim to be in
 # a picker that also offers Large v3 and the Q5 build of those same weights.
@@ -219,6 +223,15 @@ class CatalogModel:
     decoder_prompt: str | None = None
     apple_silicon_only: bool = False
     detects_language_automatically: bool = False
+    # True when the decoder refuses to run without being told the spoken
+    # language. Clients must not offer "detect language" for these — the
+    # request fails outright rather than falling back to a default.
+    requires_explicit_language: bool = False
+    # A non-streaming export of the same weights, for models whose streaming
+    # export is buffered rather than cache-aware and so costs many times more
+    # compute per second of audio. Used only for whole-file transcription,
+    # where there is no latency to save; live streaming still uses this model.
+    batch_twin_id: str | None = None
     retired: bool = False
     replacement_id: str | None = None
     retirement_reason: str | None = None
@@ -527,6 +540,8 @@ class _SpecializedModelBuilders:
             detects_language_automatically=bool(
                 kwargs.get("detects_language_automatically", False)
             ),
+            requires_explicit_language=bool(kwargs.get("requires_explicit_language", False)),
+            batch_twin_id=kwargs.get("batch_twin_id"),
         )
 
     @classmethod
@@ -1356,8 +1371,9 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         family="Parakeet Unified",
         model_type=NEMO_TRANSDUCER_TYPE,
         description=(
-            "Unified FastConformer RNNT for English. INT8 CPU export. The streaming variant uses "
-            "560 ms model context; end-to-end latency depends on the host. "
+            "Unified FastConformer RNNT for English. INT8 CPU export. Encodes the whole "
+            "recording in one pass, which makes it roughly twenty times cheaper than the "
+            "streaming export of the same weights — prefer it unless you need live partials. "
         ),
         language_codes=ENGLISH_CODES,
         license_name="NVIDIA Open Model License",
@@ -1368,19 +1384,24 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         "Parakeet Unified English INT8 Streaming 560 ms",
         PARAKEET_UNIFIED_STREAMING_SIZE_BYTES,
         ENGLISH_ONLY,
-        "Fast · streaming",
+        LOW_LATENCY_HIGH_CPU_QUALITY,
         4,
         huggingface_repo="csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-streaming-560ms",
         required_files=(ENCODER_INT8_FILE, DECODER_INT8_FILE, JOINER_INT8_FILE, TOKENS_FILE),
         family="Parakeet Unified",
         model_type=STREAMING_TRANSDUCER_TYPE,
         description=(
-            "Unified FastConformer RNNT for English. INT8 CPU export. The streaming variant uses "
-            "560 ms model context; end-to-end latency depends on the host. "
+            "Unified FastConformer RNNT for English, exported for 560 ms streaming latency. "
+            "That 560 ms is how long after a word you see it, not how fast it runs: this is a "
+            "buffered export, so every 160 ms step re-encodes the whole 6.2-second context "
+            "window. It costs roughly twenty times the compute of the non-streaming export of "
+            "the same weights and only just keeps up with real time on a busy CPU. Install it "
+            "for live partials; install the non-streaming variant for recorded audio. "
         ),
         language_codes=ENGLISH_CODES,
         license_name="NVIDIA Open Model License",
         supports_streaming=True,
+        batch_twin_id=f"{ENGINE_SHERPA_ONNX}:parakeet-unified-en-0.6b-int8",
     ),
     _sherpa_onnx(
         "cohere-transcribe-14-lang-int8",
@@ -1398,10 +1419,12 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         ),
         family="Cohere Transcribe",
         model_type=COHERE_TRANSCRIBE_TYPE,
+        requires_explicit_language=True,
         description=(
             "Cohere's multilingual speech recognizer through a community INT8 CPU export. Select "
             "the spoken language explicitly; automatic language detection and Hindi are not "
-            "supported. "
+            "supported. The decoder rejects the request outright rather than guessing, so "
+            'clients left on "detect language" get an error instead of a transcript. '
         ),
         language_codes=(
             ENGLISH_LANGUAGE_CODE,
