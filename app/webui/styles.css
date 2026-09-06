@@ -554,16 +554,23 @@ main > .card:first-child, #panel > .card:first-child { border-top: none; padding
   color: var(--text);
 }
 .exposure-banner[hidden] { display: none !important; }
+/* Clears the rail and repeats main's gutter, so the row inside starts exactly
+   where the page content starts. */
 .exposure-banner-inner {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  width: 100%;
   box-sizing: border-box;
-  margin: 0;
-  /* Left-aligned on the header's own gutter, so banner, brand and page title
-     share one left edge. Centred text floated free of everything else. */
-  padding: 11px 16px 11px 28px;
+  margin-left: var(--rail-w);
+  padding: 12px clamp(24px, 4vw, 64px);
+}
+/* Same measure and centring as #panel, so the warning and the page beneath it
+   share a left and a right edge at every width — which is what keeps the
+   dismiss button next to the text it dismisses. */
+.exposure-banner-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 4px 12px;
+  max-width: 1240px;
+  margin: 0 auto;
 }
 /* A drawn warning triangle rather than an "!" in a filled circle: it matches
    the stroked icon set the rest of the UI uses, and reads at a glance. */
@@ -583,7 +590,9 @@ main > .card:first-child, #panel > .card:first-child { border-top: none; padding
   font-size: 0.86rem;
   line-height: 1.5;
 }
-.exposure-banner-copy strong { color: var(--warn); font-weight: 700; margin-right: 0.3em; }
+/* Title on its own line, detail under it: one 1300px-long sentence was a
+   band of text rather than something with a shape you can scan. */
+.exposure-banner-copy strong { display: block; color: var(--warn); font-weight: 700; }
 .exposure-banner-copy > span { color: var(--muted); }
 .exposure-banner-dismiss {
   flex: 0 0 auto;
@@ -649,7 +658,7 @@ main > .card:first-child, #panel > .card:first-child { border-top: none; padding
 .exposure-panel .muted.small { margin: 0; }
 
 @media (max-width: 760px) {
-  .exposure-banner-inner { padding: 10px 12px 10px 16px; }
+  .exposure-banner-inner { margin-left: 0; padding: 12px 16px; }
 }
 
 /* ------------------------------------------------------- overview: operations */
@@ -2694,6 +2703,9 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; b
 @media (max-width: 1050px) {
   :root { --rail-w: 180px; }
   main { padding: 28px 24px 48px; }
+  /* Track main's gutter here too, or the banner drifts out of alignment with
+     the content the moment the clamp and this padding disagree. */
+  .exposure-banner-inner { padding-inline: 24px; }
   .family-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
@@ -2712,6 +2724,9 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; b
   .tab { flex: 1; flex-direction: column; gap: 4px; padding: 8px 3px; min-width: 0; font-size: 10px; text-align: center; justify-content: center; white-space: nowrap; }
   .nav-icon { width: 18px; height: 18px; }
   main { padding: 24px 16px 36px; }
+  /* Declared here, not in the earlier ≤760 block: the ≤1050 rule above comes
+     later in the file and would otherwise win on a phone. */
+  .exposure-banner-inner { margin-left: 0; padding-inline: 16px; }
   .page-head { flex-wrap: wrap; gap: 16px; margin-bottom: 22px; }
   .card, #panel > .card:first-child { padding: 20px; }
   .status-hero { padding: 18px; }
