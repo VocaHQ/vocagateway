@@ -135,11 +135,23 @@
     showToast.timer = setTimeout(() => toast.classList.add("hidden"), 5000);
   }
 
+  // Everything outside the token dialog, so tab and screen readers cannot reach
+  // the page behind it. The banner and toast sit outside <main>, so name them too.
+  const BACKGROUND_SELECTOR =
+    "#exposure-banner, .app-header, .tabs, main, .site-footer, #toast";
+
+  function setBackgroundInert(inert) {
+    document.querySelectorAll(BACKGROUND_SELECTOR).forEach((el) => {
+      el.inert = inert;
+    });
+  }
+
   function showOverlay(message = "") {
     tokenError.textContent = message;
     tokenError.classList.toggle("hidden", !message);
     overlay.classList.remove("hidden");
     overlay.setAttribute("aria-hidden", "false");
+    setBackgroundInert(true);
     tokenInput.focus();
   }
 
@@ -147,6 +159,7 @@
     overlay.classList.add("hidden");
     overlay.setAttribute("aria-hidden", "true");
     tokenInput.value = "";
+    setBackgroundInert(false);
   }
 
   // ------------------------------------------------------------------ token
@@ -159,7 +172,7 @@
     }
     localStorage.setItem(TOKEN_KEY, token);
     hideOverlay();
-    htmx.ajax("GET", "/ui/partials/overview", { target: "#panel", swap: "innerHTML" });
+    openTabByName(document.querySelector(".tab.active")?.dataset.tab || "overview");
     htmx.ajax("GET", "/ui/partials/engine-pill", { target: "#engine-pill", swap: "outerHTML" });
     htmx.ajax("GET", "/ui/partials/exposure-banner", {
       target: "#exposure-banner",
@@ -186,8 +199,9 @@
 
   document.body.addEventListener("htmx:responseError", (event) => {
     if (event.detail.xhr.status === 401) {
+      const hadToken = Boolean(getToken());
       localStorage.removeItem(TOKEN_KEY);
-      showOverlay("Token rejected. Paste the current gateway token.");
+      showOverlay(hadToken ? "Token rejected. Paste the current gateway token." : "");
       return;
     }
     let message = `Request failed (${event.detail.xhr.status}).`;
@@ -230,10 +244,13 @@
       activateTab(tab);
     });
     tab.addEventListener("keydown", (event) => {
-      if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
       const tabs = [...document.querySelectorAll(".tab")];
-      const offset = event.key === "ArrowRight" ? 1 : -1;
-      const next = tabs[(tabs.indexOf(tab) + offset + tabs.length) % tabs.length];
+      const offset = ["ArrowRight", "ArrowDown"].includes(event.key) ? 1 : -1;
+      const index = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1
+        : (tabs.indexOf(tab) + offset + tabs.length) % tabs.length;
+      const next = tabs[index];
       next.focus();
       next.click();
     });
@@ -261,8 +278,12 @@
     }
   });
 
+  let performanceDetailsOpen = false;
   document.body.addEventListener("htmx:beforeSwap", (event) => {
     const target = event.detail && event.detail.target;
+    if (target && target.id === "operations") {
+      performanceDetailsOpen = Boolean(target.querySelector(".activity-details[open]"));
+    }
     // Download / Load / Cancel / poll refresh replace #models-list; keep open families.
     if (target && target.id === "models-list") {
       window.__openModelFamilies = openFamilyNames();
@@ -278,6 +299,10 @@
   });
 
   document.body.addEventListener("htmx:afterSwap", (event) => {
+    if (event.detail?.target?.id === "operations") {
+      const details = document.querySelector("#operations .activity-details");
+      if (details) details.open = performanceDetailsOpen;
+    }
     scheduleModelPoll();
     if (document.getElementById("test-language")) syncTestLanguages();
     // Models tab shell (or list refresh) may reintroduce filter controls.
@@ -341,7 +366,7 @@
 
   function isFilterRailCollapsed() {
     try {
-      return localStorage.getItem(FILTER_RAIL_KEY) === "1";
+      return localStorage.getItem(FILTER_RAIL_KEY) !== "0";
     } catch (_) {
       return false;
     }
@@ -503,7 +528,120 @@
       .forEach((tile) => placeModelsAfterRow(tile));
   }
 
+  function syncModelViews() {
+    const installed = document.getElementById("installed-only-toggle")?.checked;
+    const recommended = document.getElementById("recommended-only-toggle")?.checked;
+    document.querySelectorAll("[data-model-view]").forEach((button) => {
+      const view = button.dataset.modelView;
+      button.setAttribute("aria-pressed", String(view === "all" ? !installed && !recommended
+        : view === "installed" ? installed && !recommended : recommended && !installed));
+    });
+  }
+
+  document.body.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-model-view]");
+    if (!button) return;
+    const form = document.getElementById("models-filter-form");
+    const installed = document.getElementById("installed-only-toggle");
+    const recommended = document.getElementById("recommended-only-toggle");
+    if (!form || !installed || !recommended) return;
+    const view = button.dataset.modelView;
+    // Re-clicking the current view would refetch an unchanged list.
+    if (installed.checked === (view === "installed")
+        && recommended.checked === (view === "recommended")) return;
+    installed.checked = view === "installed";
+    recommended.checked = view === "recommended";
+    installed.dispatchEvent(new Event("change", { bubbles: true }));
+    syncModelViews();
+  });
+
+  // ------------------------------------------------------- model detail dialog
+  // One <dialog> serves every card: the button htmx-swaps its own markup into
+  // #model-detail-body, and we open once that lands so it is never shown empty.
+  // Which control opened each dialog, so focus can go back there on close.
+  const dialogOpener = new WeakMap();
+
+  // Every close path routes through here rather than through the dialog's
+  // `close` event: that event does not fire at all in some Chrome builds, and
+  // Escape would otherwise strand focus inside a hidden dialog.
+  function closeDialog(dialog) {
+    if (!dialog?.open) return;
+    dialog.close();
+    dialogOpener.get(dialog)?.focus();
+    dialogOpener.delete(dialog);
+  }
+
+  function openDialog(dialog, opener) {
+    if (!dialog || dialog.open) return;
+    dialogOpener.set(dialog, opener || null);
+    if (!dialog.dataset.bound) {
+      dialog.dataset.bound = "1";
+      dialog.addEventListener("keydown", (keyEvent) => {
+        if (keyEvent.key !== "Escape") return;
+        keyEvent.preventDefault();
+        closeDialog(dialog);
+      });
+    }
+    dialog.showModal();
+    dialog.querySelector("[data-dialog-close]")?.focus();
+  }
+
+  let detailOpener = null;
+
+  function modelDetailDialog() {
+    return document.getElementById("model-detail");
+  }
+
+  document.body.addEventListener("click", (event) => {
+    const closer = event.target.closest("[data-dialog-close]");
+    if (closer) {
+      closeDialog(closer.closest("dialog"));
+      return;
+    }
+    // Remember who opened it so focus can go back there on close.
+    const trigger = event.target.closest("[data-open-detail]");
+    if (trigger) detailOpener = trigger;
+  });
+
+  document.body.addEventListener("htmx:afterSwap", (event) => {
+    if (event.detail?.target?.id !== "model-detail-body") return;
+    openDialog(modelDetailDialog(), detailOpener);
+  });
+
+  // An action inside the dialog retargets #models-list, so close once its
+  // request is away. Waiting for the click instead would dismiss the dialog
+  // before hx-confirm had asked anything.
+  document.body.addEventListener("htmx:beforeRequest", (event) => {
+    if (event.detail?.elt?.closest?.("[data-dialog-close-on-request]")) {
+      closeDialog(modelDetailDialog());
+    }
+  });
+
+  // Backdrop click: a dialog element fills the viewport, so a click landing on
+  // it rather than on the panel inside means "outside".
+  document.addEventListener("click", (event) => {
+    if (event.target instanceof HTMLDialogElement && event.target.open) {
+      closeDialog(event.target);
+    }
+  });
+
+  // ------------------------------------------------------------ QR enlarge
+  // The QR's whole job is to be scanned, and 160px is small to catch with a
+  // phone at arm's length. Clone rather than re-render server-side so the
+  // enlarged copy cannot drift from the card after an htmx swap.
+  document.body.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-enlarge-qr]");
+    if (!trigger) return;
+    const dialog = document.getElementById("qr-zoom");
+    const figure = document.getElementById("qr-zoom-figure");
+    const source = trigger.querySelector("svg");
+    if (!dialog || !figure || !source) return;
+    figure.replaceChildren(source.cloneNode(true));
+    openDialog(dialog, trigger);
+  });
+
   function initModelFilters() {
+    syncModelViews();
     const form = document.getElementById("models-filter-form");
     const clear = document.getElementById("filter-clear");
     if (clear && !clear.dataset.bound) {
@@ -897,17 +1035,17 @@
     event.preventDefault();
     const url = button.getAttribute("data-url") || "";
     const token = button.getAttribute("data-token") || "";
-    const hint = button.querySelector(".pairing-qr-hint");
+    const hint = button.querySelector(".pairing-qr-copy-label");
     const setHint = (text, copied) => {
       if (!hint) return;
       hint.textContent = text;
       button.classList.toggle("is-copied", Boolean(copied));
-      button.title = copied ? "Copied" : "Click to copy gateway address and token";
+      button.title = copied ? "Copied" : "Copy gateway address and token";
     };
     if (!url || !token) {
       setHint("Nothing to copy", false);
       clearTimeout(button._copyHintTimer);
-      button._copyHintTimer = setTimeout(() => setHint("Click to copy", false), 1600);
+      button._copyHintTimer = setTimeout(() => setHint("Copy address & token", false), 1600);
       return;
     }
     // Same JSON shape the QR encodes (see app.pairing.PairingPayload).
@@ -929,11 +1067,11 @@
       }
       setHint("Copied", true);
       clearTimeout(button._copyHintTimer);
-      button._copyHintTimer = setTimeout(() => setHint("Click to copy", false), 1600);
+      button._copyHintTimer = setTimeout(() => setHint("Copy address & token", false), 1600);
     } catch (_) {
       setHint("Copy failed", false);
       clearTimeout(button._copyHintTimer);
-      button._copyHintTimer = setTimeout(() => setHint("Click to copy", false), 1600);
+      button._copyHintTimer = setTimeout(() => setHint("Copy address & token", false), 1600);
     }
   });
 

@@ -1,9 +1,8 @@
+{# No heading of its own: step 2 above ("Try a transcription") is this card's
+   heading, and repeating it put two titles and two lead sentences on one card. #}
 <div class="card" id="test-card">
-  <div class="section-heading">
-    <h2>Test dictation</h2>
-  </div>
-  <p class="muted">Uses this browser&rsquo;s microphone, then FFmpeg and the
-     active engine (same path as the phone app).</p>
+  <p class="muted">Record a short clip. Audio is sent to this gateway machine and transcribed
+     with your selected speech-to-text model.</p>
   <div class="test-controls" id="recorder-controls"
        data-maximum-seconds="{{ maximum_duration_seconds }}">
     <label class="test-field">
@@ -59,7 +58,7 @@
   <p id="record-status" class="muted test-status" aria-live="polite"></p>
   <div id="test-result" class="result hidden">
     <div class="result-header">
-      <h3>Transcript</h3>
+      <h4>Transcript</h4>
       <button id="copy-transcript" type="button" class="ghost small">Copy</button>
     </div>
     <p id="test-transcript"></p>

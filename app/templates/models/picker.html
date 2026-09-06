@@ -1,0 +1,65 @@
+{% from "macros/ratings.html" import speed_and_accuracy %}
+{# Three concrete picks, not a questionnaire. Somebody who does not know which
+   of 57 models to take is not helped by more choices, so each card names one
+   model and offers the button that acts on it. #}
+<div class="picker" id="model-picker">
+  <div class="picker-head">
+    <div>
+      <h3>Not sure which to pick?</h3>
+      <p class="muted">Picked from the models this machine can run, for
+         <strong>{{ language_name }}</strong>.</p>
+    </div>
+    <label class="picker-language">
+      <span>Language</span>
+      <select name="picker_language"
+              hx-get="/ui/partials/models/picker"
+              hx-target="#model-picker" hx-swap="outerHTML">
+        {% for value, label in language_options %}
+        <option value="{{ value }}"{% if value == language %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+
+  {% if picks %}
+  <div class="picker-grid">
+    {% for pick in picks %}
+    <article class="picker-card" data-intent="{{ pick.intent }}"{% if pick.lead %} data-lead="1"{% endif %}>
+      <p class="picker-intent"><span aria-hidden="true">{{ pick.icon }}</span> {{ pick.title }}</p>
+      <p class="picker-why muted small">{{ pick.blurb }}</p>
+      <h4 class="picker-model">{{ pick.entry.label }}</h4>
+      {{ speed_and_accuracy(pick.entry) }}
+      <p class="picker-size muted small">{{ pick.size_label }} download
+        {%- if pick.entry.supports_streaming %} &middot; streams live{% endif %}</p>
+      <div class="picker-actions">
+        {% if pick.entry.state == "installed" %}
+        {% if pick.entry.active and not pick.entry.offloaded %}
+        <span class="badge recommended">In use</span>
+        {% else %}
+        <button class="primary small"
+                hx-post="/ui/partials/models/{{ pick.encoded_id }}/select"
+                hx-include="#models-filter-form"
+                hx-target="#models-list" hx-swap="innerHTML"
+                hx-disabled-elt="this">Use this</button>
+        {% endif %}
+        {% elif pick.entry.state == "downloading" %}
+        <span class="muted small">Downloading&hellip;</span>
+        {% else %}
+        <button class="primary small"
+                hx-post="/ui/partials/models/{{ pick.encoded_id }}/download"
+                hx-include="#models-filter-form"
+                hx-target="#models-list" hx-swap="innerHTML">Download</button>
+        {% endif %}
+        <button type="button" class="ghost small"
+                hx-get="/ui/partials/models/{{ pick.encoded_id }}/detail"
+                hx-target="#model-detail-body" hx-swap="innerHTML"
+                data-open-detail aria-haspopup="dialog">Details</button>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty-state">No model in the catalog covers {{ language_name }} on this machine yet.
+     Browse everything below, or request one.</p>
+  {% endif %}
+</div>

@@ -1,9 +1,10 @@
 {% from "macros/icons.html" import filter as filter_icon, expand as expand_icon, collapse as collapse_icon, refresh as refresh_icon, collapse_left %}
 <div class="page-head">
   <div>
+    <p class="eyebrow">SPEECH LIBRARY</p>
     <h2>Models</h2>
     <p>{{ installed }} of {{ total }} downloaded across {{ families }} families,
-       all stored on this machine. Families start collapsed; open one to pick a model.</p>
+       all stored on this machine. Open a family, download a model, then select it to start transcribing.</p>
   </div>
   <div class="models-toolbar-actions">
     <button type="button" class="ghost filter-trigger" id="filter-rail-toggle"
@@ -28,6 +29,14 @@
             hx-get="/ui/partials/models-list" hx-include="#models-filter-form"
             hx-target="#models-list" hx-swap="innerHTML">{{ refresh_icon() }}</button>
   </div>
+</div>
+{{ picker_html }}
+{# Quick views. These drive the two hidden toggles in the filter form below, so
+   the form stays the single source of truth for every hx-include. #}
+<div class="catalog-views" role="group" aria-label="Browse models">
+  <button type="button" data-model-view="all" aria-pressed="true">All models</button>
+  <button type="button" data-model-view="recommended" aria-pressed="false">Fits this machine</button>
+  <button type="button" data-model-view="installed" aria-pressed="false">Downloaded</button>
 </div>
 <div class="models-layout" id="models-layout">
   <aside class="models-filter" id="models-filter" aria-label="Model filters">
@@ -73,7 +82,7 @@
       </fieldset>
       <fieldset class="filter-field">
         <legend>Engine</legend>
-        <div class="filter-check-list filter-check-list-engines" id="engine-filter-list">
+        <div class="filter-check-list" id="engine-filter-list">
           {% for value, label in engine_options %}
           <label class="filter-check">
             <input type="checkbox" name="engine" value="{{ value }}" /><span>{{ label }}</span>
@@ -89,19 +98,11 @@
           {% endfor %}
         </select>
       </label>
-      <div class="filter-toggles">
-        <label class="filter-toggle" for="installed-only-toggle">
-          <input type="checkbox" id="installed-only-toggle" name="installed_only"
-                 value="true" class="sr-only" />
-          Installed only
-        </label>
-        <label class="filter-toggle" for="recommended-only-toggle"
-               title="Models picked for this machine (RAM and platform)">
-          <input type="checkbox" id="recommended-only-toggle" name="recommended_only"
-                 value="true" class="sr-only" />
-          Fits this machine
-        </label>
-      </div>
+      {# Driven by the quick views above, not shown twice. #}
+      <input type="checkbox" id="installed-only-toggle" name="installed_only"
+             value="true" class="sr-only" tabindex="-1" aria-hidden="true" />
+      <input type="checkbox" id="recommended-only-toggle" name="recommended_only"
+             value="true" class="sr-only" tabindex="-1" aria-hidden="true" />
       <button type="button" class="ghost small filter-clear" id="filter-clear">
         Clear filters
       </button>
@@ -111,20 +112,20 @@
     <div id="models-list" aria-live="polite">
       {{ list_html }}
     </div>
-    <div class="card">
-      <h2>Bring your own Whisper model</h2>
+    <details class="card disclosure">
+      <summary>Bring your own Whisper model</summary>
       <p class="muted">Paste a direct HTTPS link to a <code>.bin</code> or
          <code>.gguf</code> file. It runs through the standalone engine.
          Use a <code>/resolve/</code> URL on Hugging Face, not the repo home page.</p>
       <form hx-post="/ui/partials/models/custom" hx-include="#models-filter-form"
             hx-target="#models-list" hx-swap="innerHTML">
         <div class="row">
-          <input name="url" type="url" required
+          <input name="url" type="url" required aria-label="Model download URL"
                  placeholder="https://huggingface.co/&hellip;/resolve/main/model.gguf" />
           <button type="submit" class="primary">Download</button>
         </div>
         <div class="row">
-          <input name="sha256" type="text" spellcheck="false"
+          <input name="sha256" type="text" aria-label="Optional SHA-256 digest" spellcheck="false"
                  pattern="\s*(?:[Ss][Hh][Aa]256:)?[0-9a-fA-F]{64}\s*"
                  title="64 hexadecimal characters, optionally prefixed with sha256:"
                  placeholder="Optional SHA-256 from the model card (verified on download)" />
@@ -140,6 +141,13 @@
         <a href="{{ request_model_issue_url }}" target="_blank"
            rel="noopener noreferrer">Request a catalog model</a>
       </p>
-    </div>
+    </details>
   </div>
 </div>
+
+{# One dialog for all 57 cards: each "Details" button swaps its own markup in. #}
+<dialog id="model-detail" class="model-detail-dialog" aria-label="Model details">
+  <button type="button" class="dialog-close" data-dialog-close
+          aria-label="Close details">&times;</button>
+  <div id="model-detail-body"></div>
+</dialog>

@@ -1334,66 +1334,74 @@ def _entry(**overrides: object) -> object:
     return AdminModelEntry(**base)  # type: ignore[arg-type]
 
 
-def _disclosure_html(entry: object) -> str:
-    """Render the language-disclosure block through the real list pipeline
-    (single-entry family) so these tests exercise the same path production
-    uses, not a private helper."""
+def _detail_html(entry: object) -> str:
+    """Render one model's detail panel — where every language now lives.
+
+    The card used to carry a four-name preview plus "+N more" inside a hover
+    popover whose list scrolled in a 7.5rem box; the panel replaces it and
+    shows the whole set.
+    """
+    from app.fragments.models import model_detail_fragment
+
+    return model_detail_fragment(entry)  # type: ignore[arg-type]
+
+
+def _card_html(entry: object) -> str:
     from app.fragments.models import models_list_fragment
 
     return models_list_fragment([entry])  # type: ignore[list-item]
 
 
-def test_language_preview_names_the_first_f_a() -> None:
-    """The point of the change: answerable without opening every card."""
-    html = _disclosure_html(
-        _entry(
-            language_names=["Bulgarian", "Croatian", "Czech", "Danish", "Dutch", ENGLISH_LANGUAGE]
-        )
-    )
-    summary = html.split("</summary>")[0]
-    for shown in ("Bulgarian", "Croatian", "Czech", "Danish"):
-        assert shown in summary
-    assert "+2 more" in summary
-    # The rest are still present, just below the fold.
-    assert "Dutch" in html and ENGLISH_LANGUAGE in html
+def test_detail_names_every_language() -> None:
+    """No preview, no "+N more", no inner scrollbar: the full list is there."""
+    names = ["Bulgarian", "Croatian", "Czech", "Danish", "Dutch", ENGLISH_LANGUAGE]
+    html = _detail_html(_entry(language_names=names))
+    for shown in names:
+        assert f'class="model-language-chip">{shown}</span>' in html
+    assert "more" not in html.split('class="model-detail-languages"')[1]
 
 
-def test_short_language_lists_are_shown_wit_aa() -> None:
-    html = _disclosure_html(_entry(language_names=[ENGLISH_LANGUAGE, "French", "German"]))
-    assert "<details" not in html
+def test_detail_counts_the_languages() -> None:
+    html = _detail_html(_entry(language_names=[ENGLISH_LANGUAGE, "French", "German"]))
+    assert ">3</span>" in html
     for name in (ENGLISH_LANGUAGE, "French", "German"):
         assert name in html
 
 
-def test_a_single_hidden_language_is_shown_aaa() -> None:
-    """Five languages should not cost a click to reveal the fifth."""
-    html = _disclosure_html(
-        _entry(language_names=[SHA256_PADDING_CHARACTER, SAMPLE_LANGUAGE_CODE, "c", "d", "e"])
-    )
-    assert "<details" not in html
-    assert "more" not in html
+def test_cards_leave_the_language_list_to_the_detail_panel() -> None:
+    """Keeps every card the same height however many languages a model has."""
+    html = _card_html(_entry(language_names=["a", "b", "c", "d", "e", "f", "g"]))
+    assert "model-language-chip" not in html
+    assert "/detail" in html
 
 
-def test_single_language_models_render_no_l_aaaa() -> None:
-    html = _disclosure_html(_entry(language_names=[ENGLISH_LANGUAGE]))
-    assert "model-languages" not in html
+def test_single_language_models_still_list_that_one() -> None:
+    html = _detail_html(_entry(language_names=[ENGLISH_LANGUAGE]))
+    assert f'class="model-language-chip">{ENGLISH_LANGUAGE}</span>' in html
 
 
-def test_auto_language_note_survives_both_layouts() -> None:
+def test_auto_language_note_reaches_the_detail_panel() -> None:
     for names in (
         [SHA256_PADDING_CHARACTER, SAMPLE_LANGUAGE_CODE],
         [SHA256_PADDING_CHARACTER, SAMPLE_LANGUAGE_CODE, "c", "d", "e", "f", "g"],
     ):
-        html = _disclosure_html(_entry(language_names=names, detects_language_automatically=True))
+        html = _detail_html(_entry(language_names=names, detects_language_automatically=True))
         assert "picks the language itself" in html
 
 
 def test_language_names_are_escaped() -> None:
-    html = _disclosure_html(
+    html = _detail_html(
         _entry(language_names=["<script>", SAMPLE_LANGUAGE_CODE, "c", "d", "e", "f"])
     )
     assert "<script>" not in html
     assert "&lt;script&gt;" in html
+
+
+def test_detail_shows_the_description_unclipped() -> None:
+    """The card clamps to three lines; the panel is why that is acceptable."""
+    blurb = "Sentence one. " * 40
+    html = _detail_html(_entry(description=blurb))
+    assert blurb.strip() in html
 
 
 def test_installed_path_agrees_with_the_full_scan(manager: ModelManager) -> None:

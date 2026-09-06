@@ -242,6 +242,27 @@ class _AdminModelUiRoutes:
     ) -> HTMLResponse:
         return _models_list_html(ctx, filters)
 
+    async def ui_model_picker(
+        self,
+        ctx: context.GatewayContextDependency,
+        picker_language: str = model_fragments.DEFAULT_PICKER_LANGUAGE,
+    ) -> HTMLResponse:
+        return HTMLResponse(
+            model_fragments.model_picker_fragment(admin_queries.model_entries(ctx), picker_language)
+        )
+
+    async def ui_model_detail(
+        self, model_id: str, ctx: context.GatewayContextDependency
+    ) -> HTMLResponse:
+        entry = next(
+            (known for known in admin_queries.model_entries(ctx) if known.id == model_id), None
+        )
+        if entry is None:
+            raise errors.APIProblem(
+                status.HTTP_404_NOT_FOUND, "unknown_model", "This model is not in the catalog."
+            )
+        return HTMLResponse(model_fragments.model_detail_fragment(entry))
+
     async def ui_start_download(
         self,
         model_id: str,
@@ -368,6 +389,8 @@ def _bind_routes(target_router: APIRouter) -> None:
     for path, endpoint, methods in (
         ("/ui/partials/models", ui.ui_models, METHOD_GET),
         ("/ui/partials/models-list", ui.ui_models_list, METHOD_GET),
+        ("/ui/partials/models/picker", ui.ui_model_picker, METHOD_GET),
+        ("/ui/partials/models/{model_id}/detail", ui.ui_model_detail, METHOD_GET),
         ("/ui/partials/models/{model_id}/download", ui.ui_start_download, METHOD_POST),
         ("/ui/partials/models/custom", ui.ui_custom_download, METHOD_POST),
         ("/ui/partials/models/{model_id}/cancel", ui.ui_cancel_download, METHOD_POST),

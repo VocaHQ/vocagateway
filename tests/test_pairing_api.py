@@ -52,9 +52,12 @@ def _network_switch_fixture(
     )
     old_address = "http://192.168.1.20:8765"
     hostname_address = "https://homelabone.tail1234.ts.net:8765"
+    # Mirrors what the app actually writes: `old_address` was discovered when it
+    # was picked, so it is only the remembered selection. `pairing_urls` holds
+    # hand-typed addresses, which is why it keeps only the hostname.
     runtime_config = RuntimeConfig(
         pairing_url=old_address,
-        pairing_urls=[old_address, hostname_address],
+        pairing_urls=[hostname_address],
     )
     app = create_app(
         settings,
@@ -273,10 +276,10 @@ async def test_switching_networks_forgets_the_old_a94f7(tmp_path: Path) -> None:
     app, runtime_config, old_address, hostname_address = _network_switch_fixture(tmp_path)
     await _assert_network_switch_pairing(app, old_address, hostname_address)
 
-    # The stale ambient LAN IP is gone; the deliberately-typed hostname stayed.
+    # The stale ambient LAN IP is no longer selected; the typed hostname stayed.
+    assert runtime_config.pairing_url != old_address
     assert old_address not in runtime_config.pairing_urls
     assert hostname_address in runtime_config.pairing_urls
-    assert runtime_config.pairing_url != old_address
 
 
 @pytest.mark.asyncio
@@ -333,3 +336,46 @@ async def test_refresh_keeps_a_saved_tailscale_ad_aaaaa(
     refreshed = await client.get(PAIRING_UI_PATH, headers=authorization)
     assert refreshed.status_code == HTTP_200_OK
     assert "100.89.197.121" in refreshed.text
+
+
+@pytest.mark.asyncio
+async def test_refresh_keeps_an_undiscoverable_custom_address(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hand-typed address that discovery cannot see must survive a refresh.
+    That is the whole point of the Custom address field: the operator reaches
+    for it precisely when the gateway cannot find the address itself (Tailscale
+    interface invisible to discovery, a forwarded router address). Pruning it
+    for looking private wiped it on the very next request."""
+    custom_url = "http://100.90.80.70:8765"
+    monkeypatch.setattr(
+        "app.pairing_view.discover_gateway_base_urls", lambda port: ["http://192.168.1.20:8765"]
+    )
+    settings = Settings(
+        token=TOKEN,
+        data_dir=tmp_path,
+        whisper_binary=tmp_path / "whisper-cli",
+        whisper_model=tmp_path / "model.bin",
+        config_path=tmp_path / "config.json",
+    )
+    runtime_config = RuntimeConfig()
+    app = create_app(
+        settings,
+        model_manager=ModelManager(tmp_path / "models"),
+        runtime_config=runtime_config,
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        headers = {"Authorization": f"Bearer {TOKEN}"}
+        added = await client.get(PAIRING_UI_PATH, headers=headers, params={URL_KEY: custom_url})
+        assert added.status_code == HTTP_200_OK
+        assert "100.90.80.70" in added.text
+
+        # A plain page refresh: no `url` query param this time.
+        refreshed = await client.get(PAIRING_UI_PATH, headers=headers)
+        assert refreshed.status_code == HTTP_200_OK
+        assert "100.90.80.70" in refreshed.text
+
+    assert runtime_config.pairing_url == custom_url
+    assert custom_url in runtime_config.pairing_urls

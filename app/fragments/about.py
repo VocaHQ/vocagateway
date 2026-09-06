@@ -49,8 +49,9 @@ def about_fragment(version: str, commit: CommitStatus | None = None) -> str:
     contacts = _contact_links_html()
     facts_html = _facts_html(version, commit)
     return f"""
-      <div class="page-head">
+      <div class="page-head" data-page="about">
         <div>
+          <p class="eyebrow">THIS GATEWAY</p>
           <h2>About</h2>
           <p>Optional self-hosted compute for other Voca clients. Never on-device.</p>
         </div>
@@ -62,14 +63,14 @@ def about_fragment(version: str, commit: CommitStatus | None = None) -> str:
                width="52" height="52" alt="VocaGateway" />
           <div class="sys-hero-copy">
             <p class="sys-hero-kicker">Beta</p>
-            <h2 class="sys-hero-headline">The host you run</h2>
+            <h3 class="sys-hero-headline">The host you run</h3>
             <p class="sys-hero-meta">Audio you send here is transcribed on this machine.</p>
           </div>
         </div>
       </div>
 
       <div class="card" id="about-this-build">
-        <h2>This build</h2>
+        <h3>This build</h3>
         <p>This is infrastructure, not a dictation client. Audio leaves the client.
            This host transcribes it. There is no Voca account and no Voca cloud.</p>
         <div class="about-info" role="note">
@@ -84,13 +85,13 @@ def about_fragment(version: str, commit: CommitStatus | None = None) -> str:
       </div>
 
       <div class="card" id="about-family">
-        <h2>Part of VocaHQ</h2>
+        <h3>Part of VocaHQ</h3>
         <p>Companion apps: VocaLinux, VocaMac, VocaWin, and VocaPhone.</p>
         <div class="onboarding-actions">{family}</div>
       </div>
 
       <div class="card" id="about-talk">
-        <h2>Talk to us</h2>
+        <h3>Talk to us</h3>
         <p>Bugs and feature ideas go on GitHub issues.</p>
         <div class="onboarding-actions">
           <a class="primary" href="{_ISSUES_URL}" target="_blank" rel="noopener noreferrer">

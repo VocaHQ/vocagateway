@@ -42,6 +42,9 @@ ENGINE_HOST_REQUIREMENTS = MappingProxyType(
 )
 
 
+CPU_ACCELERATOR = "CPU"
+
+
 @dataclass(frozen=True, slots=True)
 class SystemInfo:
     os_name: str
@@ -60,6 +63,15 @@ class SystemInfo:
     containerized: bool
     accelerators: tuple[str, ...]
     cpu_features: tuple[str, ...]
+
+
+def is_cpu_only(system: SystemInfo) -> bool:
+    """True when nothing but the CPU is available to run a model.
+
+    `accelerators` always starts with "CPU" and gains an entry per Metal,
+    CUDA or ROCm device found, so a lone "CPU" means exactly that.
+    """
+    return tuple(system.accelerators) == (CPU_ACCELERATOR,)
 
 
 class _EngineHost:
@@ -510,7 +522,7 @@ class _HostDetector:
 
     @classmethod
     def _accelerators(cls, is_mac: bool, arch: str) -> tuple[str, ...]:
-        accelerator_labels: list[str] = ["CPU"]
+        accelerator_labels: list[str] = [CPU_ACCELERATOR]
         apple = is_mac and arch == ARM64_ARCHITECTURE
         if apple:
             accelerator_labels.append("Metal / Core ML")

@@ -28,7 +28,9 @@ def redact_token(token: str) -> str:
         return "•" * token_len
     prefix = token[:4]
     suffix = token[-4:]
-    return f"{prefix}…{suffix} ({token_len} characters)"
+    # No parentheses here: the template already wraps this in its own pair, and
+    # nesting them read as "(iS7l…RYIF (64 characters))".
+    return f"{prefix}…{suffix} · {token_len} characters"
 
 
 def pairing_fragment(pairing_data: PairingFragmentData) -> str:
