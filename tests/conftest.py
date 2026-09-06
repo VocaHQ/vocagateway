@@ -156,6 +156,12 @@ class FakeWorkerHost:
     def runtime_available(self) -> bool:
         return True
 
+    def pin(self) -> None:
+        return None
+
+    def unpin(self) -> None:
+        return None
+
     async def runtime(self, model_id: str, model_file: Path) -> FakeCleanupRuntime | None:
         if self.runtime_value is not None:
             self.loaded_model_id = model_id

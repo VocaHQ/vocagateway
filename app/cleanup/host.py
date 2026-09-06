@@ -38,6 +38,7 @@ class WorkerHost:
         self._worker: worker.LlamaServerWorker | None = None
         self._key: tuple[str, str] | None = None
         self._loading: asyncio.Task[None] | None = None
+        self._pins = 0
         self._lock = threading.Lock()
 
     @property
@@ -64,6 +65,16 @@ class WorkerHost:
         """Whether a `llama-server` executable exists for the gateway to launch."""
         return worker.resolve_binary(self.settings.cleanup_binary) is not None
 
+    def pin(self) -> None:
+        """Cover the current worker so a key change cannot reap it."""
+        with self._lock:
+            self._pins += 1
+
+    def unpin(self) -> None:
+        with self._lock:
+            if self._pins:
+                self._pins -= 1
+
     async def runtime(self, model_id: str, model_file: Path) -> CleanupRuntime | None:
         """The runtime if it is resident, or None after starting a load for it.
 
@@ -72,12 +83,15 @@ class WorkerHost:
         holding an HTTP request open for a load that runs in the background
         regardless — so both callers get an answer immediately and the settings
         card polls until the state stops being `loading`.
+
+        A pinned worker of a different key is left running and this returns
+        None, so a settings save cannot kill a lease or load-hold mid-flight.
         """
         binary = worker.resolve_binary(self.settings.cleanup_binary)
         if binary is None:
             return None
         active = self._ensure(binary, model_file, model_id)
-        if not self._resident(active):
+        if active is None or not self._resident(active):
             return None
         return LlamaServerRuntime(active.endpoint, model_id=model_id)
 
@@ -177,12 +191,18 @@ class WorkerHost:
         self.failure = ""
         self.offloaded = False
 
-    def _ensure(self, binary: Path, model_file: Path, model_id: str) -> worker.LlamaServerWorker:
+    def _ensure(
+        self, binary: Path, model_file: Path, model_id: str
+    ) -> worker.LlamaServerWorker | None:
         key = (model_id, str(model_file))
         with self._lock:
             current = self._worker
             if current is not None and self._key == key:
                 return current
+            # A lease or load-hold still covers this generation. Reaping it
+            # here would bypass the manager's deferred stop.
+            if current is not None and self._pins:
+                return None
             replacement = worker.LlamaServerWorker(
                 binary,
                 model_file,

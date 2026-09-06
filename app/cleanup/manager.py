@@ -222,7 +222,6 @@ class CleanupManager:
         self.host = WorkerHost(settings, run_config)
         self._slot = asyncio.Semaphore(1)
         self._active_leases = 0
-        self._pending_stop = False
         self._last_used = time.monotonic()
         self._failure = ""
         self._load_hold_task: asyncio.Task[None] | None = None
@@ -358,12 +357,10 @@ class CleanupManager:
         if changed_model or not self.enabled:
             # Applies to new work only. An in-flight request or load-hold keeps
             # the runtime it was admitted against; stop is deferred until the
-            # last lease drains.
+            # last lease drains. Re-enable is a no-op here: _stop_if_due reads
+            # live enabled/model state, so a disable then re-enable while
+            # leased cannot kill a worker that is wanted again.
             self._stop_or_defer()
-        else:
-            # Re-enable with the current model (or any update that still wants
-            # this worker) must not leave a deferred stop from a prior disable.
-            self._pending_stop = False
 
     async def _external_runtime(self, endpoint: Endpoint) -> CleanupRuntime | None:
         """An operator-run server, once its context window has been vouched for.
@@ -420,9 +417,11 @@ class CleanupManager:
 
     def _hold(self) -> None:
         self._active_leases += 1
+        self.host.pin()
 
     def _drop_hold(self) -> None:
         self._active_leases -= 1
+        self.host.unpin()
         self._last_used = time.monotonic()
         self._stop_if_due()
 
@@ -433,18 +432,13 @@ class CleanupManager:
     def _stop_or_defer(self) -> None:
         """Stop now, or once the last in-flight lease (including a load-hold) drains."""
         if self._active_leases == 0:
-            self._pending_stop = False
             self.host.stop()
-            return
-        self._pending_stop = True
 
     def _stop_if_due(self) -> None:
         if self._active_leases:
             return
-        # `_pending_stop` only wakes this check; whether to kill the worker
-        # comes from live state so a disable→re-enable while leased cannot
-        # stop a worker that is wanted again.
-        self._pending_stop = False
+        # Live state, not a sticky flag: disable then re-enable while leased
+        # must keep the worker that is wanted again.
         if not self.enabled or self._hosted_model_stale():
             self.host.stop()
 
