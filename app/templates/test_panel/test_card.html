@@ -43,6 +43,16 @@
         <option value="vi">Vietnamese</option>
       </select>
     </label>
+    {# Stated explicitly rather than inherited, so the benchmark above measures
+       what it says it measures. Hidden by syncTestCleanup() when the gateway
+       has no cleanup model installed. #}
+    <label class="test-field hidden" id="test-cleanup-field">
+      <span>Cleanup</span>
+      <select id="test-cleanup">
+        <option value="off">Off (raw)</option>
+        <option value="conservative">Conservative</option>
+      </select>
+    </label>
     <label class="test-field">
       <span>Runs</span>
       <select id="test-runs" aria-label="Benchmark repetitions">
@@ -63,12 +73,20 @@
       <button id="copy-transcript" type="button" class="ghost small">Copy</button>
     </div>
     <p id="test-transcript"></p>
+    {# Both texts are inserted with textContent, never innerHTML: a transcript is
+       data, and a dictated angle bracket is a character rather than a tag. #}
+    <div id="test-original-block" class="hidden">
+      <h4 class="result-subheading">Before cleanup</h4>
+      <p id="test-original" class="muted"></p>
+    </div>
+    <p id="test-cleanup-status" class="muted hidden"></p>
     <p id="test-meta" class="muted"></p>
     <div id="benchmark-metrics" class="benchmark-grid" aria-label="Pipeline benchmark">
       <div><span>Total</span><strong id="benchmark-total">—</strong></div>
       <div><span>Normalize</span><strong id="benchmark-normalize">—</strong></div>
       <div><span>Model load</span><strong id="benchmark-load">—</strong></div>
       <div><span>Inference</span><strong id="benchmark-inference">—</strong></div>
+      <div><span>Cleanup</span><strong id="benchmark-cleanup">—</strong></div>
       <div><span>RTF</span><strong id="benchmark-rtf">—</strong></div>
       <div><span>Peak memory</span><strong id="benchmark-memory">—</strong></div>
     </div>

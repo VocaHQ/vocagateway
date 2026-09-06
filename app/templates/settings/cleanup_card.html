@@ -1,0 +1,159 @@
+{# Transcript cleanup settings.
+
+   Everything rendered here comes from the gateway's own configuration and from
+   the pinned catalog — never from a transcript and never from a model. The
+   environment is autoescaping, so any text that does reach this panel arrives
+   as text rather than as markup. #}
+<div class="card" id="cleanup-settings-card">
+  <div class="section-heading">
+    <h2>Transcript cleanup</h2>
+    <span class="pill {{ state_tone }}">{{ state_label }}</span>
+  </div>
+  <p class="muted">{{ summary }}</p>
+  <p class="muted small">{{ caveat }}</p>
+
+  {% if config.locked_settings %}
+  <p class="muted small settings-hint">
+    Set by environment variables and locked here:
+    {{ config.locked_settings | join(", ") }}. Saving does not change them.
+  </p>
+  {% endif %}
+
+  {% if not config.runtime_available %}
+  <p class="muted small settings-hint">
+    No <code>llama-server</code> was found on this host. Install llama.cpp, or
+    point <code>VOCAGATEWAY_CLEANUP_BINARY</code> at the executable.
+  </p>
+  {% endif %}
+  {% if config.detail %}
+  <p class="error small settings-hint">{{ config.detail }}</p>
+  {% endif %}
+
+  <form hx-put="/ui/partials/cleanup" hx-target="#cleanup-settings-card" hx-swap="outerHTML">
+    <div class="memory-policy">
+      <label class="memory-policy-toggle" for="cleanup-enabled">
+        <input id="cleanup-enabled" name="enabled" type="checkbox" value="true"
+               {% if config.enabled %}checked{% endif %} />
+        <span>
+          <strong>Correct transcripts by default</strong>
+          <small>Applies to clients that do not ask for something else. A client
+             can always opt out per request, and Raw is never corrected.</small>
+        </span>
+      </label>
+    </div>
+    <div class="settings-grid">
+      <label class="settings-field">
+        <span>Model</span>
+        <select name="model_id">
+          <option value="">None selected</option>
+          {% for model in models %}
+          <option value="{{ model.id }}"{% if model.id == config.model_id %} selected{% endif %}>
+            {{ model.label }}{% if not model.state == "installed" %} (not installed){% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="settings-field">
+        <span>Mode</span>
+        <select name="mode">
+          {% for value, label in mode_options %}
+          <option value="{{ value }}"{% if value == config.mode %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="settings-field">
+        <span>Time limit</span>
+        <select name="timeout_seconds">
+          {% for value, label in timeout_options %}
+          <option value="{{ value }}"{% if value == config.timeout_seconds %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="settings-field">
+        <span>Idle unload</span>
+        <select name="idle_unload_minutes">
+          {% for value, label in idle_options %}
+          <option value="{{ value }}"{% if value == config.idle_unload_minutes %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <label class="memory-policy-toggle" for="cleanup-idle-unload">
+      <input id="cleanup-idle-unload" name="idle_unload_enabled" type="checkbox" value="true"
+             {% if config.idle_unload_enabled %}checked{% endif %} />
+      <span>
+        <strong>Release the cleanup model when idle</strong>
+        <small>Frees its memory after no corrections for the chosen time. The
+           next correction loads it again, which costs a cold start once.</small>
+      </span>
+    </label>
+    <p class="muted small settings-hint">
+      A correction that cannot finish inside the time limit is abandoned and the
+      plain transcript is returned. Nothing is ever half-corrected.
+    </p>
+    <div class="row settings-actions">
+      <button type="submit" class="primary">Apply</button>
+      <button type="button" class="ghost"
+              hx-post="/ui/partials/cleanup/warmup"
+              hx-target="#cleanup-settings-card" hx-swap="outerHTML">
+        Load model now
+      </button>
+    </div>
+  </form>
+
+  <h3 class="settings-subheading">Models</h3>
+  <p class="muted small">
+    Tested languages are the ones a model has passed the release checks for.
+    Offered languages are the ones cleanup will run for; they are not the same
+    thing until an evaluation says so.
+  </p>
+  <ul class="cleanup-models">
+    {% for model in models %}
+    <li class="cleanup-model" id="cleanup-model-{{ model.id | urlpath }}">
+      <div class="cleanup-model-head">
+        <strong>{{ model.label }}</strong>
+        <span class="muted small">{{ model.size_bytes | format_bytes }} · {{ model.runtime }} · {{ model.license_name }}</span>
+      </div>
+      <p class="muted small">{{ model.description }}</p>
+      <dl class="facts small">
+        <dt>Upstream weights</dt><dd>{{ model.upstream_model }}</dd>
+        <dt>Quantization</dt><dd>{{ model.quantization }}</dd>
+        <dt>Converted by</dt><dd>{{ model.conversion_source }}</dd>
+        <dt>Chat template</dt><dd>{{ model.chat_template_source }}</dd>
+        <dt>Offered languages</dt><dd>{{ model.languages | join(", ") or "None" }}</dd>
+        <dt>Tested languages</dt>
+        <dd>{{ model.evaluated_languages | join(", ") or "Not evaluated yet" }}</dd>
+        <dt>Needs</dt><dd>{{ model.minimum_ram_gb }} GB RAM</dd>
+        <dt>Pinned SHA-256</dt>
+        <dd><code>{{ model.sha256 or "unpinned — cannot be installed" }}</code></dd>
+      </dl>
+      {% if model.error %}
+      <p class="error small">{{ model.error }}</p>
+      {% endif %}
+      <div class="row settings-actions">
+        {% if model.state == "installed" %}
+        <span class="pill ok">Installed</span>
+        <button type="button" class="ghost danger"
+                hx-delete="/ui/partials/cleanup/models/{{ model.id | urlpath }}"
+                hx-target="#cleanup-settings-card" hx-swap="outerHTML"
+                hx-confirm="Delete this cleanup model?">Delete</button>
+        {% elif model.state == "downloading" %}
+        <span class="pill">Downloading{% if model.progress %} {{ (model.progress * 100) | round }}%{% endif %}</span>
+        {% else %}
+        <button type="button" class="ghost"
+                {% if not model.installable %}disabled{% endif %}
+                hx-post="/ui/partials/cleanup/models/{{ model.id | urlpath }}"
+                hx-target="#cleanup-settings-card" hx-swap="outerHTML">
+          Install
+        </button>
+        {% endif %}
+        <a class="ghost small" href="{{ model.source_url }}" rel="noreferrer noopener"
+           target="_blank">Model card</a>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% if message %}
+  <p class="muted settings-engine-result">{{ message }}</p>
+  {% endif %}
+</div>

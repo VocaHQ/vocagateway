@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFil
 from fastapi.routing import APIRoute
 from starlette import status
 
-from app import audio, context, errors, schemas
+from app import audio, context, errors, schemas, service
+from app.cleanup.base import MODE_CONSERVATIVE, MODE_OFF, RESOLVED_MODES, CleanupOptions
 
 _LANGUAGE_PATTERN = re.compile(r"^(?:[A-Za-z-]+|hinglish_roman)$")
 _TRUTHY = frozenset(("true", "1", "yes"))
@@ -23,6 +24,13 @@ _MINIMUM_AUDIO_UPLOAD_BYTES = 128
 # still enforces maximum_upload_bytes on the file itself.
 _MULTIPART_WRAP_SLACK = 65536
 _JSON_FORMATS = frozenset(("", "json"))
+# Status travels in optional response headers rather than in the body: the
+# OpenAI-compatible shape is `{"text": ...}`, and a client parsing it strictly
+# would break on an unexpected required field.
+CLEANUP_STATUS_HEADER = "X-Voca-Cleanup-Status"
+CLEANUP_REASON_HEADER = "X-Voca-Cleanup-Reason"
+CLEANUP_MODEL_HEADER = "X-Voca-Cleanup-Model"
+CLEANUP_DURATION_HEADER = "X-Voca-Cleanup-Duration-Ms"
 
 
 class _UploadLimit:
@@ -134,6 +142,24 @@ class _AudioForm:
         return language_value
 
     @classmethod
+    def cleanup_mode(cls, raw: str | None) -> str:
+        """Read the opt-in, defaulting to off and refusing anything unexpected.
+
+        `inherit` is not offered here. This endpoint has no session to carry a
+        gateway default into, so the choice is explicit or it is off.
+        """
+        mode = (raw or "").strip().lower()
+        if not mode:
+            return MODE_OFF
+        if mode not in RESOLVED_MODES:
+            raise errors.APIProblem(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "invalid_cleanup",
+                "Cleanup must be off or conservative.",
+            )
+        return mode
+
+    @classmethod
     def reject_unsupported_format(cls, response_format: str | None) -> None:
         if response_format is None:
             return
@@ -178,6 +204,7 @@ class _TranscriptionFields:
     language: Annotated[str | None, Form()] = None
     response_format: Annotated[str | None, Form()] = None
     stream: Annotated[str | None, Form()] = None
+    cleanup: Annotated[str | None, Form()] = None
 
 
 class _AdhocUpload:
@@ -231,10 +258,11 @@ class _TranscriptionEndpoint:
         cls,
         audio_file: Annotated[UploadFile, File(alias="file")],
         ctx: context.GatewayContextDependency,
+        response: Response,
         fields: Annotated[_TranscriptionFields, Depends()],
     ) -> schemas.OpenAITranscriptionResponse:
         try:
-            return await cls._transcribe(audio_file, ctx, fields)
+            return await cls._transcribe(audio_file, ctx, response, fields)
         finally:
             await audio_file.close()
 
@@ -243,6 +271,7 @@ class _TranscriptionEndpoint:
         cls,
         audio_file: UploadFile,
         ctx: context.GatewayContext,
+        response: Response,
         fields: _TranscriptionFields,
     ) -> schemas.OpenAITranscriptionResponse:
         if not audio_file.filename:
@@ -253,8 +282,9 @@ class _TranscriptionEndpoint:
         _AudioForm.reject_streaming(fields.stream)
         suffix = _AudioForm.suffix(audio_file.content_type, audio_file.filename)
         chosen_language = _AudioForm.language(fields.language)
+        mode = _AudioForm.cleanup_mode(fields.cleanup)
         stored = await _AdhocUpload(ctx, audio_file, suffix).store()
-        return await cls._read_transcript(ctx, stored, chosen_language)
+        return await cls._read_transcript(ctx, stored, chosen_language, mode, response)
 
     @classmethod
     async def _read_transcript(
@@ -262,12 +292,43 @@ class _TranscriptionEndpoint:
         ctx: context.GatewayContext,
         stored: Path,
         chosen_language: str,
+        mode: str,
+        response: Response,
     ) -> schemas.OpenAITranscriptionResponse:
+        style, options = _cleanup_request(ctx, mode)
         try:
-            transcription = await ctx.service.transcribe_adhoc(stored, chosen_language)
+            transcription = await ctx.service.transcribe_adhoc(
+                stored, chosen_language, style=style, cleanup=options
+            )
         finally:
             stored.unlink(missing_ok=True)
+        if mode != MODE_OFF:
+            _report_cleanup(response, transcription)
         return schemas.OpenAITranscriptionResponse(text=transcription.transcript)
+
+
+def _cleanup_request(ctx: context.GatewayContext, mode: str) -> tuple[str, CleanupOptions | None]:
+    """The writing style and pinned options one request runs under.
+
+    Off keeps today's behaviour exactly: raw style, no options, the model's own
+    text. An opt-in gets conservative plain-text formatting instead — routing it
+    through the raw bypass would accept the field and then do nothing with it.
+    """
+    if mode != MODE_CONSERVATIVE or ctx.cleanup is None:
+        return service.RAW_STYLE, None
+    return service.ADHOC_CLEANUP_STYLE, ctx.cleanup.options(MODE_CONSERVATIVE)
+
+
+def _report_cleanup(response: Response, transcription: service.AdhocTranscription) -> None:
+    outcome = transcription.cleanup
+    if outcome is None:
+        return
+    response.headers[CLEANUP_STATUS_HEADER] = str(outcome.status)
+    response.headers[CLEANUP_DURATION_HEADER] = str(outcome.duration_ms)
+    if outcome.reason_name:
+        response.headers[CLEANUP_REASON_HEADER] = outcome.reason_name
+    if outcome.model_id:
+        response.headers[CLEANUP_MODEL_HEADER] = outcome.model_id
 
 
 reject_oversized_multipart = _UploadLimit.reject_oversized_multipart

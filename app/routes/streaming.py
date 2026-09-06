@@ -6,11 +6,13 @@ import sys
 import threading
 from array import array
 from contextlib import suppress
+from dataclasses import dataclass
 from typing import Any, cast
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app import context, scripts, serializers, text_styles
+from app import context, scripts, serializers
+from app.cleanup.base import MODE_INHERIT, REQUESTABLE_MODES, CleanupOptions, CleanupStatus
 from app.models.base import StreamingEngine, TranscriptionEngine
 
 router = APIRouter()
@@ -24,6 +26,27 @@ MAXIMUM_SAMPLE_RATE_HZ = 96_000
 MAXIMUM_STREAM_ERROR_LENGTH = 200
 MESSAGE_TYPE_KEY = "type"
 WRITING_STYLES = frozenset(("raw", "clean", "formal", "casual", "very_casual", "excited"))
+COMPLETE_MESSAGE = "complete"
+# Statuses worth telling a streaming client about. `disabled` is the shape every
+# existing client already gets, so the packet stays exactly as it is today.
+_REPORTED_STATUSES = frozenset(
+    (
+        CleanupStatus.SKIPPED,
+        CleanupStatus.UNCHANGED,
+        CleanupStatus.APPLIED,
+        CleanupStatus.FALLBACK,
+    )
+)
+
+
+@dataclass(frozen=True, slots=True)
+class PendingFinal:
+    """A finished recognition, waiting for formatting outside the engine's locks."""
+
+    transcript: str
+    style: str
+    language: str
+    cleanup_mode: str
 
 
 class _StreamGate:
@@ -122,6 +145,9 @@ class _StreamPackets:
         session._style = str(payload.get("style", "casual"))
         if session._style not in WRITING_STYLES:
             raise ValueError("Unsupported writing style.")
+        session._cleanup_mode = str(payload.get("cleanup", MODE_INHERIT))
+        if session._cleanup_mode not in REQUESTABLE_MODES:
+            raise ValueError("Unsupported cleanup mode.")
 
     async def audio(self, chunk: bytes) -> None:
         if len(chunk) % 4:
@@ -143,29 +169,39 @@ class _StreamPackets:
             await session._websocket.send_json({MESSAGE_TYPE_KEY: "partial", "transcript": partial})
 
     async def finish(self) -> None:
+        """Close out recognition and hand the raw text back for finalization.
+
+        Formatting deliberately does not happen here. This runs inside the
+        streaming lock and the engine lease, and awaiting a text model from
+        under them would keep a speech model occupied for the whole correction.
+        """
         session = self.session
         stream = cast(Any, session._stream)
         final_result = await asyncio.to_thread(stream.stop)
-        transcript = self._styled_transcript(final_result)
+        transcript = self._recognized(final_result)
         if not transcript:
             raise ValueError("Moonshine returned an empty transcript.")
         await asyncio.to_thread(stream.close)
         session._stream = None
-        await session._websocket.send_json({MESSAGE_TYPE_KEY: "complete", "transcript": transcript})
-        await session._websocket.close(code=1000)
+        session.pending = PendingFinal(
+            transcript=transcript,
+            style=session._style,
+            language=session._language,
+            cleanup_mode=session._cleanup_mode,
+        )
 
-    def _styled_transcript(self, final_result: object) -> str:
+    def _recognized(self, final_result: object) -> str:
         session = self.session
         with session._lines_lock:
             for line in getattr(final_result, "lines", []) or []:
                 if getattr(line, "text", ""):
                     session._lines[int(line.line_id)] = str(line.text).strip()
             joined = serializers.joined_stream_lines(session._lines)
-            if scripts.transcript_matches_language(joined, session._language):
-                return text_styles.apply_writing_style(joined, session._style, session._language)
-            raise ValueError(
-                f"The model transcribed this as a different language than {session._language}."
-            )
+        if scripts.transcript_matches_language(joined, session._language):
+            return joined
+        raise ValueError(
+            f"The model transcribed this as a different language than {session._language}."
+        )
 
 
 class _StreamSession:
@@ -179,17 +215,24 @@ class _StreamSession:
         self._sample_rate = 0
         self._style = "casual"
         self._language = "auto"
+        self._cleanup_mode = MODE_INHERIT
         self._received_samples = 0
+        # Set once recognition has finished. Read by the caller *after* the
+        # engine lease is released, which is what keeps the optional text model
+        # off the speech engine's critical path.
+        self.pending: PendingFinal | None = None
 
-    async def run(self) -> None:
+    async def run(self) -> PendingFinal | None:
         try:
             await self._loop()
         except WebSocketDisconnect:
-            return
+            return None
         except Exception as error:
             await _StreamGate.send_error(self._websocket, error)
+            return None
         finally:
             await _StreamGate.close_stream(self._stream)
+        return self.pending
 
     async def _loop(self) -> None:
         start = await self._websocket.receive_json()
@@ -243,6 +286,58 @@ class _StreamSession:
         return True
 
 
+class _StreamFinalizer:
+    """Formats one finished recognition and sends the completion packet.
+
+    Runs with no speech-engine lease and no streaming lock held. Exactly one
+    cleanup pass happens per stream, and only here — partials are never
+    rewritten, because a corrected partial that changes again a word later is
+    worse than an uncorrected one.
+    """
+
+    def __init__(
+        self, ctx: context.GatewayContext, websocket: WebSocket, pending: PendingFinal
+    ) -> None:
+        self.ctx = ctx
+        self.websocket = websocket
+        self.pending = pending
+
+    async def send(self) -> None:
+        try:
+            payload = await self._payload()
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:  # noqa: BLE001 - reported to the client, not raised
+            await _StreamGate.send_error(self.websocket, error)
+            return
+        with suppress(RuntimeError, WebSocketDisconnect):
+            await self.websocket.send_json(payload)
+            await self.websocket.close(code=1000)
+
+    async def _payload(self) -> dict[str, Any]:
+        pending = self.pending
+        final = await self.ctx.service.cleanup.finalize(
+            pending.transcript,
+            style=pending.style,
+            language=pending.language,
+            options=self._options(),
+        )
+        payload: dict[str, Any] = {
+            MESSAGE_TYPE_KEY: COMPLETE_MESSAGE,
+            "transcript": final.transcript,
+        }
+        if final.cleanup.status in _REPORTED_STATUSES:
+            payload["original_transcript"] = final.original_transcript
+            payload["cleanup"] = serializers.cleanup_result(final.cleanup).model_dump(mode="json")
+        return payload
+
+    def _options(self) -> CleanupOptions:
+        manager = self.ctx.cleanup
+        if manager is None:
+            return CleanupOptions()
+        return manager.options(self.pending.cleanup_mode)
+
+
 @router.websocket("/v1/stream")
 async def stream_transcription(websocket: WebSocket) -> None:
     """Experimental float32 PCM stream for a streaming-capable engine.
@@ -257,4 +352,8 @@ async def stream_transcription(websocket: WebSocket) -> None:
         engine = await _StreamGate.engine_or_close(websocket, selected_engine)
         if engine is None:
             return
-        await _StreamSession(websocket, engine).run()
+        pending = await _StreamSession(websocket, engine).run()
+    # The lease and the streaming lock are both gone by here, so the optional
+    # cleanup pass cannot hold a speech engine open behind it.
+    if pending is not None:
+        await _StreamFinalizer(ctx, websocket, pending).send()

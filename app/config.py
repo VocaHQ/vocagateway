@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import ipaddress
 import os
 import secrets
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 DEFAULT_HANDY_FALLBACK_MODEL = "handy-computer/whisper-base-gguf/whisper-base-Q8_0.gguf"
 WILDCARD_BIND_HOST = "0.0.0.0"
@@ -15,6 +17,15 @@ CONFIGURATION_DIRECTORY_MODE = 0o700
 TOKEN_FILE_MODE = 0o600
 TOKEN_SECRET_BYTES = 48
 FILE_WRITE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+TRUTHY_VALUES = frozenset(("1", "true", "yes", "on"))
+FALSY_VALUES = frozenset(("0", "false", "no", "off"))
+# Hosts an operator may point transcript cleanup at. The runtime is part of the
+# local deployment, not a service to be reached across a network: loopback for a
+# native install, a private address or a bare Compose service name for a
+# container. Anything routable is refused at startup rather than silently
+# turning a "runs on your gateway" promise into a request to somebody else.
+LOOPBACK_HOST_NAMES = frozenset(("localhost", "127.0.0.1", "::1"))
+MAXIMUM_PORT = 65_535
 
 
 def format_host_port(host: str, port: int) -> str:
@@ -34,6 +45,71 @@ def local_webui_url(host: str, port: int) -> str:
 
 def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, "").strip() or default
+
+
+def _env_flag(name: str) -> bool | None:
+    """A tri-state environment switch: on, off, or "the operator said nothing".
+
+    The difference matters for cleanup, where an unset variable has to leave the
+    saved WebUI choice alone rather than override it with a default.
+    """
+    raw = _env(name).lower()
+    if raw in TRUTHY_VALUES:
+        return True
+    return False if raw in FALSY_VALUES else None
+
+
+def _env_seconds(name: str) -> float | None:
+    raw = _env(name)
+    if not raw:
+        return None
+    try:
+        seconds = float(raw)
+    except ValueError as error:
+        raise RuntimeError(f"{name} must be a number of seconds.") from error
+    return seconds
+
+
+def _env_codes(name: str) -> tuple[str, ...]:
+    raw = _env(name)
+    codes = (code.strip() for code in raw.replace(";", ",").split(","))
+    return tuple(code for code in codes if code)
+
+
+def parse_local_endpoint(raw: str, *, name: str) -> tuple[str, int]:
+    """Parse `host:port`, refusing anything that is not part of this deployment.
+
+    No scheme, no path, no credentials: a URL would invite a redirect or a proxy
+    into a path that is deliberately a raw socket to a fixed address.
+    """
+    if "://" in raw or "/" in raw or "@" in raw:
+        raise RuntimeError(f"{name} must be host:port, without a scheme or path.")
+    host, separator, port_text = raw.rpartition(":")
+    if not separator or not host or not port_text.isdigit():
+        raise RuntimeError(f"{name} must be host:port.")
+    host = host.strip("[]")
+    port = int(port_text)
+    if not 1 <= port <= MAXIMUM_PORT:
+        raise RuntimeError(f"{name} has a port outside 1-{MAXIMUM_PORT}.")
+    if not _is_local_host(host):
+        raise RuntimeError(
+            f"{name} must name a loopback address, a private address, or a "
+            "container service on this deployment's own network."
+        )
+    return host, port
+
+
+def _is_local_host(host: str) -> bool:
+    if host.lower() in LOOPBACK_HOST_NAMES:
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        # Not an address at all. A bare label with no dots is a Compose service
+        # name on the deployment's own private network; a dotted name is a
+        # public DNS name and is refused.
+        return "." not in host and bool(host)
+    return address.is_loopback or address.is_private
 
 
 def _env_path(name: str, default: Path) -> Path:
@@ -89,6 +165,22 @@ class Settings:
     delete_successful_audio: bool = True
     maximum_concurrent_transcriptions: int = 1
     debug: bool = False
+    # Transcript cleanup. Every one of these is an *override*: None or empty
+    # means "the operator said nothing here", which leaves the saved WebUI
+    # choice in charge. A set value wins over the UI and is reported as locked
+    # rather than pretending a save changed it.
+    cleanup_enabled: bool | None = None
+    cleanup_mode: str | None = None
+    cleanup_model: str | None = None
+    cleanup_timeout_seconds: float | None = None
+    cleanup_languages: tuple[str, ...] = ()
+    # Operator-only. An explicit `llama-server` executable for the gateway to
+    # launch, or an address of a server the operator runs themselves. Setting
+    # the address gives up gateway-controlled warm-up and idle unloading,
+    # because the gateway then does not own the process.
+    cleanup_binary: Path | None = None
+    cleanup_endpoint: tuple[str, int] | None = None
+    cleanup_api_key: str | None = None
 
     def resolved_models_dir(self) -> Path:
         if self.models_dir is None:
@@ -154,13 +246,32 @@ class Settings:
             port=int(_env("VOCAGATEWAY_PORT", "8765")),
             retention_hours=int(_env("VOCAGATEWAY_RETENTION_HOURS", "24")),
             delete_successful_audio=_env("VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO", "true").lower()
-            in {"1", "true", "yes"},
-            debug=_env("VOCAGATEWAY_DEBUG", "false").lower() in {"1", "true", "yes"},
+            in TRUTHY_VALUES,
+            debug=_env("VOCAGATEWAY_DEBUG", "false").lower() in TRUTHY_VALUES,
+            **cls._cleanup_env(),
         )
 
     @property
     def token_file_display(self) -> str:
         return self._display_path(self.token_file)
+
+    @classmethod
+    def _cleanup_env(cls) -> dict[str, Any]:
+        endpoint = _env("VOCAGATEWAY_CLEANUP_ENDPOINT")
+        return {
+            "cleanup_enabled": _env_flag("VOCAGATEWAY_CLEANUP_ENABLED"),
+            "cleanup_mode": _env("VOCAGATEWAY_CLEANUP_MODE").lower() or None,
+            "cleanup_model": _env("VOCAGATEWAY_CLEANUP_MODEL") or None,
+            "cleanup_timeout_seconds": _env_seconds("VOCAGATEWAY_CLEANUP_TIMEOUT_SECONDS"),
+            "cleanup_languages": _env_codes("VOCAGATEWAY_CLEANUP_LANGUAGES"),
+            "cleanup_binary": _optional_path("VOCAGATEWAY_CLEANUP_BINARY"),
+            "cleanup_endpoint": (
+                parse_local_endpoint(endpoint, name="VOCAGATEWAY_CLEANUP_ENDPOINT")
+                if endpoint
+                else None
+            ),
+            "cleanup_api_key": _env("VOCAGATEWAY_CLEANUP_API_KEY") or None,
+        }
 
     @classmethod
     def _display_path(cls, path: Path | str) -> str:

@@ -18,6 +18,7 @@ from app import (
     service,
     storage,
 )
+from app.cleanup.manager import CleanupManager
 from app.tokens import TokenStore
 
 VERSION = "0.1.0"
@@ -59,6 +60,10 @@ class GatewayContext:
     readiness: readiness.ReadinessMonitor
     pairing_config: runtime_config.RuntimeConfig
     config_path: Path
+    # Owned separately from the speech engine, and shut down separately: a
+    # cleanup runtime's lifecycle never touches an ASR selection. Optional only
+    # so a context can be assembled without one in a narrow test.
+    cleanup: CleanupManager | None = None
 
     def token_matches(self, supplied: str) -> bool:
         # Compared as bytes because `hmac.compare_digest` raises TypeError on

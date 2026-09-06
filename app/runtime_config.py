@@ -24,6 +24,19 @@ ENGINE_FIELD = "engine"
 IDLE_OFFLOAD_MINUTES = (10, 15, 30, 60, 120)
 DEFAULT_IDLE_OFFLOAD_MINUTES = 15
 
+# Transcript cleanup. Kept in its own block, saved through its own partial
+# update, and never touched by an engine or hardware save: changing whether
+# transcripts are corrected must not reset which model transcribes them.
+CLEANUP_OFF = "off"
+CLEANUP_CONSERVATIVE = "conservative"
+CLEANUP_MODES = (CLEANUP_OFF, CLEANUP_CONSERVATIVE)
+DEFAULT_CLEANUP_MODE = CLEANUP_OFF
+DEFAULT_CLEANUP_TIMEOUT_SECONDS = 5.0
+MINIMUM_CLEANUP_TIMEOUT_SECONDS = 1.0
+MAXIMUM_CLEANUP_TIMEOUT_SECONDS = 30.0
+CLEANUP_IDLE_UNLOAD_MINUTES = (5, 15, 30, 60, 120)
+DEFAULT_CLEANUP_IDLE_UNLOAD_MINUTES = 15
+
 
 @dataclass(slots=True)
 class RuntimeConfig:
@@ -42,6 +55,12 @@ class RuntimeConfig:
     cpu_threads: int = 0
     idle_offload_enabled: bool = False
     idle_offload_minutes: int = DEFAULT_IDLE_OFFLOAD_MINUTES
+    cleanup_enabled: bool = False
+    cleanup_mode: str = DEFAULT_CLEANUP_MODE
+    cleanup_model: str | None = None
+    cleanup_timeout_seconds: float = DEFAULT_CLEANUP_TIMEOUT_SECONDS
+    cleanup_idle_unload_enabled: bool = False
+    cleanup_idle_unload_minutes: int = DEFAULT_CLEANUP_IDLE_UNLOAD_MINUTES
     pairing_url: str | None = None
     pairing_urls: list[str] = field(default_factory=list)
 
@@ -53,6 +72,7 @@ class RuntimeConfig:
         fields = _parse_model_fields(payload)
         fields.update(_parse_hardware_fields(payload))
         fields.update(_parse_memory_fields(payload))
+        fields.update(_parse_cleanup_fields(payload))
         return cls(**fields)
 
     def save(self, path: Path) -> None:
@@ -71,6 +91,12 @@ class RuntimeConfig:
             "cpu_threads": self.cpu_threads,
             "idle_offload_enabled": self.idle_offload_enabled,
             "idle_offload_minutes": self.idle_offload_minutes,
+            "cleanup_enabled": self.cleanup_enabled,
+            "cleanup_mode": self.cleanup_mode,
+            "cleanup_model": self.cleanup_model,
+            "cleanup_timeout_seconds": self.cleanup_timeout_seconds,
+            "cleanup_idle_unload_enabled": self.cleanup_idle_unload_enabled,
+            "cleanup_idle_unload_minutes": self.cleanup_idle_unload_minutes,
             "pairing_url": self.pairing_url,
             "pairing_urls": self.pairing_urls,
         }
@@ -142,6 +168,36 @@ def _parse_memory_fields(payload: dict[str, Any]) -> dict[str, Any]:
             else DEFAULT_IDLE_OFFLOAD_MINUTES
         ),
     }
+
+
+def _parse_cleanup_fields(payload: dict[str, Any]) -> dict[str, Any]:
+    """Read the cleanup block, defaulting anything unrecognised back to off.
+
+    A config file written by a newer build, hand-edited, or truncated must not
+    be able to turn transcript correction on by accident: every field falls back
+    to the shipped default rather than to whatever happens to be in the file.
+    """
+    mode = payload.get("cleanup_mode")
+    idle_minutes = payload.get("cleanup_idle_unload_minutes")
+    return {
+        "cleanup_enabled": payload.get("cleanup_enabled") is True,
+        "cleanup_mode": mode if mode in CLEANUP_MODES else DEFAULT_CLEANUP_MODE,
+        "cleanup_model": _optional_str(payload.get("cleanup_model")),
+        "cleanup_timeout_seconds": clamp_cleanup_timeout(payload.get("cleanup_timeout_seconds")),
+        "cleanup_idle_unload_enabled": payload.get("cleanup_idle_unload_enabled") is True,
+        "cleanup_idle_unload_minutes": (
+            idle_minutes
+            if isinstance(idle_minutes, int) and idle_minutes in CLEANUP_IDLE_UNLOAD_MINUTES
+            else DEFAULT_CLEANUP_IDLE_UNLOAD_MINUTES
+        ),
+    }
+
+
+def clamp_cleanup_timeout(raw: Any) -> float:
+    """Hold the total cleanup deadline inside its supported range."""
+    if not isinstance(raw, int | float) or isinstance(raw, bool):
+        return DEFAULT_CLEANUP_TIMEOUT_SECONDS
+    return float(min(MAXIMUM_CLEANUP_TIMEOUT_SECONDS, max(MINIMUM_CLEANUP_TIMEOUT_SECONDS, raw)))
 
 
 def _clean_urls(raw_urls: Any) -> list[str]:

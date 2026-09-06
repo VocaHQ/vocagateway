@@ -7,10 +7,12 @@ from fastapi import APIRouter, Depends, Header, Request, Response
 from starlette.status import HTTP_409_CONFLICT
 
 from app.audio import save_streamed_upload, validate_audio_upload_headers
-from app.context import GatewayContextDependency, require_token
+from app.cleanup.base import MILLISECONDS_PER_SECOND, CleanupOptions
+from app.context import GatewayContext, GatewayContextDependency, require_token
 from app.errors import APIProblem
 from app.schemas import CreateSessionRequest, DeleteResponse, ModelResponse, SessionResponse
 from app.serializers import session_response
+from app.storage import CleanupSnapshot
 
 router = APIRouter(dependencies=[Depends(require_token)])
 
@@ -28,8 +30,35 @@ async def models(ctx: GatewayContextDependency) -> list[ModelResponse]:
 async def create_session(
     body: CreateSessionRequest, ctx: GatewayContextDependency
 ) -> SessionResponse:
-    stored = ctx.repository.create_or_get(body.client_session_id, body.language, body.style)
+    """Create a session, pinning the processing options it will be finished under.
+
+    Resolved once, here. A repeated create with the same id returns the original
+    session and its snapshot, so a retry with a different preference cannot
+    change a decision the first call already made.
+    """
+    stored = ctx.repository.create_or_get(
+        body.client_session_id,
+        body.language,
+        body.style,
+        cleanup_snapshot(ctx, body.cleanup),
+    )
     return session_response(stored)
+
+
+def cleanup_snapshot(ctx: GatewayContext, requested: str) -> CleanupSnapshot:
+    manager = ctx.cleanup
+    if manager is None:
+        return CleanupSnapshot()
+    return snapshot_of(manager.options(requested))
+
+
+def snapshot_of(options: CleanupOptions) -> CleanupSnapshot:
+    return CleanupSnapshot(
+        mode=options.mode,
+        model_id=options.model_id,
+        prompt_version=options.prompt_version,
+        timeout_ms=int(options.timeout_seconds * MILLISECONDS_PER_SECOND),
+    )
 
 
 @router.get("/v1/sessions/{session_id}", response_model=SessionResponse)

@@ -294,6 +294,11 @@ async def test_status_reports_system_and_setup(
         "audio_duration_ms": None,
         "real_time_factor": None,
         "peak_memory_mb": None,
+        "cleanup_applied": 0,
+        "cleanup_unchanged": 0,
+        "cleanup_fallback": 0,
+        "cleanup_last_ms": None,
+        "cleanup_reasons": {},
         "history": payload[METRICS_KEY]["history"],
     }
     assert isinstance(payload[METRICS_KEY]["history"], list)

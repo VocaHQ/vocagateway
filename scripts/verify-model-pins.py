@@ -30,6 +30,8 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.catalog import _BASE_CATALOG, PINS_PATH, CatalogModel  # noqa: E402
+from app.cleanup.catalog import _BASE_CATALOG as _CLEANUP_CATALOG  # noqa: E402
+from app.cleanup.catalog import PINS_PATH as CLEANUP_PINS_PATH  # noqa: E402
 from app.model_manager import (  # noqa: E402
     _RETRYABLE_NETWORK_ERRORS,
     HF_BASE_URL,
@@ -110,8 +112,15 @@ def check(model: CatalogModel, record: dict[str, Any]) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--only", default="", help="Only check model ids with this prefix.")
-    parser.add_argument("--pins", type=Path, default=PINS_PATH)
+    parser.add_argument(
+        "--cleanup",
+        action="store_true",
+        help="Check the transcript-cleanup pins instead of the speech-model ones.",
+    )
+    parser.add_argument("--pins", type=Path, default=None)
     args = parser.parse_args()
+    if args.pins is None:
+        args.pins = CLEANUP_PINS_PATH if args.cleanup else PINS_PATH
 
     try:
         pins = json.loads(args.pins.read_text(encoding="utf-8")).get("models", {})
@@ -119,7 +128,12 @@ def main() -> int:
         print(f"Could not read {args.pins}: {error}", file=sys.stderr)
         return 1
 
-    models = {m.id: m for m in _BASE_CATALOG}
+    catalog = (
+        [model.as_catalog_model() for model in _CLEANUP_CATALOG]
+        if args.cleanup
+        else list(_BASE_CATALOG)
+    )
+    models = {m.id: m for m in catalog}
     checked = mismatched = skipped = 0
     for model_id, record in sorted(pins.items()):
         if not model_id.startswith(args.only):

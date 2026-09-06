@@ -9,9 +9,10 @@ from fastapi import APIRouter, Depends, Form, Header, Query, Request
 from fastapi.responses import HTMLResponse
 from starlette.status import HTTP_409_CONFLICT, HTTP_422_UNPROCESSABLE_CONTENT
 
-from app import admin_queries, audio, errors, pairing_view
+from app import admin_queries, audio, errors, pairing_view, serializers, service
+from app.cleanup.base import MODE_CONSERVATIVE, MODE_OFF, CleanupOptions, CleanupStatus
 from app.context import TOKEN_FILE_HINT, GatewayContextDependency, require_token
-from app.fragments import settings, test_panel, tokens
+from app.fragments import cleanup, settings, test_panel, tokens
 from app.fragments.engine import engine_update_fragment
 from app.runtime_config import DEFAULT_IDLE_OFFLOAD_MINUTES
 from app.schemas import (
@@ -24,6 +25,9 @@ from app.schemas import (
 
 router = APIRouter(dependencies=[Depends(require_token)])
 TestLanguageQuery = Annotated[str, Query(pattern=r"^[A-Za-z-]+$|^auto$")]
+# The mic test always states its choice rather than inheriting the gateway
+# default, so a raw benchmark stays raw whatever the operator has enabled.
+TestCleanupQuery = Annotated[str, Query(pattern=r"^(?:off|conservative)$")]
 ContentTypeHeader = Annotated[str | None, Header()]
 ContentLengthHeader = Annotated[int | None, Header()]
 EngineForm = Annotated[str, Form()]
@@ -83,6 +87,7 @@ async def test_transcription(
     request: Request,
     ctx: GatewayContextDependency,
     language: TestLanguageQuery = "auto",
+    cleanup_mode: TestCleanupQuery = MODE_OFF,
     content_type: ContentTypeHeader = None,
     content_length: ContentLengthHeader = None,
 ) -> TestTranscriptionResponse:
@@ -95,13 +100,34 @@ async def test_transcription(
         suffix,
         max_bytes,
     )
+    style, options = _test_processing(ctx, cleanup_mode)
     try:
-        outcome = await ctx.service.transcribe_adhoc(final, language)
+        outcome = await ctx.service.transcribe_adhoc(final, language, style=style, cleanup=options)
     except BaseException:
+        # Includes a failed transcription: the uploaded clip is removed either
+        # way, so a failure never leaves a recording behind on disk.
         final.unlink(missing_ok=True)
         raise
     final.unlink(missing_ok=True)
+    return _test_response(outcome)
+
+
+def _test_processing(
+    ctx: GatewayContextDependency, cleanup_mode: str
+) -> tuple[str, CleanupOptions | None]:
+    manager = ctx.cleanup
+    if cleanup_mode == MODE_CONSERVATIVE and manager is not None:
+        return service.ADHOC_CLEANUP_STYLE, manager.options(MODE_CONSERVATIVE)
+    return service.RAW_STYLE, None
+
+
+def _test_response(outcome: service.AdhocTranscription) -> TestTranscriptionResponse:
     timing = outcome.timing
+    cleanup_outcome = outcome.cleanup
+    # `disabled` is reported as nothing at all, so a raw benchmark's response is
+    # the same shape it has always been.
+    ran = cleanup_outcome is not None and cleanup_outcome.status is not CleanupStatus.DISABLED
+    reported = serializers.cleanup_result(cleanup_outcome) if ran and cleanup_outcome else None
     return TestTranscriptionResponse(
         transcript=outcome.transcript,
         engine=outcome.engine,
@@ -112,6 +138,9 @@ async def test_transcription(
         audio_duration_ms=timing.audio_duration_ms,
         real_time_factor=timing.real_time_factor,
         peak_memory_mb=timing.peak_memory_mb,
+        original_transcript=outcome.original_transcript,
+        cleanup=reported,
+        cleanup_ms=reported.duration_ms if reported else 0,
     )
 
 
@@ -130,6 +159,9 @@ async def ui_settings(ctx: GatewayContextDependency) -> HTMLResponse:
             ctx.settings.bind_host,
             ctx.settings.port,
             tokens.tokens_fragment_str(ctx),
+            cleanup.cleanup_card(
+                admin_queries.cleanup_config(ctx), admin_queries.cleanup_model_entries(ctx)
+            ),
         )
     )
 

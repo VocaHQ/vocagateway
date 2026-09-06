@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
+from app.cleanup.base import MODE_OFF, CleanupOutcome
 from app.metrics import MetricsSnapshot, PipelineTiming
 from app.schemas import (
     AdminModelEntry,
+    CleanupResult,
     MetricsHistoryPoint,
     OperationalMetricsStatus,
+    ResolvedCleanupMode,
     SessionResponse,
 )
 from app.storage import StoredSession
@@ -18,9 +23,44 @@ def session_response(stored: StoredSession) -> SessionResponse:
         language=stored.language,
         style=stored.style,
         transcript=stored.transcript,
+        original_transcript=stored.original_transcript,
+        cleanup=stored_cleanup(stored),
         error_code=stored.error_code,
         created_at=stored.created_at,
         updated_at=stored.updated_at,
+    )
+
+
+def stored_cleanup(stored: StoredSession) -> CleanupResult | None:
+    """The cleanup block for a session, or None when there is nothing to report.
+
+    A legacy row and a cleanup-off session both answer None rather than an empty
+    object, so a client that predates the feature sees the response it always
+    saw. An old row with no stored original reports null — never an original
+    manufactured by treating an already styled transcript as raw.
+    """
+    record = stored.cleanup_result
+    if stored.cleanup.mode == MODE_OFF and record.status is None:
+        return None
+    return CleanupResult(
+        requested=cast(ResolvedCleanupMode, stored.cleanup.mode),
+        status=cast(Any, record.status or "disabled"),
+        reason=record.reason,
+        model_id=stored.cleanup.model_id,
+        prompt_version=stored.cleanup.prompt_version,
+        duration_ms=record.duration_ms or 0,
+    )
+
+
+def cleanup_result(outcome: CleanupOutcome) -> CleanupResult:
+    """Serialize a live outcome for a one-shot or streaming response."""
+    return CleanupResult(
+        requested=cast(ResolvedCleanupMode, outcome.requested),
+        status=cast(Any, str(outcome.status)),
+        reason=outcome.reason_name,
+        model_id=outcome.model_id,
+        prompt_version=outcome.prompt_version,
+        duration_ms=outcome.duration_ms,
     )
 
 
@@ -36,6 +76,11 @@ def metrics_status(metrics: MetricsSnapshot) -> OperationalMetricsStatus:
         rejected_transcriptions=metrics.rejected_transcriptions,
         average_latency_ms=metrics.average_latency_ms,
         last_latency_ms=metrics.last_latency_ms,
+        cleanup_applied=metrics.cleanup.applied,
+        cleanup_unchanged=metrics.cleanup.unchanged,
+        cleanup_fallback=metrics.cleanup.fallback,
+        cleanup_last_ms=metrics.cleanup.last_ms,
+        cleanup_reasons=dict(metrics.cleanup.reasons),
         **_pipeline_metrics(pipeline),
         history=[
             MetricsHistoryPoint(

@@ -12,6 +12,7 @@ Environment variables and on-disk paths use the `vocagateway` prefix.
 - [On-disk paths (native)](#on-disk-paths-native)
 - [QR pairing payload](#qr-pairing-payload)
 - [Environment variables](#environment-variables) — [gateway process](#gateway-process) · [Compose-only](#compose-only-not-read-by-a-native-process)
+- [Transcript cleanup](#transcript-cleanup)
 - [Stale names (not read)](#stale-names-not-read)
 - [VocaLinux remote_api](#vocalinux-remote_api)
 - [Related docs](#related-docs)
@@ -93,6 +94,14 @@ variable. `compose.yaml` forwards only the keys it names, so a variable marked
 | `VOCAGATEWAY_HANDY_BINARY` | `/Applications/Handy.app/Contents/MacOS/handy` | ignored — macOS only | Optional Handy binary |
 | `VOCAGATEWAY_HANDY_MODEL` | unset | ignored — macOS only | Pin a Handy model id |
 | `VOCAGATEWAY_HANDY_FALLBACK_MODEL` | `handy-computer/whisper-base-gguf/whisper-base-Q8_0.gguf` | ignored — macOS only | Model used when the pinned Handy model is missing |
+| `VOCAGATEWAY_CLEANUP_ENABLED` | unset | forwarded | Force transcript cleanup on or off. **Unset is not "off"** — it leaves the WebUI's saved choice in charge. Setting it locks the toggle in the UI |
+| `VOCAGATEWAY_CLEANUP_MODE` | unset | forwarded | Gateway default mode: `off` or `conservative`. Only reached when cleanup is enabled |
+| `VOCAGATEWAY_CLEANUP_MODEL` | unset | forwarded | Pin a cleanup model id, e.g. `cleanup:qwen3-0.6b` |
+| `VOCAGATEWAY_CLEANUP_TIMEOUT_SECONDS` | unset (`5`) | forwarded | Total deadline for one correction, 1–30 s. Past it the plain transcript is returned |
+| `VOCAGATEWAY_CLEANUP_LANGUAGES` | unset (the model's list) | forwarded | Comma-separated allowlist of languages cleanup may run for |
+| `VOCAGATEWAY_CLEANUP_BINARY` | `llama-server` on `PATH` | ignored — no runtime in the image | Explicit `llama-server` for the gateway to launch and own |
+| `VOCAGATEWAY_CLEANUP_ENDPOINT` | unset | forwarded | `host:port` of a cleanup server the **operator** runs (the Compose sidecar, or one started by hand). Setting it gives up gateway-controlled warm-up and idle unloading, because the gateway then does not own the process. Only loopback, private addresses, and bare container service names are accepted; anything routable is refused at startup |
+| `VOCAGATEWAY_CLEANUP_API_KEY` | unset | forwarded, **and** mounted into the sidecar as the `vocagateway_cleanup_key` secret | Credential the gateway presents to that server. A client's bearer token is never forwarded |
 
 `VOCAGATEWAY_ENGINE` accepts `auto`, `sherpa-onnx`, `faster-whisper`,
 `moonshine`, `whisper.cpp`, `mlx-audio`, `whisperkit`, `vocamac`, or `handy`.
@@ -120,12 +129,54 @@ git; see [Stamping the build commit](../README.md#stamping-the-build-commit).
 | `VOCAGATEWAY_BUILD_JOBS` | builder CPU count | Maximum concurrent `whisper.cpp` compile jobs; lower it when a build is memory constrained |
 | `VOCAGATEWAY_RENDER_GID` | `993` | Host render-group GID added to the Vulkan container |
 | `VOCAGATEWAY_VIDEO_GID` | `44` | Host video-group GID added to the Vulkan container |
+| `VOCAGATEWAY_CLEANUP_IMAGE` | `ghcr.io/ggml-org/llama.cpp:server` | Image for the opt-in `cleanup` sidecar. Pin it by digest before relying on it |
+| `VOCAGATEWAY_CLEANUP_MODEL_DIR` | `./models` | Host directory mounted read-only at `/models` in the sidecar |
+| `VOCAGATEWAY_CLEANUP_MODEL_FILE` | `/models/model.gguf` | Path *inside* the sidecar to the GGUF it loads |
 
 Container defaults for data paths are under `/data` (and the token secret under
 `/run/secrets/vocagateway_token`). The four build and Vulkan values above are
 Compose interpolation inputs, not gateway-process environment variables. See
 [Tuning the whisper.cpp build](deployment.md#tuning-the-whispercpp-build) and
 [Giving the Vulkan container access to the GPU](deployment.md#giving-the-vulkan-container-access-to-the-gpu).
+
+## Transcript cleanup
+
+Optional, off by default, and off again unless an operator installs a model and
+turns it on. It runs **after** speech recognition, on the recognised text only:
+audio never reaches it, and nothing it does can turn a successful transcription
+into a failed one. Where it cannot finish safely — no model, wrong language,
+text too long, busy, timed out, or an edit the checks refuse — the gateway
+returns exactly the transcript it would have returned with the feature off.
+
+Two deployment shapes, and they are not interchangeable:
+
+- **Managed** (native). The gateway launches and owns a `llama-server` on
+  loopback with an ephemeral, unpublished port and a credential of its own. It
+  can be warmed from the settings page and unloaded when idle.
+- **External** (`VOCAGATEWAY_CLEANUP_ENDPOINT`). The operator runs the server —
+  the Compose `cleanup` profile, or one started by hand for evaluation. The
+  gateway will use it but promises nothing about its lifecycle, because it does
+  not own the process.
+
+Requests choose per call. Sessions and `/v1/stream` take
+`cleanup: "off" | "conservative" | "inherit"` (default `inherit`);
+`POST /v1/audio/transcriptions` takes a multipart `cleanup=off|conservative`
+field that defaults to `off`. `GET /v1/capabilities` reports what this gateway
+actually supports, so a client can stop offering a mode it cannot get. An older
+gateway answers `404` there — omit the new fields when that happens, because
+the session schema rejects unknown ones rather than ignoring them.
+
+Two things it deliberately does not do. **Raw is never corrected**, whatever a
+request asks for. And a transcript whose language is left on `auto` is only
+corrected when its writing system names one supported language on its own —
+Latin script does not, so an `auto` English dictation falls back with
+`unsupported_language` rather than being sent to an English-tuned corrector on
+the strength of its alphabet. Ask for `en` explicitly to have it corrected.
+
+The `original_transcript` field carries the recognised text before correction,
+for sessions that opted in — including ones where cleanup fell back. It lives
+under the same retention and deletion rules as the transcript, and is absent
+(`null`) for legacy and cleanup-off sessions rather than reconstructed.
 
 ## Stale names (not read)
 

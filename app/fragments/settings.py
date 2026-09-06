@@ -13,6 +13,7 @@ def settings_fragment(
     bind_host: str,
     port: int,
     tokens_html: str,
+    cleanup_html: str = "",
 ) -> str:
     return render(
         "settings/page.html",
@@ -36,6 +37,7 @@ def settings_fragment(
             (minutes, _idle_duration_label(minutes)) for minutes in IDLE_OFFLOAD_MINUTES
         ],
         tokens_html=tokens_html,
+        cleanup_html=cleanup_html,
     )
 
 

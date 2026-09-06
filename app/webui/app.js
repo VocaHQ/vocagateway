@@ -279,7 +279,11 @@
 
   document.body.addEventListener("htmx:afterSwap", (event) => {
     scheduleModelPoll();
-    if (document.getElementById("test-language")) syncTestLanguages();
+    if (document.getElementById("test-language")) {
+      syncTestLanguages();
+  syncTestCleanup();
+      syncTestCleanup();
+    }
     // Models tab shell (or list refresh) may reintroduce filter controls.
     if (
       event.detail &&
@@ -719,6 +723,58 @@
     note.classList.toggle("hidden", !mustChoose);
   }
 
+  // Only offer the cleanup switch where it can actually do something. A
+  // gateway with no model installed would otherwise show a control whose only
+  // possible outcome is a fallback.
+  async function syncTestCleanup() {
+    const field = document.getElementById("test-cleanup-field");
+    if (!field) return;
+    let capabilities;
+    try {
+      const response = await fetch("/v1/capabilities", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!response.ok) return;
+      capabilities = await response.json();
+    } catch (_) {
+      return;
+    }
+    const cleanup = capabilities.cleanup || {};
+    field.classList.toggle("hidden", !cleanup.supported);
+  }
+
+  // Renders the original text beside the final one, and says in words what
+  // cleanup did. Both texts go in through textContent: a transcript is data,
+  // never markup, and never Markdown a browser would render.
+  function renderCleanupComparison(payload) {
+    const block = document.getElementById("test-original-block");
+    const original = document.getElementById("test-original");
+    const statusLine = document.getElementById("test-cleanup-status");
+    if (!block || !original || !statusLine) return;
+    const cleanup = payload.cleanup;
+    const changed = Boolean(cleanup && payload.original_transcript
+      && payload.original_transcript !== payload.transcript);
+    original.textContent = payload.original_transcript || "";
+    block.classList.toggle("hidden", !changed);
+    statusLine.textContent = cleanup ? describeCleanup(cleanup) : "";
+    statusLine.classList.toggle("hidden", !cleanup);
+  }
+
+  function describeCleanup(cleanup) {
+    const reason = cleanup.reason ? ` (${cleanup.reason.replace(/_/g, " ")})` : "";
+    const wording = {
+      applied: "Cleanup applied.",
+      unchanged: "Cleanup ran and changed nothing.",
+      skipped: "Cleanup skipped",
+      fallback: "Cleanup did not run; this is the plain transcript",
+      disabled: "Cleanup is off.",
+    };
+    const base = wording[cleanup.status] || `Cleanup: ${cleanup.status}`;
+    return cleanup.status === "skipped" || cleanup.status === "fallback"
+      ? `${base}${reason}.`
+      : base;
+  }
+
   // ---------------------------------------------------------------- recorder
 
   let recorder = null;
@@ -760,6 +816,7 @@
     // The engine can change from another tab without this panel reswapping,
     // so the picker is reconciled against the live model, not the last swap.
     await syncTestLanguages();
+    await syncTestCleanup();
 
     const mimeType = pickMimeType();
     if (!mimeType) {
@@ -791,18 +848,24 @@
       const blob = new Blob(chunks, { type: mimeType.split(";")[0] });
       try {
         const language = document.getElementById("test-language").value;
+        // Sent explicitly on every run. The gateway default is deliberately not
+        // inherited here, so "Off (raw)" measures the raw pipeline whatever the
+        // operator has enabled for their clients.
+        const cleanupMode = document.getElementById("test-cleanup").value;
         const runs = Number(document.getElementById("test-runs").value) || 1;
         const payloads = [];
         for (let run = 0; run < runs; run += 1) {
           status.textContent = runs > 1 ? `Benchmarking... run ${run + 1} of ${runs}` : "Transcribing...";
-          const response = await fetch(`/v1/admin/test-transcription?language=${language}`, {
+          const response = await fetch(
+            `/v1/admin/test-transcription?language=${language}&cleanup_mode=${cleanupMode}`, {
             method: "POST",
             headers: {
               Authorization: `Bearer ${getToken()}`,
               "Content-Type": blob.type,
             },
             body: blob,
-          });
+          },
+          );
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error?.message || "Transcription failed.");
           payloads.push(payload);
@@ -814,6 +877,7 @@
         ) / measuredPayloads.length;
         const formatMs = (value) => value >= 1000 ? `${(value / 1000).toFixed(2)}s` : `${Math.round(value)}ms`;
         document.getElementById("test-transcript").textContent = payload.transcript;
+        renderCleanupComparison(payload);
         document.getElementById("test-meta").textContent =
           runs > 1
             ? `${payload.engine} · warm average of runs 2-${runs}; model load is run 1`
@@ -822,6 +886,8 @@
         document.getElementById("benchmark-normalize").textContent = formatMs(average("normalization_ms"));
         document.getElementById("benchmark-load").textContent = formatMs(payloads[0].model_load_ms);
         document.getElementById("benchmark-inference").textContent = formatMs(average("inference_ms"));
+        document.getElementById("benchmark-cleanup").textContent =
+          payload.cleanup ? formatMs(average("cleanup_ms")) : "—";
         document.getElementById("benchmark-rtf").textContent =
           payload.real_time_factor == null ? "—" : `${average("real_time_factor").toFixed(2)}×`;
         document.getElementById("benchmark-memory").textContent =
@@ -953,6 +1019,7 @@
   initTheme();
   applyExposureBanner();
   syncTestLanguages();
+  syncTestCleanup();
 
   if (!getToken()) {
     showOverlay();

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from importlib import util as importlib_util
 from types import MappingProxyType
-from typing import Any
+from typing import Any, cast
 
 from app import schemas
 from app.build_info import current_commit
 from app.catalog import catalog_source_url, language_names, recommended_ids
+from app.cleanup import catalog as cleanup_catalog
 from app.config import Settings
 from app.context import BOOTSTRAP_TOKEN_ID, TOKEN_FILE_HINT, VERSION, GatewayContext
 from app.engine_state import active_model_path, available_engines, engine_id
@@ -15,6 +16,9 @@ from app.serializers import metrics_status, model_covers
 from app.system import SystemInfo, detect_system
 
 PYTHON_PACKAGE_PATH = "Python package"
+INSTALLED_STATE = "installed"
+DOWNLOADING_STATE = "downloading"
+NOT_INSTALLED_STATE = "not_installed"
 PYTHON_ENGINE_INSTALL_HINT = "Install vocagateway[engines] or use the Docker image"
 # One engine paired with the single runtime it needs.
 _EngineRuntime = tuple[str, schemas.DependencyStatus]
@@ -318,7 +322,7 @@ class _ModelEntryHelper:
             family="Custom Whisper",
             description="User-provided local model.",
             source="Local file",
-            state="installed",
+            state=INSTALLED_STATE,
             active=custom.path == self.active_path,
             offloaded=bool(
                 custom.path == self.active_path
@@ -355,16 +359,16 @@ class _ModelEntryHelper:
         return matching
 
     def _resolve_state(self, download: Any, inst: Any) -> _ModelState:
-        if download and download.status == "downloading":
+        if download and download.status == DOWNLOADING_STATE:
             progress = None
             if download.total_bytes:
                 progress = round(download.downloaded_bytes / download.total_bytes, 4)
-            return "downloading", progress, None
+            return DOWNLOADING_STATE, progress, None
         if inst:
-            return "installed", None, None
+            return INSTALLED_STATE, None, None
         if download and download.status == "failed":
-            return "not_installed", None, download.error
-        return "not_installed", None, None
+            return NOT_INSTALLED_STATE, None, download.error
+        return NOT_INSTALLED_STATE, None, None
 
 
 async def status_payload(ctx: GatewayContext) -> schemas.AdminStatusResponse:
@@ -422,7 +426,7 @@ def filtered_model_entries(
     helper = _ModelEntryHelper(ctx)
     entries = model_entries(ctx)
     if installed_only:
-        entries = [entry for entry in entries if entry.state == "installed"]
+        entries = [entry for entry in entries if entry.state == INSTALLED_STATE]
     entries = helper.filter_by_criteria(
         entries,
         language=language,
@@ -453,6 +457,96 @@ def token_entries(ctx: GatewayContext) -> list[schemas.DeviceTokenEntry]:
     return entries
 
 
+def cleanup_config(ctx: GatewayContext) -> schemas.CleanupConfigResponse:
+    """The cleanup block, as the settings page and a diagnostics bundle see it.
+
+    Carries no runtime address and no executable path: those are operator-only
+    settings, and a redacted bundle attached to a bug report has no reason to
+    describe the deployment's internal topology.
+    """
+    manager = ctx.cleanup
+    if manager is None:
+        return schemas.CleanupConfigResponse()
+    report = manager.status()
+    return schemas.CleanupConfigResponse(
+        enabled=report.enabled,
+        mode=cast(Any, report.mode),
+        model_id=report.model_id,
+        model_label=report.model_label,
+        model_installed=report.model_installed,
+        runtime_available=report.runtime_available,
+        managed=report.managed,
+        state=cast(Any, report.state),
+        timeout_seconds=report.timeout_seconds,
+        languages=list(report.languages),
+        evaluated_languages=list(report.evaluated_languages),
+        idle_unload_enabled=report.idle_unload_enabled,
+        idle_unload_minutes=report.idle_unload_minutes,
+        locked_settings=list(report.locked_settings),
+        detail=report.detail,
+    )
+
+
+def cleanup_model_entries(ctx: GatewayContext) -> list[schemas.CleanupModelEntry]:
+    """The cleanup catalog with each artifact's install state and provenance.
+
+    Deliberately its own list. A cleanup model must never appear among the
+    speech models: it cannot transcribe anything, and offering it as an engine
+    would be an invitation to select it as one.
+    """
+    manager = ctx.cleanup
+    active = manager.model_id if manager else None
+    return [_cleanup_entry(ctx, model, active) for model in cleanup_catalog.CLEANUP_CATALOG]
+
+
+def _cleanup_entry(
+    ctx: GatewayContext, model: cleanup_catalog.CleanupModel, active: str | None
+) -> schemas.CleanupModelEntry:
+    manager = ctx.cleanup
+    download = manager.models.download_state(model.id) if manager else None
+    installed = manager is not None and manager.models.installed_path(model.id) is not None
+    state, progress, error = _cleanup_state(download, installed=installed)
+    return schemas.CleanupModelEntry(
+        id=model.id,
+        label=model.label,
+        description=model.description,
+        runtime=model.runtime,
+        size_bytes=model.size_bytes,
+        minimum_ram_gb=model.minimum_ram_gb,
+        upstream_model=model.upstream_model,
+        quantization=model.quantization,
+        conversion_source=model.conversion_source,
+        chat_template_source=model.chat_template_source,
+        license_name=model.license_name,
+        license_notice=model.license_notice,
+        source_url=model.source_url,
+        revision=model.revision,
+        sha256=model.sha256,
+        installable=model.installable,
+        languages=list(model.candidate_languages),
+        evaluated_languages=list(model.evaluated_languages),
+        state=state,
+        active=model.id == active,
+        progress=progress,
+        downloaded_bytes=download.downloaded_bytes if download else None,
+        total_bytes=download.total_bytes if download else None,
+        error=error,
+    )
+
+
+def _cleanup_state(download: Any, *, installed: bool) -> _ModelState:
+    if download and download.status == DOWNLOADING_STATE:
+        progress = None
+        if download.total_bytes:
+            progress = round(download.downloaded_bytes / download.total_bytes, 4)
+        return DOWNLOADING_STATE, progress, None
+    if installed:
+        return INSTALLED_STATE, None, None
+    if download and download.status == "failed":
+        return NOT_INSTALLED_STATE, None, download.error
+    return NOT_INSTALLED_STATE, None, None
+
+
 def config_response(ctx: GatewayContext) -> schemas.ConfigResponse:
     rc = ctx.engine_manager.runtime_config if ctx.engine_manager else None
     if rc:
@@ -471,6 +565,7 @@ def config_response(ctx: GatewayContext) -> schemas.ConfigResponse:
             cpu_threads=rc.cpu_threads,
             idle_offload_enabled=rc.idle_offload_enabled,
             idle_offload_minutes=rc.idle_offload_minutes,
+            cleanup=cleanup_config(ctx),
         )
     return schemas.ConfigResponse(
         engine="custom",
@@ -487,4 +582,5 @@ def config_response(ctx: GatewayContext) -> schemas.ConfigResponse:
         cpu_threads=0,
         idle_offload_enabled=False,
         idle_offload_minutes=DEFAULT_IDLE_OFFLOAD_MINUTES,
+        cleanup=cleanup_config(ctx),
     )
