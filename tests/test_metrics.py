@@ -88,3 +88,24 @@ def test_runtime_metrics_history_samples_wh_aa(monkeypatch) -> None:
         clock.advance(METRICS_SAMPLE_INTERVAL_SECONDS)
         metrics.snapshot(sample=True)
     assert len(metrics.snapshot().history) == HISTORY_MAX
+
+
+def test_stream_activity_does_not_dequeue_a_batch_job() -> None:
+    metrics = RuntimeMetrics(2)
+    metrics.queued()
+    metrics.started(queued=False)
+    assert metrics.snapshot().queue_depth == 1
+    metrics.finished()
+    assert metrics.snapshot().active_transcriptions == 0
+
+
+def test_cleanup_latest_zero_duration_does_not_show_a_previous_pass() -> None:
+    metrics = RuntimeMetrics(1)
+    metrics.record_cleanup("applied", None, 250)
+    metrics.record_cleanup("disabled", None, 0)
+    metrics.record_cleanup("skipped", "raw_style", 0)
+    snapshot = metrics.snapshot().cleanup
+    assert snapshot.applied == 1
+    assert snapshot.disabled == 1
+    assert snapshot.skipped == 1
+    assert snapshot.last_ms == 0

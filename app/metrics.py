@@ -50,6 +50,8 @@ class CleanupCounters:
     applied: int = 0
     unchanged: int = 0
     fallback: int = 0
+    disabled: int = 0
+    skipped: int = 0
     last_ms: int | None = None
     reasons: tuple[tuple[str, int], ...] = ()
 
@@ -101,9 +103,10 @@ class RuntimeMetrics:
             if rejected:
                 self._rejected_transcriptions += 1
 
-    def started(self) -> None:
+    def started(self, *, queued: bool = True) -> None:
         with self._lock:
-            self._queue_depth = max(0, self._queue_depth - 1)
+            if queued:
+                self._queue_depth = max(0, self._queue_depth - 1)
             self._active_transcriptions += 1
 
     def finished(self) -> None:
@@ -116,9 +119,9 @@ class RuntimeMetrics:
         with self._lock:
             if success:
                 self._successful_transcriptions += 1
-                self._last_pipeline = timing
             else:
                 self._failed_transcriptions += 1
+            self._last_pipeline = timing if success else None
             _record_latency(self, latency_ms)
 
     def record_cleanup(self, status: str, reason: str | None, duration_ms: int) -> None:
@@ -134,8 +137,7 @@ class RuntimeMetrics:
                 self._cleanup_reasons[reason] = self._cleanup_reasons.get(reason, 0) + 1
             elif reason is not None and reason in self._cleanup_reasons:
                 self._cleanup_reasons[reason] += 1
-            if duration_ms > 0:
-                self._cleanup_last_ms = duration_ms
+            self._cleanup_last_ms = max(0, duration_ms)
 
     def snapshot(self, *, sample: bool = False) -> MetricsSnapshot:
         with self._lock:
@@ -165,6 +167,8 @@ class RuntimeMetrics:
             applied=totals.get(CLEANUP_APPLIED, 0),
             unchanged=totals.get(CLEANUP_UNCHANGED, 0),
             fallback=totals.get(CLEANUP_FALLBACK, 0),
+            disabled=totals.get("disabled", 0),
+            skipped=totals.get("skipped", 0),
             last_ms=self._cleanup_last_ms,
             reasons=tuple(sorted(self._cleanup_reasons.items())),
         )

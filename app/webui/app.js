@@ -180,6 +180,7 @@
     hideOverlay();
     openTabByName(document.querySelector(".tab.active")?.dataset.tab || "overview");
     htmx.ajax("GET", "/ui/partials/engine-pill", { target: "#engine-pill", swap: "outerHTML" });
+    htmx.ajax("GET", "/ui/partials/cleanup/pill", { target: "#cleanup-pill", swap: "outerHTML" });
     htmx.ajax("GET", "/ui/partials/exposure-banner", {
       target: "#exposure-banner",
       swap: "outerHTML",

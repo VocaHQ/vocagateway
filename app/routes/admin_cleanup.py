@@ -231,9 +231,18 @@ async def ui_cleanup(ctx: GatewayContextDependency) -> HTMLResponse:
     return _page(ctx)
 
 
+@router.get("/ui/partials/cleanup/library", response_class=HTMLResponse)
+async def ui_cleanup_library(ctx: GatewayContextDependency) -> HTMLResponse:
+    """Refresh downloads without replacing preview text or unsaved settings."""
+    return HTMLResponse(
+        cleanup_fragment.cleanup_library(admin_queries.cleanup_model_entries(ctx))
+        + cleanup_fragment.cleanup_status(admin_queries.cleanup_config(ctx), out_of_band=True)
+    )
+
+
 @router.get("/ui/partials/cleanup/status", response_class=HTMLResponse)
 async def ui_cleanup_status(ctx: GatewayContextDependency) -> HTMLResponse:
-    """Just the status strip, which is the only region that polls.
+    """Just the runtime status strip.
 
     Swapping the whole page every two seconds during a load would clear whatever
     someone had typed into the try-it box.

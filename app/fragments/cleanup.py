@@ -19,6 +19,7 @@ CLEANUP_CAVEAT = (
     "It only sees the recognised text, never the audio, so a word the speech "
     "model heard wrongly can still read as a sentence and will be left alone."
 )
+MUTED_TONE = "muted"
 TIMEOUT_CHOICES = (2.0, 3.0, 5.0, 8.0, 12.0)
 STATE_LABELS: MappingProxyType[str, tuple[str, str]] = MappingProxyType(
     {
@@ -35,10 +36,10 @@ STATE_LABELS: MappingProxyType[str, tuple[str, str]] = MappingProxyType(
 # actually gets, which is not always the same thing.
 STATE_SENTENCES: MappingProxyType[str, str] = MappingProxyType(
     {
-        "disabled": "Transcripts are returned exactly as the speech model produced them.",
+        "disabled": "Cleanup is disabled. Your usual writing style still applies.",
         "unavailable": "Nothing is being corrected: there is no usable model on this host yet.",
         "loading": "The model is loading. Dictations are returned uncorrected until it is ready.",
-        "ready": "Transcripts are being corrected.",
+        "ready": "The model is ready for supported languages. Raw text bypasses cleanup.",
         "offloaded": "Ready, but unloaded to save memory. The next correction loads it again.",
         "error": "The cleanup runtime failed to start, so transcripts are returned uncorrected.",
     }
@@ -71,13 +72,25 @@ def cleanup_page(
     )
 
 
-def cleanup_status(config: CleanupConfigResponse, message: str = "") -> str:
+def cleanup_pill(config: CleanupConfigResponse) -> str:
+    label, tone = STATE_LABELS.get(config.state, ("Unknown", MUTED_TONE))
+    return render("cleanup/pill.html", config=config, state_label=label, state_tone=tone)
+
+
+def cleanup_library(models: list[CleanupModelEntry]) -> str:
+    return render("cleanup/library.html", models=models)
+
+
+def cleanup_status(
+    config: CleanupConfigResponse, message: str = "", *, out_of_band: bool = False
+) -> str:
     """The one-glance answer, plus the steps still standing between here and it."""
-    label, tone = STATE_LABELS.get(config.state, ("Unknown", "muted"))
+    label, tone = STATE_LABELS.get(config.state, ("Unknown", MUTED_TONE))
     return render(
         "cleanup/status_card.html",
         config=config,
         message=message,
+        out_of_band=out_of_band,
         state_label=label,
         state_tone=tone,
         state_sentence=STATE_SENTENCES.get(config.state, ""),
@@ -135,7 +148,7 @@ def setup_steps(config: CleanupConfigResponse) -> list[SetupStep]:
             "Corrections turned on",
             "On by default for clients that do not ask for something else"
             if config.enabled and config.mode == "conservative"
-            else "Tick 'Correct transcripts by default' in Settings below",
+            else "Enable cleanup and choose Conservative in Settings below",
             config.enabled and config.mode == "conservative",
         ),
         SetupStep(
@@ -155,7 +168,18 @@ def _auto_language_options(languages: list[str]) -> list[tuple[str, str]]:
     when nothing knows the language: the speech engines do not report a
     detected one, and Latin script does not name one.
     """
-    return [("", "Do not guess (leave uncorrected)"), *((code, code) for code in languages)]
+    return [
+        ("", "Do not guess (leave uncorrected)"),
+        *(
+            (
+                code,
+                {"en": "English", "hi": "Hindi", "hinglish_roman": "Hinglish (Roman)"}.get(
+                    code, code
+                ),
+            )
+            for code in languages
+        ),
+    ]
 
 
 def _timeout_label(seconds: float) -> str:

@@ -1,0 +1,16 @@
+{% from "cleanup/model_card.html" import cleanup_model_card %}
+  <div class="card" id="cleanup-library"
+     {% if models | selectattr("state", "equalto", "downloading") | list %}
+     hx-get="/ui/partials/cleanup/library" hx-trigger="every 2s" hx-swap="outerHTML"
+     {% endif %}>
+    <div class="section-heading">
+      <h3>Cleanup models</h3>
+    </div>
+    <p class="muted">Choose a text model to run alongside your speech model.</p>
+    <div class="model-list cleanup-model-list" role="list">
+      {% for model in models %}
+      {{ cleanup_model_card(model) }}
+      {% endfor %}
+    </div>
+    <p class="cleanup-library-note">Verified downloads · Cleanup quality has not yet been benchmarked.</p>
+  </div>

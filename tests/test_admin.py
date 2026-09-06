@@ -297,6 +297,8 @@ async def test_status_reports_system_and_setup(
         "cleanup_applied": 0,
         "cleanup_unchanged": 0,
         "cleanup_fallback": 0,
+        "cleanup_disabled": 0,
+        "cleanup_skipped": 0,
         "cleanup_last_ms": None,
         "cleanup_reasons": {},
         "history": payload[METRICS_KEY]["history"],

@@ -1,8 +1,9 @@
 {# The one-glance answer to "is this on, and will it actually correct anything".
-   Its own partial because it is the only region that polls: a load takes
+   Its own partial so runtime polling stays separate from editing: a load takes
    minutes, and refreshing the whole page underneath someone mid-sentence in the
    try-it box would be its own bug. #}
 <div class="card cleanup-status-card" id="cleanup-status"
+     {% if out_of_band %}hx-swap-oob="outerHTML"{% endif %}
      {%- if config.state == "loading" %}
      hx-get="/ui/partials/cleanup/status" hx-trigger="every 2s" hx-swap="outerHTML"
      {%- endif %}>

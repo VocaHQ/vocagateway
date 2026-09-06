@@ -576,10 +576,10 @@ async def test_the_cleanup_section_explains_what_each_control_does(gateway: Any)
     body = _flattened(await client.get("/ui/partials/cleanup", headers=AUTH))
     assert "Conservative (recommended)" in body
     for explanation in (
-        "grammar, punctuation, capitalisation, and paragraph breaks",
-        "How long a correction may take before it is abandoned",
-        "How long the model stays in memory with nothing to do",
-        "one of these never transcribes audio and never appears as a speech engine",
+        "Conservative fixes grammar and punctuation.",
+        "If cleanup takes longer, keep the standard transcript.",
+        "The next correction reloads the model.",
+        "Choose a text model to run alongside your speech model",
     ):
         assert explanation in body
 
@@ -683,3 +683,65 @@ async def test_saving_settings_does_not_clear_the_selected_model(gateway: Any) -
         headers=AUTH,
     )
     assert manager.runtime_config.cleanup_model == CLEANUP_MODEL_ID
+
+
+async def test_cleanup_library_refresh_is_authenticated_and_isolated(gateway: Any) -> None:
+    client, _ = gateway
+    url = "/ui/partials/cleanup/library"
+    assert (await client.get(url)).status_code == HTTP_401_UNAUTHORIZED
+    response = await client.get(url, headers=AUTH)
+    assert response.status_code == HTTP_200_OK
+    assert 'id="cleanup-library"' in response.text
+    assert 'hx-swap-oob="outerHTML"' in response.text
+    assert 'id="cleanup-try-input"' not in response.text
+    assert 'id="cleanup-settings"' not in response.text
+
+
+async def test_cleanup_library_polls_only_while_downloading(
+    gateway: Any, monkeypatch: MonkeyPatch
+) -> None:
+    from app import admin_queries
+
+    client, app = gateway
+    entries = admin_queries.cleanup_model_entries(app.state.ctx)
+    monkeypatch.setattr(admin_queries, "cleanup_model_entries", lambda ctx: entries)
+    entries[0].state = "downloading"
+    entries[0].progress = 0.42
+    response = await client.get("/ui/partials/cleanup/library", headers=AUTH)
+    assert 'hx-trigger="every 2s"' in response.text
+    assert 'aria-valuenow="42"' in response.text
+    entries[0].state = "installed"
+    response = await client.get("/ui/partials/cleanup/library", headers=AUTH)
+    assert 'hx-trigger="every 2s"' not in response.text
+    assert "Use this model" in response.text
+    assert 'hx-select="#cleanup-page"' in response.text
+
+
+async def test_preview_remains_available_when_cleanup_default_is_off(gateway: Any) -> None:
+    client, app = gateway
+    manager = enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
+    manager.runtime_config.cleanup_mode = "off"
+    response = await client.get("/ui/partials/cleanup", headers=AUTH)
+    assert 'id="cleanup-try-input"' in response.text
+    preview = await client.post(
+        "/v1/admin/cleanup/preview", json={"text": SPOKEN, "language": "en"}, headers=AUTH
+    )
+    assert preview.json()["cleanup"]["status"] == "applied"
+    assert manager.runtime_config.cleanup_mode == "off"
+
+
+async def test_header_cleanup_status_and_activity(gateway: Any) -> None:
+    client, app = gateway
+    assert (await client.get("/ui/partials/cleanup/pill")).status_code == HTTP_401_UNAUTHORIZED
+    enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
+    pill = await client.get("/ui/partials/cleanup/pill", headers=AUTH)
+    assert 'data-open-tab="cleanup"' in pill.text
+    assert "Ready" in pill.text
+    await client.post(
+        "/v1/admin/cleanup/preview", json={"text": SPOKEN, "language": "en"}, headers=AUTH
+    )
+    response = await client.get("/ui/partials/operations", headers=AUTH)
+    assert 'aria-label="Cleanup statistics"' in response.text
+    assert "Cleaned up" in response.text
+    status = (await client.get("/v1/admin/status", headers=AUTH)).json()
+    assert status["metrics"]["cleanup_applied"] == 1

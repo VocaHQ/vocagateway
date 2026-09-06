@@ -4,6 +4,7 @@ import asyncio
 import json
 import sys
 import threading
+import time
 from array import array
 from contextlib import suppress
 from dataclasses import dataclass
@@ -47,6 +48,7 @@ class PendingFinal:
     style: str
     language: str
     cleanup_mode: str
+    started_at: float
 
 
 class _StreamGate:
@@ -188,6 +190,7 @@ class _StreamPackets:
             style=session._style,
             language=session._language,
             cleanup_mode=session._cleanup_mode,
+            started_at=session.started_at,
         )
 
     def _recognized(self, final_result: object) -> str:
@@ -207,6 +210,7 @@ class _StreamPackets:
 class _StreamSession:
     def __init__(self, websocket: WebSocket, engine: StreamingEngine) -> None:
         self._websocket = websocket
+        self.started_at = time.monotonic()
         self._engine = engine
         self._ctx: context.GatewayContext = websocket.app.state.ctx
         self._stream: object | None = None
@@ -228,6 +232,7 @@ class _StreamSession:
         except WebSocketDisconnect:
             return None
         except Exception as error:
+            self._ctx.service.metrics.record_result(_elapsed_ms(self.started_at), success=False)
             await _StreamGate.send_error(self._websocket, error)
             return None
         finally:
@@ -305,9 +310,15 @@ class _StreamFinalizer:
     async def send(self) -> None:
         try:
             payload = await self._payload()
+            self.ctx.service.metrics.record_result(
+                _elapsed_ms(self.pending.started_at), success=True
+            )
         except asyncio.CancelledError:
             raise
         except Exception as error:  # noqa: BLE001 - reported to the client, not raised
+            self.ctx.service.metrics.record_result(
+                _elapsed_ms(self.pending.started_at), success=False
+            )
             await _StreamGate.send_error(self.websocket, error)
             return
         with suppress(RuntimeError, WebSocketDisconnect):
@@ -348,12 +359,22 @@ async def stream_transcription(websocket: WebSocket) -> None:
     zipformer model.
     """
     ctx: context.GatewayContext = websocket.app.state.ctx
-    async with ctx.engine_provider.lease() as selected_engine:
-        engine = await _StreamGate.engine_or_close(websocket, selected_engine)
-        if engine is None:
-            return
-        pending = await _StreamSession(websocket, engine).run()
-    # The lease and the streaming lock are both gone by here, so the optional
-    # cleanup pass cannot hold a speech engine open behind it.
-    if pending is not None:
-        await _StreamFinalizer(ctx, websocket, pending).send()
+    active = False
+    try:
+        async with ctx.engine_provider.lease() as selected_engine:
+            engine = await _StreamGate.engine_or_close(websocket, selected_engine)
+            if engine is None:
+                return
+            ctx.service.metrics.started(queued=False)
+            active = True
+            pending = await _StreamSession(websocket, engine).run()
+        # Release speech resources before running cleanup.
+        if pending is not None:
+            await _StreamFinalizer(ctx, websocket, pending).send()
+    finally:
+        if active:
+            ctx.service.metrics.finished()
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, round((time.monotonic() - started) * 1000))

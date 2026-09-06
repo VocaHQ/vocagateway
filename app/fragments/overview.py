@@ -347,6 +347,8 @@ class _MetricCards:
             probe_age=format(readiness.probe_age_seconds, ONE_DECIMAL),
             sample_note=sample_note,
             metric_cards=metric_cards,
+            cleanup_metrics=metrics,
+            cleanup_latency=_format_latency(metrics.cleanup_last_ms),
             capacity=_Charts.capacity(
                 metrics.active_transcriptions, metrics.concurrency_limit, metrics.queue_depth
             ),

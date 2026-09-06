@@ -229,6 +229,8 @@ class OperationalMetricsStatus(BaseModel):
     cleanup_applied: int = 0
     cleanup_unchanged: int = 0
     cleanup_fallback: int = 0
+    cleanup_disabled: int = 0
+    cleanup_skipped: int = 0
     cleanup_last_ms: int | None = None
     cleanup_reasons: dict[str, int] = {}
     history: list[MetricsHistoryPoint] = []

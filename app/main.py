@@ -257,6 +257,8 @@ async def _browser_security_middleware(
     path = request.url.path
     if path == "/" or path.startswith(("/ui/", "/v1/")):
         headers["Cache-Control"] = "no-store"
+    elif path.startswith("/assets/"):
+        headers["Cache-Control"] = "no-cache"
     return response
 
 

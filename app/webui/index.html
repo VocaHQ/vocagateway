@@ -16,7 +16,7 @@
   <!-- Favicon: circular mark. Header uses the square app icon (same kit as vocahq.com). -->
   <link rel="icon" type="image/svg+xml" href="/assets/favicon-light.svg" id="favicon" />
   <link rel="apple-touch-icon" href="/assets/favicon-light.svg" id="apple-touch-icon" />
-  <link rel="stylesheet" href="/assets/styles.css" />
+  <link rel="stylesheet" href="/assets/styles.css?v=cleanup-layout-2" />
   <!-- External boot script (CSP script-src 'self') so theme applies before paint. -->
   <script src="/assets/theme-boot.js"></script>
 </head>
@@ -58,6 +58,10 @@
               aria-label="Speech model. Opens Models."
               hx-get="/ui/partials/engine-pill" hx-trigger="load, every 5s" hx-swap="outerHTML">
         <span class="dot" aria-hidden="true"></span><span>connecting&hellip;</span>
+      </button>
+      <button type="button" id="cleanup-pill" class="engine-status" data-open-tab="cleanup"
+              hx-get="/ui/partials/cleanup/pill" hx-trigger="load, every 5s" hx-swap="outerHTML">
+        <span class="dot" aria-hidden="true"></span><span>Cleanup · connecting…</span>
       </button>
       <button type="button" id="theme-toggle" class="theme-toggle" data-preference="system"
               aria-label="Theme: system. Click for light." title="Theme: system">

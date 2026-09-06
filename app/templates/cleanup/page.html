@@ -1,4 +1,3 @@
-{% from "cleanup/model_card.html" import cleanup_model_card %}
 {# Transcript cleanup, as its own section rather than a card buried in Settings.
    It is a second model with its own library, its own lifecycle and its own
    failure modes, and the thing an operator most needs from it — proof that it
@@ -11,8 +10,9 @@
     <p class="eyebrow">LOCAL TEXT MODEL</p>
     <h2>Transcript cleanup</h2>
     <p>A second, text-only model that fixes grammar and punctuation after speech
-       recognition. It runs on this machine, never sees your audio, and returns
-       your original transcript untouched whenever it is not confident.</p>
+       recognition. It runs on this machine, never sees your audio, and keeps
+       the standard transcript if cleanup times out or fails its checks.
+       Corrections can still make mistakes.</p>
   </div>
 </div>
 
@@ -25,8 +25,10 @@
     <div class="section-heading">
       <h3>See what it changes</h3>
     </div>
-    {% if config.state == "ready" or config.state == "loading" or config.state == "offloaded" %}
-    <p class="muted">Paste a sentence the way a speech model would hand it over
+    {% if config.languages %}
+    <p class="muted">Enable cleanup in Settings to run this preview. The preview can use
+       conservative mode even when the default mode is Off.
+       Paste a sentence the way a speech model would hand it over
        &mdash; no capitals, no punctuation &mdash; and correct it here. This is
        the same code path a dictation takes.</p>
     <div class="cleanup-try-controls">
@@ -73,18 +75,6 @@
 
   {{ settings_html }}
 
-  <div class="card" id="cleanup-library">
-    <div class="section-heading">
-      <h3>Cleanup models</h3>
-    </div>
-    <p class="muted">Text models, kept separately from the speech library: one of
-       these never transcribes audio and never appears as a speech engine. Every
-       download is checked against a checksum pinned to a named revision, and an
-       entry without one cannot be installed at all.</p>
-    <div class="model-list cleanup-model-list" role="list">
-      {% for model in models %}
-      {{ cleanup_model_card(model) }}
-      {% endfor %}
-    </div>
-  </div>
+  {% include "cleanup/library.html" %}
+
 </div>

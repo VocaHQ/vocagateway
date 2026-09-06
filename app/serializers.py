@@ -79,6 +79,8 @@ def metrics_status(metrics: MetricsSnapshot) -> OperationalMetricsStatus:
         cleanup_applied=metrics.cleanup.applied,
         cleanup_unchanged=metrics.cleanup.unchanged,
         cleanup_fallback=metrics.cleanup.fallback,
+        cleanup_disabled=metrics.cleanup.disabled,
+        cleanup_skipped=metrics.cleanup.skipped,
         cleanup_last_ms=metrics.cleanup.last_ms,
         cleanup_reasons=dict(metrics.cleanup.reasons),
         **_pipeline_metrics(pipeline),
