@@ -265,10 +265,12 @@ missing one is visible without opening the Cleanup tab.
 Worth knowing before you turn it loose:
 
 - **Memory.** The cleanup model stays resident alongside whatever the speech
-  engine is holding — roughly 0.7 GB for the 0.6B artifact, 1.9 GB for the 1.7B
-  one, plus its context. Measure both together on the host you actually run on.
-  *Unload after idle* in the Cleanup tab gives the memory back between bursts,
-  at the cost of a reload on the next correction.
+  engine is holding. The managed worker uses a 4096-token window and an 8-bit
+  KV cache so the context is a few hundred megabytes rather than about a
+  gigabyte; the compact 0.6B Q4 artifact is the low-end download. Measure both
+  models together on the host you actually run on. *Unload after idle* is on
+  for a fresh install and gives the memory back between bursts, at the cost of
+  a reload on the next correction.
 - **Build time.** Two ggml projects are compiled instead of one. See
   [Tuning the compiled runtimes](#tuning-the-compiled-runtimes) for narrowing
   the CUDA architecture spread and for capping concurrent compile jobs.
@@ -293,9 +295,9 @@ services:
     expose: ["8080"]                                      # never `ports:`
     volumes: [./models:/models:ro]
     command:
-      [--model, /models/your.gguf, --host, 0.0.0.0, --port, "8080",
-       --ctx-size, "8192", --parallel, "1", --jinja, --no-webui,
-       --api-key, "${VOCAGATEWAY_CLEANUP_API_KEY}"]
+       [--model, /models/your.gguf, --host, 0.0.0.0, --port, "8080",
+        --ctx-size, "4096", --parallel, "1", --jinja, --no-webui,
+        --api-key, "${VOCAGATEWAY_CLEANUP_API_KEY}"]
 ```
 
 ```sh
@@ -313,7 +315,7 @@ Three things the gateway will hold you to. It refuses any address that is not
 loopback, a private range, or a bare container service name on this project's
 own network, because "runs on your gateway" has to stay true. It makes no
 lifecycle promises for a process it did not start — no warm-up, no idle unload,
-no restart. And the window has to be `--ctx-size 8192` or more: a window too
+no restart. And the window has to be `--ctx-size 4096` or more: a window too
 small does not fail loudly, it silently drops the system instruction, so the
 gateway declines with `context_too_small` rather than trusting the result.
 

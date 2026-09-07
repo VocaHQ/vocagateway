@@ -30,8 +30,9 @@ DEFAULT_MODE = MODE_OFF
 # it. Never derived from the model.
 PROMPT_VERSION = "cleanup-v1"
 
-# Engineering budgets. Proposals to validate on real hardware, not measured
-# numbers — see the evaluation gates in the plan.
+# Engineering budgets. A 120 s dictation is a few hundred tokens; these
+# ceilings leave headroom for that without allocating an 8k f16 KV cache
+# that dwarfs the 0.6B weights on a low-end host.
 MILLISECONDS_PER_SECOND = 1000
 DEFAULT_TIMEOUT_SECONDS = 5.0
 MINIMUM_TIMEOUT_SECONDS = 1.0
@@ -39,9 +40,9 @@ MAXIMUM_TIMEOUT_SECONDS = 30.0
 ADMISSION_WAIT_SECONDS = 0.1
 MAXIMUM_INPUT_BYTES = 16_384
 MAXIMUM_OUTPUT_BYTES = 32_768
-MAXIMUM_INPUT_TOKENS = 2_048
-MAXIMUM_OUTPUT_TOKENS = 2_560
-MINIMUM_CONTEXT_TOKENS = 8_192
+MAXIMUM_INPUT_TOKENS = 1_536
+MAXIMUM_OUTPUT_TOKENS = 1_920
+MINIMUM_CONTEXT_TOKENS = 4_096
 
 
 class CleanupStatus(StrEnum):

@@ -168,7 +168,7 @@ Two deployment shapes, and they are not interchangeable:
 - **External** (`VOCAGATEWAY_CLEANUP_ENDPOINT`). The operator runs the server,
   typically to evaluate a runtime or model the image did not build. The gateway
   will use it but promises nothing about its lifecycle, because it does not own
-  the process. Give it `--ctx-size 8192` or more, or it is declined with
+  the process. Give it `--ctx-size 4096` or more, or it is declined with
   `context_too_small`.
 
 Which model runs is the operator's choice, but only once there is a choice to

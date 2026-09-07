@@ -113,5 +113,8 @@ def chat_request(transcript: str, language: str, *, model: str) -> dict[str, Any
         # Nothing in this package executes a tool call, so none may be offered.
         "tools": [],
         "tool_choice": "none",
-        "cache_prompt": False,
+        # Reuse KV for the static system instruction. The user message is JSON
+        # of this transcript, so the common prefix ends before any dictated
+        # text; a previous request's transcript is not kept as a prefix.
+        "cache_prompt": True,
     }

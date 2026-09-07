@@ -75,6 +75,7 @@ def test_a_config_written_before_cleanup_existed_stays_off(tmp_path: Path) -> No
     path.write_text(json.dumps({"engine": "moonshine"}), encoding="utf-8")
 
     assert RuntimeConfig.load(path).cleanup_enabled is False
+    assert RuntimeConfig.load(path).cleanup_idle_unload_enabled is False
 
 
 def test_a_fresh_install_defaults_cleanup_on(tmp_path: Path) -> None:
@@ -88,6 +89,8 @@ def test_a_fresh_install_defaults_cleanup_on(tmp_path: Path) -> None:
     assert not path.exists()
     assert RuntimeConfig.load(path).cleanup_enabled is True
     assert RuntimeConfig().cleanup_enabled is True
+    assert RuntimeConfig.load(path).cleanup_idle_unload_enabled is True
+    assert RuntimeConfig().cleanup_idle_unload_enabled is True
 
 
 def test_an_operator_who_turned_cleanup_off_keeps_it_off(tmp_path: Path) -> None:

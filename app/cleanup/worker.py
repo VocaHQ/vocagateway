@@ -26,6 +26,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import IO
 
+from app import system
 from app.cleanup import transport
 from app.cleanup.base import CleanupUnavailable
 
@@ -46,6 +47,14 @@ MAXIMUM_DIAGNOSTIC_LENGTH = 400
 # would only split the KV cache without ever being used.
 PARALLEL_SLOTS = 1
 HEALTH_PROBE_SECONDS = 1.0
+# Q8 KV is about half the f16 cache. For Qwen3 0.6B at 4096 tokens that is
+# hundreds of megabytes rather than close to a gigabyte, which is what made
+# the 8k f16 window dominate RAM on a low-end host.
+KV_CACHE_TYPE = "q8_0"
+# Prompt eval of a short transcript does not need llama.cpp's 2048/512
+# defaults; smaller batches cut the peak scratch buffer.
+PROMPT_BATCH_TOKENS = 512
+PROMPT_UBATCH_TOKENS = 256
 
 
 def resolve_binary(override: Path | None = None) -> Path | None:
@@ -178,8 +187,16 @@ class LlamaServerWorker:
             str(port),
             "--ctx-size",
             str(self.context_tokens),
+            "--batch-size",
+            str(PROMPT_BATCH_TOKENS),
+            "--ubatch-size",
+            str(PROMPT_UBATCH_TOKENS),
+            "--cache-type-k",
+            KV_CACHE_TYPE,
+            "--cache-type-v",
+            KV_CACHE_TYPE,
             "--threads",
-            str(self.cpu_threads or os.cpu_count() or 1),
+            str(system.inference_thread_count(self.cpu_threads)),
             "--parallel",
             str(PARALLEL_SLOTS),
             # The credential the gateway presents. Nothing else on the machine

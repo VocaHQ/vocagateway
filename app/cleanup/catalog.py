@@ -72,7 +72,7 @@ class CleanupModel:
     chat_template_source: str
     license_name: str = APACHE_LICENSE
     license_notice: str = ""
-    context_tokens: int = 8_192
+    context_tokens: int = 4_096
     candidate_languages: tuple[str, ...] = CANDIDATE_LANGUAGES
     # Languages this artifact has passed the published release gates for. Empty
     # until a measured evaluation report says otherwise; never inferred from an

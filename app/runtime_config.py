@@ -46,6 +46,11 @@ MINIMUM_CLEANUP_TIMEOUT_SECONDS = 1.0
 MAXIMUM_CLEANUP_TIMEOUT_SECONDS = 30.0
 CLEANUP_IDLE_UNLOAD_MINUTES = (5, 15, 30, 60, 120)
 DEFAULT_CLEANUP_IDLE_UNLOAD_MINUTES = 15
+# Fresh installs unload the cleanup worker after idle so a 4–8 GB host gets
+# the RAM back between bursts. An already-written config without the key stays
+# off: that file was saved when the default was off, and a missing key is not
+# consent to start unloading a model the operator left resident.
+DEFAULT_CLEANUP_IDLE_UNLOAD_ENABLED = True
 
 
 @dataclass(slots=True)
@@ -69,7 +74,7 @@ class RuntimeConfig:
     cleanup_mode: str = DEFAULT_CLEANUP_MODE
     cleanup_model: str | None = None
     cleanup_timeout_seconds: float = DEFAULT_CLEANUP_TIMEOUT_SECONDS
-    cleanup_idle_unload_enabled: bool = False
+    cleanup_idle_unload_enabled: bool = DEFAULT_CLEANUP_IDLE_UNLOAD_ENABLED
     cleanup_idle_unload_minutes: int = DEFAULT_CLEANUP_IDLE_UNLOAD_MINUTES
     # Which language a transcript left on `auto` is corrected as. Empty means
     # "do not guess", which is the default: `auto` then falls back unless the

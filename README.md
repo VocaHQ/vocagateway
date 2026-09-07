@@ -579,6 +579,8 @@ For English, **Qwen3 0.6B Compact (Q4_0)** is the smallest catalog download at
 about 429 MB, one-third smaller than the Q8_0 artifact. Preliminary local smoke
 testing found a modest latency improvement, not the 2× improvement required for
 a "much faster" claim, so the WebUI describes it as compact rather than faster.
+The managed worker uses a 4096-token window, an 8-bit KV cache, and the same
+CPU-thread cap as speech; a fresh install also unloads the model after idle.
 See the [cleanup model evaluation](docs/cleanup-model-evaluation.md) for the
 measured boundary and the candidates that were rejected.
 

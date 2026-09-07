@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 from conftest import CLEANUP_MODEL_ID, FakeCleanupRuntime, FakeWorkerHost
 
+from app import system
 from app.cleanup import catalog as cleanup_catalog
 from app.cleanup import host as host_module
 from app.cleanup import manager as manager_module
@@ -31,7 +32,13 @@ from app.cleanup.base import (
 )
 from app.cleanup.manager import CleanupUpdate, build_manager, preserve_implicit_model_selection
 from app.cleanup.transport import Endpoint
-from app.cleanup.worker import LlamaServerWorker, resolve_binary
+from app.cleanup.worker import (
+    KV_CACHE_TYPE,
+    PROMPT_BATCH_TOKENS,
+    PROMPT_UBATCH_TOKENS,
+    LlamaServerWorker,
+    resolve_binary,
+)
 from app.config import Settings
 from app.runtime_config import RuntimeConfig
 
@@ -284,7 +291,7 @@ def test_the_worker_is_launched_with_argv_and_a_private_credential(
     binary.chmod(0o755)
     model = tmp_path / "model.gguf"
     model.write_bytes(b"gguf")
-    worker = LlamaServerWorker(binary, model, context_tokens=8192, cpu_threads=2)
+    worker = LlamaServerWorker(binary, model, context_tokens=MINIMUM_CONTEXT_TOKENS, cpu_threads=2)
 
     arguments = worker._arguments(9999)
 
@@ -292,11 +299,37 @@ def test_the_worker_is_launched_with_argv_and_a_private_credential(
     assert "--host" in arguments and "127.0.0.1" in arguments
     assert "--jinja" in arguments
     assert "--no-webui" in arguments
+    assert arguments[arguments.index("--ctx-size") + 1] == str(MINIMUM_CONTEXT_TOKENS)
+    assert arguments[arguments.index("--batch-size") + 1] == str(PROMPT_BATCH_TOKENS)
+    assert arguments[arguments.index("--ubatch-size") + 1] == str(PROMPT_UBATCH_TOKENS)
+    assert arguments[arguments.index("--cache-type-k") + 1] == KV_CACHE_TYPE
+    assert arguments[arguments.index("--cache-type-v") + 1] == KV_CACHE_TYPE
+    assert arguments[arguments.index("--threads") + 1] == "2"
     # A credential of the worker's own: the client's bearer token never travels.
     assert worker.api_key in arguments
     assert len(worker.api_key) >= 24
     # argv, never a shell string.
     assert all(isinstance(argument, str) for argument in arguments)
+
+
+def test_the_worker_caps_threads_the_same_way_speech_engines_do(tmp_path: Path) -> None:
+    binary = tmp_path / "llama-server"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"gguf")
+    worker = LlamaServerWorker(binary, model, context_tokens=MINIMUM_CONTEXT_TOKENS, cpu_threads=0)
+
+    arguments = worker._arguments(9999)
+
+    assert arguments[arguments.index("--threads") + 1] == str(system.inference_thread_count(0))
+
+
+def test_catalog_models_use_the_low_end_context_window() -> None:
+    assert cleanup_catalog.CLEANUP_CATALOG
+    assert all(
+        model.context_tokens == MINIMUM_CONTEXT_TOKENS for model in cleanup_catalog.CLEANUP_CATALOG
+    )
 
 
 def test_a_binary_override_that_is_not_executable_is_not_resolved(tmp_path: Path) -> None:
@@ -532,6 +565,15 @@ async def test_an_external_endpoint_with_too_small_a_window_is_refused(
     async with manager.lease() as slot:
         assert slot.runtime is None
         assert slot.reason is CleanupReason.CONTEXT_TOO_SMALL
+    assert runtime.asks == 1
+
+
+async def test_the_minimum_context_window_is_accepted(
+    external: Callable[[int], tuple[Any, _ContextRuntime]],
+) -> None:
+    manager, runtime = external(MINIMUM_CONTEXT_TOKENS)
+    async with manager.lease() as slot:
+        assert slot.runtime is not None
     assert runtime.asks == 1
 
 

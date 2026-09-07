@@ -148,7 +148,7 @@ async def test_the_transcript_travels_as_json_data_not_as_an_instruction(serve: 
     assert sent["chat_template_kwargs"] == {"enable_thinking": False}
     assert sent["tools"] == []
     assert sent["tool_choice"] == "none"
-    assert sent["cache_prompt"] is False
+    assert sent["cache_prompt"] is True
 
 
 REJECTIONS = (
