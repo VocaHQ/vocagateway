@@ -33,6 +33,7 @@ RUNTIME_LLAMA_CPP = "llama.cpp"
 # id and is never offered to `engines.build_engine`.
 DOWNLOAD_ENGINE = "llama.cpp"
 APACHE_LICENSE = "Apache 2.0"
+GEMMA_LICENSE = "Gemma"
 HF_BASE_URL = "https://huggingface.co"
 
 # The buckets the model-selection corpus covers. These are *candidates*, not
@@ -40,6 +41,7 @@ HF_BASE_URL = "https://huggingface.co"
 # the release gates for a language, and the capability endpoint reports the two
 # separately so a client can tell a tested language from an offered one.
 CANDIDATE_LANGUAGES: tuple[str, ...] = ("en", "hi", "hinglish_roman")
+ENGLISH_ONLY: tuple[str, ...] = ("en",)
 
 # Artifact sizes as published by the upstream repository, and the host memory
 # each needs beside a resident speech model. Both are display and admission
@@ -49,6 +51,10 @@ QWEN3_06B_MINIMUM_RAM_GB = 4.0
 QWEN3_06B_Q4_BYTES = 428_970_080
 QWEN3_17B_BYTES = 1_834_426_016
 QWEN3_17B_MINIMUM_RAM_GB = 8.0
+GEMMA3_270M_Q8_BYTES = 291_545_600
+GEMMA3_270M_MINIMUM_RAM_GB = 2.0
+GEMMA3_1B_Q4_BYTES = 806_058_240
+GEMMA3_1B_MINIMUM_RAM_GB = 4.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,7 +175,7 @@ _BASE_CATALOG: tuple[CleanupModel, ...] = (
         license_notice=(
             "Apache License 2.0, Alibaba Cloud (Qwen); GGUF conversion published by ggml-org."
         ),
-        candidate_languages=("en",),
+        candidate_languages=ENGLISH_ONLY,
     ),
     CleanupModel(
         id="cleanup:qwen3-1.7b",
@@ -188,6 +194,51 @@ _BASE_CATALOG: tuple[CleanupModel, ...] = (
         conversion_source="Upstream-published quantization (Qwen/Qwen3-1.7B-GGUF)",
         chat_template_source="Embedded in the GGUF by the upstream conversion",
         license_notice="Apache License 2.0, Alibaba Cloud (Qwen).",
+    ),
+    CleanupModel(
+        id="cleanup:gemma-3-270m",
+        label="Gemma 3 270M (Q8_0)",
+        description=(
+            "English-only on-device candidate. Smaller download than Qwen3 0.6B "
+            "Q4; not yet evaluated for cleanup quality."
+        ),
+        runtime=RUNTIME_LLAMA_CPP,
+        huggingface_repo="ggml-org/gemma-3-270m-it-GGUF",
+        filename="gemma-3-270m-it-Q8_0.gguf",
+        size_bytes=GEMMA3_270M_Q8_BYTES,
+        minimum_ram_gb=GEMMA3_270M_MINIMUM_RAM_GB,
+        upstream_model="google/gemma-3-270m-it",
+        quantization="Q8_0",
+        conversion_source="llama.cpp project conversion (ggml-org/gemma-3-270m-it-GGUF)",
+        chat_template_source="Embedded in the GGUF by the llama.cpp project conversion",
+        license_name=GEMMA_LICENSE,
+        license_notice=(
+            "Gemma Terms of Use, Google DeepMind; GGUF conversion published by ggml-org."
+        ),
+        candidate_languages=ENGLISH_ONLY,
+    ),
+    CleanupModel(
+        id="cleanup:gemma-3-1b",
+        label="Gemma 3 1B Compact (Q4_K_M)",
+        description=(
+            "English-only 1B candidate. Stronger instruction following than the "
+            "270M; larger than the compact Qwen3 0.6B options. Not yet evaluated "
+            "for cleanup quality."
+        ),
+        runtime=RUNTIME_LLAMA_CPP,
+        huggingface_repo="ggml-org/gemma-3-1b-it-GGUF",
+        filename="gemma-3-1b-it-Q4_K_M.gguf",
+        size_bytes=GEMMA3_1B_Q4_BYTES,
+        minimum_ram_gb=GEMMA3_1B_MINIMUM_RAM_GB,
+        upstream_model="google/gemma-3-1b-it",
+        quantization="Q4_K_M",
+        conversion_source="llama.cpp project conversion (ggml-org/gemma-3-1b-it-GGUF)",
+        chat_template_source="Embedded in the GGUF by the llama.cpp project conversion",
+        license_name=GEMMA_LICENSE,
+        license_notice=(
+            "Gemma Terms of Use, Google DeepMind; GGUF conversion published by ggml-org."
+        ),
+        candidate_languages=ENGLISH_ONLY,
     ),
 )
 

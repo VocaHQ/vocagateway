@@ -575,12 +575,15 @@ leaves the load running behind it; the next one finds the model resident.
 That is the whole thing on a fresh install: corrections are on by default, and
 a model that is the only one installed needs no separate selection.
 
-For English, **Qwen3 0.6B Compact (Q4_0)** is the smallest catalog download at
-about 429 MB, one-third smaller than the Q8_0 artifact. Preliminary local smoke
-testing found a modest latency improvement, not the 2× improvement required for
-a "much faster" claim, so the WebUI describes it as compact rather than faster.
-The managed worker uses a 4096-token window, an 8-bit KV cache, and the same
-CPU-thread cap as speech; a fresh install also unloads the model after idle.
+For English, **Gemma 3 270M** is the smallest catalog download at about 292 MB
+(Gemma license; not yet evaluated for cleanup quality). **Qwen3 0.6B Compact
+(Q4_0)** is the smallest Qwen option at about 429 MB, one-third smaller than
+the Q8_0 artifact. Preliminary local smoke testing of that Q4 found a modest
+latency improvement, not the 2× improvement required for a "much faster"
+claim, so the WebUI describes it as compact rather than faster. **Gemma 3 1B
+Compact** is a larger English-only option, also unevaluated. The managed
+worker uses a 4096-token window, an 8-bit KV cache, and the same CPU-thread
+cap as speech; a fresh install also unloads the model after idle.
 See the [cleanup model evaluation](docs/cleanup-model-evaluation.md) for the
 measured boundary and the candidates that were rejected.
 
