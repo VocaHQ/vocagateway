@@ -366,6 +366,10 @@ class CleanupConfigResponse(BaseModel):
     model_label: str | None = None
     model_installed: bool = False
     runtime_available: bool = False
+    # How to install the runtime on this host, when it is missing. The same
+    # sentence the Overview "Libraries & tools" tile shows, so the two places
+    # that report a missing `llama-server` cannot give different advice.
+    runtime_hint: str = ""
     managed: bool = True
     state: CleanupState = "disabled"
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS

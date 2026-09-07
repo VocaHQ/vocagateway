@@ -71,12 +71,12 @@ contract is in [configuration.md](docs/configuration.md).
 - [Native macOS quick start](#native-macos-quick-start)
 - [Native Linux quick start](#native-linux-quick-start)
   - [Phone pairing QR](#phone-pairing-qr)
-- [Docker Compose quick start](#docker-compose-quick-start)
+- [Docker Compose quick start](#docker-compose-quick-start) — build from source; published image after a release
   - [Stamping the build commit](#stamping-the-build-commit)
 - [WebUI](#webui)
   - [Fast model guide](#fast-model-guide)
 - [Model download integrity](#model-download-integrity)
-- [Transcript cleanup](#transcript-cleanup) — optional local grammar and punctuation repair
+- [Transcript cleanup](#transcript-cleanup) — local grammar and punctuation repair, on once a model is installed
 - [Engine selection](#engine-selection)
 - [Configuration](#configuration) — every `VOCAGATEWAY_*` variable and its default
 - [Listener and network access](#listener-and-network-access)
@@ -229,18 +229,51 @@ and is dropped immediately on revoke.
 
 ## Docker Compose quick start
 
-[compose.yaml](compose.yaml) is the container deployment we document. It builds a
-non-root Linux image containing FFmpeg, the gateway, and a pinned `whisper.cpp`
-CLI. The same Dockerfile builds on Linux `amd64` and `arm64`.
+[compose.yaml](compose.yaml) is the path that works today: it builds the CPU
+image from this checkout. That is also the only way to get a `cuda` or
+`vulkan` image. It compiles whisper.cpp and llama.cpp for your accelerator,
+which takes tens of minutes:
 
 ```sh
 umask 077
 cp .env.example .env
 printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
 docker compose up --detach --build
-docker compose ps
+```
+
+[compose.prod.yaml](compose.prod.yaml) pulls a published image instead of
+building one. Use it only after a GitHub release has successfully published
+images, and after maintainers have set the Docker Hub secrets
+(`DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN`). Until then Hub has nothing to
+pull: `docker.io/vocahq/vocagateway` is not live yet.
+
+Once that publish has happened, no checkout and no compiler: one non-root
+Linux image with FFmpeg, the gateway, a pinned `whisper.cpp`, and the
+`llama-server` transcript cleanup runs on. One tag covers `linux/amd64` and
+`linux/arm64`.
+
+```sh
+umask 077
+curl -O https://raw.githubusercontent.com/VocaHQ/vocagateway/main/compose.prod.yaml
+curl -o .env https://raw.githubusercontent.com/VocaHQ/vocagateway/main/.env.example
+printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
+docker compose -f compose.prod.yaml up --detach
+docker compose -f compose.prod.yaml ps
 curl --fail http://127.0.0.1:8765/health/live
 ```
+
+Images then live at `docker.io/vocahq/vocagateway` and, with identical
+digests, `ghcr.io/vocahq/vocagateway`. `latest` is the newest final release
+and only moves when that release is the newest final tag overall; pin
+`VOCAGATEWAY_IMAGE=docker.io/vocahq/vocagateway:0.1.0` in `.env` for a
+deployment you would rather not have move under you. Upgrades are
+`docker compose -f compose.prod.yaml pull && docker compose -f compose.prod.yaml up --detach`,
+and your models, config and database stay in the named volume across them. See
+[Published images](docs/deployment.md#published-images) for the full tag list.
+
+The two files describe the same service — same environment, same volume, same
+hardening; a test holds them to it — so nothing below is specific to one of
+them.
 
 [`.env.example`](.env.example) is the annotated template, in seven numbered
 sections: the token, the published host/port, the pairing address, the image,
@@ -295,7 +328,10 @@ interface. Two ways out, both set in `.env`:
 ### Stamping the build commit
 
 A running container has no `.git` to read, so the commit it was built from is
-baked in as a build argument. `just up` and `just image` do this for you. The
+baked in as a build argument. A published image is stamped by the release
+workflow, so there is nothing to do for a `compose.prod.yaml` deployment — this
+section is about images you build yourself. `just up` and `just image` do it
+for you. The
 justfile exports `VOCAGATEWAY_GIT_COMMIT`, `VOCAGATEWAY_GIT_COMMIT_SUBJECT`, and
 `VOCAGATEWAY_GIT_COMMIT_DATE` from `git`, Compose interpolates them into every
 service's `build.args`, and `/v1/admin/status` then reports the revision.
@@ -510,7 +546,12 @@ changed, and the commit message should say why.
 
 ## Transcript cleanup
 
-Optional. Off by default, and off until you install a model and turn it on.
+On by default on a brand-new install, and inert until you download a cleanup
+model. That download is the opt-in: with no model there is nothing to run, and
+every transcript comes back exactly as it would from a gateway built before the
+feature existed. A gateway that already had a saved config from before cleanup
+existed stays off until you enable it in the WebUI, even if a leftover model is
+already on disk.
 
 A small text model runs **after** speech recognition and fixes grammar,
 punctuation, capitalization, and paragraph breaks while keeping what you said.
@@ -530,15 +571,30 @@ or an idle unload takes the plain speech result, reports `model_loading`, and
 leaves the load running behind it; the next one finds the model resident.
 **Load model now** is how you pay that cost once, deliberately.
 
-**Setup.** Open the **Cleanup** tab → download a model → **Load model now**
-→ tick *Correct transcripts by default*. Natively the gateway launches and owns
-a `llama-server` on loopback (install llama.cpp, or set
-`VOCAGATEWAY_CLEANUP_BINARY`). Under Compose it is an opt-in sidecar that
-publishes no port:
+**Setup.** Open the **Cleanup** tab → download a model → **Load model now**.
+That is the whole thing on a fresh install: corrections are on by default, and
+a model that is the only one installed needs no separate selection.
+
+The runtime under it is a `llama-server` the gateway launches and owns, on
+loopback, on a port that is never published, with a credential it generates
+itself. The container builds that runtime for the same accelerator as the
+speech engine, so there is no profile and no second service:
 
 ```sh
-docker compose --profile cleanup up -d
+docker compose up -d
 ```
+
+If your `.env` still has `VOCAGATEWAY_CLEANUP_ENDPOINT=cleanup:8080` from the
+old Compose sidecar, remove or comment it out. That service is gone; leaving
+the line set fails at startup. Unset the variable to use the in-image runtime.
+If you run a server of your own, give it a different service name (for example
+`my-cleanup:8080`).
+
+A native install supplies its own (`brew install llama.cpp`, or point
+`VOCAGATEWAY_CLEANUP_BINARY` at a build of your own). Either way, **Overview →
+Libraries & tools** reports it beside FFmpeg and whisper.cpp, with the install
+line for this host when it is missing — so a runtime that is not there is
+visible before you go looking in the Cleanup tab.
 
 **Seeing it work.** The **Cleanup** tab has a *See what it changes* box: type
 or paste a sentence the way a speech model hands it over — no capitals, no
@@ -552,6 +608,11 @@ The same before-and-after appears under **Pair & test** on a real recording.
 Either way, if it corrected nothing, the status line says why and what to
 change — and the Cleanup tab's checklist names which of the four setup steps is
 still outstanding.
+
+**Turning it off.** Untick *Correct transcripts by default* in the Cleanup tab,
+or set `VOCAGATEWAY_CLEANUP_ENABLED=false` to take that decision away from the
+WebUI entirely. Deleting the model has the same practical effect. Per request,
+a client can always send `cleanup: "off"`.
 
 **What it will not do.** It does not translate, summarise, answer questions,
 add content, or invent facts. **Raw is never corrected**, whatever a request
@@ -582,7 +643,10 @@ client must then omit the new fields. Session responses carry
 the same retention rules, so the recognised text is always recoverable.
 
 See [configuration.md](docs/configuration.md#transcript-cleanup) for the
-`VOCAGATEWAY_CLEANUP_*` variables and both deployment shapes.
+`VOCAGATEWAY_CLEANUP_*` variables and both deployment shapes, and
+[deployment.md](docs/deployment.md#transcript-cleanup-in-the-container) for what
+the container builds, what it costs in memory, and how to point the gateway at
+a cleanup server you run yourself.
 
 ## Engine selection
 
@@ -941,8 +1005,11 @@ keep no model resident between requests.
 
 ## Docker performance profiles
 
-Only run one gateway service at a time. Every profile publishes the same port
-and shares the same model volume.
+These are `compose.yaml` — built from a checkout. Only the CPU image is
+published, because a `cuda` or `vulkan` tag would be a promise about a driver
+stack and a GPU generation that a public image cannot keep. Only run one
+gateway service at a time: every profile publishes the same port and shares the
+same model volume.
 
 ```sh
 # Portable CPU (default; amd64 and arm64)
@@ -961,6 +1028,12 @@ ggml CPU backend per micro-architecture and the best one the host reports is
 loaded at startup, so a portable image still runs AVX2/AVX-512 code on x86 and
 dotprod/i8mm code on arm64.
 
+Each image compiles two runtimes against that same accelerator: whisper.cpp for
+speech, and llama.cpp's `llama-server` for
+[transcript cleanup](#transcript-cleanup). The second lives in its own prefix,
+`/opt/llama`, and is never on the loader path — both projects ship libraries
+with the same names, and only one of them may answer for `libggml.so`.
+
 An Apple silicon Docker Desktop build validates only the Linux arm64 CPU path;
 it cannot validate Linux amd64 or an NVIDIA CUDA image. The Container GitHub
 Actions workflow builds CPU, CUDA, and Vulkan separately and smoke-tests the CPU
@@ -968,7 +1041,7 @@ image. Its compile-only CUDA check targets one representative GPU architecture
 instead of producing the Dockerfile's portable architecture spread. Treat that
 matrix as the cross-platform build result, not as a release image. If a local
 build is killed for memory, set `VOCAGATEWAY_BUILD_JOBS` in `.env`; see
-[Tuning the whisper.cpp build](docs/deployment.md#tuning-the-whispercpp-build).
+[Tuning the compiled runtimes](docs/deployment.md#tuning-the-compiled-runtimes).
 
 The CUDA profile supports both faster-whisper CUDA and the CUDA `whisper.cpp`
 binary. The Vulkan profile accelerates `whisper.cpp`; faster-whisper remains on

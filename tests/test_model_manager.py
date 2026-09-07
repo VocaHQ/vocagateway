@@ -1479,6 +1479,7 @@ def _system_info(*, ram_gb: float, is_apple_silicon: bool) -> SystemInfo:
         is_apple_silicon=is_apple_silicon,
         ffmpeg_path=None,
         whisper_cpp_path=None,
+        llama_server_path=None,
         whisperkit_cli_path=None,
         handy_installed=False,
         vocamac_installed=False,

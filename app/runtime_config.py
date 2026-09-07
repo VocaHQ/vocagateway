@@ -30,7 +30,17 @@ DEFAULT_IDLE_OFFLOAD_MINUTES = 15
 CLEANUP_OFF = "off"
 CLEANUP_CONSERVATIVE = "conservative"
 CLEANUP_MODES = (CLEANUP_OFF, CLEANUP_CONSERVATIVE)
-DEFAULT_CLEANUP_MODE = CLEANUP_OFF
+# Cleanup is part of the shipped deployment rather than a feature to discover:
+# the container builds its runtime, and a native install that has one gets the
+# same behaviour. A brand-new install (no config file, an unreadable file, or
+# a fresh RuntimeConfig()) defaults on. That costs nothing until a cleanup
+# model is downloaded: with no model there is nothing to run, and every
+# transcript takes the same path it would with the feature off. An
+# already-written config that lacks `cleanup_enabled` is the upgrade path and
+# stays off. A missing key on a file that already existed is not consent.
+# Explicit true or false in the file is honoured; junk values are off.
+DEFAULT_CLEANUP_ENABLED = True
+DEFAULT_CLEANUP_MODE = CLEANUP_CONSERVATIVE
 DEFAULT_CLEANUP_TIMEOUT_SECONDS = 5.0
 MINIMUM_CLEANUP_TIMEOUT_SECONDS = 1.0
 MAXIMUM_CLEANUP_TIMEOUT_SECONDS = 30.0
@@ -55,7 +65,7 @@ class RuntimeConfig:
     cpu_threads: int = 0
     idle_offload_enabled: bool = False
     idle_offload_minutes: int = DEFAULT_IDLE_OFFLOAD_MINUTES
-    cleanup_enabled: bool = False
+    cleanup_enabled: bool = DEFAULT_CLEANUP_ENABLED
     cleanup_mode: str = DEFAULT_CLEANUP_MODE
     cleanup_model: str | None = None
     cleanup_timeout_seconds: float = DEFAULT_CLEANUP_TIMEOUT_SECONDS
@@ -176,16 +186,20 @@ def _parse_memory_fields(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _parse_cleanup_fields(payload: dict[str, Any]) -> dict[str, Any]:
-    """Read the cleanup block, defaulting anything unrecognised back to off.
+    """Read the cleanup block from an already-written config file.
 
-    A config file written by a newer build, hand-edited, or truncated must not
-    be able to turn transcript correction on by accident: every field falls back
-    to the shipped default rather than to whatever happens to be in the file.
+    Called only when RuntimeConfig.load has a dict payload, so this is never
+    the brand-new-install path (that returns cls() with DEFAULT_CLEANUP_ENABLED).
+    A missing cleanup_enabled key is off: the file was written before the
+    cleanup block existed, or the key was omitted, and neither is consent to
+    start correcting. Only a real JSON true turns it on; false and junk are off.
+    Unrecognised values for the other fields fall back to what this build ships.
     """
     mode = payload.get("cleanup_mode")
     idle_minutes = payload.get("cleanup_idle_unload_minutes")
+    enabled = payload.get("cleanup_enabled")
     return {
-        "cleanup_enabled": payload.get("cleanup_enabled") is True,
+        "cleanup_enabled": enabled is True,
         "cleanup_mode": mode if mode in CLEANUP_MODES else DEFAULT_CLEANUP_MODE,
         "cleanup_model": _optional_str(payload.get("cleanup_model")),
         "cleanup_timeout_seconds": clamp_cleanup_timeout(payload.get("cleanup_timeout_seconds")),

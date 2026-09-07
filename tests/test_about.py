@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 from app.context import VERSION
@@ -139,3 +140,18 @@ def test_about_styles_reuse_webui_chrome() -> None:
     assert "about-1u" not in about_css
     assert "5865F2" not in about_css
     assert "linear-gradient" not in about_css
+
+
+def test_the_package_and_the_gateway_name_the_same_version() -> None:
+    """`pyproject.toml` and `app/context.py` are two hand-edited copies of one number.
+
+    They are what a published image is tagged from and what a running gateway
+    reports, so letting them disagree means an operator comparing a container
+    tag against /v1/admin/status is told two different things. The release
+    workflow refuses to publish when either disagrees with the git tag; this
+    catches the drift a whole release earlier.
+    """
+    manifest_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    manifest = tomllib.loads(manifest_path.read_text(encoding=UTF8_ENCODING))
+
+    assert manifest["project"]["version"] == VERSION

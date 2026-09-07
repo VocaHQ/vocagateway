@@ -26,6 +26,11 @@ FALSY_VALUES = frozenset(("0", "false", "no", "off"))
 # turning a "runs on your gateway" promise into a request to somebody else.
 LOOPBACK_HOST_NAMES = frozenset(("localhost", "127.0.0.1", "::1"))
 MAXIMUM_PORT = 65_535
+# Compose used to ship a sidecar service literally named `cleanup`. That
+# service is gone; the runtime is in the image. An operator who kept
+# VOCAGATEWAY_CLEANUP_ENDPOINT=cleanup:8080 would otherwise hit a dead
+# hostname while the in-image worker sat unused.
+REMOVED_CLEANUP_SIDECAR_HOST = "cleanup"
 
 
 def format_host_port(host: str, port: int) -> str:
@@ -80,7 +85,9 @@ def parse_local_endpoint(raw: str, *, name: str) -> tuple[str, int]:
     """Parse `host:port`, refusing anything that is not part of this deployment.
 
     No scheme, no path, no credentials: a URL would invite a redirect or a proxy
-    into a path that is deliberately a raw socket to a fixed address.
+    into a path that is deliberately a raw socket to a fixed address. The old
+    Compose sidecar hostname `cleanup` is refused too: that service no longer
+    exists, and leaving it set would miss the in-image runtime.
     """
     if "://" in raw or "/" in raw or "@" in raw:
         raise RuntimeError(f"{name} must be host:port, without a scheme or path.")
@@ -91,6 +98,14 @@ def parse_local_endpoint(raw: str, *, name: str) -> tuple[str, int]:
     port = int(port_text)
     if not 1 <= port <= MAXIMUM_PORT:
         raise RuntimeError(f"{name} has a port outside 1-{MAXIMUM_PORT}.")
+    if host.lower() == REMOVED_CLEANUP_SIDECAR_HOST:
+        raise RuntimeError(
+            f"{name} names the old Compose sidecar host "
+            f"'{REMOVED_CLEANUP_SIDECAR_HOST}', which is no longer part of this "
+            "deployment. Unset it to use the in-image runtime, or point it at a "
+            "service you run yourself under a different name (for example "
+            "my-cleanup:8080)."
+        )
     if not _is_local_host(host):
         raise RuntimeError(
             f"{name} must name a loopback address, a private address, or a "
@@ -176,9 +191,11 @@ class Settings:
     cleanup_languages: tuple[str, ...] = ()
     cleanup_auto_language: str | None = None
     # Operator-only. An explicit `llama-server` executable for the gateway to
-    # launch, or an address of a server the operator runs themselves. Setting
-    # the address gives up gateway-controlled warm-up and idle unloading,
-    # because the gateway then does not own the process.
+    # launch, or an address of a server the operator runs themselves. The
+    # container image sets the first to the runtime it built; a native install
+    # leaves it unset and the gateway looks on PATH. Setting the address gives
+    # up gateway-controlled warm-up and idle unloading, because the gateway
+    # then does not own the process.
     cleanup_binary: Path | None = None
     cleanup_endpoint: tuple[str, int] | None = None
     cleanup_api_key: str | None = None
