@@ -39,5 +39,5 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --all-groups
-      - name: Enforce WPS across app
-        run: uv run flake8 --select=WPS,E999 app
+      - name: Enforce WPS across app and tests
+        run: uv run flake8 --select=WPS,E999 app tests

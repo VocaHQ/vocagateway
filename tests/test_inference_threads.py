@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-from pytest import MonkeyPatch
 
 from app import system
 
@@ -32,7 +31,7 @@ def test_an_explicit_operator_choice_wins() -> None:
 
 
 def test_threads_are_capped_so_synchronisation_does_not_dominate(
-    monkeypatch: MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(system.os, "cpu_count", lambda: 128)
     monkeypatch.setattr(system._CpuSets, "physical_cpu_count", classmethod(lambda cls, _: 64))
@@ -41,7 +40,7 @@ def test_threads_are_capped_so_synchronisation_does_not_dominate(
     assert system.inference_thread_count() == system.MAXIMUM_INFERENCE_THREADS
 
 
-def test_a_container_quota_holds_the_count_down(monkeypatch: MonkeyPatch) -> None:
+def test_a_container_quota_holds_the_count_down(monkeypatch: pytest.MonkeyPatch) -> None:
     """`os.cpu_count()` reports the host's cores, not the cgroup's share."""
     monkeypatch.setattr(system.os, "cpu_count", lambda: 64)
     monkeypatch.setattr(system._CpuSets, "physical_cpu_count", classmethod(lambda cls, _: 32))
@@ -50,7 +49,7 @@ def test_a_container_quota_holds_the_count_down(monkeypatch: MonkeyPatch) -> Non
     assert system.inference_thread_count() == 2
 
 
-def test_at_least_one_thread_is_always_requested(monkeypatch: MonkeyPatch) -> None:
+def test_at_least_one_thread_is_always_requested(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(system.os, "cpu_count", lambda: 1)
     monkeypatch.setattr(system._CpuSets, "physical_cpu_count", classmethod(lambda cls, _: 0))
     monkeypatch.setattr(system._CpuSets, "effective_cpu_count", classmethod(lambda cls, _: 0.4))
@@ -66,7 +65,7 @@ def test_hyperthread_siblings_are_not_counted_as_cores() -> None:
 
 @pytest.mark.parametrize("cpuinfo", ["", "processor\t: 0\n"])
 def test_a_cpuinfo_without_core_ids_falls_back_to_the_logical_count(
-    cpuinfo: str, monkeypatch: MonkeyPatch
+    cpuinfo: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A kernel that reports no topology must not leave the engine single-threaded."""
     assert system._CpuSets._cpuinfo_cores(cpuinfo) == set()
@@ -80,7 +79,7 @@ def test_a_cpuinfo_without_core_ids_falls_back_to_the_logical_count(
 
 
 def test_an_unreadable_cpuinfo_falls_back_to_the_logical_count(
-    monkeypatch: MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def unreadable(self: object, **keywords: object) -> str:
         raise OSError("no /proc")
@@ -90,7 +89,7 @@ def test_an_unreadable_cpuinfo_falls_back_to_the_logical_count(
 
 
 def test_a_degenerate_hypervisor_topology_does_not_go_single_threaded(
-    monkeypatch: MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """One reported core for sixteen vCPUs is a bogus topology, not a 1-core host.
 
@@ -107,7 +106,7 @@ def test_a_degenerate_hypervisor_topology_does_not_go_single_threaded(
     assert system._CpuSets._linux_physical_cpus(16) == 8
 
 
-def test_a_believable_topology_is_still_trusted(monkeypatch: MonkeyPatch) -> None:
+def test_a_believable_topology_is_still_trusted(monkeypatch: pytest.MonkeyPatch) -> None:
     """The floor must not undo the point of counting cores at all."""
     monkeypatch.setattr(
         system.Path,

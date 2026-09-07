@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from uuid import uuid4
 
@@ -196,12 +197,18 @@ async def test_session_accepts_writing_styles_and_aaaa(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
 ) -> None:
-    for style in ("formal", "casual", "very_casual", "excited"):
-        response = await client.post(
-            SESSIONS_API_PATH,
-            headers=authorization,
-            json={CLIENT_SESSION_ID_KEY: str(uuid4()), STYLE_KEY: style},
-        )
+    styles = ("formal", "casual", "very_casual", "excited")
+    responses = await asyncio.gather(
+        *[
+            client.post(
+                SESSIONS_API_PATH,
+                headers=authorization,
+                json={CLIENT_SESSION_ID_KEY: str(uuid4()), STYLE_KEY: style},
+            )
+            for style in styles
+        ]
+    )
+    for style, response in zip(styles, responses, strict=True):
         assert response.status_code == HTTP_200_OK
         assert response.json()[STYLE_KEY] == style
 
@@ -236,33 +243,36 @@ async def test_writing_style_is_applied_to_the_lo_aaaaa(
     assert finished.json()[TRANSCRIPT_KEY] == "Hello from the local model."
 
 
+async def _put_new_session_audio(
+    client: httpx.AsyncClient,
+    authorization: dict[str, str],
+    content_type: str,
+    content: bytes,
+) -> httpx.Response:
+    session_id = str(uuid4())
+    await client.post(
+        SESSIONS_API_PATH,
+        headers=authorization,
+        json={CLIENT_SESSION_ID_KEY: session_id},
+    )
+    audio_path = f"/v1/sessions/{session_id}/audio"
+    return await client.put(
+        audio_path,
+        headers={**authorization, CONTENT_TYPE_HEADER: content_type},
+        content=content,
+    )
+
+
 async def test_upload_rejects_unsupported_empty_a_f2c1d(
     client: httpx.AsyncClient,
     authorization: dict[str, str],
 ) -> None:
-    async def create() -> str:
-        session_id = str(uuid4())
-        await client.post(
-            SESSIONS_API_PATH,
-            headers=authorization,
-            json={CLIENT_SESSION_ID_KEY: session_id},
-        )
-        return session_id
-
-    unsupported = await client.put(
-        f"/v1/sessions/{await create()}/audio",
-        headers={**authorization, CONTENT_TYPE_HEADER: "text/plain"},
-        content=TEST_AUDIO_BYTES,
+    unsupported = await _put_new_session_audio(
+        client, authorization, "text/plain", TEST_AUDIO_BYTES
     )
-    empty = await client.put(
-        f"/v1/sessions/{await create()}/audio",
-        headers={**authorization, CONTENT_TYPE_HEADER: WAV_CONTENT_TYPE},
-        content=b"x",
-    )
-    oversized = await client.put(
-        f"/v1/sessions/{await create()}/audio",
-        headers={**authorization, CONTENT_TYPE_HEADER: WAV_CONTENT_TYPE},
-        content=OVERSIZED_AUDIO_BYTES,
+    empty = await _put_new_session_audio(client, authorization, WAV_CONTENT_TYPE, b"x")
+    oversized = await _put_new_session_audio(
+        client, authorization, WAV_CONTENT_TYPE, OVERSIZED_AUDIO_BYTES
     )
     assert unsupported.status_code == HTTP_415_UNSUPPORTED_MEDIA_TYPE
     assert empty.status_code == HTTP_422_UNPROCESSABLE_CONTENT

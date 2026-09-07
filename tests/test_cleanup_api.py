@@ -7,6 +7,7 @@ client that does ask gets a bounded, honest answer about what happened.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from array import array
 from collections.abc import AsyncIterator
@@ -26,7 +27,6 @@ from conftest import (
     enable_cleanup,
 )
 from fastapi.testclient import TestClient
-from pytest import MonkeyPatch
 from starlette.status import (
     HTTP_200_OK,
     HTTP_401_UNAUTHORIZED,
@@ -82,7 +82,7 @@ async def test_capabilities_separates_offered_from_tested_languages(gateway: Any
     assert payload["enabled"] is True
     assert payload["modes"] == ["off", "conservative"]
     assert payload["languages"] == ["en", "hi", "hinglish_roman"]
-    assert payload["evaluated_languages"] == []
+    assert not payload["evaluated_languages"]
     assert payload["prompt_version"] == "cleanup-v1"
 
 
@@ -101,7 +101,7 @@ async def test_one_shot_default_is_unchanged_by_the_feature(gateway: Any) -> Non
     enable_cleanup(app, runtime)
     response = await client.post(TRANSCRIPTIONS, files=UPLOAD, headers=AUTH)
     assert response.json() == {"text": SPOKEN}
-    assert runtime.calls == []
+    assert not runtime.calls
     assert "X-Voca-Cleanup-Status" not in response.headers
 
 
@@ -172,7 +172,7 @@ async def test_the_mic_test_stays_raw_by_default(gateway: Any) -> None:
     ).json()
     assert payload["transcript"] == SPOKEN
     assert payload["cleanup"] is None
-    assert runtime.calls == []
+    assert not runtime.calls
 
 
 async def test_cleanup_config_updates_do_not_reset_the_engine(gateway: Any) -> None:
@@ -219,7 +219,7 @@ async def test_an_unknown_model_cannot_be_downloaded(gateway: Any) -> None:
 
 
 async def test_starting_a_second_download_keeps_the_implicit_selection(
-    gateway: Any, monkeypatch: MonkeyPatch
+    gateway: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, app = gateway
     manager = app.state.ctx.cleanup
@@ -246,12 +246,15 @@ async def test_the_cleanup_catalog_lists_provenance(gateway: Any) -> None:
         "cleanup:qwen3-0.6b-q4",
         "cleanup:qwen3-1.7b",
     ]
+    compact = None
     for entry in entries:
         # A model with no pinned digest must not be installable at all.
         assert entry["installable"] is (entry["sha256"] is not None)
         assert entry["upstream_model"].startswith("Qwen/")
-        assert entry["evaluated_languages"] == []
-    compact = next(entry for entry in entries if entry["id"] == "cleanup:qwen3-0.6b-q4")
+        assert not entry["evaluated_languages"]
+        if entry["id"] == "cleanup:qwen3-0.6b-q4":
+            compact = entry
+    assert compact is not None
     assert compact["languages"] == ["en"]
     assert compact["conversion_source"].startswith("llama.cpp project")
 
@@ -296,7 +299,7 @@ async def test_the_settings_page_renders_transcripts_as_text(gateway: Any) -> No
 
 @pytest.mark.parametrize("host_os", ["Darwin", "Linux"])
 async def test_diagnostics_carry_the_cleanup_block_and_no_text(
-    gateway: Any, monkeypatch: MonkeyPatch, host_os: str
+    gateway: Any, monkeypatch: pytest.MonkeyPatch, host_os: str
 ) -> None:
     """Run for both platforms: the install hint differs, and the rule must not.
 
@@ -336,13 +339,20 @@ async def test_diagnostics_carry_the_cleanup_block_and_no_text(
 async def test_metrics_count_cleanup_outcomes_without_text(gateway: Any) -> None:
     client, app = gateway
     enable_cleanup(app, FakeCleanupRuntime(CORRECTED, TimeoutError()))
-    for _ in range(2):
-        await client.post(
+    await asyncio.gather(
+        client.post(
             TRANSCRIPTIONS,
             files=UPLOAD,
             data={"cleanup": "conservative", "language": "en"},
             headers=AUTH,
-        )
+        ),
+        client.post(
+            TRANSCRIPTIONS,
+            files=UPLOAD,
+            data={"cleanup": "conservative", "language": "en"},
+            headers=AUTH,
+        ),
+    )
     metrics = (await client.get("/v1/admin/status", headers=AUTH)).json()["metrics"]
     assert metrics["cleanup_applied"] == 1
     assert metrics["cleanup_fallback"] == 1
@@ -351,7 +361,8 @@ async def test_metrics_count_cleanup_outcomes_without_text(gateway: Any) -> None
 
 # ------------------------------------------------------------------ streaming
 
-STREAM_TOKEN = "stream-" + ("x" * 48)
+_STREAM_FILL = "x" * 48
+STREAM_TOKEN = f"stream-{_STREAM_FILL}"
 
 
 class FakeStream:
@@ -372,7 +383,9 @@ class FakeStream:
         self.closed = True
 
 
-def streaming_app(tmp_path: Path, monkeypatch: MonkeyPatch, runtime: FakeCleanupRuntime) -> Any:
+def streaming_app(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, runtime: FakeCleanupRuntime
+) -> Any:
     settings = Settings(
         token=STREAM_TOKEN,
         data_dir=tmp_path,
@@ -400,7 +413,9 @@ def streaming_app(tmp_path: Path, monkeypatch: MonkeyPatch, runtime: FakeCleanup
     return app
 
 
-def test_streaming_partials_are_never_rewritten(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+def test_streaming_partials_are_never_rewritten(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A corrected partial that changes again a word later is worse than none."""
     runtime = FakeCleanupRuntime(CORRECTED)
     app = streaming_app(tmp_path, monkeypatch, runtime)
@@ -417,7 +432,7 @@ def test_streaming_partials_are_never_rewritten(tmp_path: Path, monkeypatch: Mon
         websocket.send_bytes(array("f", [0.1, -0.1]).tobytes())
         partial = websocket.receive_json()
         assert partial == {"type": "partial", "transcript": SPOKEN}
-        assert runtime.calls == []
+        assert not runtime.calls
 
         websocket.send_json({"type": "finish"})
         complete = websocket.receive_json()
@@ -431,7 +446,7 @@ def test_streaming_partials_are_never_rewritten(tmp_path: Path, monkeypatch: Mon
 
 
 def test_streaming_opt_out_leaves_the_packet_as_it_was(
-    tmp_path: Path, monkeypatch: MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     runtime = FakeCleanupRuntime(CORRECTED)
     app = streaming_app(tmp_path, monkeypatch, runtime)
@@ -458,11 +473,11 @@ def test_streaming_opt_out_leaves_the_packet_as_it_was(
         "type": "complete",
         "transcript": "We was going to leave early but the train was late.",
     }
-    assert runtime.calls == []
+    assert not runtime.calls
 
 
 def test_streaming_rejects_an_unknown_cleanup_mode(
-    tmp_path: Path, monkeypatch: MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     app = streaming_app(tmp_path, monkeypatch, FakeCleanupRuntime(CORRECTED))
     with (
@@ -476,7 +491,7 @@ def test_streaming_rejects_an_unknown_cleanup_mode(
 
 
 def test_streaming_releases_the_engine_before_correcting(
-    tmp_path: Path, monkeypatch: MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The lock and the lease must both be gone before the text model runs.
 
@@ -594,7 +609,8 @@ async def test_the_auto_language_choice_survives_a_save_and_is_reported(gateway:
         CLEANUP_CONFIG, json={"model_id": CLEANUP_MODEL_ID, "auto_language": "en"}, headers=AUTH
     )
     assert saved.json()["auto_language"] == "en"
-    assert app.state.ctx.cleanup.runtime_config.cleanup_auto_language == "en"
+    run_config = app.state.ctx.cleanup.runtime_config
+    assert run_config.cleanup_auto_language == "en"
     capability = (await client.get("/v1/capabilities", headers=AUTH)).json()["cleanup"]
     assert capability["auto_language"] == "en"
 
@@ -702,7 +718,8 @@ async def test_an_installed_runtime_is_reported_with_the_path_it_was_found_at(
         tile = await _runtime_tile(client)
         assert tile["available"] is True
         assert tile["path"] == str(binary)
-        assert app.state.ctx.cleanup.host.runtime_available() is True
+        cleanup_host = app.state.ctx.cleanup.host
+        assert cleanup_host.runtime_available() is True
 
 
 async def test_an_operator_run_endpoint_is_not_asked_for_a_local_runtime(
@@ -794,9 +811,12 @@ async def test_the_preview_needs_the_admin_token(gateway: Any) -> None:
 async def test_the_preview_refuses_an_empty_or_oversized_body(gateway: Any) -> None:
     client, app = gateway
     enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
-    for text in ("", "x" * 2_001):
-        response = await client.post("/v1/admin/cleanup/preview", json={"text": text}, headers=AUTH)
-        assert response.status_code == HTTP_422_UNPROCESSABLE_CONTENT
+    empty, oversized = await asyncio.gather(
+        client.post("/v1/admin/cleanup/preview", json={"text": ""}, headers=AUTH),
+        client.post("/v1/admin/cleanup/preview", json={"text": "x" * 2_001}, headers=AUTH),
+    )
+    assert empty.status_code == HTTP_422_UNPROCESSABLE_CONTENT
+    assert oversized.status_code == HTTP_422_UNPROCESSABLE_CONTENT
 
 
 async def test_selecting_a_model_from_the_library_does_not_reset_other_settings(
@@ -839,7 +859,7 @@ async def test_cleanup_library_refresh_is_authenticated_and_isolated(gateway: An
 
 
 async def test_cleanup_library_polls_only_while_downloading(
-    gateway: Any, monkeypatch: MonkeyPatch
+    gateway: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from app import admin_queries
 

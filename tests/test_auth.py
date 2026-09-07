@@ -8,6 +8,7 @@ which deliberately do not, and what a rejection is allowed to say back.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -32,7 +33,7 @@ ADMIN_STATUS_PATH = "/v1/admin/status"
 
 # Reachable without a credential by design: the phone polls health before it
 # has been paired, and container orchestrators probe liveness with no secret.
-PUBLIC_PATHS = frozenset({"/health", "/health/live", "/health/ready"})
+PUBLIC_PATHS = frozenset(("/health", "/health/live", "/health/ready"))
 MINIMUM_VALID_TOKEN_BYTES = 48
 ONE_BYTE_SHORT_TOKEN_BYTES = 47
 MINIMUM_PROTECTED_ROUTE_COUNT = 25
@@ -91,7 +92,7 @@ def websocket_close_code(client: TestClient, header: str | None) -> int | None:
     accepted socket (which then closes 4409 for this non-streaming engine)
     means the credential passed.
     """
-    headers = {AUTHORIZATION_HEADER: header} if header is not None else {}
+    headers = {} if header is None else {AUTHORIZATION_HEADER: header}
     try:
         with client.websocket_connect("/v1/stream", headers=headers):
             return None
@@ -108,7 +109,7 @@ def websocket_close_code(client: TestClient, header: str | None) -> int | None:
         pytest.param(b"Bearer \xe9", id="latin1-e-acute"),
         pytest.param(b"Bearer \xff", id="latin1-high-byte"),
         pytest.param(
-            b"Bearer " + b"x" * ONE_BYTE_SHORT_TOKEN_BYTES + b"\xe9",
+            b"".join((b"Bearer ", b"x" * ONE_BYTE_SHORT_TOKEN_BYTES, b"\xe9")),
             id="right-length-wrong-bytes",
         ),
         pytest.param(b"\xe9", id="no-scheme"),
@@ -133,7 +134,8 @@ async def test_rejection_never_echoes_the_supplie_aaa(
     auth_client: httpx.AsyncClient,
 ) -> None:
     """A 401 body must not reflect the attempt back into logs or proxies."""
-    wrong = "wrong-" + ("y" * MINIMUM_VALID_TOKEN_BYTES)
+    padding = "y" * MINIMUM_VALID_TOKEN_BYTES
+    wrong = f"wrong-{padding}"
     response = await auth_client.get(
         ADMIN_STATUS_PATH, headers={AUTHORIZATION_HEADER: f"Bearer {wrong}"}
     )
@@ -156,30 +158,28 @@ async def test_no_documented_route_answers_withou_aaaa(
     schema = auth_app.openapi()
     # An empty or truncated schema must not let this pass by checking nothing.
     assert set(schema["paths"]) >= PUBLIC_PATHS
-    checked = 0
+    checks = []
     for path, operations in schema["paths"].items():
         if path in PUBLIC_PATHS:
             continue
         # Path params are irrelevant: the security dependency is solved before
         # any path/query/body validation, so a placeholder still yields 401.
+        resolved = (
+            path.replace("{session_id}", "x").replace("{model_id}", "x").replace("{token_id}", "x")
+        )
         for method in operations:
-            await _assert_unauthorized_route(
-                auth_client,
-                method,
-                path.replace("{session_id}", "x")
-                .replace("{model_id}", "x")
-                .replace("{token_id}", "x"),
-            )
-            checked += 1
-    assert checked > MINIMUM_PROTECTED_ROUTE_COUNT
+            checks.append(_assert_unauthorized_route(auth_client, method, resolved))
+    await asyncio.gather(*checks)
+    assert len(checks) > MINIMUM_PROTECTED_ROUTE_COUNT
 
 
 async def test_public_routes_answer_without_a_token(
     auth_client: httpx.AsyncClient,
 ) -> None:
     """The complement of the test above: these must not regress into 401."""
-    for path in sorted(PUBLIC_PATHS):
-        response = await auth_client.get(path)
+    paths = tuple(sorted(PUBLIC_PATHS))
+    responses = await asyncio.gather(*[auth_client.get(path) for path in paths])
+    for path, response in zip(paths, responses, strict=True):
         assert response.status_code in {HTTP_200_OK, HTTP_503_SERVICE_UNAVAILABLE}, path
         assert TOKEN not in response.text, path
 

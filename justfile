@@ -45,7 +45,7 @@ format:
 lint:
     uv run python -m ruff check --exit-non-zero-on-fix
     uv run python -m ruff format --check --diff
-    uv run flake8 --select=WPS,E999 app
+    uv run flake8 --select=WPS,E999 app tests
 
 # Run all checks
 [group('dev')]

@@ -140,9 +140,14 @@ max-base-classes = 3
 max-decorators = 5
 max-asserts = 5
 max-module-members = 31
+max-name-length = 80
 per-file-ignores = [
   "app/schemas.py: WPS202",
   "app/main.py: WPS201, WPS235",
+  # Test modules collect many cases, local fakes, and expected values.
+  # Splitting them to satisfy import, member, assert, and literal limits
+  # would scatter one behaviour across files without making the suite clearer.
+  "tests/*.py: WPS110, WPS117, WPS201, WPS202, WPS204, WPS218, WPS226, WPS230, WPS235, WPS342, WPS407, WPS430, WPS431, WPS432",
 ]
 
 [build-system]

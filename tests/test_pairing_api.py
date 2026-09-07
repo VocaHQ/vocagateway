@@ -67,6 +67,27 @@ def _network_switch_fixture(
     return app, runtime_config, old_address, hostname_address
 
 
+async def _assert_missing_token_falls_back_to_bootstrap(
+    client: httpx.AsyncClient,
+    authorization: dict[str, str],
+    missing_id: str,
+) -> None:
+    api = await client.get(
+        PAIRING_API_PATH,
+        headers=authorization,
+        params={URL_KEY: PUBLIC_GATEWAY_URL, TOKEN_ID_KEY: missing_id},
+    )
+    assert decode_pairing_payload(api.json()[PAYLOAD_KEY]).token == TOKEN
+
+    partial = await client.get(
+        PAIRING_UI_PATH,
+        headers=authorization,
+        params={TOKEN_ID_KEY: missing_id},
+    )
+    assert "no longer exists" in partial.text
+    assert '<option value="bootstrap" selected>Bootstrap token</option>' in partial.text
+
+
 async def _assert_network_switch_pairing(
     app: Any,
     old_address: str,
@@ -191,21 +212,8 @@ async def test_pairing_falls_back_to_bootstrap_fo_f0248(
     device_id = created.json()[IDENTIFIER_KEY]
     await client.delete(f"/v1/admin/tokens/{device_id}", headers=authorization)
 
-    for missing_id in (device_id, "never-existed"):
-        api = await client.get(
-            PAIRING_API_PATH,
-            headers=authorization,
-            params={URL_KEY: PUBLIC_GATEWAY_URL, TOKEN_ID_KEY: missing_id},
-        )
-        assert decode_pairing_payload(api.json()[PAYLOAD_KEY]).token == TOKEN
-
-        partial = await client.get(
-            PAIRING_UI_PATH,
-            headers=authorization,
-            params={TOKEN_ID_KEY: missing_id},
-        )
-        assert "no longer exists" in partial.text
-        assert '<option value="bootstrap" selected>Bootstrap token</option>' in partial.text
+    await _assert_missing_token_falls_back_to_bootstrap(client, authorization, device_id)
+    await _assert_missing_token_falls_back_to_bootstrap(client, authorization, "never-existed")
 
 
 @pytest.mark.asyncio

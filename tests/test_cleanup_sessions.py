@@ -150,7 +150,8 @@ async def test_the_snapshot_is_pinned_at_creation(cleaned: CleanupApp) -> None:
     """A settings change between recording and finishing must not move the goalposts."""
     created = (await cleaned.create()).json()
     await cleaned.upload(created["session_id"])
-    cleaned.app.state.ctx.cleanup.runtime_config.cleanup_enabled = False
+    manager = cleaned.app.state.ctx.cleanup
+    manager.runtime_config.cleanup_enabled = False
     payload = (await cleaned.finish(created["session_id"])).json()
     # The session was created under `conservative` and still says so, but the
     # runtime is gone, so it falls back rather than silently correcting.
@@ -186,7 +187,8 @@ async def test_a_stored_result_survives_the_model_being_switched(cleaned: Cleanu
     created = (await cleaned.create()).json()
     await cleaned.upload(created["session_id"])
     first = (await cleaned.finish(created["session_id"])).json()
-    cleaned.app.state.ctx.cleanup.runtime_config.cleanup_model = "cleanup:qwen3-1.7b"
+    manager = cleaned.app.state.ctx.cleanup
+    manager.runtime_config.cleanup_model = "cleanup:qwen3-1.7b"
     again = (await cleaned.finish(created["session_id"])).json()
     assert again == first
 
@@ -195,7 +197,8 @@ async def test_two_concurrent_finishes_start_one_transcription(cleaned: CleanupA
     """The state test lives inside the UPDATE, so exactly one caller can win."""
     created = (await cleaned.create()).json()
     await cleaned.upload(created["session_id"])
-    engine = cleaned.app.state.ctx.engine_provider.current()
+    provider = cleaned.app.state.ctx.engine_provider
+    engine = provider.current()
     responses = await asyncio.gather(
         cleaned.finish(created["session_id"]),
         cleaned.finish(created["session_id"]),
@@ -208,32 +211,56 @@ async def test_two_concurrent_finishes_start_one_transcription(cleaned: CleanupA
     assert codes[1] in {HTTP_200_OK, HTTP_409_CONFLICT, 503}
 
 
-async def test_a_session_deleted_mid_flight_is_not_resurrected(
-    settings: Settings,
-) -> None:
-    started = asyncio.Event()
-    release = asyncio.Event()
-
+def _blocking_engine(started: asyncio.Event, release: asyncio.Event) -> FakeEngine:
     class SlowEngine(FakeEngine):
         async def transcribe(self, audio_path: Path, options: Any) -> str:
             started.set()
             await release.wait()
             return SPOKEN
 
-    app = create_app(settings, engine=SlowEngine(SPOKEN), normalizer=FakeNormalizer())
+    return SlowEngine(SPOKEN)
+
+
+async def _create_uploaded_session(harness: CleanupApp) -> str:
+    created = (await harness.create()).json()
+    session_id = created["session_id"]
+    await harness.upload(session_id)
+    return session_id
+
+
+async def _finish_after_midflight(
+    started: asyncio.Event,
+    release: asyncio.Event,
+    finishing: asyncio.Task[Any],
+    midflight: Any,
+) -> None:
+    await started.wait()
+    await midflight
+    release.set()
+    await finishing
+
+
+async def test_a_session_deleted_mid_flight_is_not_resurrected(
+    settings: Settings,
+) -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+    app = create_app(
+        settings, engine=_blocking_engine(started, release), normalizer=FakeNormalizer()
+    )
     enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
         harness = CleanupApp(client, app, FakeCleanupRuntime())
-        created = (await harness.create()).json()
-        session_id = created["session_id"]
-        await harness.upload(session_id)
+        session_id = await _create_uploaded_session(harness)
         finishing = asyncio.create_task(harness.finish(session_id))
-        await started.wait()
-        await client.delete(f"{SESSIONS}/{session_id}", headers=harness.auth)
-        release.set()
-        await finishing
+        await _finish_after_midflight(
+            started,
+            release,
+            finishing,
+            client.delete(f"{SESSIONS}/{session_id}", headers=harness.auth),
+        )
         lookup = await client.get(f"{SESSIONS}/{session_id}", headers=harness.auth)
     assert lookup.status_code == 404
 
@@ -241,27 +268,22 @@ async def test_a_session_deleted_mid_flight_is_not_resurrected(
 async def test_a_new_upload_is_not_overwritten_by_a_stale_job(settings: Settings) -> None:
     started = asyncio.Event()
     release = asyncio.Event()
-
-    class SlowEngine(FakeEngine):
-        async def transcribe(self, audio_path: Path, options: Any) -> str:
-            started.set()
-            await release.wait()
-            return SPOKEN
-
-    app = create_app(settings, engine=SlowEngine(SPOKEN), normalizer=FakeNormalizer())
+    app = create_app(
+        settings, engine=_blocking_engine(started, release), normalizer=FakeNormalizer()
+    )
     enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
         harness = CleanupApp(client, app, FakeCleanupRuntime())
-        created = (await harness.create()).json()
-        session_id = created["session_id"]
-        await harness.upload(session_id)
+        session_id = await _create_uploaded_session(harness)
         finishing = asyncio.create_task(harness.finish(session_id))
-        await started.wait()
-        await harness.upload(session_id)
-        release.set()
-        await finishing
+        await _finish_after_midflight(
+            started,
+            release,
+            finishing,
+            harness.upload(session_id),
+        )
         lookup = (await client.get(f"{SESSIONS}/{session_id}", headers=harness.auth)).json()
     # The re-upload wins: the session is waiting to be transcribed again, not
     # holding a transcript of audio that has been replaced.

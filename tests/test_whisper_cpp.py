@@ -18,7 +18,6 @@ from app.models.whisper_cpp import (
     WhisperCppEngine,
     _build_arguments,
 )
-from app.models.whisper_server import resolve_server_binary
 
 EXECUTABLE_FILE_MODE = 0o700
 WHISPER_BINARY_NAME = "whisper-cli"
@@ -445,6 +444,8 @@ async def test_the_resident_worker_serves_repeat_requests_from_one_load(
         # fields say otherwise on every request.
         assert b'name="no_timestamps"\r\n\r\ntrue\r\n' in body
         assert b'name="token_timestamps"\r\n\r\nfalse\r\n' in body
+    except BaseException:
+        raise
     finally:
         engine.unload()
 
@@ -464,6 +465,8 @@ async def test_the_worker_reloads_after_an_idle_offload(tmp_path: Path) -> None:
         assert reloaded.model_load_ms > 0
         assert _start_count(tmp_path) == 2
         assert engine.model_is_resident is True
+    except BaseException:
+        raise
     finally:
         engine.unload()
 
@@ -482,6 +485,8 @@ async def test_the_worker_passes_the_decoding_flags_and_thread_count(tmp_path: P
         # somehow omits the fields still gets the gateway's defaults.
         assert "-nt" in recorded
         assert engine.model_is_resident is True
+    except BaseException:
+        raise
     finally:
         engine.unload()
 
@@ -499,6 +504,8 @@ async def test_a_server_that_cannot_start_falls_back_to_the_cli(tmp_path: Path) 
         # The failed worker is retired, so the second request goes straight to
         # the CLI instead of paying the start attempt again.
         assert (tmp_path / f"{WHISPER_BINARY_NAME}.runs").read_text(encoding="utf-8") == "xx"
+    except BaseException:
+        raise
     finally:
         engine.unload()
 
@@ -635,6 +642,8 @@ async def test_a_slow_clip_times_out_instead_of_running_twice(
             await engine.transcribe(audio, TranscriptionOptions(AUTO_LANGUAGE, RAW_STYLE))
 
         assert _start_count(tmp_path) == 2
+    except BaseException:
+        raise
     finally:
         engine.unload()
 
@@ -668,6 +677,8 @@ async def test_a_cancelled_clip_frees_the_worker_for_the_next_one(
         # The worker answered the abort, so the model never left memory.
         assert _start_count(tmp_path) == 1
         assert not (tmp_path / f"{WHISPER_BINARY_NAME}.runs").exists()
+    except BaseException:
+        raise
     finally:
         engine.unload()
 
@@ -739,6 +750,8 @@ async def test_cancelling_a_load_does_not_leave_the_model_behind(tmp_path: Path)
 
         assert engine.model_is_resident is False
         assert not _is_alive(spawned)
+    except BaseException:
+        raise
     finally:
         engine.unload()
 
@@ -762,6 +775,8 @@ async def test_a_refused_port_is_retried_before_the_cli_takes_over(tmp_path: Pat
         assert _start_count(tmp_path) == 2
         assert engine.model_is_resident is True
         assert not (tmp_path / f"{WHISPER_BINARY_NAME}.runs").exists()
+    except BaseException:
+        raise
     finally:
         engine.unload()
 
@@ -771,16 +786,16 @@ def test_the_server_binary_is_taken_from_the_cli_s_own_build(tmp_path: Path) -> 
     binary = tmp_path / WHISPER_BINARY_NAME
     _write_binary(binary, "#!/bin/sh\nexit 0\n")
 
-    assert resolve_server_binary(binary, tmp_path / "absent") is None
+    assert whisper_server.resolve_server_binary(binary, tmp_path / "absent") is None
 
     sibling = tmp_path / SERVER_BINARY_NAME
     _write_binary(sibling, "#!/bin/sh\nexit 0\n")
 
-    assert resolve_server_binary(binary) == sibling
-    assert resolve_server_binary(binary, sibling) == sibling
+    assert whisper_server.resolve_server_binary(binary) == sibling
+    assert whisper_server.resolve_server_binary(binary, sibling) == sibling
     # A bare name is launched through PATH, so a same-named file in the working
     # directory is not the pair that would actually run.
-    assert resolve_server_binary(Path(WHISPER_BINARY_NAME)) != sibling
+    assert whisper_server.resolve_server_binary(Path(WHISPER_BINARY_NAME)) != sibling
 
 
 HEADER_TERMINATOR = b"\r\n\r\n"
@@ -807,10 +822,17 @@ async def _reply_once(payload: bytes) -> asyncio.Server:
 
     async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         head = await reader.readuntil(HEADER_TERMINATOR)
-        for line in head.decode("latin-1").split("\r\n"):
-            name, _, raw = line.partition(":")
-            if name.strip().lower() == "content-length":
-                await reader.readexactly(int(raw.strip()))
+        content_length = next(
+            (
+                int(raw.strip())
+                for line in head.decode("latin-1").split("\r\n")
+                for name, _, raw in (line.partition(":"),)
+                if name.strip().lower() == "content-length"
+            ),
+            None,
+        )
+        if content_length is not None:
+            await reader.readexactly(content_length)
         writer.write(payload)
         await writer.drain()
         writer.close()

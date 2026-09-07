@@ -121,8 +121,7 @@ async def serve() -> AsyncIterator[Callable[[Handler], Any]]:
         return runtime
 
     yield start
-    for server in servers:
-        await server.stop()
+    await asyncio.gather(*(server.stop() for server in servers))
 
 
 async def test_a_well_formed_answer_is_returned(serve: Any) -> None:
@@ -148,7 +147,7 @@ async def test_the_transcript_travels_as_json_data_not_as_an_instruction(serve: 
     user_message = sent["messages"][1]
     assert json.loads(user_message["content"])["transcript"] == dictated
     assert sent["chat_template_kwargs"] == {"enable_thinking": False}
-    assert sent["tools"] == []
+    assert not sent["tools"]
     assert sent["tool_choice"] == "none"
     assert sent["cache_prompt"] is True
     assert sent["max_tokens"] == prompts.output_token_budget(dictated)
@@ -209,9 +208,9 @@ async def test_an_answer_over_the_size_ceiling_is_rejected(serve: Any) -> None:
 
 
 async def test_an_oversized_body_is_refused_before_it_is_read(serve: Any) -> None:
-    oversized = (
-        f"HTTP/1.1 200 OK\r\nContent-Length: {transport.MAXIMUM_BODY_BYTES + 1}\r\n\r\n"
-    ).encode("latin-1")
+    content_length = transport.MAXIMUM_BODY_BYTES + 1
+    header = f"HTTP/1.1 200 OK\r\nContent-Length: {content_length}\r\n\r\n"
+    oversized = header.encode("latin-1")
     runtime = await serve(routed({"/v1/chat/completions": oversized}))
     with pytest.raises(transport.TransportError):
         await runtime.clean("fix it", "en", budget_seconds=BUDGET)
@@ -237,18 +236,25 @@ async def test_an_unreachable_endpoint_is_a_transport_error() -> None:
     assert await runtime.available() is False
 
 
-async def test_a_hanging_server_times_out_and_the_socket_is_closed(serve: Any) -> None:
-    closed = asyncio.Event()
-
+def _hanging_handler(
+    closed: asyncio.Event,
+) -> Callable[[asyncio.StreamReader, asyncio.StreamWriter], Any]:
     async def hang(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         await reader.readuntil(b"\r\n\r\n")
         try:
             await reader.read()
+        except BaseException:
+            raise
         finally:
             closed.set()
             writer.close()
 
-    server = await asyncio.start_server(hang, "127.0.0.1", 0)
+    return hang
+
+
+async def test_a_hanging_server_times_out_and_the_socket_is_closed(serve: Any) -> None:
+    closed = asyncio.Event()
+    server = await asyncio.start_server(_hanging_handler(closed), "127.0.0.1", 0)
     port = server.sockets[0].getsockname()[1]
     try:
         endpoint = transport.Endpoint("127.0.0.1", port)
@@ -256,6 +262,8 @@ async def test_a_hanging_server_times_out_and_the_socket_is_closed(serve: Any) -
             await transport.get_json(endpoint, "/health", budget=0.1)
         # The FIN is what tells a real worker to abandon its generation.
         await asyncio.wait_for(closed.wait(), timeout=2)
+    except BaseException:
+        raise
     finally:
         server.close()
         await server.wait_closed()
@@ -396,9 +404,11 @@ async def test_a_body_with_no_length_is_reassembled_from_every_segment() -> None
     async def feed() -> None:
         # Interleaved with the read on purpose: segments already sitting in the
         # buffer would be returned by a single `read` and hide the bug.
-        for start in range(0, len(payload), 512):
+        start = 0
+        while start < len(payload):
             reader.feed_data(payload[start : start + 512])
             await asyncio.sleep(0)
+            start += 512
         reader.feed_eof()
 
     feeding = asyncio.create_task(feed())

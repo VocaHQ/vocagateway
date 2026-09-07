@@ -77,8 +77,8 @@ class _StubLease:
         self.manager.leases += 1
         return Lease(runtime=self.manager.runtime)
 
-    async def __aexit__(self, *_: object) -> None:
-        return None
+    async def __aexit__(self, *_exc: object) -> bool:
+        return False
 
 
 def service_for(*answers: str | BaseException, **kwargs: object) -> CleanupService:

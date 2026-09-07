@@ -37,11 +37,13 @@ from app.cleanup.worker import LlamaServerWorker, RuntimeFlags, probe_flags, res
 from app.config import Settings
 from app.runtime_config import RuntimeConfig
 
+_TOKEN_FILL = "x" * 48
+
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     return Settings(
-        token="manager-" + ("x" * 48),
+        token=f"manager-{_TOKEN_FILL}",
         data_dir=tmp_path,
         whisper_binary=tmp_path / "whisper-cli",
         whisper_model=tmp_path / "model.bin",
@@ -201,9 +203,9 @@ def test_a_partial_update_is_persisted_atomically(settings: Settings) -> None:
 def test_an_out_of_range_timeout_is_clamped_not_rejected(settings: Settings) -> None:
     manager = manager_for(settings)
     manager.configure(CleanupUpdate(timeout_seconds=900))
-    assert manager.preferences.timeout_seconds == 30.0
+    assert manager.preferences.timeout_seconds == 30
     manager.configure(CleanupUpdate(timeout_seconds=0.01))
-    assert manager.preferences.timeout_seconds == 1.0
+    assert manager.preferences.timeout_seconds == 1
 
 
 def test_switching_the_model_stops_the_worker(settings: Settings) -> None:
@@ -461,7 +463,7 @@ def test_cleanup_environment_settings(
     field: str,
     expected: object,
 ) -> None:
-    monkeypatch.setenv("VOCAGATEWAY_TOKEN", "env-" + ("x" * 48))
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN", f"env-{_TOKEN_FILL}")
     monkeypatch.setenv("VOCAGATEWAY_DATA_DIR", str(tmp_path))
     monkeypatch.setenv(name, raw)
     assert getattr(Settings.from_env(), field) == expected
@@ -470,7 +472,7 @@ def test_cleanup_environment_settings(
 def test_an_unset_cleanup_switch_is_neither_on_nor_off(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("VOCAGATEWAY_TOKEN", "env-" + ("x" * 48))
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN", f"env-{_TOKEN_FILL}")
     monkeypatch.setenv("VOCAGATEWAY_DATA_DIR", str(tmp_path))
     monkeypatch.delenv("VOCAGATEWAY_CLEANUP_ENABLED", raising=False)
     assert Settings.from_env().cleanup_enabled is None
@@ -485,7 +487,7 @@ def test_a_routable_cleanup_endpoint_is_refused_at_startup(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, endpoint: str
 ) -> None:
     """Cleanup runs on the gateway. A remote address would quietly make that false."""
-    monkeypatch.setenv("VOCAGATEWAY_TOKEN", "env-" + ("x" * 48))
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN", f"env-{_TOKEN_FILL}")
     monkeypatch.setenv("VOCAGATEWAY_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("VOCAGATEWAY_CLEANUP_ENDPOINT", endpoint)
     with pytest.raises(RuntimeError):
@@ -499,7 +501,7 @@ def test_the_old_cleanup_sidecar_endpoint_is_refused_at_startup(
     """The Compose service named cleanup is gone; keep using it and the
     in-image runtime sits unused while every request hits a dead host.
     """
-    monkeypatch.setenv("VOCAGATEWAY_TOKEN", "env-" + ("x" * 48))
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN", f"env-{_TOKEN_FILL}")
     monkeypatch.setenv("VOCAGATEWAY_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("VOCAGATEWAY_CLEANUP_ENDPOINT", endpoint)
     with pytest.raises(RuntimeError, match="sidecar"):
@@ -509,13 +511,13 @@ def test_the_old_cleanup_sidecar_endpoint_is_refused_at_startup(
 class _NeverReadyWorker:
     """A worker whose model load never finishes, like a cold multi-gigabyte GGUF."""
 
-    def __init__(self, *_: object, **__: object) -> None:
+    def __init__(self, *_: object, **_unused: object) -> None:
         self.is_running = False
         self.starts = 0
         self.endpoint = Endpoint("127.0.0.1", 1)
         self.released = asyncio.Event()
 
-    async def ensure_started(self, *, budget: float = 0.0) -> bool:
+    async def ensure_started(self, *, budget: float = 0) -> bool:
         self.starts += 1
         await self.released.wait()
         self.is_running = True
@@ -528,7 +530,7 @@ class _NeverReadyWorker:
 @pytest.fixture
 def cold_worker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> _NeverReadyWorker:
     built = _NeverReadyWorker()
-    monkeypatch.setattr(host_module.worker, "LlamaServerWorker", lambda *a, **k: built)
+    monkeypatch.setattr(host_module.worker, "LlamaServerWorker", lambda *attempt, **kind: built)
     monkeypatch.setattr(host_module.worker, "resolve_binary", lambda _=None: tmp_path / "llama")
     return built
 
@@ -584,14 +586,19 @@ async def test_an_operator_warm_up_starts_the_load_and_reports_it(
     manager.host.stop()
 
 
+async def _assert_runtime_unavailable(worker_host: Any, model: Path) -> None:
+    assert await worker_host.runtime(CLEANUP_MODEL_ID, model) is None
+    await asyncio.sleep(0)
+
+
 async def test_concurrent_requests_share_one_load_rather_than_starting_several(
     settings: Settings, cold_worker: _NeverReadyWorker, tmp_path: Path
 ) -> None:
     worker_host = host_module.WorkerHost(settings, RuntimeConfig())
     model = tmp_path / "model.gguf"
-    for _ in range(3):
-        assert await worker_host.runtime(CLEANUP_MODEL_ID, model) is None
-        await asyncio.sleep(0)
+    await _assert_runtime_unavailable(worker_host, model)
+    await _assert_runtime_unavailable(worker_host, model)
+    await _assert_runtime_unavailable(worker_host, model)
     assert cold_worker.starts == 1
     worker_host.stop()
 
@@ -636,7 +643,7 @@ def external(
 
     def build(tokens: int) -> tuple[Any, _ContextRuntime]:
         runtime = _ContextRuntime(tokens)
-        monkeypatch.setattr(manager_module, "LlamaServerRuntime", lambda *a, **k: runtime)
+        monkeypatch.setattr(manager_module, "LlamaServerRuntime", lambda *attempt, **kind: runtime)
         manager = manager_for(
             replace(settings, cleanup_endpoint=("127.0.0.1", 9)),
             cleanup_enabled=True,
