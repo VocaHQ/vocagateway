@@ -13,7 +13,7 @@ Find the symptom, not the subsystem.
 
 **Network and Docker**
 
-- [Docker service does not start](#docker-service-does-not-start)
+- [Docker service does not start](#docker-service-does-not-start) — including image pulls
 - [A LAN hostname such as homelabone does not connect](#a-lan-hostname-such-as-homelabone-does-not-connect) — also covers a pairing QR that only offers a `172.x` address
 
 **Speed and accuracy**
@@ -214,12 +214,27 @@ falls back to that batch path whenever live streaming is unavailable.
 
 ## Docker service does not start
 
-Run commands from the directory containing the canonical Compose file:
+Run commands from the directory holding your Compose file, and name the file
+whenever you deploy a published image — without `-f`, Compose reads
+`compose.yaml` and reports on a service you are not running (or starts building
+one):
 
 ```sh
-docker compose config
-docker compose ps
-docker compose logs gateway
+docker compose -f compose.prod.yaml config
+docker compose -f compose.prod.yaml ps
+docker compose -f compose.prod.yaml logs gateway
+```
+
+A pull that fails with `denied` or `manifest unknown` is usually a tag that
+does not exist — check
+[Published images](deployment.md#published-images) for the ones that do. If
+Docker Hub answers `429 Too Many Requests`, its anonymous pull limit has been
+reached for your IP; either log in with `docker login` or switch to the other
+registry, which serves the same digests:
+
+```sh
+VOCAGATEWAY_IMAGE=ghcr.io/vocahq/vocagateway:latest \
+  docker compose -f compose.prod.yaml up --detach
 ```
 
 Confirm `.env` contains a `VOCAGATEWAY_TOKEN` of at least 32 characters and

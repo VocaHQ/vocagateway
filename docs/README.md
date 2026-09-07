@@ -5,7 +5,7 @@ full `VOCAGATEWAY_*` table. These pages go deeper on one topic each.
 
 | Page | Read it when |
 | --- | --- |
-| [deployment.md](deployment.md) | Choosing between native macOS, native Linux, and Docker; running at login; backups; the portable CPU service and `cuda`/`vulkan` Compose profiles; transcript cleanup in the container; where the phone reaches the host |
+| [deployment.md](deployment.md) | Choosing between native macOS, native Linux, and Docker; the published images and their tags; running at login; backups; the portable CPU service and `cuda`/`vulkan` Compose profiles; transcript cleanup in the container; where the phone reaches the host |
 | [configuration.md](configuration.md) | You need the exact value of a path, an environment variable, or the pairing QR payload |
 | [tailscale.md](tailscale.md) | You want private HTTPS to the gateway without opening a port |
 | [troubleshooting.md](troubleshooting.md) | Something is failing and you want the symptom, not the theory |
@@ -14,8 +14,9 @@ full `VOCAGATEWAY_*` table. These pages go deeper on one topic each.
 
 ## I just want it running
 
-1. **Docker on Linux** — [Compose quick start](../README.md#docker-compose-quick-start),
-   then [`.env.example`](../.env.example) for every knob. On the default bridge
+1. **Docker on Linux** — [Compose quick start](../README.md#docker-compose-quick-start):
+   `compose.prod.yaml` pulls a published image, so there is nothing to build.
+   Then [`.env.example`](../.env.example) for every knob. On the default bridge
    network, set `VOCAGATEWAY_PUBLIC_URL` before you scan the pairing QR.
 2. **Apple silicon Mac** — [native macOS quick start](../README.md#native-macos-quick-start).
    MLX Audio and WhisperKit are the fast paths; Docker Desktop cannot reach them.

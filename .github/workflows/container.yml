@@ -20,6 +20,7 @@ on:
       - 'Dockerfile'
       - '.dockerignore'
       - 'compose.yaml'
+      - 'compose.prod.yaml'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/container.yml'
@@ -220,3 +221,7 @@ jobs:
           # the device wiring, so they need naming explicitly to be parsed.
           VOCAGATEWAY_TOKEN=test-token-with-at-least-thirty-two-characters \
             docker compose --profile cuda --profile vulkan config --quiet
+          # The deployment file has no profiles and no build section; it is
+          # checked here because it ships beside the image this workflow builds.
+          VOCAGATEWAY_TOKEN=test-token-with-at-least-thirty-two-characters \
+            docker compose -f compose.prod.yaml config --quiet

@@ -71,7 +71,7 @@ contract is in [configuration.md](docs/configuration.md).
 - [Native macOS quick start](#native-macos-quick-start)
 - [Native Linux quick start](#native-linux-quick-start)
   - [Phone pairing QR](#phone-pairing-qr)
-- [Docker Compose quick start](#docker-compose-quick-start)
+- [Docker Compose quick start](#docker-compose-quick-start) — published image, or built from source
   - [Stamping the build commit](#stamping-the-build-commit)
 - [WebUI](#webui)
   - [Fast model guide](#fast-model-guide)
@@ -229,18 +229,44 @@ and is dropped immediately on revoke.
 
 ## Docker Compose quick start
 
-[compose.yaml](compose.yaml) is the container deployment we document. It builds a
-non-root Linux image containing FFmpeg, the gateway, and a pinned `whisper.cpp`
-CLI. The same Dockerfile builds on Linux `amd64` and `arm64`.
+[compose.prod.yaml](compose.prod.yaml) runs the published image. No checkout and
+no compiler: one non-root Linux image with FFmpeg, the gateway, a pinned
+`whisper.cpp`, and the `llama-server` transcript cleanup runs on. Every release
+publishes one tag covering `linux/amd64` and `linux/arm64`.
+
+```sh
+umask 077
+curl -O https://raw.githubusercontent.com/VocaHQ/vocagateway/main/compose.prod.yaml
+curl -o .env https://raw.githubusercontent.com/VocaHQ/vocagateway/main/.env.example
+printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
+docker compose -f compose.prod.yaml up --detach
+docker compose -f compose.prod.yaml ps
+curl --fail http://127.0.0.1:8765/health/live
+```
+
+Images are published to `docker.io/vocahq/vocagateway` and, with identical
+digests, `ghcr.io/vocahq/vocagateway`. `latest` is the newest final release;
+pin `VOCAGATEWAY_IMAGE=docker.io/vocahq/vocagateway:0.1.0` in `.env` for a
+deployment you would rather not have move under you. Upgrades are
+`docker compose -f compose.prod.yaml pull && docker compose -f compose.prod.yaml up --detach`,
+and your models, config and database stay in the named volume across them. See
+[Published images](docs/deployment.md#published-images) for the full tag list.
+
+[compose.yaml](compose.yaml) is the same deployment built from this checkout —
+what contributors run, and the only way to get a `cuda` or `vulkan` image. It
+compiles whisper.cpp and llama.cpp for your accelerator, which takes tens of
+minutes:
 
 ```sh
 umask 077
 cp .env.example .env
 printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
 docker compose up --detach --build
-docker compose ps
-curl --fail http://127.0.0.1:8765/health/live
 ```
+
+The two files describe the same service — same environment, same volume, same
+hardening; a test holds them to it — so nothing below is specific to one of
+them.
 
 [`.env.example`](.env.example) is the annotated template, in seven numbered
 sections: the token, the published host/port, the pairing address, the image,
@@ -295,7 +321,10 @@ interface. Two ways out, both set in `.env`:
 ### Stamping the build commit
 
 A running container has no `.git` to read, so the commit it was built from is
-baked in as a build argument. `just up` and `just image` do this for you. The
+baked in as a build argument. A published image is stamped by the release
+workflow, so there is nothing to do for a `compose.prod.yaml` deployment — this
+section is about images you build yourself. `just up` and `just image` do it
+for you. The
 justfile exports `VOCAGATEWAY_GIT_COMMIT`, `VOCAGATEWAY_GIT_COMMIT_SUBJECT`, and
 `VOCAGATEWAY_GIT_COMMIT_DATE` from `git`, Compose interpolates them into every
 service's `build.args`, and `/v1/admin/status` then reports the revision.
@@ -967,11 +996,14 @@ keep no model resident between requests.
 
 ## Docker performance profiles
 
-Only run one gateway service at a time. Every profile publishes the same port
-and shares the same model volume.
+These are `compose.yaml` — built from a checkout. Only the CPU image is
+published, because a `cuda` or `vulkan` tag would be a promise about a driver
+stack and a GPU generation that a public image cannot keep. Only run one
+gateway service at a time: every profile publishes the same port and shares the
+same model volume.
 
 ```sh
-# Portable CPU (default; amd64 and arm64)
+# Portable CPU (default; amd64 and arm64) — or just pull it, see the quick start
 docker compose up --detach --build gateway
 
 # NVIDIA host with Container Toolkit

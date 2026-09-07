@@ -10,6 +10,7 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - 'compose.yaml'
+      - 'compose.prod.yaml'
       - '.github/workflows/quality.yml'
   pull_request:
     branches: [main]
@@ -21,6 +22,7 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - 'compose.yaml'
+      - 'compose.prod.yaml'
       - '.github/workflows/quality.yml'
   workflow_dispatch:
 
@@ -52,7 +54,12 @@ jobs:
       - run: uv run flake8 --select=WPS,E999 app
       - run: uv run mypy app
       - run: uv run pytest
+      # Both files: the one contributors build with, and the one operators
+      # deploy with. A deployment file that does not interpolate is a broken
+      # release, and nothing else in CI would notice.
       - name: Validate Compose configuration
-        run: docker compose config --quiet
+        run: |
+          docker compose config --quiet
+          docker compose -f compose.prod.yaml config --quiet
         env:
           VOCAGATEWAY_TOKEN: test-token-with-at-least-thirty-two-characters

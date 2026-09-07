@@ -1,0 +1,109 @@
+name: vocagateway
+
+# The deployment file for running a published image, with no source checkout
+# and no build. `compose.yaml` beside it is the contributor's file: it compiles
+# whisper.cpp and llama.cpp from this repository, which takes tens of minutes
+# and is not something an operator should have to do to run a gateway.
+#
+# This file is self-contained on purpose — it is meant to be downloaded on its
+# own, next to a `.env`:
+#
+#   curl -O https://raw.githubusercontent.com/VocaHQ/vocagateway/main/compose.prod.yaml
+#   curl -o .env https://raw.githubusercontent.com/VocaHQ/vocagateway/main/.env.example
+#   printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
+#   docker compose -f compose.prod.yaml up --detach
+#
+# Everything the service is given below — its environment, its hardening, its
+# volume and secret — is identical to the `gateway` service in `compose.yaml`;
+# only the image differs. A test asserts that, so the two cannot drift.
+#
+# Only the CPU image is published, and it is portable: one tag carries both
+# linux/amd64 and linux/arm64, and ggml picks the best CPU backend for the host
+# at startup. For a CUDA or Vulkan deployment, build from the repository with
+# `compose.yaml` and its `cuda` / `vulkan` profiles — those images are pinned to
+# a driver stack, which is not something a published tag can promise.
+
+services:
+  gateway:
+    # `latest` is the newest final release, never a pre-release. Pin it for a
+    # deployment you care about — `VOCAGATEWAY_IMAGE=docker.io/vocahq/vocagateway:0.1.0`
+    # in `.env` — so a restart cannot quietly move you to a new version.
+    # `ghcr.io/vocahq/vocagateway` serves the same digests if Docker Hub's
+    # anonymous pull limits get in the way.
+    image: ${VOCAGATEWAY_IMAGE:-docker.io/vocahq/vocagateway:latest}
+    restart: unless-stopped
+    init: true
+    network_mode: ${VOCAGATEWAY_NETWORK_MODE:-bridge}
+    ports:
+      - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:${VOCAGATEWAY_PORT:-8765}"
+    environment:
+      VOCAGATEWAY_TOKEN_FILE: /run/secrets/vocagateway_token
+      VOCAGATEWAY_DEBUG: ${VOCAGATEWAY_DEBUG:-false}
+      # Blank means "not set": the gateway ignores an empty override and falls
+      # back to auto-discovery. On the default bridge network discovery only
+      # ever sees the container's private bridge IP, so this is how a
+      # phone-reachable address gets into the pairing QR without switching to
+      # host networking.
+      VOCAGATEWAY_PUBLIC_URL: ${VOCAGATEWAY_PUBLIC_URL:-}
+      VOCAGATEWAY_PAIRING_URL: ${VOCAGATEWAY_PAIRING_URL:-}
+      # Listener inside the container. Only worth changing under
+      # VOCAGATEWAY_NETWORK_MODE=host, where the container binds the host
+      # directly and the ports mapping above is discarded.
+      VOCAGATEWAY_BIND_HOST: ${VOCAGATEWAY_BIND_HOST:-0.0.0.0}
+      VOCAGATEWAY_PORT: ${VOCAGATEWAY_PORT:-8765}
+      VOCAGATEWAY_ENGINE: ${VOCAGATEWAY_ENGINE:-auto}
+      # `fast` decodes whisper.cpp greedily instead of with the narrowed beam
+      # search. Cheaper on a CPU-only host; compare accuracy on your own audio
+      # before keeping it.
+      VOCAGATEWAY_WHISPER_DECODER_PRESET: ${VOCAGATEWAY_WHISPER_DECODER_PRESET:-quality}
+      VOCAGATEWAY_RETENTION_HOURS: ${VOCAGATEWAY_RETENTION_HOURS:-24}
+      VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO: ${VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO:-true}
+      # Transcript cleanup. The runtime is in the image and the gateway
+      # launches it itself, so this container is the whole feature. It stays
+      # inert until a cleanup model is downloaded in the WebUI, which is the
+      # deliberate act that turns it on.
+      #
+      # Every variable below is blank on purpose. Blank means "not set", which
+      # leaves the operator's saved WebUI choice in charge; a value here wins
+      # over the UI and shows the affected control as locked.
+      VOCAGATEWAY_CLEANUP_ENABLED: ${VOCAGATEWAY_CLEANUP_ENABLED:-}
+      VOCAGATEWAY_CLEANUP_MODE: ${VOCAGATEWAY_CLEANUP_MODE:-}
+      VOCAGATEWAY_CLEANUP_MODEL: ${VOCAGATEWAY_CLEANUP_MODEL:-}
+      VOCAGATEWAY_CLEANUP_TIMEOUT_SECONDS: ${VOCAGATEWAY_CLEANUP_TIMEOUT_SECONDS:-}
+      VOCAGATEWAY_CLEANUP_LANGUAGES: ${VOCAGATEWAY_CLEANUP_LANGUAGES:-}
+      VOCAGATEWAY_CLEANUP_AUTO_LANGUAGE: ${VOCAGATEWAY_CLEANUP_AUTO_LANGUAGE:-}
+      # An operator-run cleanup server, for evaluating one this image did not
+      # build. Setting it gives up warm-up and idle unloading, because the
+      # gateway then does not own the process. The address is never published,
+      # and the gateway refuses any that is not loopback, a private range, or a
+      # bare service name.
+      VOCAGATEWAY_CLEANUP_ENDPOINT: ${VOCAGATEWAY_CLEANUP_ENDPOINT:-}
+      VOCAGATEWAY_CLEANUP_API_KEY: ${VOCAGATEWAY_CLEANUP_API_KEY:-}
+    secrets: [vocagateway_token]
+    volumes: [vocagateway-data:/data]
+    # The gateway never escalates: it runs as uid 10001 from the first
+    # instruction of the entrypoint and needs no capability the kernel grants a
+    # process by default.
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    # whisper-cli writes its transcript to a per-request temporary directory,
+    # and the cleanup worker's stderr capture lands here too. On the default
+    # overlay filesystem every one of those is a copy-up; in RAM it is free.
+    # The cap is well above what either needs — it exists so a runaway cannot
+    # spend the host's memory.
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    # json-file keeps every byte forever by default, which on an appliance that
+    # is meant to run untouched for months eventually fills the disk.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+secrets:
+  vocagateway_token:
+    environment: VOCAGATEWAY_TOKEN
+
+volumes:
+  vocagateway-data:
