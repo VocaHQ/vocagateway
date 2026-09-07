@@ -31,6 +31,7 @@ MAXIMUM_PORT = 65_535
 # VOCAGATEWAY_CLEANUP_ENDPOINT=cleanup:8080 would otherwise hit a dead
 # hostname while the in-image worker sat unused.
 REMOVED_CLEANUP_SIDECAR_HOST = "cleanup"
+CLEANUP_PROFILE_CHOICES = frozenset(("auto", "compact", "full"))
 
 
 def format_host_port(host: str, port: int) -> str:
@@ -79,6 +80,13 @@ def _env_codes(name: str) -> tuple[str, ...]:
     raw = _env(name)
     codes = (code.strip() for code in raw.replace(";", ",").split(","))
     return tuple(code for code in codes if code)
+
+
+def _cleanup_profile(raw: str) -> str | None:
+    choice = raw.strip().lower()
+    if not choice:
+        return None
+    return choice if choice in CLEANUP_PROFILE_CHOICES else None
 
 
 def parse_local_endpoint(raw: str, *, name: str) -> tuple[str, int]:
@@ -199,6 +207,9 @@ class Settings:
     cleanup_binary: Path | None = None
     cleanup_endpoint: tuple[str, int] | None = None
     cleanup_api_key: str | None = None
+    # How the managed llama-server is launched. None or "auto" picks compact or
+    # full from this host. "compact" and "full" force one set of flags.
+    cleanup_profile: str | None = None
 
     def resolved_models_dir(self) -> Path:
         if self.models_dir is None:
@@ -290,6 +301,7 @@ class Settings:
                 else None
             ),
             "cleanup_api_key": _env("VOCAGATEWAY_CLEANUP_API_KEY") or None,
+            "cleanup_profile": _cleanup_profile(_env("VOCAGATEWAY_CLEANUP_PROFILE")),
         }
 
     @classmethod

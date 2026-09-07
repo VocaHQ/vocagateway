@@ -551,6 +551,8 @@ def cleanup_config(ctx: GatewayContext) -> schemas.CleanupConfigResponse:
         idle_unload_minutes=report.idle_unload_minutes,
         locked_settings=list(report.locked_settings),
         detail=report.detail,
+        profile=report.profile,
+        profile_detail=report.profile_detail,
     )
 
 

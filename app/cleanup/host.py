@@ -19,10 +19,16 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from app import config, runtime_config
+from app import config, runtime_config, system
 from app.cleanup import catalog, worker
-from app.cleanup.base import MINIMUM_CONTEXT_TOKENS, CleanupRuntime, CleanupUnavailable
+from app.cleanup.base import (
+    MINIMUM_CONTEXT_TOKENS,
+    CleanupRuntime,
+    CleanupUnavailable,
+    budget_for_context,
+)
 from app.cleanup.llama_server import LlamaServerRuntime
+from app.cleanup.profile import CleanupLaunchProfile, describe_profile, resolve_profile
 
 
 class WorkerHost:
@@ -31,11 +37,17 @@ class WorkerHost:
     def __init__(self, settings: config.Settings, run_config: runtime_config.RuntimeConfig) -> None:
         self.settings = settings
         self.runtime_config = run_config
+        self.profile: CleanupLaunchProfile = resolve_profile(
+            settings.cleanup_profile, _host_info(settings)
+        )
         self.failure = ""
         self.offloaded = False
         self._worker: worker.LlamaServerWorker | None = None
         self._key: tuple[str, str] | None = None
         self._loading: asyncio.Task[None] | None = None
+
+    def profile_detail(self) -> str:
+        return describe_profile(self.profile, self.settings.cleanup_profile)
 
     @property
     def is_loading(self) -> bool:
@@ -66,7 +78,15 @@ class WorkerHost:
         active = self._ensure(binary, model_file, model_id)
         if not self._resident(active):
             return None
-        return LlamaServerRuntime(active.endpoint, model_id=model_id)
+        # The budget follows the window this worker was actually launched with,
+        # not the profile's nominal one: a model whose ceiling is lower than the
+        # profile asked for gets a smaller window, and a runtime that believed
+        # otherwise would pack pieces the server cannot hold.
+        return LlamaServerRuntime(
+            active.endpoint,
+            model_id=model_id,
+            budget=budget_for_context(active.context_tokens),
+        )
 
     def stop(self, *, offloaded: bool = False) -> None:
         """Detach and terminate, without blocking the caller.
@@ -147,8 +167,9 @@ class WorkerHost:
         self._worker = worker.LlamaServerWorker(
             binary,
             model_file,
-            context_tokens=_context_tokens(model_id),
+            context_tokens=_context_tokens(model_id, self.profile),
             cpu_threads=self.runtime_config.cpu_threads,
+            profile=self.profile,
         )
         self._key = key
         return self._worker
@@ -172,7 +193,25 @@ def _reap(active: worker.LlamaServerWorker) -> None:
     loop.run_in_executor(None, active.stop).add_done_callback(lambda done: done.exception())
 
 
-def _context_tokens(model_id: str) -> int:
+def _context_tokens(model_id: str, profile: CleanupLaunchProfile) -> int:
+    """The window to launch with: the profile's, capped by the model's ceiling.
+
+    A cap in both directions, and the direction matters. The compact profile
+    exists to keep the KV cache from dwarfing a 0.6B model's weights on a
+    4-8 GB host, so a catalog entry recording a 40k trained window must not be
+    able to raise it; and the full profile must not ask for more window than
+    the weights were trained for. An unknown model gets the floor.
+    """
     selected = catalog.cleanup_model(model_id)
-    declared = selected.context_tokens if selected else MINIMUM_CONTEXT_TOKENS
-    return max(MINIMUM_CONTEXT_TOKENS, declared)
+    ceiling = selected.maximum_context_tokens if selected else MINIMUM_CONTEXT_TOKENS
+    return max(MINIMUM_CONTEXT_TOKENS, min(profile.context_tokens, ceiling))
+
+
+def _host_info(settings: config.Settings) -> system.SystemInfo:
+    return system.detect_system(
+        whisper_binary=settings.whisper_binary,
+        whisperkit_binary=settings.whisperkit_binary,
+        handy_binary=settings.handy_binary,
+        vocamac_app=settings.vocamac_app,
+        cleanup_binary=settings.cleanup_binary,
+    )

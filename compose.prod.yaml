@@ -75,6 +75,7 @@ services:
       VOCAGATEWAY_CLEANUP_TIMEOUT_SECONDS: ${VOCAGATEWAY_CLEANUP_TIMEOUT_SECONDS:-}
       VOCAGATEWAY_CLEANUP_LANGUAGES: ${VOCAGATEWAY_CLEANUP_LANGUAGES:-}
       VOCAGATEWAY_CLEANUP_AUTO_LANGUAGE: ${VOCAGATEWAY_CLEANUP_AUTO_LANGUAGE:-}
+      VOCAGATEWAY_CLEANUP_PROFILE: ${VOCAGATEWAY_CLEANUP_PROFILE:-}
       # An operator-run cleanup server, for evaluating one this image did not
       # build. Setting it gives up warm-up and idle unloading, because the
       # gateway then does not own the process. The address is never published,

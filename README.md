@@ -579,8 +579,15 @@ For English, **Qwen3 0.6B Compact (Q4_0)** is the smallest catalog download at
 about 429 MB, one-third smaller than the Q8_0 artifact. Preliminary local smoke
 testing found a modest latency improvement, not the 2× improvement required for
 a "much faster" claim, so the WebUI describes it as compact rather than faster.
-See the [cleanup model evaluation](docs/cleanup-model-evaluation.md) for the
-measured boundary and the candidates that were rejected.
+The managed worker picks **compact** flags on a CPU-only host under 16 GB RAM
+(4096 context, 8-bit KV) and **full** flags when a GPU is present or RAM is
+16 GB or more (8192 context, 16-bit KV). Override with
+`VOCAGATEWAY_CLEANUP_PROFILE`. See [cleanup.md](docs/cleanup.md). A fresh
+install also unloads the model after idle. A long dictation that does not fit
+in one window is split on sentence boundaries and corrected in pieces, then
+stitched and checked as a whole. See the
+[cleanup model evaluation](docs/cleanup-model-evaluation.md) for the measured
+boundary and the candidates that were rejected.
 
 The runtime under it is a `llama-server` the gateway launches and owns, on
 loopback, on a port that is never published, with a credential it generates
@@ -649,11 +656,12 @@ client must then omit the new fields. Session responses carry
 `original_transcript` beside `transcript` whenever cleanup was asked for, under
 the same retention rules, so the recognised text is always recoverable.
 
-See [configuration.md](docs/configuration.md#transcript-cleanup) for the
-`VOCAGATEWAY_CLEANUP_*` variables and both deployment shapes, and
+See [cleanup.md](docs/cleanup.md) for compact vs full launch flags (including
+the command line if you run `llama-server` yourself),
+[configuration.md](docs/configuration.md#transcript-cleanup) for the
+`VOCAGATEWAY_CLEANUP_*` variables, and
 [deployment.md](docs/deployment.md#transcript-cleanup-in-the-container) for what
-the container builds, what it costs in memory, and how to point the gateway at
-a cleanup server you run yourself.
+the container builds.
 
 ## Engine selection
 

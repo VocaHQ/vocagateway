@@ -24,6 +24,7 @@ from types import MappingProxyType
 from typing import Any
 
 from app.catalog import CatalogModel
+from app.cleanup.base import MINIMUM_CONTEXT_TOKENS
 
 PINS_PATH = Path(__file__).resolve().parent.parent / "cleanup_model_pins.json"
 
@@ -40,6 +41,7 @@ HF_BASE_URL = "https://huggingface.co"
 # the release gates for a language, and the capability endpoint reports the two
 # separately so a client can tell a tested language from an offered one.
 CANDIDATE_LANGUAGES: tuple[str, ...] = ("en", "hi", "hinglish_roman")
+ENGLISH_ONLY: tuple[str, ...] = ("en",)
 
 # Artifact sizes as published by the upstream repository, and the host memory
 # each needs beside a resident speech model. Both are display and admission
@@ -49,6 +51,12 @@ QWEN3_06B_MINIMUM_RAM_GB = 4.0
 QWEN3_06B_Q4_BYTES = 428_970_080
 QWEN3_17B_BYTES = 1_834_426_016
 QWEN3_17B_MINIMUM_RAM_GB = 8.0
+# The trained window of the Qwen3 family: `max_position_embeddings` on the
+# upstream cards, `qwen3.context_length` in the shipped GGUFs. A ceiling on
+# what the gateway may launch with, not a target — the launch profile picks
+# the window the *host* can afford, and this only stops it asking for more
+# than the weights were trained for.
+QWEN3_CONTEXT_TOKENS = 40_960
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,7 +80,11 @@ class CleanupModel:
     chat_template_source: str
     license_name: str = APACHE_LICENSE
     license_notice: str = ""
-    context_tokens: int = 8_192
+    # The largest window this artifact is known good at. A ceiling the launch
+    # profile is clamped to, never a window to launch with: the conservative
+    # default keeps an entry that forgets to record one from handing a 4 GB
+    # host a KV cache larger than the weights beside it.
+    maximum_context_tokens: int = MINIMUM_CONTEXT_TOKENS
     candidate_languages: tuple[str, ...] = CANDIDATE_LANGUAGES
     # Languages this artifact has passed the published release gates for. Empty
     # until a measured evaluation report says otherwise; never inferred from an
@@ -149,6 +161,7 @@ _BASE_CATALOG: tuple[CleanupModel, ...] = (
         conversion_source="Upstream-published quantization (Qwen/Qwen3-0.6B-GGUF)",
         chat_template_source="Embedded in the GGUF by the upstream conversion",
         license_notice="Apache License 2.0, Alibaba Cloud (Qwen).",
+        maximum_context_tokens=QWEN3_CONTEXT_TOKENS,
     ),
     CleanupModel(
         id="cleanup:qwen3-0.6b-q4",
@@ -169,7 +182,8 @@ _BASE_CATALOG: tuple[CleanupModel, ...] = (
         license_notice=(
             "Apache License 2.0, Alibaba Cloud (Qwen); GGUF conversion published by ggml-org."
         ),
-        candidate_languages=("en",),
+        candidate_languages=ENGLISH_ONLY,
+        maximum_context_tokens=QWEN3_CONTEXT_TOKENS,
     ),
     CleanupModel(
         id="cleanup:qwen3-1.7b",
@@ -188,6 +202,7 @@ _BASE_CATALOG: tuple[CleanupModel, ...] = (
         conversion_source="Upstream-published quantization (Qwen/Qwen3-1.7B-GGUF)",
         chat_template_source="Embedded in the GGUF by the upstream conversion",
         license_notice="Apache License 2.0, Alibaba Cloud (Qwen).",
+        maximum_context_tokens=QWEN3_CONTEXT_TOKENS,
     ),
 )
 

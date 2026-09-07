@@ -14,6 +14,7 @@ from app.cleanup.base import (
 )
 from app.runtime_config import (
     AUTO_ENGINE,
+    DEFAULT_CLEANUP_IDLE_UNLOAD_ENABLED,
     DEFAULT_CLEANUP_IDLE_UNLOAD_MINUTES,
     DEFAULT_IDLE_OFFLOAD_MINUTES,
 )
@@ -379,12 +380,14 @@ class CleanupConfigResponse(BaseModel):
     # the gateway will not guess, and `auto` falls back unless the writing
     # system names a language on its own.
     auto_language: str = ""
-    idle_unload_enabled: bool = False
+    idle_unload_enabled: bool = DEFAULT_CLEANUP_IDLE_UNLOAD_ENABLED
     idle_unload_minutes: int = DEFAULT_CLEANUP_IDLE_UNLOAD_MINUTES
     # Fields an environment variable has taken away from the UI. Shown as
     # locked rather than pretending a save changed them.
     locked_settings: list[str] = []
     detail: str = ""
+    profile: str = ""
+    profile_detail: str = ""
 
 
 class CleanupConfigUpdateRequest(BaseModel):

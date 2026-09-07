@@ -8,6 +8,7 @@ full `VOCAGATEWAY_*` table. These pages go deeper on one topic each.
 | [deployment.md](deployment.md) | Choosing between native macOS, native Linux, and Docker; the published images and their tags; running at login; backups; the portable CPU service and `cuda`/`vulkan` Compose profiles; transcript cleanup in the container; where the phone reaches the host |
 | [configuration.md](configuration.md) | You need the exact value of a path, an environment variable, or the pairing QR payload |
 | [tailscale.md](tailscale.md) | You want private HTTPS to the gateway without opening a port |
+| [cleanup.md](cleanup.md) | Compact vs full cleanup launch flags; CPU vs GPU; the command line if you run `llama-server` yourself |
 | [troubleshooting.md](troubleshooting.md) | Something is failing and you want the symptom, not the theory |
 | [models.md](models.md) | Picking a model: all 57 in the catalog, what each speaks, and a reverse index from 109 languages back to the models that cover them |
 | [additional-models.md](additional-models.md) | Judging the newer multilingual and English additions — Cohere Transcribe, Parakeet Unified, Granite Speech |

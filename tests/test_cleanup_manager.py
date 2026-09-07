@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 from conftest import CLEANUP_MODEL_ID, FakeCleanupRuntime, FakeWorkerHost
 
+from app import system
 from app.cleanup import catalog as cleanup_catalog
 from app.cleanup import host as host_module
 from app.cleanup import manager as manager_module
@@ -30,8 +31,9 @@ from app.cleanup.base import (
     CleanupReason,
 )
 from app.cleanup.manager import CleanupUpdate, build_manager, preserve_implicit_model_selection
+from app.cleanup.profile import COMPACT_PROFILE, FULL_PROFILE
 from app.cleanup.transport import Endpoint
-from app.cleanup.worker import LlamaServerWorker, resolve_binary
+from app.cleanup.worker import LlamaServerWorker, RuntimeFlags, probe_flags, resolve_binary
 from app.config import Settings
 from app.runtime_config import RuntimeConfig
 
@@ -284,7 +286,7 @@ def test_the_worker_is_launched_with_argv_and_a_private_credential(
     binary.chmod(0o755)
     model = tmp_path / "model.gguf"
     model.write_bytes(b"gguf")
-    worker = LlamaServerWorker(binary, model, context_tokens=8192, cpu_threads=2)
+    worker = LlamaServerWorker(binary, model, context_tokens=MINIMUM_CONTEXT_TOKENS, cpu_threads=2)
 
     arguments = worker._arguments(9999)
 
@@ -292,11 +294,134 @@ def test_the_worker_is_launched_with_argv_and_a_private_credential(
     assert "--host" in arguments and "127.0.0.1" in arguments
     assert "--jinja" in arguments
     assert "--no-webui" in arguments
+    assert arguments[arguments.index("--ctx-size") + 1] == str(MINIMUM_CONTEXT_TOKENS)
+    assert arguments[arguments.index("--batch-size") + 1] == str(COMPACT_PROFILE.batch_tokens)
+    assert arguments[arguments.index("--ubatch-size") + 1] == str(COMPACT_PROFILE.ubatch_tokens)
+    assert arguments[arguments.index("--cache-type-k") + 1] == COMPACT_PROFILE.kv_cache_type
+    # No flash attention was advertised by this stub binary, so the V cache
+    # falls back rather than launching a server that refuses to start.
+    assert arguments[arguments.index("--cache-type-v") + 1] == "f16"
+    assert arguments[arguments.index("--threads") + 1] == "2"
     # A credential of the worker's own: the client's bearer token never travels.
     assert worker.api_key in arguments
     assert len(worker.api_key) >= 24
     # argv, never a shell string.
     assert all(isinstance(argument, str) for argument in arguments)
+
+
+def test_the_worker_caps_threads_the_same_way_speech_engines_do(tmp_path: Path) -> None:
+    binary = tmp_path / "llama-server"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"gguf")
+    worker = LlamaServerWorker(binary, model, context_tokens=MINIMUM_CONTEXT_TOKENS, cpu_threads=0)
+
+    arguments = worker._arguments(9999)
+
+    assert arguments[arguments.index("--threads") + 1] == str(system.inference_thread_count(0))
+
+
+def test_the_full_profile_launches_with_a_larger_window_and_f16_cache(tmp_path: Path) -> None:
+    binary = tmp_path / "llama-server"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"gguf")
+    worker = LlamaServerWorker(binary, model, profile=FULL_PROFILE, cpu_threads=2)
+
+    arguments = worker._arguments(9999)
+
+    assert arguments[arguments.index("--ctx-size") + 1] == str(FULL_PROFILE.context_tokens)
+    assert arguments[arguments.index("--cache-type-k") + 1] == "f16"
+    assert arguments[arguments.index("--batch-size") + 1] == str(FULL_PROFILE.batch_tokens)
+
+
+def test_catalog_models_declare_a_window_ceiling_the_profiles_fit_inside() -> None:
+    """The catalog records what a model supports; the profile picks what to use."""
+    assert cleanup_catalog.CLEANUP_CATALOG
+    assert all(
+        model.maximum_context_tokens >= FULL_PROFILE.context_tokens
+        for model in cleanup_catalog.CLEANUP_CATALOG
+    )
+
+
+def test_a_model_ceiling_never_raises_the_compact_window() -> None:
+    """A 40k trained window must not undo the low-end profile on a 4 GB host."""
+    assert host_module._context_tokens("cleanup:qwen3-0.6b", COMPACT_PROFILE) == (
+        MINIMUM_CONTEXT_TOKENS
+    )
+    assert host_module._context_tokens("cleanup:qwen3-0.6b", FULL_PROFILE) == (
+        FULL_PROFILE.context_tokens
+    )
+    # An entry with no recorded ceiling gets the floor, whatever the profile asks.
+    assert host_module._context_tokens("cleanup:unknown", FULL_PROFILE) == MINIMUM_CONTEXT_TOKENS
+
+
+def test_the_probed_flags_enable_a_quantized_value_cache(tmp_path: Path) -> None:
+    """A build that advertises the value form gets `--flash-attn on` and q8_0 V."""
+    binary = tmp_path / "llama-server"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"gguf")
+    worker = LlamaServerWorker(binary, model, cpu_threads=2)
+    worker._flags = RuntimeFlags(
+        flash_attention=("--flash-attn", "on"),
+        no_context_shift=True,
+        reasoning_budget=True,
+    )
+
+    arguments = worker._arguments(9999)
+
+    assert arguments[arguments.index("--cache-type-v") + 1] == COMPACT_PROFILE.kv_cache_type
+    assert arguments[arguments.index("--flash-attn") + 1] == "on"
+    assert "--no-context-shift" in arguments
+    assert arguments[arguments.index("--reasoning-budget") + 1] == "0"
+
+
+def test_an_older_binary_is_offered_only_the_flags_it_advertises(tmp_path: Path) -> None:
+    """`--flash-attn` used to be a bare switch, and the rest did not exist."""
+    binary = tmp_path / "llama-server"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"gguf")
+    worker = LlamaServerWorker(binary, model, cpu_threads=2)
+    worker._flags = RuntimeFlags(flash_attention=("--flash-attn",))
+
+    arguments = worker._arguments(9999)
+
+    # Last in argv, so the bare switch has nothing behind it to swallow.
+    assert arguments[-1] == "--flash-attn"
+    assert "on" not in arguments
+    assert "--no-context-shift" not in arguments
+    assert "--reasoning-budget" not in arguments
+
+
+def test_flags_are_read_from_the_binary_help_text(tmp_path: Path) -> None:
+    """The gateway launches whatever `llama-server` is on PATH, so it asks."""
+    modern = tmp_path / "modern"
+    modern.write_text(
+        "#!/bin/sh\n"
+        "echo '-fa,   --flash-attn [on|off|auto]  set Flash Attention use'\n"
+        "echo '--context-shift, --no-context-shift  whether to use context shift'\n"
+        "echo '--reasoning-budget N  token budget for thinking'\n"
+    )
+    modern.chmod(0o755)
+    assert probe_flags(modern) == RuntimeFlags(
+        flash_attention=("--flash-attn", "on"),
+        no_context_shift=True,
+        reasoning_budget=True,
+    )
+
+    ancient = tmp_path / "ancient"
+    ancient.write_text("#!/bin/sh\necho '-fa, --flash-attn  enable Flash Attention'\n")
+    ancient.chmod(0o755)
+    assert probe_flags(ancient) == RuntimeFlags(flash_attention=("--flash-attn",))
+
+    missing = tmp_path / "absent"
+    assert probe_flags(missing) == RuntimeFlags()
 
 
 def test_a_binary_override_that_is_not_executable_is_not_resolved(tmp_path: Path) -> None:
@@ -496,6 +621,9 @@ class _ContextRuntime:
         self.asks += 1
         return not self.tokens or self.tokens >= MINIMUM_CONTEXT_TOKENS
 
+    async def context_tokens(self) -> int:
+        return self.tokens
+
     async def available(self) -> bool:
         return True
 
@@ -532,6 +660,15 @@ async def test_an_external_endpoint_with_too_small_a_window_is_refused(
     async with manager.lease() as slot:
         assert slot.runtime is None
         assert slot.reason is CleanupReason.CONTEXT_TOO_SMALL
+    assert runtime.asks == 1
+
+
+async def test_the_minimum_context_window_is_accepted(
+    external: Callable[[int], tuple[Any, _ContextRuntime]],
+) -> None:
+    manager, runtime = external(MINIMUM_CONTEXT_TOKENS)
+    async with manager.lease() as slot:
+        assert slot.runtime is not None
     assert runtime.asks == 1
 
 

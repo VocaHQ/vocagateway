@@ -13,7 +13,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.cleanup.base import MAXIMUM_OUTPUT_TOKENS
+from app.cleanup.base import (
+    DEFAULT_TOKEN_BUDGET,
+    JSON_WRAPPER_TOKENS,
+    MINIMUM_OUTPUT_TOKENS,
+    TokenBudget,
+)
 
 # Pinned non-thinking sampling. Near-greedy because the task is a correction,
 # not a composition; not called deterministic, because identical sampling
@@ -85,7 +90,34 @@ def user_message(transcript: str, language: str) -> dict[str, str]:
     return {"role": "user", "content": payload}
 
 
-def chat_request(transcript: str, language: str, *, model: str) -> dict[str, Any]:
+def output_token_budget(transcript: str, budget: TokenBudget = DEFAULT_TOKEN_BUDGET) -> int:
+    """Decode budget for one correction, scaled to the transcript.
+
+    The JSON schema already stops at a complete object, but a tight ceiling
+    stops a ramble inside ``text`` before it burns the request deadline.
+
+    Encoded *bytes* are the upper bound on the tokens a same-length correction
+    costs, not characters. Characters are an upper bound only for a script the
+    tokenizer has entries for: Tamil measures 0.85 characters to the token and
+    Runic 0.66, so a character ceiling silently cuts those corrections off at
+    `finish_reason=length` and throws the whole answer away. Bytes are never
+    fewer than tokens, and for ASCII the two counts are the same, so English
+    keeps exactly the ceiling it had.
+
+    The cap comes from the window the worker was launched with, so a high-end
+    host is not held to a low-end host's decode budget.
+    """
+    needed = len(transcript.encode("utf-8")) + JSON_WRAPPER_TOKENS
+    return min(budget.output_tokens, max(MINIMUM_OUTPUT_TOKENS, needed))
+
+
+def chat_request(
+    transcript: str,
+    language: str,
+    *,
+    model: str,
+    budget: TokenBudget = DEFAULT_TOKEN_BUDGET,
+) -> dict[str, Any]:
     """The full chat-completions body, in non-thinking mode with no tools."""
     return {
         "model": model,
@@ -94,7 +126,7 @@ def chat_request(transcript: str, language: str, *, model: str) -> dict[str, Any
         "top_p": TOP_P,
         "top_k": TOP_K,
         "repeat_penalty": REPEAT_PENALTY,
-        "max_tokens": MAXIMUM_OUTPUT_TOKENS,
+        "max_tokens": output_token_budget(transcript, budget),
         "stream": False,
         # Structural guarantee, not a semantic one: it constrains the shape of
         # the answer, never its truthfulness. The validators still run.
@@ -113,5 +145,8 @@ def chat_request(transcript: str, language: str, *, model: str) -> dict[str, Any
         # Nothing in this package executes a tool call, so none may be offered.
         "tools": [],
         "tool_choice": "none",
-        "cache_prompt": False,
+        # Reuse KV for the static system instruction. The user message is JSON
+        # of this transcript, so the common prefix ends before any dictated
+        # text; a previous request's transcript is not kept as a prefix.
+        "cache_prompt": True,
     }

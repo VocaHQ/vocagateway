@@ -30,8 +30,9 @@ DEFAULT_MODE = MODE_OFF
 # it. Never derived from the model.
 PROMPT_VERSION = "cleanup-v1"
 
-# Engineering budgets. Proposals to validate on real hardware, not measured
-# numbers — see the evaluation gates in the plan.
+# Engineering budgets. A 120 s dictation is a few hundred tokens; these
+# ceilings leave headroom for that without allocating an 8k f16 KV cache
+# that dwarfs the 0.6B weights on a low-end host.
 MILLISECONDS_PER_SECOND = 1000
 DEFAULT_TIMEOUT_SECONDS = 5.0
 MINIMUM_TIMEOUT_SECONDS = 1.0
@@ -39,9 +40,88 @@ MAXIMUM_TIMEOUT_SECONDS = 30.0
 ADMISSION_WAIT_SECONDS = 0.1
 MAXIMUM_INPUT_BYTES = 16_384
 MAXIMUM_OUTPUT_BYTES = 32_768
-MAXIMUM_INPUT_TOKENS = 2_048
-MAXIMUM_OUTPUT_TOKENS = 2_560
-MINIMUM_CONTEXT_TOKENS = 8_192
+MINIMUM_CONTEXT_TOKENS = 4_096
+# Tokens one request spends on something other than the transcript: the system
+# instruction, the chat template's own turn markers, and the JSON envelope
+# around the transcript and the answer. Measured against the shipped
+# instruction with room to spare, so a prompt revision cannot quietly overrun
+# the window it was sized for.
+PROMPT_OVERHEAD_TOKENS = 640
+# A correction is the transcript said again, so the decode budget has to be at
+# least as large as the transcript. `app/cleanup/validation.py` refuses an
+# answer longer than 1.6x the original, and a quarter more than the input
+# covers ordinary repair without reserving window for a rewrite that would be
+# thrown away anyway.
+OUTPUT_TO_INPUT_RATIO = 1.25
+# Slack between an estimated token count and the budget it is measured
+# against, for the variation between one paragraph of a transcript and the
+# next. The window keeps a reserve besides, so a bad estimate costs headroom
+# rather than a dropped system instruction.
+TOKEN_ESTIMATE_MARGIN = 0.85
+# Room for the BOS and template tokens a tokenizer adds on top of the text.
+TOKENIZER_MARGIN_TOKENS = 32
+MINIMUM_OUTPUT_TOKENS = 64
+JSON_WRAPPER_TOKENS = 24
+
+
+@dataclass(frozen=True, slots=True)
+class TokenBudget:
+    """How one `llama-server` window is divided between transcript and answer.
+
+    Derived from the window a worker was actually launched with rather than
+    fixed, so a high-end host's larger `--ctx-size` buys longer one-pass
+    corrections instead of a KV cache that is never filled.
+    """
+
+    context_tokens: int
+    input_tokens: int
+    output_tokens: int
+
+    @property
+    def certain_bytes(self) -> int:
+        """Encoded size below which a transcript cannot exceed `input_tokens`.
+
+        Bytes, not characters. A byte-fallback BPE never emits more than one
+        token per *byte*, but it emits several per character for any script
+        outside its vocabulary: Runic "\u16a0\u16a2\u16a6" is three characters and six
+        tokens. Counting characters here would let a Devanagari, CJK, or
+        emoji-heavy transcript skip the tokenize round trip and then overrun
+        the window, which drops the front of the context - the system
+        instruction - and corrects the text under no rules at all.
+        """
+        return max(1, self.input_tokens - TOKENIZER_MARGIN_TOKENS)
+
+    @property
+    def packed_tokens(self) -> int:
+        """Transcript tokens one pass can both hold *and* write back.
+
+        A correction is the transcript again, so a piece has to fit the decode
+        half of the window as well as the input half. Both halves are measured
+        in tokens and so is this: a character bound would be four times too
+        tight for English, where five characters cost one token, and still
+        wrong for a script that costs more than one token per character.
+
+        `budget_for_context` gives the decode half a quarter more than the
+        input half, so this is normally the input budget unmodified. It bites
+        only if that ratio is ever lowered.
+        """
+        return max(1, min(self.input_tokens, self.output_tokens - JSON_WRAPPER_TOKENS))
+
+
+def budget_for_context(context_tokens: int) -> TokenBudget:
+    """Split a context window between the transcript and its correction."""
+    window = max(MINIMUM_CONTEXT_TOKENS, context_tokens)
+    usable = window - PROMPT_OVERHEAD_TOKENS
+    input_tokens = int(usable / (1 + OUTPUT_TO_INPUT_RATIO))
+    return TokenBudget(
+        context_tokens=window,
+        input_tokens=input_tokens,
+        output_tokens=usable - input_tokens,
+    )
+
+
+# What a runtime assumes when nobody has told it which window it is talking to.
+DEFAULT_TOKEN_BUDGET = budget_for_context(MINIMUM_CONTEXT_TOKENS)
 
 
 class CleanupStatus(StrEnum):

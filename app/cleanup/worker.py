@@ -15,7 +15,9 @@ because nothing outside this class owns the process.
 from __future__ import annotations
 
 import asyncio
+import functools
 import os
+import re
 import secrets
 import shutil
 import socket
@@ -23,11 +25,14 @@ import subprocess
 import tempfile
 import time
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
 
+from app import system
 from app.cleanup import transport
 from app.cleanup.base import CleanupUnavailable
+from app.cleanup.profile import COMPACT_PROFILE, KV_CACHE_F16, CleanupLaunchProfile
 
 LOOPBACK_HOST = "127.0.0.1"
 SERVER_BINARY_NAME = "llama-server"
@@ -46,6 +51,69 @@ MAXIMUM_DIAGNOSTIC_LENGTH = 400
 # would only split the KV cache without ever being used.
 PARALLEL_SLOTS = 1
 HEALTH_PROBE_SECONDS = 1.0
+HELP_TIMEOUT_SECONDS = 15.0
+FLASH_ATTENTION_FLAG = "--flash-attn"
+FLASH_ATTENTION_ON = "on"
+CONTEXT_SHIFT_FLAG = "--no-context-shift"
+REASONING_BUDGET_FLAG = "--reasoning-budget"
+NO_REASONING_BUDGET = "0"
+# `-fa` used to be a bare switch and now takes a value. Passing the new form to
+# an old build is an unknown-argument exit; passing the bare form to a new one
+# makes it swallow the following flag as its value. The two are told apart by
+# the help text rather than by a version number, because the gateway launches
+# whatever `llama-server` a native install has on PATH.
+_FLASH_ATTENTION_VALUE_FORM = re.compile(r"--flash-attn\s*\[on\|off\|auto\]")
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeFlags:
+    """The optional `llama-server` options one binary understands.
+
+    Only the flags the gateway can do without are behind this. An unknown
+    argument is a startup failure rather than a warning, and the container's
+    pinned build is not the only one that runs: a native install uses whatever
+    is on PATH. The pinned build answers yes to all of these.
+    """
+
+    flash_attention: tuple[str, ...] = ()
+    no_context_shift: bool = False
+    reasoning_budget: bool = False
+
+
+@functools.lru_cache(maxsize=8)
+def probe_flags(binary: Path) -> RuntimeFlags:
+    """Ask one `llama-server` what it accepts, once per binary.
+
+    Blocking, and deliberately not called from the request path: the worker
+    warms it on a thread as part of the background load that has to run before
+    anything can be corrected anyway. A binary that cannot be asked is assumed
+    to understand none of these, which is the launch the gateway shipped before
+    any of them existed.
+    """
+    try:
+        completed = subprocess.run(  # noqa: S603 - argv only, path validated by the caller
+            [str(binary), "--help"],
+            capture_output=True,
+            timeout=HELP_TIMEOUT_SECONDS,
+            env=_worker_environment(),
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return RuntimeFlags()
+    text = (completed.stdout + completed.stderr).decode("utf-8", errors="replace")
+    return RuntimeFlags(
+        flash_attention=_flash_attention_arguments(text),
+        no_context_shift=CONTEXT_SHIFT_FLAG in text,
+        reasoning_budget=REASONING_BUDGET_FLAG in text,
+    )
+
+
+def _flash_attention_arguments(help_text: str) -> tuple[str, ...]:
+    if _FLASH_ATTENTION_VALUE_FORM.search(help_text):
+        return (FLASH_ATTENTION_FLAG, FLASH_ATTENTION_ON)
+    if FLASH_ATTENTION_FLAG in help_text:
+        return (FLASH_ATTENTION_FLAG,)
+    return ()
 
 
 def resolve_binary(override: Path | None = None) -> Path | None:
@@ -68,16 +136,22 @@ class LlamaServerWorker:
         binary: Path,
         model: Path,
         *,
-        context_tokens: int,
+        context_tokens: int | None = None,
         cpu_threads: int = 0,
+        profile: CleanupLaunchProfile | None = None,
     ) -> None:
         self.binary = binary
         self.model = model
-        self.context_tokens = context_tokens
+        self.profile = profile or COMPACT_PROFILE
+        if context_tokens is None:
+            self.context_tokens = self.profile.context_tokens
+        else:
+            self.context_tokens = context_tokens
         self.cpu_threads = cpu_threads
         # A credential of the worker's own, so the gateway authenticates to it
         # without ever forwarding a client's bearer token.
         self.api_key = secrets.token_urlsafe(API_KEY_BYTES)
+        self._flags = RuntimeFlags()
         self._process: subprocess.Popen[bytes] | None = None
         self._port = 0
         self._stderr: IO[bytes] | None = None
@@ -131,6 +205,7 @@ class LlamaServerWorker:
 
     async def _start(self, budget: float) -> None:
         self._validate()
+        self._flags = await asyncio.to_thread(probe_flags, self.binary)
         port = _loopback_port()
         try:
             process = self._spawn(port)
@@ -178,8 +253,18 @@ class LlamaServerWorker:
             str(port),
             "--ctx-size",
             str(self.context_tokens),
+            "--batch-size",
+            str(self.profile.batch_tokens),
+            "--ubatch-size",
+            str(self.profile.ubatch_tokens),
+            # The K cache is quantized unconditionally; the V cache only when
+            # flash attention can be turned on for it. See `_value_cache_type`.
+            "--cache-type-k",
+            self.profile.kv_cache_type,
+            "--cache-type-v",
+            self._value_cache_type(),
             "--threads",
-            str(self.cpu_threads or os.cpu_count() or 1),
+            str(system.inference_thread_count(self.cpu_threads)),
             "--parallel",
             str(PARALLEL_SLOTS),
             # The credential the gateway presents. Nothing else on the machine
@@ -194,7 +279,45 @@ class LlamaServerWorker:
             # No browser surface on the port, and no slot state written to disk:
             # a cleanup prompt must not outlive the request in a cache file.
             "--no-webui",
+            *self._optional_arguments(),
         ]
+
+    def _value_cache_type(self) -> str:
+        """`f16` unless flash attention can be asked for alongside a quantized one.
+
+        A quantized V cache halves the KV allocation, which is the whole point
+        of the compact profile on a 4-8 GB host — but `llama-server` refuses to
+        build a context for one when flash attention is off, and it exits
+        rather than falling back. Downgrading the V cache on a build that
+        cannot be told to enable it keeps the worker starting; the K cache is
+        quantized either way, because that has never needed flash attention.
+        """
+        if not self.profile.quantized_value_cache or not self._flags.flash_attention:
+            return KV_CACHE_F16
+        return self.profile.kv_cache_type
+
+    def _optional_arguments(self) -> list[str]:
+        """Flags this binary advertises, skipped on a build that would reject them."""
+        arguments: list[str] = []
+        if self._flags.no_context_shift:
+            # A prompt that overruns the window must fail rather than have its
+            # front silently dropped: the front is the system instruction, and
+            # a correction made without it is not the correction that was
+            # validated. Current llama.cpp already defaults this off; asking
+            # keeps it off if that default ever moves.
+            arguments.append(CONTEXT_SHIFT_FLAG)
+        if self._flags.reasoning_budget:
+            # A second guarantee for the one `chat_template_kwargs` already
+            # asks for. The template switch is model-specific; this is not, and
+            # on a CPU-only host a single stray thinking block is hundreds of
+            # tokens spent past the request's deadline.
+            arguments.extend((REASONING_BUDGET_FLAG, NO_REASONING_BUDGET))
+        if self.profile.quantized_value_cache:
+            # Last, and that placement is load-bearing: on a build old enough
+            # that `--flash-attn` is a bare switch there is then nothing behind
+            # it for the parser to mistake for its value.
+            arguments.extend(self._flags.flash_attention)
+        return arguments
 
     async def _await_ready(self, process: subprocess.Popen[bytes], budget: float) -> bool:
         """Poll `/health` until the model is loaded. False once the process exits."""

@@ -17,8 +17,10 @@ from typing import Any
 
 import pytest
 
-from app.cleanup import transport
+from app.cleanup import prompts, transport
 from app.cleanup.base import (
+    DEFAULT_TOKEN_BUDGET,
+    JSON_WRAPPER_TOKENS,
     MAXIMUM_OUTPUT_BYTES,
     CleanupReason,
     CleanupRejected,
@@ -148,7 +150,8 @@ async def test_the_transcript_travels_as_json_data_not_as_an_instruction(serve: 
     assert sent["chat_template_kwargs"] == {"enable_thinking": False}
     assert sent["tools"] == []
     assert sent["tool_choice"] == "none"
-    assert sent["cache_prompt"] is False
+    assert sent["cache_prompt"] is True
+    assert sent["max_tokens"] == prompts.output_token_budget(dictated)
 
 
 REJECTIONS = (
@@ -258,12 +261,96 @@ async def test_a_hanging_server_times_out_and_the_socket_is_closed(serve: Any) -
         await server.wait_closed()
 
 
-async def test_a_transcript_over_the_token_ceiling_is_refused(serve: Any) -> None:
+async def test_a_short_transcript_does_not_tokenize(serve: Any) -> None:
     tokens = http(json.dumps({"tokens": list(range(4_000))}))
-    runtime = await serve(routed({"/tokenize": tokens}))
-    with pytest.raises(CleanupRejected) as raised:
-        await runtime.clean("fix it", "en", budget_seconds=BUDGET)
-    assert raised.value.reason is CleanupReason.INPUT_TOO_LONG
+    runtime = await serve(
+        routed({"/v1/chat/completions": http(answer("Fixed.")), "/tokenize": tokens})
+    )
+    assert await runtime.clean("fix it", "en", budget_seconds=BUDGET) == "Fixed."
+    paths = [request.split(b" ")[1] for request in runtime.server.requests]
+    assert b"/tokenize" not in paths
+
+
+async def test_a_byte_fallback_script_is_still_tokenized(serve: Any) -> None:
+    """A byte-fallback tokenizer can spend several tokens on one character.
+
+    Runic is three bytes and two tokens per character, so a character count is
+    not an upper bound on tokens and cannot be used to skip the round trip.
+    The bound is encoded *bytes*, which no tokenizer exceeds.
+    """
+    tokens = http(json.dumps({"tokens": [1, 2, 3]}))
+    runtime = await serve(
+        routed({"/v1/chat/completions": http(answer("Fixed.")), "/tokenize": tokens})
+    )
+    runic = "\u16a0\u16a2\u16a6" * 400
+    assert len(runic) < DEFAULT_TOKEN_BUDGET.certain_bytes
+    assert len(runic.encode("utf-8")) > DEFAULT_TOKEN_BUDGET.certain_bytes
+    await runtime.clean(runic, "en", budget_seconds=BUDGET)
+    paths = [request.split(b" ")[1] for request in runtime.server.requests]
+    assert b"/tokenize" in paths
+
+
+def _echo_transcript(request: bytes) -> bytes:
+    path = request.split(b" ")[1].decode("latin-1")
+    if path != "/v1/chat/completions":
+        return http(json.dumps({"tokens": [1, 2, 3]}))
+    body = json.loads(request.split(b"\r\n\r\n", 1)[1])
+    payload = json.loads(body["messages"][1]["content"])
+    return http(answer(payload["transcript"]))
+
+
+def _completions(runtime: Any) -> list[bytes]:
+    return [
+        request
+        for request in runtime.server.requests
+        if request.split(b" ")[1] == b"/v1/chat/completions"
+    ]
+
+
+def _counted(tokens: int) -> Callable[[bytes], bytes]:
+    """Echo the transcript back, and report *tokens* from `/tokenize`."""
+
+    def handler(request: bytes) -> bytes:
+        if request.split(b" ")[1] != b"/v1/chat/completions":
+            return http(json.dumps({"tokens": list(range(tokens))}))
+        return _echo_transcript(request)
+
+    return handler
+
+
+async def test_a_long_transcript_is_corrected_in_pieces(serve: Any) -> None:
+    """Only a transcript the tokenizer says will not fit is split."""
+    budget = DEFAULT_TOKEN_BUDGET.input_tokens
+    runtime = await serve(_counted(budget * 2))
+    long = "Hello world. " * (DEFAULT_TOKEN_BUDGET.certain_bytes // 4)
+    assert len(long) > DEFAULT_TOKEN_BUDGET.certain_bytes
+    assert await runtime.clean(long, "en", budget_seconds=BUDGET) == long
+    assert len(_completions(runtime)) >= 2
+
+
+async def test_a_transcript_the_tokenizer_says_fits_is_corrected_whole(serve: Any) -> None:
+    """English runs about five characters to the token; splitting a transcript
+    the tokenizer says fits would be a second inference and a piece corrected
+    without its neighbours, for nothing. The count from the runtime's own
+    tokenizer is what decides, and nothing else."""
+    runtime = await serve(_counted(DEFAULT_TOKEN_BUDGET.packed_tokens // 2))
+    long = "Hello world. " * (DEFAULT_TOKEN_BUDGET.certain_bytes // 4)
+    assert len(long) > DEFAULT_TOKEN_BUDGET.certain_bytes
+    assert await runtime.clean(long, "en", budget_seconds=BUDGET) == long
+    assert len(_completions(runtime)) == 1
+
+
+async def test_the_decode_ceiling_is_sized_in_bytes_not_characters(serve: Any) -> None:
+    """Tamil costs 0.85 characters to the token and Runic 0.66, so a character
+    ceiling cuts those corrections off at `finish_reason=length`. Bytes are
+    never fewer than tokens, and for ASCII the two are the same."""
+    dense = "\u16a0\u16a2\u16a6 \u16a8\u16b1\u16b2 " * 20
+    ascii_text = "hello world. " * 20
+    assert prompts.output_token_budget(dense) > len(dense) + JSON_WRAPPER_TOKENS
+    assert prompts.output_token_budget(ascii_text) == len(ascii_text) + JSON_WRAPPER_TOKENS
+    # And it is still capped by the window the worker was launched with.
+    huge = "\u16a0" * 100_000
+    assert prompts.output_token_budget(huge) == DEFAULT_TOKEN_BUDGET.output_tokens
 
 
 async def test_health_and_context_size_are_read_from_the_running_server(serve: Any) -> None:

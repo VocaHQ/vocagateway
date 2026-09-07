@@ -17,6 +17,7 @@ from app.cleanup.base import (
     CleanupRejected,
     CleanupUnavailable,
 )
+from app.cleanup.profile import COMPACT_PROFILE
 from app.config import Settings
 from app.main import create_app
 from app.models.base import EngineHealth, TranscriptionOptions
@@ -150,6 +151,10 @@ class FakeWorkerHost:
         self.is_running = runtime is not None
         self.stops = 0
         self.is_loading = False
+        self.profile = COMPACT_PROFILE
+
+    def profile_detail(self) -> str:
+        return self.profile.summary
 
     def runtime_available(self) -> bool:
         return True
