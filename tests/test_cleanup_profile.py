@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.cleanup.base import MINIMUM_CONTEXT_TOKENS
+from app.cleanup.base import JSON_WRAPPER_TOKENS, MINIMUM_CONTEXT_TOKENS
 from app.cleanup.profile import (
     COMPACT_PROFILE,
     FULL_PROFILE,
@@ -105,3 +105,17 @@ def test_the_full_profile_spends_its_larger_window_on_longer_passes() -> None:
 def test_only_the_compact_profile_needs_flash_attention() -> None:
     assert COMPACT_PROFILE.quantized_value_cache is True
     assert FULL_PROFILE.quantized_value_cache is False
+
+def test_profile_piece_size_fits_the_output_budget() -> None:
+    """Packed pieces must leave room for a same-length correction under max_tokens."""
+    for profile in (COMPACT_PROFILE, FULL_PROFILE):
+        budget = profile.budget
+        assert budget.maximum_packed_chars == budget.output_tokens - JSON_WRAPPER_TOKENS
+        piece = "x" * budget.maximum_packed_chars
+        assert len(piece) + JSON_WRAPPER_TOKENS <= budget.output_tokens
+
+
+def test_a_larger_window_raises_the_decode_char_cap() -> None:
+    assert budget_for_window(8_192).maximum_packed_chars > budget_for_window(4_096).maximum_packed_chars
+    assert budget_for_window(32_768).maximum_packed_chars >= budget_for_window(8_192).maximum_packed_chars
+

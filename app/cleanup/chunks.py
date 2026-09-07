@@ -22,6 +22,17 @@ from app.cleanup.base import TOKEN_ESTIMATE_MARGIN
 _PARAGRAPH = re.compile(r"\n\n+")
 _SENTENCE = re.compile(r"[.!?。！？।…][\"'”’)\]]*\s+")
 _WHITESPACE = re.compile(r"\s+")
+# Titles and initialisms the sentence splitter isolates as their own unit,
+# including the trailing space. "Hello. " is a real sentence and does not match.
+_ABBREVIATION = re.compile(
+    r"(?:"
+    r"(?:[A-Za-z]\.){1,6}"
+    r"|"
+    r"(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|vs|etc)\."
+    r")"
+    r"[\"'”’)\]]*\s+",
+    re.IGNORECASE,
+)
 
 
 def character_limit(characters: int, tokens: int, budget_tokens: int) -> int:
@@ -42,7 +53,8 @@ def pack(text: str, *, limit: int) -> list[str]:
     """Split *text* into pieces of at most *limit* characters.
 
     A single whitespace-delimited token longer than *limit* is left whole so a
-    URL or path is not broken; the runtime then either accepts it or keeps that
+    URL or path is not broken; a short abbreviation in front of it stays
+    attached. The runtime then either accepts the oversize piece or keeps that
     slice uncorrected. ``"".join(pack(text)) == text``.
     """
     if limit < 1:
@@ -68,7 +80,80 @@ def pack(text: str, *, limit: int) -> list[str]:
 def _units(text: str, limit: int) -> list[str]:
     paragraphs = _split_after(text, _PARAGRAPH)
     sentences = _break_oversized(paragraphs, limit, lambda part: _split_after(part, _SENTENCE))
-    return _break_oversized(sentences, limit, lambda part: _split_words(part, limit))
+    words = _break_oversized(sentences, limit, lambda part: _split_words(part, limit))
+    return _attach_abbreviations(words, limit)
+
+
+def _attach_abbreviations(units: list[str], limit: int) -> list[str]:
+    """Keep short abbreviation fragments with the unit that follows them.
+
+    Skip the merge when the follower already fills *limit*, so a title in
+    front of a packed-to-the-limit sentence does not recreate an oversize
+    piece. An unbreakable follower (a URL or path longer than *limit*) still
+    takes the prefix, matching pack()'s oversize-token rule. Consecutive
+    abbreviation fragments are flushed before they would exceed *limit*, so
+    an abbreviation-only run does not reassemble into one oversize piece.
+    """
+    attached: list[str] = []
+    pending = ""
+    for unit in units:
+        if _is_abbreviation_fragment(unit):
+            if pending and len(pending) + len(unit) > limit:
+                attached.extend(_split_abbreviation_run(pending, limit))
+                pending = ""
+            pending += unit
+            if len(pending) > limit:
+                attached.extend(_split_abbreviation_run(pending, limit))
+                pending = ""
+            continue
+        if pending:
+            if len(pending) + len(unit) <= limit or len(unit) > limit:
+                attached.append(pending + unit)
+            else:
+                attached.extend(_split_abbreviation_run(pending, limit))
+                attached.append(unit)
+            pending = ""
+            continue
+        attached.append(unit)
+    if pending:
+        attached.extend(_split_abbreviation_run(pending, limit))
+    return attached
+
+
+def _split_abbreviation_run(text: str, limit: int) -> list[str]:
+    """Pack abbreviation fragments into pieces of at most *limit* characters.
+
+    A single fragment longer than *limit* is left whole, matching pack()'s
+    oversize-token rule.
+    """
+    if len(text) <= limit:
+        return [text] if text else []
+    packed: list[str] = []
+    current = ""
+    for fragment in _split_after(text, _ABBREVIATION):
+        if not current:
+            current = fragment
+            continue
+        if len(current) + len(fragment) <= limit:
+            current += fragment
+            continue
+        packed.append(current)
+        current = fragment
+    if current:
+        packed.append(current)
+    return packed
+
+
+def _is_abbreviation_fragment(piece: str) -> bool:
+    """True when *piece* is only titles or initialisms, with their trailing space."""
+    if not piece:
+        return False
+    end = 0
+    for match in _ABBREVIATION.finditer(piece):
+        if match.start() != end:
+            return False
+        end = match.end()
+    return end == len(piece)
 
 
 def _break_oversized(

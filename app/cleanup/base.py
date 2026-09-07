@@ -91,6 +91,18 @@ class TokenBudget:
         """
         return max(1, self.input_tokens - TOKENIZER_MARGIN_TOKENS)
 
+    @property
+    def maximum_packed_chars(self) -> int:
+        """Characters a same-length correction can emit under this window's decode budget.
+
+        `output_token_budget` sizes `max_tokens` from character length (one
+        token per character is the safe upper bound for a same-length rewrite)
+        and caps it at `output_tokens`. A piece longer than this still fits
+        the input side of the window after the tokenizer counts it, but the
+        decode hits `finish_reason=length` and fail-opens.
+        """
+        return max(1, self.output_tokens - JSON_WRAPPER_TOKENS)
+
 
 def budget_for_context(context_tokens: int) -> TokenBudget:
     """Split a context window between the transcript and its correction."""
