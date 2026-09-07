@@ -335,7 +335,9 @@ async def test_a_transcript_the_tokenizer_says_fits_is_corrected_whole(serve: An
     runtime = await serve(_counted(DEFAULT_TOKEN_BUDGET.input_tokens // 2))
     # Stay above the no-tokenize byte shortcut but inside the decode char cap.
     long = "Hello world. " * 120
-    assert DEFAULT_TOKEN_BUDGET.certain_bytes < len(long) <= DEFAULT_TOKEN_BUDGET.maximum_packed_chars
+    assert (
+        DEFAULT_TOKEN_BUDGET.certain_bytes < len(long) <= DEFAULT_TOKEN_BUDGET.maximum_packed_chars
+    )
     assert await runtime.clean(long, "en", budget_seconds=BUDGET) == long
     assert len(_completions(runtime)) == 1
 

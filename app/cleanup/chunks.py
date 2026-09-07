@@ -60,21 +60,14 @@ def pack(text: str, *, limit: int) -> list[str]:
     if limit < 1:
         raise ValueError("pack limit must be at least 1")
     if len(text) <= limit:
-        return [text] if text else []
-    packed: list[str] = []
-    current = ""
-    for unit in _units(text, limit):
-        if not current:
-            current = unit
-            continue
-        if len(current) + len(unit) <= limit:
-            current += unit
-            continue
-        packed.append(current)
-        current = unit
-    if current:
-        packed.append(current)
-    return packed
+        return _as_pieces(text)
+    return _pack_units(_units(text, limit), limit)
+
+
+def _as_pieces(text: str) -> list[str]:
+    if text:
+        return [text]
+    return []
 
 
 def _units(text: str, limit: int) -> list[str]:
@@ -82,6 +75,28 @@ def _units(text: str, limit: int) -> list[str]:
     sentences = _break_oversized(paragraphs, limit, lambda part: _split_after(part, _SENTENCE))
     words = _break_oversized(sentences, limit, lambda part: _split_words(part, limit))
     return _attach_abbreviations(words, limit)
+
+
+def _fits(left: str, right: str, limit: int) -> bool:
+    return len(left) + len(right) <= limit
+
+
+def _pack_units(units: list[str], limit: int) -> list[str]:
+    packed: list[str] = []
+    current = ""
+    for unit in units:
+        current = _extend_piece(packed, current, unit, limit)
+    if current:
+        packed.append(current)
+    return packed
+
+
+def _extend_piece(packed: list[str], current: str, unit: str, limit: int) -> str:
+    """Return the piece in progress after taking *unit*, flushing if needed."""
+    if not current or _fits(current, unit, limit):
+        return current + unit
+    packed.append(current)
+    return unit
 
 
 def _attach_abbreviations(units: list[str], limit: int) -> list[str]:
@@ -97,27 +112,42 @@ def _attach_abbreviations(units: list[str], limit: int) -> list[str]:
     attached: list[str] = []
     pending = ""
     for unit in units:
-        if _is_abbreviation_fragment(unit):
-            if pending and len(pending) + len(unit) > limit:
-                attached.extend(_split_abbreviation_run(pending, limit))
-                pending = ""
-            pending += unit
-            if len(pending) > limit:
-                attached.extend(_split_abbreviation_run(pending, limit))
-                pending = ""
-            continue
-        if pending:
-            if len(pending) + len(unit) <= limit or len(unit) > limit:
-                attached.append(pending + unit)
-            else:
-                attached.extend(_split_abbreviation_run(pending, limit))
-                attached.append(unit)
-            pending = ""
-            continue
-        attached.append(unit)
+        pending = _next_attachment(attached, pending, unit, limit)
     if pending:
         attached.extend(_split_abbreviation_run(pending, limit))
     return attached
+
+
+def _next_attachment(attached: list[str], pending: str, unit: str, limit: int) -> str:
+    """Fold one unit into the abbreviation buffer; return the new buffer."""
+    if _is_abbreviation_fragment(unit):
+        return _hold_abbreviation(attached, pending, unit, limit)
+    if pending:
+        attached.extend(_join_follower(pending, unit, limit))
+        return ""
+    attached.append(unit)
+    return ""
+
+
+def _hold_abbreviation(attached: list[str], pending: str, unit: str, limit: int) -> str:
+    """Buffer *unit*; flush a run that would exceed *limit* before growing it."""
+    if pending and not _fits(pending, unit, limit):
+        attached.extend(_split_abbreviation_run(pending, limit))
+        pending = ""
+    pending += unit
+    if len(pending) <= limit:
+        return pending
+    attached.extend(_split_abbreviation_run(pending, limit))
+    return ""
+
+
+def _join_follower(pending: str, unit: str, limit: int) -> list[str]:
+    """Attach *pending* to *unit*, or split it when the follower already fills."""
+    if _fits(pending, unit, limit) or len(unit) > limit:
+        return [pending + unit]
+    pieces = _split_abbreviation_run(pending, limit)
+    pieces.append(unit)
+    return pieces
 
 
 def _split_abbreviation_run(text: str, limit: int) -> list[str]:
@@ -127,21 +157,8 @@ def _split_abbreviation_run(text: str, limit: int) -> list[str]:
     oversize-token rule.
     """
     if len(text) <= limit:
-        return [text] if text else []
-    packed: list[str] = []
-    current = ""
-    for fragment in _split_after(text, _ABBREVIATION):
-        if not current:
-            current = fragment
-            continue
-        if len(current) + len(fragment) <= limit:
-            current += fragment
-            continue
-        packed.append(current)
-        current = fragment
-    if current:
-        packed.append(current)
-    return packed
+        return _as_pieces(text)
+    return _pack_units(_split_after(text, _ABBREVIATION), limit)
 
 
 def _is_abbreviation_fragment(piece: str) -> bool:
@@ -187,15 +204,19 @@ def _split_words(text: str, limit: int) -> list[str]:
     start = 0
     for match in _WHITESPACE.finditer(text):
         word = text[start : match.start()]
-        space = match.group(0)
         start = match.end()
         if word:
             pieces.append(word)
-        if space:
-            if pieces and len(pieces[-1]) + len(space) <= limit:
-                pieces[-1] += space
-            else:
-                pieces.append(space)
+        _append_whitespace(pieces, match.group(0), limit)
     if start < len(text):
         pieces.append(text[start:])
     return pieces or [text]
+
+
+def _append_whitespace(pieces: list[str], space: str, limit: int) -> None:
+    if not space:
+        return
+    if pieces and _fits(pieces[-1], space, limit):
+        pieces[-1] += space
+        return
+    pieces.append(space)
