@@ -575,6 +575,13 @@ leaves the load running behind it; the next one finds the model resident.
 That is the whole thing on a fresh install: corrections are on by default, and
 a model that is the only one installed needs no separate selection.
 
+For English, **Qwen3 0.6B Compact (Q4_0)** is the smallest catalog download at
+about 429 MB, one-third smaller than the Q8_0 artifact. Preliminary local smoke
+testing found a modest latency improvement, not the 2× improvement required for
+a "much faster" claim, so the WebUI describes it as compact rather than faster.
+See the [cleanup model evaluation](docs/cleanup-model-evaluation.md) for the
+measured boundary and the candidates that were rejected.
+
 The runtime under it is a `llama-server` the gateway launches and owns, on
 loopback, on a port that is never published, with a credential it generates
 itself. The container builds that runtime for the same accelerator as the

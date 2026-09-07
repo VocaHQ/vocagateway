@@ -29,7 +29,7 @@ from app.cleanup.base import (
     MODE_OFF,
     CleanupReason,
 )
-from app.cleanup.manager import CleanupUpdate, build_manager
+from app.cleanup.manager import CleanupUpdate, build_manager, preserve_implicit_model_selection
 from app.cleanup.transport import Endpoint
 from app.cleanup.worker import LlamaServerWorker, resolve_binary
 from app.config import Settings
@@ -131,6 +131,27 @@ def test_a_second_installed_model_restores_the_choice(settings: Settings) -> Non
     assert manager.model_id is None
     manager.configure(CleanupUpdate(model_id="cleanup:qwen3-1.7b"))
     assert manager.model_id == "cleanup:qwen3-1.7b"
+
+
+def test_starting_a_second_download_preserves_the_sole_model_choice(settings: Settings) -> None:
+    manager = manager_for(settings)
+    install_model(manager)
+    assert manager.runtime_config.cleanup_model is None
+
+    preserve_implicit_model_selection(manager)
+    install_model(manager, "cleanup:qwen3-1.7b")
+
+    assert manager.runtime_config.cleanup_model == CLEANUP_MODEL_ID
+    assert manager.model_id == CLEANUP_MODEL_ID
+
+
+def test_an_environment_model_is_not_copied_into_saved_preferences(settings: Settings) -> None:
+    manager = manager_for(replace(settings, cleanup_model=CLEANUP_MODEL_ID))
+    install_model(manager)
+
+    preserve_implicit_model_selection(manager)
+
+    assert manager.runtime_config.cleanup_model is None
 
 
 def test_an_explicit_opt_in_cannot_override_an_operator_who_said_no(

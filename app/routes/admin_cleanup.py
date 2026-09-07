@@ -25,7 +25,7 @@ from starlette.status import (
 from app import admin_queries, errors, model_manager, serializers, service, text_styles
 from app.cleanup import catalog
 from app.cleanup.base import MODE_CONSERVATIVE
-from app.cleanup.manager import CleanupManager, CleanupUpdate
+from app.cleanup.manager import CleanupManager, CleanupUpdate, preserve_implicit_model_selection
 from app.context import GatewayContext, GatewayContextDependency, require_token
 from app.fragments import cleanup as cleanup_fragment
 from app.schemas import (
@@ -198,6 +198,7 @@ async def download_cleanup_model(
 ) -> CleanupModelEntry:
     selected = _known(model_id)
     _require_disk_space(manager, selected.size_bytes)
+    preserve_implicit_model_selection(manager)
     try:
         manager.models.start_download(model_id)
     except model_manager.DownloadInProgressError as error:

@@ -228,6 +228,12 @@ class SpanGuard:
         return [word for word in _casefolded_words(text) if word in _CALENDAR_SET]
 
     @classmethod
+    def repetitions(cls, text: str) -> list[str]:
+        """Adjacent repeated words whose removal could erase emphasis or intent."""
+        words = _casefolded_words(text)
+        return [word for previous, word in zip(words, words[1:], strict=False) if word == previous]
+
+    @classmethod
     def negations(cls, text: str) -> int:
         """How many polarity words the text carries, apostrophes ignored."""
         normalized = text.translate(_APOSTROPHES)
@@ -359,7 +365,14 @@ class PreservationChecks:
 
     @classmethod
     def reject(cls, original: str, candidate: str, language: str) -> CleanupReason | None:
-        for check in (cls._spans, cls._digits, cls._negation, cls._calendar, cls._script):
+        for check in (
+            cls._spans,
+            cls._digits,
+            cls._negation,
+            cls._calendar,
+            cls._repetitions,
+            cls._script,
+        ):
             rejection = check(original, candidate, language)
             if rejection is not None:
                 return rejection
@@ -388,6 +401,12 @@ class PreservationChecks:
     @classmethod
     def _calendar(cls, original: str, candidate: str, _language: str) -> CleanupReason | None:
         if SpanGuard.calendar_names(original) != SpanGuard.calendar_names(candidate):
+            return CleanupReason.UNSAFE_EDIT
+        return None
+
+    @classmethod
+    def _repetitions(cls, original: str, candidate: str, _language: str) -> CleanupReason | None:
+        if SpanGuard.repetitions(original) != SpanGuard.repetitions(candidate):
             return CleanupReason.UNSAFE_EDIT
         return None
 
