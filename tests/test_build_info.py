@@ -11,7 +11,6 @@ from conftest import FakeEngine, FakeNormalizer
 from starlette.status import HTTP_200_OK
 
 from app import build_info
-from app.build_info import DATE_ENV, SHA_ENV, SUBJECT_ENV, CommitInfo, current_commit
 from app.config import Settings
 from app.fragments.overview import _commit_context
 from app.main import create_app
@@ -27,11 +26,11 @@ BUILD_DEFINITION = "<dt>Build</dt>"
 
 @pytest.fixture(autouse=True)
 def _clear_commit_cache(monkeypatch: pytest.MonkeyPatch) -> None:
-    # current_commit() caches for the life of the process; every test here
+    # build_info.current_commit() caches for the life of the process; every test here
     # changes what it should resolve to.
-    for name in (SHA_ENV, SUBJECT_ENV, DATE_ENV):
+    for name in (build_info.SHA_ENV, build_info.SUBJECT_ENV, build_info.DATE_ENV):
         monkeypatch.delenv(name, raising=False)
-    current_commit.cache_clear()
+    build_info.current_commit.cache_clear()
 
 
 @pytest.fixture
@@ -52,11 +51,11 @@ async def debug_client(
 
 
 def test_env_overrides_win_over_git(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(SHA_ENV, SHA)
-    monkeypatch.setenv(SUBJECT_ENV, MERGE_SUBJECT)
-    monkeypatch.setenv(DATE_ENV, "2026-08-11T15:51:01+05:30")
-    commit = current_commit()
-    assert commit == CommitInfo(
+    monkeypatch.setenv(build_info.SHA_ENV, SHA)
+    monkeypatch.setenv(build_info.SUBJECT_ENV, MERGE_SUBJECT)
+    monkeypatch.setenv(build_info.DATE_ENV, "2026-08-11T15:51:01+05:30")
+    commit = build_info.current_commit()
+    assert commit == build_info.CommitInfo(
         sha=SHA,
         short_sha=SHORT_SHA,
         subject=MERGE_SUBJECT,
@@ -65,8 +64,8 @@ def test_env_overrides_win_over_git(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_env_sha_alone_is_enough(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(SHA_ENV, SHA)
-    commit = current_commit()
+    monkeypatch.setenv(build_info.SHA_ENV, SHA)
+    commit = build_info.current_commit()
     assert commit is not None
     assert commit.subject == ""
     assert commit.committed_at is None
@@ -75,7 +74,7 @@ def test_env_sha_alone_is_enough(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_reads_the_latest_commit_from_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _git_repo(tmp_path, subject="feat: add commit info")
     monkeypatch.setattr(build_info, "REPO_ROOT", tmp_path)
-    commit = current_commit()
+    commit = build_info.current_commit()
     assert commit is not None
     assert commit.subject == "feat: add commit info"
     assert len(commit.sha) == FULL_GIT_SHA_LENGTH
@@ -87,13 +86,13 @@ def test_no_git_directory_reports_nothing(tmp_path: Path, monkeypatch: pytest.Mo
     # An installed wheel or a container built without the build args: the
     # gateway still answers, it just cannot name a commit.
     monkeypatch.setattr(build_info, "REPO_ROOT", tmp_path)
-    assert current_commit() is None
+    assert build_info.current_commit() is None
 
 
 def test_git_failure_is_not_fatal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / ".git").mkdir()  # looks like a repo, but `git log` will fail
     monkeypatch.setattr(build_info, "REPO_ROOT", tmp_path)
-    assert current_commit() is None
+    assert build_info.current_commit() is None
 
 
 def test_commit_detail_shortens_the_subject() -> None:
@@ -114,9 +113,9 @@ def test_commit_detail_shortens_the_subject() -> None:
 async def test_status_and_diagnostics_carry_the_commit(
     debug_client: httpx.AsyncClient, authorization: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv(SHA_ENV, SHA)
-    monkeypatch.setenv(SUBJECT_ENV, MERGE_SUBJECT)
-    current_commit.cache_clear()
+    monkeypatch.setenv(build_info.SHA_ENV, SHA)
+    monkeypatch.setenv(build_info.SUBJECT_ENV, MERGE_SUBJECT)
+    build_info.current_commit.cache_clear()
     status = await debug_client.get("/v1/admin/status", headers=authorization)
     assert status.status_code == HTTP_200_OK
     assert status.json()[COMMIT_KEY] == {
@@ -145,9 +144,9 @@ async def test_commit_is_hidden_without_debug(
     client: httpx.AsyncClient, authorization: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Debug defaults to off, so a plain deployment names no revision anywhere."""
-    monkeypatch.setenv(SHA_ENV, SHA)
-    monkeypatch.setenv(SUBJECT_ENV, MERGE_SUBJECT)
-    current_commit.cache_clear()
+    monkeypatch.setenv(build_info.SHA_ENV, SHA)
+    monkeypatch.setenv(build_info.SUBJECT_ENV, MERGE_SUBJECT)
+    build_info.current_commit.cache_clear()
     status = await client.get("/v1/admin/status", headers=authorization)
     assert status.status_code == HTTP_200_OK
     assert status.json()[COMMIT_KEY] is None

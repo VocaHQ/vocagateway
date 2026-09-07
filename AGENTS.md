@@ -63,7 +63,7 @@ which the container builds for itself).
 | Recipe | What it runs |
 | --- | --- |
 | `just install` | `uv sync --all-groups --all-extras` |
-| `just lint` | ruff check (fail on would-fix) + ruff format `--check --diff` |
+| `just lint` | ruff check (fail on would-fix) + ruff format `--check --diff` + flake8 WPS on `app` and `tests` |
 | `just format` | ruff format + ruff check `--fix` |
 | `just type-check` | `uv run python -m mypy` (package `app`, strict) |
 | `just unit` | `pytest -n auto` |
@@ -150,6 +150,7 @@ behind a reverse proxy at a **domain root**, not a subpath.
 
 - `from __future__ import annotations`; ruff line-length 100; select
   `E,F,I,UP,B,SIM,ASYNC` (ignore `ASYNC240`).
+- flake8 WPS on `app` and `tests` (`uv run flake8 --select=WPS,E999 app tests`).
 - mypy strict on `app`. pytest files `tests/test_*.py`; prefer fakes over live
   engines (`tests/conftest.py`).
 - Do not hand-edit `docs/models.md` — `uv run scripts/generate_model_docs.py`
@@ -162,7 +163,7 @@ behind a reverse proxy at a **domain root**, not a subpath.
 
 | Workflow | When | What |
 | --- | --- | --- |
-| `quality.yml` | `app/`, `tests/`, `scripts/`, `pyproject.toml`, `uv.lock`, `compose.yaml` | ffmpeg, ruff, format `--check`, `mypy app`, pytest, compose config |
+| `quality.yml` | `app/`, `tests/`, `scripts/`, `pyproject.toml`, `uv.lock`, `compose.yaml` | ffmpeg, ruff, format `--check`, flake8 WPS on `app` and `tests`, `mypy app`, pytest, compose config |
 | `container.yml` | `Dockerfile`, `.dockerignore`, `compose.yaml`, `compose.prod.yaml`, `pyproject.toml`, `uv.lock`, workflow | `docker buildx` CPU/CUDA/Vulkan matrix (representative CUDA architecture), CPU backend/runtime smoke test, cleanup-runtime device listing, Compose config for every profile and the deployment file |
 | `release.yml` | A published GitHub release, or `workflow_dispatch` | Builds the CPU image on native amd64 and arm64 runners, pushes by digest, smoke-tests the amd64 digest, then assembles one manifest list per tag and copies it to GHCR. Needs the `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` secrets |
 | `verify-model-pins.yml` | pin/catalog/harvester paths + weekly | `scripts/verify-model-pins.py` |

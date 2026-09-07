@@ -18,14 +18,6 @@ from app.catalog import (
     CatalogModel,
     recommended_ids,
 )
-from app.model_manager import (
-    DownloadInProgressError,
-    ModelIntegrityError,
-    ModelManager,
-    RepoFile,
-    UnknownModelError,
-    normalize_sha256,
-)
 from app.system import SystemInfo
 
 TINY_FILE_SIZE_BYTES = 11
@@ -87,12 +79,12 @@ def _create_test_archive(source: Path, archive_root: str) -> None:
         archive.add(response_body, arcname=archive_root)
 
 
-def _assert_download_completed(manager: ModelManager, model_id: str) -> None:
+def _assert_download_completed(manager: model_manager.ModelManager, model_id: str) -> None:
     state = manager.download_state(model_id)
     assert state is not None and state.status == COMPLETED_STATUS
 
 
-def _download_total_bytes(manager: ModelManager, model_id: str) -> int:
+def _download_total_bytes(manager: model_manager.ModelManager, model_id: str) -> int:
     state = manager.download_state(model_id)
     assert state is not None
     return state.total_bytes or 0
@@ -112,10 +104,11 @@ def _assert_pins_match_catalog(pins: dict[str, dict[str, object]]) -> None:
     catalog_ids = {model.id for model in DEFAULT_CATALOG}
     for model_id, record in pins.items():
         assert model_id in catalog_ids, f"pin for unknown model {model_id}"
-        if "sha256" in record:
-            assert normalize_sha256(record["sha256"]) == record["sha256"]
+        sha256 = record.get("sha256")
+        if sha256 is not None:
+            assert model_manager.normalize_sha256(sha256) == sha256
         for name, digest in record.get("file_digests", {}).items():
-            assert normalize_sha256(digest) == digest, f"{model_id}:{name}"
+            assert model_manager.normalize_sha256(digest) == digest, f"{model_id}:{name}"
     expected_pins = {
         model.id
         for model in DEFAULT_CATALOG
@@ -261,7 +254,7 @@ def test_catalog_includes_all_moonshine_lan_aaa() -> None:
 
 
 def test_retired_moonshine_installation_remains_manageable(tmp_path: Path) -> None:
-    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME)
+    manager = model_manager.ModelManager(tmp_path / MODELS_DIRECTORY_NAME)
     retired_model = next(model for model in RETIRED_CATALOG if model.id == MOONSHINE_SPANISH_ID)
     model_root = manager.model_path(retired_model)
     model_root.mkdir(parents=True)
@@ -270,7 +263,7 @@ def test_retired_moonshine_installation_remains_manageable(tmp_path: Path) -> No
     installed = {model.id: model for model in manager.installed()}
     assert installed[MOONSHINE_SPANISH_ID].retired is True
     assert installed[MOONSHINE_SPANISH_ID].replacement_id == "moonshine:es-small-streaming"
-    with pytest.raises(UnknownModelError, match="retired"):
+    with pytest.raises(model_manager.UnknownModelError, match="retired"):
         manager.start_download(MOONSHINE_SPANISH_ID)
     assert manager.delete(MOONSHINE_SPANISH_ID) is True
 
@@ -440,13 +433,13 @@ def tiny_file_model(tmp_path: Path) -> CatalogModel:
 
 
 @pytest.fixture
-def manager(tmp_path: Path, tiny_file_model: CatalogModel) -> ModelManager:
-    return ModelManager(
+def manager(tmp_path: Path, tiny_file_model: CatalogModel) -> model_manager.ModelManager:
+    return model_manager.ModelManager(
         tmp_path / MODELS_DIRECTORY_NAME, catalog=(tiny_file_model, TINY_FOLDER, TINY_CTRANSLATE)
     )
 
 
-def test_installed_scans_both_engines(manager: ModelManager) -> None:
+def test_installed_scans_both_engines(manager: model_manager.ModelManager) -> None:
     whisper_dir = manager.models_dir / WHISPER_CPP_ENGINE
     whisper_dir.mkdir(parents=True)
     (whisper_dir / "ggml-tiny.bin").write_bytes(b"abc")
@@ -468,7 +461,7 @@ def test_installed_scans_both_engines(manager: ModelManager) -> None:
     assert installed[WHISPERKIT_TINY_ID].size_bytes == 4
 
 
-async def test_download_installs_single_file(manager: ModelManager) -> None:
+async def test_download_installs_single_file(manager: model_manager.ModelManager) -> None:
     state = manager.start_download(WHISPER_CPP_TINY_ID)
     assert state.status == "downloading"
     await asyncio.wait_for(_wait_finished(manager, WHISPER_CPP_TINY_ID), timeout=5)
@@ -480,20 +473,20 @@ async def test_download_installs_single_file(manager: ModelManager) -> None:
     assert installed.read_bytes() == MODEL_RESPONSE
 
 
-async def test_download_unknown_model_raises(manager: ModelManager) -> None:
-    with pytest.raises(UnknownModelError):
+async def test_download_unknown_model_raises(manager: model_manager.ModelManager) -> None:
+    with pytest.raises(model_manager.UnknownModelError):
         manager.start_download("whisper.cpp:nope.bin")
 
 
-async def test_double_download_rejected(manager: ModelManager) -> None:
+async def test_double_download_rejected(manager: model_manager.ModelManager) -> None:
     manager.start_download(WHISPER_CPP_TINY_ID)
-    with pytest.raises(DownloadInProgressError):
+    with pytest.raises(model_manager.DownloadInProgressError):
         manager.start_download(WHISPER_CPP_TINY_ID)
     await asyncio.wait_for(_wait_finished(manager, WHISPER_CPP_TINY_ID), timeout=5)
 
 
 async def test_whisperkit_folder_download(
-    manager: ModelManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    manager: model_manager.ModelManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     mirror = tmp_path / MIRROR_DIRECTORY_NAME
     folder = mirror / WHISPERKIT_MIRROR_PATH
@@ -505,8 +498,8 @@ async def test_whisperkit_folder_download(
         model_manager,
         LIST_REPO_FOLDER_NAME,
         lambda repo, name, revision=MAIN_REVISION: [
-            RepoFile(CONFIG_FILE_NAME, 2),
-            RepoFile("AudioEncoder.mlmodelc/model.mil", 3),
+            model_manager.RepoFile(CONFIG_FILE_NAME, 2),
+            model_manager.RepoFile("AudioEncoder.mlmodelc/model.mil", 3),
         ],
     )
 
@@ -523,7 +516,7 @@ async def test_whisperkit_folder_download(
 
 
 async def test_root_huggingface_folder_download(
-    manager: ModelManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    manager: model_manager.ModelManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     mirror = tmp_path / MIRROR_DIRECTORY_NAME
     folder = mirror / "example/faster-repo/resolve/main"
@@ -535,8 +528,8 @@ async def test_root_huggingface_folder_download(
         model_manager,
         LIST_REPO_FOLDER_NAME,
         lambda repo, name, revision=MAIN_REVISION: [
-            RepoFile(CONFIG_FILE_NAME, 2),
-            RepoFile(MODEL_BINARY_NAME, 5),
+            model_manager.RepoFile(CONFIG_FILE_NAME, 2),
+            model_manager.RepoFile(MODEL_BINARY_NAME, 5),
         ],
     )
 
@@ -562,8 +555,8 @@ async def test_folder_failure_waits_for_workers_before_cleanup(
         model_manager,
         LIST_REPO_FOLDER_NAME,
         lambda repo, name, revision=MAIN_REVISION: [
-            RepoFile(CONFIG_FILE_NAME, 2),
-            RepoFile("weights.bin", 7),
+            model_manager.RepoFile(CONFIG_FILE_NAME, 2),
+            model_manager.RepoFile("weights.bin", 7),
         ],
     )
 
@@ -586,7 +579,7 @@ async def test_folder_failure_waits_for_workers_before_cleanup(
         return _sha256(b"weights")
 
     monkeypatch.setattr(model_manager, "_download_file", fake_download)
-    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(TINY_FOLDER,))
+    manager = model_manager.ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(TINY_FOLDER,))
 
     manager.start_download(TINY_FOLDER.id)
     await asyncio.wait_for(_wait_finished(manager, TINY_FOLDER.id), timeout=5)
@@ -609,9 +602,12 @@ async def test_folder_download_bounds_parallel_file_requests(
     monkeypatch.setattr(
         model_manager,
         LIST_REPO_FOLDER_NAME,
-        lambda repo, name, revision=MAIN_REVISION: [RepoFile(filename, 1) for filename in names],
+        lambda repo, name, revision=MAIN_REVISION: [
+            model_manager.RepoFile(filename, 1) for filename in names
+        ],
     )
-    active = maximum_active = 0
+    active = [0]
+    maximum_active = [0]
     lock = threading.Lock()
 
     def fake_download(
@@ -622,31 +618,32 @@ async def test_folder_download_bounds_parallel_file_requests(
         display_name: str,
         expected_sha256: str | None = None,
     ) -> str:
-        nonlocal active, maximum_active
         with lock:
-            active += 1
-            maximum_active = max(maximum_active, active)
+            active[0] += 1
+            maximum_active[0] = max(maximum_active[0], active[0])
         time.sleep(0.02)
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(b"x")
         with lock:
-            active -= 1
+            active[0] -= 1
         return _sha256(b"x")
 
     monkeypatch.setattr(model_manager, "_download_file", fake_download)
-    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(TINY_FOLDER,))
+    manager = model_manager.ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(TINY_FOLDER,))
 
     manager.start_download(TINY_FOLDER.id)
     await asyncio.wait_for(_wait_finished(manager, TINY_FOLDER.id), timeout=5)
 
     _assert_download_completed(manager, TINY_FOLDER.id)
-    assert maximum_active <= model_manager.MAX_PARALLEL_FILE_DOWNLOADS
+    assert maximum_active[0] <= model_manager.MAX_PARALLEL_FILE_DOWNLOADS
 
 
 async def test_moonshine_download_uses_catalog_la_aa(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(MOONSHINE_SPANISH,))
+    manager = model_manager.ModelManager(
+        tmp_path / MODELS_DIRECTORY_NAME, catalog=(MOONSHINE_SPANISH,)
+    )
     requested: dict[str, object] = {}
 
     def fake_download(language: str, model_arch: int, cache_root: Path) -> tuple[str, int]:
@@ -674,7 +671,7 @@ async def test_archive_download_extracts_validate_aaa(tmp_path: Path) -> None:
     source = tmp_path / "model.tar.bz2"
     _create_test_archive(source, "published-model")
     catalog_model = dataclasses.replace(SHERPA_TEST, archive_url=source.as_uri())
-    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(catalog_model,))
+    manager = model_manager.ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(catalog_model,))
 
     manager.start_download(catalog_model.id)
     await asyncio.wait_for(_wait_finished(manager, catalog_model.id), timeout=5)
@@ -702,7 +699,7 @@ async def test_sherpa_huggingface_download_fetche_e896d(
         required_files=(SHERPA_MODEL_NAME, TOKENS_FILE_NAME),
         model_type="nemo_ctc",
     )
-    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(catalog_model,))
+    manager = model_manager.ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(catalog_model,))
 
     mirror = tmp_path / MIRROR_DIRECTORY_NAME
     _write_huggingface_fixture(mirror, "example/gigaam-repo")
@@ -711,9 +708,9 @@ async def test_sherpa_huggingface_download_fetche_e896d(
         model_manager,
         LIST_REPO_FOLDER_NAME,
         lambda repo, name, revision=MAIN_REVISION: [
-            RepoFile(SHERPA_MODEL_NAME, 10),
-            RepoFile(TOKENS_FILE_NAME, 5),
-            RepoFile("README.md", UNRELATED_REPOSITORY_FILE_SIZE_BYTES),
+            model_manager.RepoFile(SHERPA_MODEL_NAME, 10),
+            model_manager.RepoFile(TOKENS_FILE_NAME, 5),
+            model_manager.RepoFile("README.md", UNRELATED_REPOSITORY_FILE_SIZE_BYTES),
         ],
     )
 
@@ -746,7 +743,7 @@ def test_archive_extractor_rejects_parent_paths(tmp_path: Path) -> None:
     assert not (tmp_path / "escaped.txt").exists()
 
 
-async def test_custom_download_validates_url(manager: ModelManager) -> None:
+async def test_custom_download_validates_url(manager: model_manager.ModelManager) -> None:
     with pytest.raises(ValueError, match="HTTPS"):
         manager.start_custom_download("http://example.com/model.bin")
     with pytest.raises(ValueError, match=".bin or .gguf"):
@@ -754,7 +751,7 @@ async def test_custom_download_validates_url(manager: ModelManager) -> None:
 
 
 async def test_custom_download_and_delete(
-    manager: ModelManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    manager: model_manager.ModelManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     source = tmp_path / CUSTOM_MODEL_NAME
     source.write_bytes(b"custom")
@@ -769,7 +766,7 @@ async def test_custom_download_and_delete(
     assert manager.installed_path(CUSTOM_MODEL_ID) is None
 
 
-async def test_delete_removes_folder(manager: ModelManager) -> None:
+async def test_delete_removes_folder(manager: model_manager.ModelManager) -> None:
     kit_dir = manager.models_dir / WHISPERKIT_ENGINE / WHISPERKIT_TINY_KEY
     kit_dir.mkdir(parents=True)
     (kit_dir / CONFIG_FILE_NAME).write_text(EMPTY_JSON_OBJECT)
@@ -778,7 +775,7 @@ async def test_delete_removes_folder(manager: ModelManager) -> None:
     assert manager.delete(WHISPERKIT_TINY_ID) is False
 
 
-async def _wait_finished(manager: ModelManager, model_id: str) -> None:
+async def _wait_finished(manager: model_manager.ModelManager, model_id: str) -> None:
     while True:
         state = manager.download_state(model_id)
         assert state is not None
@@ -801,7 +798,7 @@ def _sha256(payload) -> str:
 
 def test_normalize_sha256_accepts_prefixed_c1c74() -> None:
     digest = _sha256(MODEL_RESPONSE)
-    assert normalize_sha256(f"  SHA256:{digest.upper()}  ") == digest
+    assert model_manager.normalize_sha256(f"  SHA256:{digest.upper()}  ") == digest
 
 
 @pytest.mark.parametrize(
@@ -817,14 +814,14 @@ def test_normalize_sha256_accepts_prefixed_c1c74() -> None:
 )
 def test_normalize_sha256_rejects_malformed(configured_value) -> None:
     with pytest.raises(ValueError):
-        normalize_sha256(configured_value)
+        model_manager.normalize_sha256(configured_value)
 
 
 async def test_single_file_download_accepts_match_aaaa(
     tmp_path: Path, tiny_file_model: CatalogModel
 ) -> None:
     model = dataclasses.replace(tiny_file_model, sha256=_sha256(MODEL_RESPONSE))
-    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(model,))
+    manager = model_manager.ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(model,))
 
     manager.start_download(model.id)
     await asyncio.wait_for(_wait_finished(manager, model.id), timeout=5)
@@ -839,7 +836,7 @@ async def test_single_file_download_rejects_wrong_aaaaa(
     tmp_path: Path, tiny_file_model: CatalogModel
 ) -> None:
     model = dataclasses.replace(tiny_file_model, sha256=HELLO_SHA256)
-    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(model,))
+    manager = model_manager.ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(model,))
 
     manager.start_download(model.id)
     await asyncio.wait_for(_wait_finished(manager, model.id), timeout=5)
@@ -869,15 +866,15 @@ async def test_folder_download_rejects_a_tampered_file(
         model_manager,
         LIST_REPO_FOLDER_NAME,
         lambda repo, name, revision=MAIN_REVISION: [
-            RepoFile(CONFIG_FILE_NAME, 2, _sha256(EMPTY_JSON_OBJECT.encode())),
-            RepoFile(
+            model_manager.RepoFile(CONFIG_FILE_NAME, 2, _sha256(EMPTY_JSON_OBJECT.encode())),
+            model_manager.RepoFile(
                 "weights.bin",
                 TAMPERED_WEIGHTS_SIZE_BYTES,
                 _sha256(b"the-bytes-we-expected"),
             ),
         ],
     )
-    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(TINY_FOLDER,))
+    manager = model_manager.ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(TINY_FOLDER,))
 
     manager.start_download(TINY_FOLDER.id)
     await asyncio.wait_for(_wait_finished(manager, TINY_FOLDER.id), timeout=5)
@@ -906,13 +903,15 @@ async def test_catalog_digest_overrides_the_listi_cdadb(
         LIST_REPO_FOLDER_NAME,
         # The listing vouches for the swapped bytes; the catalog does not.
         lambda repo, name, revision=MAIN_REVISION: [
-            RepoFile(CONFIG_FILE_NAME, PINNED_CONFIG_SIZE_BYTES, _sha256(b"upstream-swapped"))
+            model_manager.RepoFile(
+                CONFIG_FILE_NAME, PINNED_CONFIG_SIZE_BYTES, _sha256(b"upstream-swapped")
+            )
         ],
     )
     model = dataclasses.replace(
         TINY_FOLDER, file_digests=((CONFIG_FILE_NAME, _sha256(b"the-reviewed-bytes")),)
     )
-    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(model,))
+    manager = model_manager.ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(model,))
 
     manager.start_download(model.id)
     await asyncio.wait_for(_wait_finished(manager, model.id), timeout=5)
@@ -927,7 +926,7 @@ async def test_custom_download_rejects_wrong_user_d7ea6(
 ) -> None:
     source = tmp_path / "source.gguf"
     source.write_bytes(b"custom-model-bytes")
-    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=())
+    manager = model_manager.ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=())
     monkeypatch.setattr(model_manager, "_validate_custom_url", lambda url: CUSTOM_MODEL_NAME)
 
     manager.start_custom_download(source.as_uri(), HELLO_SHA256)
@@ -943,7 +942,7 @@ async def test_custom_download_accepts_matching_u_a(
 ) -> None:
     source = tmp_path / "source.gguf"
     source.write_bytes(b"custom-model-bytes")
-    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=())
+    manager = model_manager.ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=())
     monkeypatch.setattr(model_manager, "_validate_custom_url", lambda url: CUSTOM_MODEL_NAME)
 
     manager.start_custom_download(source.as_uri(), _sha256(b"custom-model-bytes"))
@@ -954,7 +953,7 @@ async def test_custom_download_accepts_matching_u_a(
 
 
 def test_custom_download_rejects_malformed_b52d7(tmp_path: Path) -> None:
-    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=())
+    manager = model_manager.ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=())
     with pytest.raises(ValueError):
         manager.start_custom_download("https://example.com/model.gguf", "not-a-digest")
 
@@ -969,7 +968,7 @@ async def test_archive_download_rejects_wrong_arc_a7516(tmp_path: Path) -> None:
         required_files=("model.onnx",),
         sha256=HELLO_SHA256,
     )
-    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(model,))
+    manager = model_manager.ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(model,))
 
     manager.start_download(model.id)
     await asyncio.wait_for(_wait_finished(manager, model.id), timeout=5)
@@ -1020,7 +1019,7 @@ def test_download_file_raises_and_removes_t_aaa(tmp_path: Path) -> None:
     destination = tmp_path / DOWNLOAD_DESTINATION_NAME
     state = model_manager.DownloadState(model_id=DOWNLOAD_STATE_MODEL_ID)
 
-    with pytest.raises(ModelIntegrityError) as caught:
+    with pytest.raises(model_manager.ModelIntegrityError) as caught:
         model_manager._download_file(
             source.as_uri(),
             destination,
@@ -1061,8 +1060,8 @@ def test_download_file_retries_transient_ne_aaaa(
         def __enter__(self) -> FakeResponse:
             return self
 
-        def __exit__(self, *exc: object) -> None:
-            return None
+        def __exit__(self, *exc: object) -> bool:
+            return False
 
         def read(self, size: int) -> bytes:
             return self._buffer.read(size)
@@ -1108,8 +1107,8 @@ def test_download_file_retries_hash_mismatch_against_same_pin(
         def __enter__(self) -> FakeResponse:
             return self
 
-        def __exit__(self, *exc: object) -> None:
-            return None
+        def __exit__(self, *exc: object) -> bool:
+            return False
 
         def read(self, size: int) -> bytes:
             return self._buffer.read(size)
@@ -1157,7 +1156,7 @@ def test_download_file_rejects_persistent_hash_mismatch(
         return original_urlopen(request, timeout=timeout)
 
     monkeypatch.setattr(urllib_request, "urlopen", counted_urlopen)
-    with pytest.raises(ModelIntegrityError):
+    with pytest.raises(model_manager.ModelIntegrityError):
         model_manager._download_file(
             source.as_uri(),
             destination,
@@ -1188,8 +1187,8 @@ def test_download_file_retries_a_silent_short_response(
         def __enter__(self) -> FakeResponse:
             return self
 
-        def __exit__(self, *exc: object) -> None:
-            return None
+        def __exit__(self, *exc: object) -> bool:
+            return False
 
         def read(self, size: int) -> bytes:
             return self._buffer.read(size)
@@ -1260,11 +1259,11 @@ async def test_folder_download_refuses_a_listing_aaaaa(
         model_manager,
         LIST_REPO_FOLDER_NAME,
         lambda repo, name, revision=MAIN_REVISION: [
-            RepoFile(CONFIG_FILE_NAME, 2),
-            RepoFile("../../../../escaped.bin", 4),
+            model_manager.RepoFile(CONFIG_FILE_NAME, 2),
+            model_manager.RepoFile("../../../../escaped.bin", 4),
         ],
     )
-    manager = ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(TINY_FOLDER,))
+    manager = model_manager.ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(TINY_FOLDER,))
 
     manager.start_download(TINY_FOLDER.id)
     await asyncio.wait_for(_wait_finished(manager, TINY_FOLDER.id), timeout=5)
@@ -1404,7 +1403,7 @@ def test_detail_shows_the_description_unclipped() -> None:
     assert blurb.strip() in html
 
 
-def test_installed_path_agrees_with_the_full_scan(manager: ModelManager) -> None:
+def test_installed_path_agrees_with_the_full_scan(manager: model_manager.ModelManager) -> None:
     """The cheap lookup must not disagree with the listing it short-circuits.
 
     `installed_path` resolves one model from the catalog index instead of
@@ -1565,9 +1564,12 @@ async def test_hf_manifest_downloads_only_runtime_files(
         required_files=("model.safetensors", "config.json"),
         revision="a" * 40,
     )
-    files = [RepoFile("model.safetensors", 4), RepoFile("predictions.jsonl", 999)]
+    files = [
+        model_manager.RepoFile("model.safetensors", 4),
+        model_manager.RepoFile("predictions.jsonl", 999),
+    ]
     if not missing:
-        files.append(RepoFile("config.json", 1))
+        files.append(model_manager.RepoFile("config.json", 1))
     monkeypatch.setattr(model_manager, "_list_repo_folder", lambda *args: files)
     fetched = []
 
@@ -1576,13 +1578,13 @@ async def test_hf_manifest_downloads_only_runtime_files(
         destination.write_bytes(b"x")
 
     monkeypatch.setattr(model_manager, "_download_file", download)
-    manager = ModelManager(tmp_path, catalog=(model,))
+    manager = model_manager.ModelManager(tmp_path, catalog=(model,))
     state = manager.start_download(model.id)
     await manager._downloads[model.id].task
     if missing:
         assert state.status == "failed"
         assert manager.installed_path(model.id) is None
-        assert fetched == []
+        assert not fetched
     else:
         assert state.status == "completed"
         assert set(fetched) == {"model.safetensors", "config.json"}

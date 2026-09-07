@@ -243,6 +243,10 @@ def test_sherpa_nemo_transducer_uses_each_f_bf636(
     assert constructions[0]["joiner"] == str(root / JOINER_FILE)
 
 
+def _sherpa_module_spec(_: object) -> machinery.ModuleSpec:
+    return machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None)
+
+
 def test_sherpa_dolphin_loads_a_single_file_ctc(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -251,10 +255,7 @@ def test_sherpa_dolphin_loads_a_single_file_ctc(
         root = _model_root(tmp_path, catalog_model)
         constructions: list[dict[str, object]] = []
         _fake_recognizer_module(factory, constructions, monkeypatch)
-        monkeypatch.setattr(
-            IMPORTLIB_FIND_SPEC_PATH,
-            lambda _: machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
-        )
+        monkeypatch.setattr(IMPORTLIB_FIND_SPEC_PATH, _sherpa_module_spec)
 
         SherpaOnnxEngine(root, catalog_model)._selected.builder.build()
 
@@ -365,15 +366,15 @@ def test_every_shipped_sherpa_model_type_ha_aaaaa(
     def make_module() -> types.ModuleType:
         module = types.ModuleType(SHERPA_ONNX_MODULE)
 
-        class Any_:
-            def __getattr__(self, name: str) -> object:
-                return lambda **kwargs: Recognizer()
-
+        class AnyType:
             def __call__(self, **kwargs: object) -> Recognizer:
                 return Recognizer()
 
-        module.OfflineRecognizer = Any_()  # type: ignore[attr-defined]
-        module.OnlineRecognizer = Any_()  # type: ignore[attr-defined]
+            def __getattr__(self, name: str) -> object:
+                return lambda **kwargs: Recognizer()
+
+        module.OfflineRecognizer = AnyType()  # type: ignore[attr-defined]
+        module.OnlineRecognizer = AnyType()  # type: ignore[attr-defined]
         return module
 
     monkeypatch.setitem(sys.modules, SHERPA_ONNX_MODULE, make_module())
@@ -440,8 +441,7 @@ def test_decode_wave_online_reads_result_fr_a(tmp_path: Path) -> None:
             self.ready_calls += 1
             return self.ready_calls == 1
 
-        def decode_stream(self, stream: FakeStream) -> None:
-            pass
+        def decode_stream(self, stream: FakeStream) -> None: ...
 
         def get_result(self, stream: FakeStream) -> str:
             # OnlineRecognizer.get_result returns a plain str, unlike the
@@ -472,11 +472,9 @@ def test_decode_wave_online_sets_optional_language_option(tmp_path: Path) -> Non
         def set_option(self, name: str, value: str) -> None:
             self.options[name] = value
 
-        def accept_waveform(self, sample_rate: int, samples: list[float]) -> None:
-            pass
+        def accept_waveform(self, sample_rate: int, samples: list[float]) -> None: ...
 
-        def input_finished(self) -> None:
-            pass
+        def input_finished(self) -> None: ...
 
     class FakeRecognizer:
         def __init__(self) -> None:
@@ -717,8 +715,7 @@ async def test_cohere_requires_language_and_sets_it_for_every_recording(
         def create_stream(self):
             return Stream()
 
-        def decode_stream(self, stream):
-            pass
+        def decode_stream(self, stream): ...
 
     monkeypatch.setattr("app.models.sherpa_onnx._read_wave_samples", lambda _: (16000, []))
     recognizer = Recognizer()
@@ -736,8 +733,7 @@ async def test_cohere_requires_language_and_sets_it_for_every_recording(
         def set_option(self, key, value):
             raise AssertionError("only a language-pinned model may set a stream option")
 
-        def accept_waveform(self, rate, samples):
-            return None
+        def accept_waveform(self, rate, samples): ...
 
     monkeypatch.setattr(Recognizer, "create_stream", lambda self: QuietStream())
     assert _decode_wave(recognizer, tmp_path / "audio.wav", _LanguagePolicy("de")) == "hello"

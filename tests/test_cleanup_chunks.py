@@ -28,7 +28,8 @@ def test_blank_lines_are_preserved() -> None:
 
 
 def test_a_long_url_is_not_split() -> None:
-    url = "https://example.com/" + ("a" * 80)
+    path_tail = "a" * 80
+    url = f"https://example.com/{path_tail}"
     text = f"See {url} please."
     pieces = pack(text, limit=40)
     assert url in "".join(pieces)
@@ -47,7 +48,7 @@ def test_the_character_limit_follows_the_measured_density() -> None:
     """English costs about five characters a token; Devanagari about one."""
     english = character_limit(characters=5_000, tokens=1_000, budget_tokens=1_536)
     dense = character_limit(characters=1_000, tokens=1_000, budget_tokens=1_536)
-    assert english > 1_536 > dense
+    assert dense < 1_536 < english
     # A script the tokenizer has no entries for costs more than a token a
     # character, and the limit has to shrink below the budget for it.
     byte_fallback = character_limit(characters=1_000, tokens=2_000, budget_tokens=1_536)
@@ -61,7 +62,7 @@ def test_the_character_limit_never_returns_nothing_to_pack_with() -> None:
 
 def test_an_initial_is_kept_with_the_following_oversize_token() -> None:
     token = "B" * 250
-    text = "A. " + token
+    text = f"A. {token}"
     pieces = pack(text, limit=200)
     assert "".join(pieces) == text
     assert token in pieces[0]

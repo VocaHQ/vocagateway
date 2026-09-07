@@ -8,7 +8,6 @@ from array import array
 from pathlib import Path
 
 import pytest
-from pytest import MonkeyPatch
 
 from app.audio import FFmpegNormalizer, _root_mean_square
 from app.errors import InvalidAudioError, SilentAudioError
@@ -60,7 +59,7 @@ def _pure_python_rms(samples: array[int]) -> float:
 
 
 @pytest.mark.parametrize("sample_count", [1, 5, 1000, 48_000])
-def test_both_rms_paths_agree_exactly(sample_count: int, monkeypatch: MonkeyPatch) -> None:
+def test_both_rms_paths_agree_exactly(sample_count: int, monkeypatch: pytest.MonkeyPatch) -> None:
     """The vectorized path must not shift the silence threshold.
 
     numpy comes in with the engine extras and is missing from a core install,

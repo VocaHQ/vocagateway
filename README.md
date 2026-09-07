@@ -1106,8 +1106,8 @@ model, configuration file, and stored session is intentional.
 ```sh
 # On macOS add --extra apple when you need MLX / WhisperKit in the dev environment.
 uv sync --all-groups --extra engines
-# Required for every change under app/; the WPS GitHub Actions workflow runs this too.
-uv run flake8 --select=WPS,E999 app
+# Required for every change under app/ or tests/; the WPS GitHub Actions workflow runs this too.
+uv run flake8 --select=WPS,E999 app tests
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy app

@@ -4,7 +4,6 @@ import time
 from pathlib import Path
 
 import pytest
-from pytest import MonkeyPatch
 
 from app import engines as engines_module
 from app.catalog import CatalogModel
@@ -263,7 +262,9 @@ def test_desktop_and_apple_engines_only_run_aaa(
     assert engine_runs_on(engine, is_mac=True, is_apple_silicon=True) is apple_silicon
 
 
-def test_configure_rejects_an_engine_the_ho_db78a(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+def test_configure_rejects_an_engine_the_ho_db78a(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     settings = Settings(
         token=TEST_TOKEN,
         data_dir=tmp_path,
@@ -286,7 +287,9 @@ def test_configure_rejects_an_engine_the_ho_db78a(tmp_path: Path, monkeypatch: M
     assert engine_requirement(VOCAMAC_ENGINE) == "Apple silicon"
 
 
-def test_build_engine_honours_forced_settin_aaaa(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+def test_build_engine_honours_forced_settin_aaaa(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """VOCAGATEWAY_ENGINE must win over a persisted runtime config of 'auto'."""
     from app.engines import build_engine
     from app.models.whisper_cpp import WhisperCppEngine
@@ -356,8 +359,7 @@ def test_select_engine_accepts_sherpa_and_mlx(tmp_path: Path) -> None:
         except RuntimeError as error:
             assert "not a supported engine" not in str(error)
         except Exception:
-            # Missing model/binary paths are fine for this test.
-            pass
+            return
 
 
 def _install(manager: ModelManager, model: CatalogModel) -> None:

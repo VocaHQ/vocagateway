@@ -50,8 +50,8 @@ jobs:
       - run: uv sync --locked --all-groups
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      # Enforce WPS rules across the complete application package.
-      - run: uv run flake8 --select=WPS,E999 app
+      # Enforce WPS rules across the application package and tests.
+      - run: uv run flake8 --select=WPS,E999 app tests
       - run: uv run mypy app
       - run: uv run pytest
       # Both files: the one contributors build with, and the one operators

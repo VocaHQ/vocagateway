@@ -26,7 +26,7 @@ from app.model_manager import ModelManager
 from app.models.whisper_cpp import WhisperCppEngine
 from app.runtime_config import RuntimeConfig
 
-MAC_ONLY = frozenset({"vocamac", "handy", "whisperkit", "mlx-audio"})
+MAC_ONLY = frozenset(("vocamac", "handy", "whisperkit", "mlx-audio"))
 TINY_MODEL_SIZE_BYTES = 11
 GATEWAY_PORT = 8765
 ASYNC_POLL_SECONDS = 0.02
@@ -119,7 +119,7 @@ def auth() -> dict[str, str]:
 
 
 async def test_admin_endpoints_require_token(admin_client: httpx.AsyncClient) -> None:
-    for path in (
+    paths = (
         ADMIN_STATUS_PATH,
         "/v1/admin/diagnostics",
         ADMIN_TOKENS_PATH,
@@ -129,8 +129,9 @@ async def test_admin_endpoints_require_token(admin_client: httpx.AsyncClient) ->
         "/ui/partials/models",
         SETTINGS_PARTIAL_PATH,
         "/ui/partials/about",
-    ):
-        response = await admin_client.get(path)
+    )
+    responses = await asyncio.gather(*[admin_client.get(path) for path in paths])
+    for path, response in zip(paths, responses, strict=True):
         assert response.status_code == HTTP_401_UNAUTHORIZED, path
 
 
@@ -195,6 +196,22 @@ async def test_tokens_list_starts_with_only_the_b_aa(
     ]
 
 
+async def _assert_device_token_revoked(
+    admin_client: httpx.AsyncClient,
+    auth: dict[str, str],
+    device_auth: dict[str, str],
+    token_id: str,
+) -> None:
+    revoked = await admin_client.delete(f"/v1/admin/tokens/{token_id}", headers=auth)
+    assert revoked.status_code == HTTP_200_OK
+    assert revoked.json() == {"revoked": True}
+
+    still_ok = await admin_client.get(ADMIN_STATUS_PATH, headers=auth)
+    assert still_ok.status_code == HTTP_200_OK
+    now_rejected = await admin_client.get(ADMIN_STATUS_PATH, headers=device_auth)
+    assert now_rejected.status_code == HTTP_401_UNAUTHORIZED
+
+
 async def test_created_device_token_authenticates_a04c2(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
@@ -213,15 +230,8 @@ async def test_created_device_token_authenticates_a04c2(
     assert payload[MODEL_ID_KEY] in ids
     assert ids[payload[MODEL_ID_KEY]]["revocable"] is True
 
-    revoked = await admin_client.delete(f"/v1/admin/tokens/{payload['id']}", headers=auth)
-    assert revoked.status_code == HTTP_200_OK
-    assert revoked.json() == {"revoked": True}
-
     # Revoking one device token never touches the bootstrap token or other clients.
-    still_ok = await admin_client.get(ADMIN_STATUS_PATH, headers=auth)
-    assert still_ok.status_code == HTTP_200_OK
-    now_rejected = await admin_client.get(ADMIN_STATUS_PATH, headers=device_auth)
-    assert now_rejected.status_code == HTTP_401_UNAUTHORIZED
+    await _assert_device_token_revoked(admin_client, auth, device_auth, payload["id"])
 
 
 async def test_revoking_unknown_token_returns_number(
@@ -338,14 +348,52 @@ async def test_models_list_contains_catalog(
         assert entry["runtime_hint"] == tile["install_hint"]
 
 
-async def test_download_select_and_delete_flow(
+async def _list_admin_models(
     admin_client: httpx.AsyncClient,
     auth: dict[str, str],
-    admin_settings: Settings,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    model_id = TINY_MODEL_ID
+    params: dict[str, str] | None = None,
+) -> dict[str, dict[str, object]]:
+    listed = await admin_client.get(ADMIN_MODELS_PATH, headers=auth, params=params)
+    return {entry[MODEL_ID_KEY]: entry for entry in listed.json()}
 
+
+async def _wait_until_model_installed(
+    admin_client: httpx.AsyncClient,
+    auth: dict[str, str],
+    model_id: str,
+) -> dict[str, dict[str, object]]:
+    remaining = MAXIMUM_DOWNLOAD_POLL_ATTEMPTS
+    entries: dict[str, dict[str, object]] = {}
+    while remaining:
+        entries = await _list_admin_models(admin_client, auth)
+        if entries[model_id][STATE_KEY] == INSTALLED_STATE:
+            return entries
+        remaining -= 1
+        await asyncio.sleep(ASYNC_POLL_SECONDS)
+    return entries
+
+
+async def _wait_until_model_in_installed_only(
+    admin_client: httpx.AsyncClient,
+    auth: dict[str, str],
+    model_id: str,
+) -> dict[str, dict[str, object]]:
+    remaining = MAXIMUM_DOWNLOAD_POLL_ATTEMPTS
+    filtered: dict[str, dict[str, object]] = {}
+    while remaining:
+        filtered = await _list_admin_models(admin_client, auth, {INSTALLED_ONLY_FILTER: "true"})
+        if model_id in filtered:
+            return filtered
+        remaining -= 1
+        await asyncio.sleep(ASYNC_POLL_SECONDS)
+    return filtered
+
+
+async def _download_until_installed(
+    admin_client: httpx.AsyncClient,
+    auth: dict[str, str],
+    model_id: str,
+) -> dict[str, dict[str, object]]:
     missing = await admin_client.post(f"/v1/admin/models/{model_id}/select", headers=auth)
     assert missing.status_code == HTTP_404_NOT_FOUND
 
@@ -355,21 +403,24 @@ async def test_download_select_and_delete_flow(
     duplicate = await admin_client.post(f"/v1/admin/models/{model_id}/download", headers=auth)
     assert duplicate.status_code == HTTP_409_CONFLICT
 
-    for _ in range(MAXIMUM_DOWNLOAD_POLL_ATTEMPTS):
-        entries = {
-            entry[MODEL_ID_KEY]: entry
-            for entry in (await admin_client.get(ADMIN_MODELS_PATH, headers=auth)).json()
-        }
-        if entries[model_id][STATE_KEY] == INSTALLED_STATE:
-            break
-        await asyncio.sleep(ASYNC_POLL_SECONDS)
+    entries = await _wait_until_model_installed(admin_client, auth, model_id)
     assert entries[model_id][STATE_KEY] == INSTALLED_STATE
+    return entries
 
-    warmup_calls = 0
+
+async def test_download_select_and_delete_flow(
+    admin_client: httpx.AsyncClient,
+    auth: dict[str, str],
+    admin_settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model_id = TINY_MODEL_ID
+    await _download_until_installed(admin_client, auth, model_id)
+
+    warmup_calls = [0]
 
     async def record_warmup(_: WhisperCppEngine) -> int:
-        nonlocal warmup_calls
-        warmup_calls += 1
+        warmup_calls[0] += 1
         return TINY_MODEL_SIZE_BYTES
 
     admin_settings.whisper_binary.write_bytes(b"binary")
@@ -377,16 +428,13 @@ async def test_download_select_and_delete_flow(
     selected = await admin_client.post(f"/v1/admin/models/{model_id}/select", headers=auth)
     assert selected.status_code == HTTP_200_OK
     assert selected.json()[ENGINE_KEY][MODEL_ID_KEY] == WHISPER_CPP_ENGINE
-    assert warmup_calls == 1
+    assert warmup_calls[0] == 1
 
     saved = RuntimeConfig.load(admin_settings.config_path)
     assert saved.engine == WHISPER_CPP_ENGINE
     assert saved.whisper_model and saved.whisper_model.endswith("ggml-tiny.bin")
 
-    entries = {
-        entry[MODEL_ID_KEY]: entry
-        for entry in (await admin_client.get(ADMIN_MODELS_PATH, headers=auth)).json()
-    }
+    entries = await _list_admin_models(admin_client, auth)
     assert entries[model_id]["active"] is True
 
     deleted = await admin_client.delete(f"/v1/admin/models/{model_id}", headers=auth)
@@ -409,18 +457,7 @@ async def test_models_list_installed_only_filter(
     started = await admin_client.post(f"/v1/admin/models/{model_id}/download", headers=auth)
     assert started.status_code == HTTP_200_OK
 
-    for _ in range(MAXIMUM_DOWNLOAD_POLL_ATTEMPTS):
-        filtered = {
-            entry[MODEL_ID_KEY]: entry
-            for entry in (
-                await admin_client.get(
-                    ADMIN_MODELS_PATH, params={INSTALLED_ONLY_FILTER: "true"}, headers=auth
-                )
-            ).json()
-        }
-        if model_id in filtered:
-            break
-        await asyncio.sleep(ASYNC_POLL_SECONDS)
+    filtered = await _wait_until_model_in_installed_only(admin_client, auth, model_id)
     assert filtered[model_id][STATE_KEY] == INSTALLED_STATE
     assert all(entry[STATE_KEY] == INSTALLED_STATE for entry in filtered.values())
 
@@ -431,15 +468,7 @@ async def test_ui_select_preserves_installed_only_aaaaa(
     model_id = TINY_MODEL_ID
 
     await admin_client.post(f"/v1/admin/models/{model_id}/download", headers=auth)
-    entries: dict[str, dict[str, object]] = {}
-    for _ in range(MAXIMUM_DOWNLOAD_POLL_ATTEMPTS):
-        entries = {
-            entry[MODEL_ID_KEY]: entry
-            for entry in (await admin_client.get(ADMIN_MODELS_PATH, headers=auth)).json()
-        }
-        if entries[model_id][STATE_KEY] == INSTALLED_STATE:
-            break
-        await asyncio.sleep(ASYNC_POLL_SECONDS)
+    entries = await _wait_until_model_installed(admin_client, auth, model_id)
     assert entries[model_id][STATE_KEY] == INSTALLED_STATE
 
     selected = await admin_client.post(
@@ -785,7 +814,7 @@ async def test_custom_download_rejects_bad_url(
     assert response.json()[ERROR_KEY][ERROR_CODE_KEY] == "invalid_model_url"
 
 
-async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[str, str]) -> None:
+async def _assert_overview_partial(admin_client: httpx.AsyncClient, auth: dict[str, str]) -> None:
     overview = await admin_client.get("/ui/partials/overview", headers=auth)
     assert overview.status_code == HTTP_200_OK
     assert "Activity" in overview.text
@@ -819,6 +848,10 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     # Exposure warning is a top-of-app banner, not mid-Overview copy.
     assert NETWORK_INTERFACE_NOTICE not in overview.text
 
+
+async def _assert_models_and_settings_partials(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
     models = await admin_client.get("/ui/partials/models", headers=auth)
     assert models.status_code == HTTP_200_OK
     assert "Test Tiny" in models.text
@@ -833,6 +866,10 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     assert "Device tokens" in settings.text
     assert "Bootstrap token (VOCAGATEWAY_TOKEN / token file)" in settings.text
 
+
+async def _assert_exposure_and_pair_partials(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
     banner = await admin_client.get("/ui/partials/exposure-banner", headers=auth)
     assert banner.status_code == HTTP_200_OK
     assert "exposure-banner" in banner.text
@@ -855,6 +892,8 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     assert "exposure-panel" not in pairing_only.text
     assert NETWORK_INTERFACE_NOTICE not in pairing_only.text
 
+
+async def _assert_tokens_partials(admin_client: httpx.AsyncClient, auth: dict[str, str]) -> None:
     tokens = await admin_client.get("/ui/partials/tokens", headers=auth)
     assert tokens.status_code == HTTP_200_OK
     assert 'id="tokens-card"' in tokens.text
@@ -867,6 +906,10 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     assert 'id="new-token-value"' in created.text
     assert "Regenerate</button>" in created.text
 
+
+async def _assert_operations_pill_about_partials(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
     operations = await admin_client.get("/ui/partials/operations", headers=auth)
     assert operations.status_code == HTTP_200_OK
     assert "0 queued" in operations.text
@@ -882,6 +925,14 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     about = await admin_client.get("/ui/partials/about", headers=auth)
     assert about.status_code == HTTP_200_OK
     _assert_about_surface(about.text)
+
+
+async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[str, str]) -> None:
+    await _assert_overview_partial(admin_client, auth)
+    await _assert_models_and_settings_partials(admin_client, auth)
+    await _assert_exposure_and_pair_partials(admin_client, auth)
+    await _assert_tokens_partials(admin_client, auth)
+    await _assert_operations_pill_about_partials(admin_client, auth)
 
 
 def _assert_about_surface(html: str) -> None:

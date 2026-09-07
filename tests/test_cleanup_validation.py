@@ -170,7 +170,7 @@ def test_unspaced_scripts_compare_by_character() -> None:
 
 
 def test_similarity_is_high_for_punctuation_only_edits() -> None:
-    assert similarity("we ship it friday", "We ship it Friday.", ENGLISH) == 1.0
+    assert similarity("we ship it friday", "We ship it Friday.", ENGLISH) == 1
 
 
 def test_input_ceiling_is_measured_in_encoded_bytes() -> None:

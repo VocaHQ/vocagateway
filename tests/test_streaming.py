@@ -23,14 +23,15 @@ MESSAGE_TYPE_KEY = "type"
 ENGINE_KEY = "engine"
 TRANSCRIPT_KEY = "transcript"
 
-TOKEN = "stream-" + ("x" * TOKEN_PADDING_LENGTH)
+_TOKEN_PADDING = "x" * TOKEN_PADDING_LENGTH
+TOKEN = f"stream-{_TOKEN_PADDING}"
 
 
 def moonshine_engine(tmp_path: Path, model_arch: int = 5) -> MoonshineEngine:
     model_root = tmp_path / f"moonshine-{model_arch}"
     model_root.mkdir()
     (model_root / ".vocagateway-model.json").write_text(
-        '{"language":"en","model_path":"model","model_arch":' + str(model_arch) + "}",
+        f'{{"language":"en","model_path":"model","model_arch":{model_arch}}}',
         encoding="utf-8",
     )
     return MoonshineEngine(model_root)
@@ -93,7 +94,8 @@ def test_authenticated_moonshine_stream_ret_df9ab(tmp_path: Path, monkeypatch: M
     ):
         websocket.send_json({MESSAGE_TYPE_KEY: "start", "sample_rate": 16_000, "style": "formal"})
         assert websocket.receive_json() == {MESSAGE_TYPE_KEY: "ready", ENGINE_KEY: "moonshine"}
-        assert app.state.ctx.service.metrics.snapshot().active_transcriptions == 1
+        metrics = app.state.ctx.service.metrics
+        assert metrics.snapshot().active_transcriptions == 1
         websocket.send_bytes(array("f", [0.1, -0.1]).tobytes())
         assert websocket.receive_json() == {MESSAGE_TYPE_KEY: "partial", TRANSCRIPT_KEY: "hello"}
         websocket.send_json({MESSAGE_TYPE_KEY: "finish"})
@@ -102,7 +104,7 @@ def test_authenticated_moonshine_stream_ret_df9ab(tmp_path: Path, monkeypatch: M
             TRANSCRIPT_KEY: "Hello world.",
         }
 
-    snapshot = app.state.ctx.service.metrics.snapshot()
+    snapshot = metrics.snapshot()
     assert snapshot.successful_transcriptions == 1
     assert snapshot.failed_transcriptions == 0
     assert snapshot.active_transcriptions == 0
@@ -256,7 +258,8 @@ def test_stream_error_counts_once_and_releases_activity(
         ) as ws:
             ws.send_json({"type": "start", "sample_rate": 1})
             assert ws.receive_json()["type"] == "error"
-        snapshot = app.state.ctx.service.metrics.snapshot()
+        metrics = app.state.ctx.service.metrics
+        snapshot = metrics.snapshot()
         assert snapshot.failed_transcriptions == 1
         assert snapshot.successful_transcriptions == 0
         assert snapshot.active_transcriptions == 0
