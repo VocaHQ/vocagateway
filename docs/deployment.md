@@ -12,8 +12,8 @@ portability.
 - [Host tool requirements](#host-tool-requirements)
 - [Native macOS deployment](#native-macos-deployment) — [install](#install-and-run) · [run at login](#run-at-login)
 - [Native Linux deployment](#native-linux-deployment) — [install](#install-and-run-1) · [systemd user service](#run-as-a-systemd-user-service)
-- [Docker Compose deployment](#docker-compose-deployment) — [prerequisites](#prerequisites) · [first model](#first-model) · [transcript cleanup](#transcript-cleanup-in-the-container) · [routine operations](#routine-operations) · [backup](#persistent-data-and-backup) · [performance profiles](#performance-profiles) · [Vulkan GPU access](#giving-the-vulkan-container-access-to-the-gpu) · [build tuning](#tuning-the-compiled-runtimes)
-- [Multi-architecture image](#multi-architecture-image)
+- [Docker Compose deployment](#docker-compose-deployment) — [prerequisites](#prerequisites) · [published image](#running-a-published-image) · [from source](#building-from-the-checkout) · [first model](#first-model) · [transcript cleanup](#transcript-cleanup-in-the-container) · [routine operations](#routine-operations) · [backup](#persistent-data-and-backup) · [performance profiles](#performance-profiles) · [Vulkan GPU access](#giving-the-vulkan-container-access-to-the-gpu) · [build tuning](#tuning-the-compiled-runtimes)
+- [Published images](#published-images) — [tags](#tags) · [upgrading](#upgrading-and-going-back) · [building your own](#building-and-pushing-your-own)
 - [Gateway URL and network placement](#gateway-url-and-network-placement) — [trusted LAN](#trusted-local-network) · [Tailscale Serve](#tailscale-serve) · [VPS or public DNS](#vps-or-public-dns)
 - [Configuration paths and env vars](#configuration-paths-and-env-vars)
 
@@ -151,13 +151,43 @@ Re-run the installer after moving the checkout or recreating `.venv`.
 
 ## Docker Compose deployment
 
+Two files, and the difference is where the image comes from:
+
+| File | Image | Use it when |
+| --- | --- | --- |
+| [`compose.prod.yaml`](../compose.prod.yaml) | Pulled: `docker.io/vocahq/vocagateway` | You want to run a gateway. No checkout, no compiler, ~1 minute |
+| [`compose.yaml`](../compose.yaml) | Built from this checkout | You are changing the code, or you need a `cuda` / `vulkan` image |
+
+Everything else about the two is identical — the same environment, the same
+volume, the same hardening — and a test asserts that, so a deployment never
+gets a weaker container than a contributor's.
+
 ### Prerequisites
 
 - Docker Engine with Compose v2, or Docker Desktop
 - At least enough free memory and disk space for the selected model
 - Tailscale on the host when the iPhone connects over the tailnet
 
-The Compose project lives in this repository root:
+### Running a published image
+
+Nothing to clone. Two files and a token:
+
+```sh
+umask 077
+curl -O https://raw.githubusercontent.com/VocaHQ/vocagateway/main/compose.prod.yaml
+curl -o .env https://raw.githubusercontent.com/VocaHQ/vocagateway/main/.env.example
+printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
+docker compose -f compose.prod.yaml up --detach
+```
+
+That pulls one multi-architecture tag covering `linux/amd64` and `linux/arm64`;
+Docker picks the right one. See [Published images](#published-images) for the
+tags, the second registry, and how to upgrade or roll back.
+
+### Building from the checkout
+
+The contributor's path, and the only one that produces a `cuda` or `vulkan`
+image:
 
 ```sh
 umask 077
@@ -165,6 +195,9 @@ cp .env.example .env
 printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
 docker compose up --detach --build
 ```
+
+Expect tens of minutes: the image compiles whisper.cpp and llama.cpp from
+source for your accelerator.
 
 [`.env.example`](../.env.example) is the annotated template for the same file,
 organised in seven numbered sections: the token, the published host/port, the
@@ -271,12 +304,19 @@ gateway declines with `context_too_small` rather than trusting the result.
 
 ### Routine operations
 
+Add `-f compose.prod.yaml` to each of these when you deploy a published image;
+without it, Compose reads `compose.yaml` and would build.
+
 ```sh
 # Follow gateway logs
 docker compose logs --follow gateway
 
 # Restart without deleting data
 docker compose restart gateway
+
+# Update to the newest published image
+docker compose -f compose.prod.yaml pull
+docker compose -f compose.prod.yaml up --detach
 
 # Rebuild from an updated checkout
 docker compose up --detach --build
@@ -431,21 +471,92 @@ so the two pools never nest. Pinned to 1 and unset were within run-to-run noise
 for `ggml-tiny.en` and `ggml-base.en`, at `--cpus 4` and `--cpus 2` on a 10-CPU
 host. Pinning it would only cap OpenBLAS's own parallelism for no gain.
 
-## Multi-architecture image
+## Published images
 
-Build one tag for both supported Linux architectures from the repository root:
+Every GitHub release publishes the CPU image to two registries, with identical
+digests in both:
+
+| Registry | Image |
+| --- | --- |
+| Docker Hub | `docker.io/vocahq/vocagateway` |
+| GitHub Container Registry | `ghcr.io/vocahq/vocagateway` |
+
+GHCR is there for the day Docker Hub's anonymous pull limit gets in the way;
+either serves the same bytes. Point `VOCAGATEWAY_IMAGE` at whichever you
+prefer.
+
+### Tags
+
+| Tag | Moves | Use it for |
+| --- | --- | --- |
+| `0.1.0` | Never | A deployment you want to stay put. **Pin this in production** |
+| `0.1` | On each patch release of that minor series | Automatic patch updates, no minor jumps |
+| `latest` | On each final release; never on a pre-release | Trying it out, and home deployments that track the newest version |
+
+`compose.prod.yaml` defaults to `latest`. Pin a version in `.env` when the
+gateway matters to you:
+
+```sh
+VOCAGATEWAY_IMAGE=docker.io/vocahq/vocagateway:0.1.0
+```
+
+Each tag is a manifest list covering `linux/amd64` and `linux/arm64`, built
+natively on a runner of each architecture — no emulation, and no per-platform
+tag to choose between. Within an architecture the image is portable anyway:
+`GGML_CPU_ALL_VARIANTS` compiles one ggml CPU backend per micro-architecture
+and the best one for the host is loaded at startup.
+
+### Upgrading, and going back
+
+```sh
+# Take the newest image the tag now points at
+docker compose -f compose.prod.yaml pull
+docker compose -f compose.prod.yaml up --detach
+
+# Go back: pin the previous version and recreate
+VOCAGATEWAY_IMAGE=docker.io/vocahq/vocagateway:0.1.0 \
+  docker compose -f compose.prod.yaml up --detach
+```
+
+Both are safe for your data: models, config, the session database and device
+tokens live in the `vocagateway_vocagateway-data` volume, which the container
+only mounts. `docker compose -f compose.prod.yaml down` leaves it alone; only
+`down -v` deletes it.
+
+Check what you are actually running:
+
+```sh
+curl --fail --silent -H "Authorization: Bearer ${VOCAGATEWAY_TOKEN}" \
+  http://127.0.0.1:8765/v1/admin/status | jq '{version, commit}'
+```
+
+`version` is always reported. `commit` — the source revision the image was
+built from, which the release workflow stamps in — is `null` unless
+`VOCAGATEWAY_DEBUG=true`, the same switch that adds the WebUI's **Build** row.
+See [Stamping the build commit](../README.md#stamping-the-build-commit).
+
+### What is not published
+
+The `cuda` and `vulkan` images. Both are pinned to a driver stack and a GPU
+generation, which is not a promise a public tag can keep, so they stay
+build-it-yourself from `compose.yaml` and its profiles.
+
+### Building and pushing your own
+
+For a private registry, or a variant this project does not publish:
 
 ```sh
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  --tag ghcr.io/your-user/vocagateway:latest \
+  --tag registry.example.com/vocagateway:latest \
   --push .
 ```
 
-On an amd64 builder the arm64 half of that compiles whisper.cpp under QEMU
-emulation, which takes tens of minutes. A native arm64 builder — a remote
-buildx node, or a CI runner of that architecture — is the fix; the build's
-ccache and uv cache mounts at least make a repeat run cheap.
+On an amd64 builder the arm64 half of that compiles whisper.cpp and llama.cpp
+under QEMU emulation, which takes hours. A native arm64 builder — a remote
+buildx node, or a CI runner of that architecture, which is what the release
+workflow uses — is the fix; the build's ccache and uv cache mounts at least
+make a repeat run cheap.
 
 Conversely, Docker Desktop on an Apple silicon Mac can validate the Linux arm64
 CPU image but not the Linux amd64 or NVIDIA CUDA paths. Pull requests that touch
@@ -456,12 +567,25 @@ compile-only check narrowed to one representative GPU architecture and omits
 the CPU variants already exercised by the CPU job. It is deliberately faster
 than the portable CUDA image produced from the unmodified Dockerfile defaults.
 
-Set `VOCAGATEWAY_IMAGE` in `.env` to use that tag for the `gateway` service.
-It renames what is built; it does not switch Compose to pulling. `up --build`
-still builds locally and applies the tag, so run `docker compose pull` followed
-by `docker compose up --detach --no-build` when you explicitly want the
-registry image. The `gateway-cuda` and `gateway-vulkan` services carry fixed
-tags and ignore the variable.
+`VOCAGATEWAY_IMAGE` names the image for the `gateway` service in both files. In
+`compose.prod.yaml` it selects what to pull. In `compose.yaml` it renames what
+gets built rather than switching Compose to pulling, so `up --build` still
+builds locally; the `gateway-cuda` and `gateway-vulkan` services carry fixed
+tags and ignore it.
+
+### How a release is published
+
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) runs when a
+GitHub release is published. It builds `linux/amd64` on `ubuntu-24.04` and
+`linux/arm64` on `ubuntu-24.04-arm`, pushes each by digest, assembles one
+manifest list per tag, copies that list to GHCR, and then — before anyone can
+pull it — starts the published image under the same hardening Compose applies
+and waits for its health check, failing the release if it does not come up.
+
+Maintainers: the workflow needs two repository secrets, `DOCKERHUB_USERNAME`
+and `DOCKERHUB_TOKEN` (a Docker Hub access token with **Read & Write** scope).
+GHCR uses the workflow's own `GITHUB_TOKEN`. `workflow_dispatch` rebuilds a
+given tag, with a `push` toggle so a dry run publishes nothing.
 
 ## Gateway URL and network placement
 

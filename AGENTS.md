@@ -48,7 +48,8 @@ Rules:
 | `docs/` | Operator docs; `models.md` is generated |
 | `web/` | Public landing page, not the admin UI |
 | `scripts/` | LaunchAgent/systemd installers, pin harvest, model-doc generator |
-| `compose.yaml` | Documented container deploy; `.env` is the Compose token source |
+| `compose.yaml` | Container deploy built from this checkout; `.env` is the Compose token source |
+| `compose.prod.yaml` | The same deployment running a published image. Self-contained, so it can be downloaded on its own; `tests/test_compose_files.py` keeps it from drifting |
 
 ## Commands
 
@@ -161,7 +162,8 @@ behind a reverse proxy at a **domain root**, not a subpath.
 | Workflow | When | What |
 | --- | --- | --- |
 | `quality.yml` | `app/`, `tests/`, `scripts/`, `pyproject.toml`, `uv.lock`, `compose.yaml` | ffmpeg, ruff, format `--check`, `mypy app`, pytest, compose config |
-| `container.yml` | `Dockerfile`, `.dockerignore`, `compose.yaml`, `pyproject.toml`, `uv.lock`, workflow | `docker buildx` CPU/CUDA/Vulkan matrix (representative CUDA architecture), CPU backend/runtime smoke test, cleanup-runtime device listing, all-profile Compose config |
+| `container.yml` | `Dockerfile`, `.dockerignore`, `compose.yaml`, `compose.prod.yaml`, `pyproject.toml`, `uv.lock`, workflow | `docker buildx` CPU/CUDA/Vulkan matrix (representative CUDA architecture), CPU backend/runtime smoke test, cleanup-runtime device listing, Compose config for every profile and the deployment file |
+| `release.yml` | A published GitHub release, or `workflow_dispatch` | Builds the CPU image on native amd64 and arm64 runners, pushes by digest, assembles one manifest list per tag, copies it to GHCR, and smoke-tests the published tag. Needs the `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` secrets |
 | `verify-model-pins.yml` | pin/catalog/harvester paths + weekly | `scripts/verify-model-pins.py` |
 | `deploy-pages.yml` | `web/**` on `main` | GitHub Pages |
 
