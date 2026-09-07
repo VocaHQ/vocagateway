@@ -1,0 +1,360 @@
+name: Release images
+
+# Publishes the CPU image so a deployment can be a pull rather than a
+# 20-minute compile of whisper.cpp and llama.cpp. `compose.prod.yaml`
+# consumes exactly what this workflow pushes, after a successful publish.
+# Until then, operators build from `compose.yaml`.
+#
+# Only the CPU image is published. It is the one every deployment gets by
+# default, and it is portable: GGML_CPU_ALL_VARIANTS means one tag still runs
+# the host's own instruction set. The cuda and vulkan images stay build-it-
+# yourself — they are pinned to a driver stack and a GPU generation, so a
+# published tag would be a promise about hardware this project cannot keep.
+#
+# Each architecture is built on its own native runner and pushed *by digest*.
+# The publish job smokes the amd64 digest, then assembles one manifest list
+# per public tag and copies those tags to GHCR. Digests may exist during the
+# smoke; `latest` and `major.minor` do not move until it passes. The
+# alternative — one runner building the other architecture under QEMU —
+# compiles two ggml projects through an emulator and takes hours.
+on:
+  release:
+    types: [published]
+  # For rebuilding a tag whose publish failed, or for a dry run that pushes
+  # nothing. `tag` names an existing git tag; the workflow never builds a
+  # branch, because an image tagged 0.1.0 has to be the 0.1.0 commit.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Git tag to build (e.g. v0.1.0)'
+        required: true
+        type: string
+      push:
+        description: 'Push to the registries (off = build only)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Docker Hub is where the manifest lists are assembled. GHCR is copied from
+  # them afterwards, so both registries serve byte-identical digests.
+  DOCKERHUB_IMAGE: docker.io/vocahq/vocagateway
+  GHCR_IMAGE: ghcr.io/vocahq/vocagateway
+  VOCAGATEWAY_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+  PUSH: ${{ github.event_name == 'release' || inputs.push }}
+
+jobs:
+  # A tag that does not match what the gateway reports would publish an image
+  # whose /v1/admin/status contradicts its own tag. Cheap to check, and it
+  # fails in seconds rather than after two 35-minute builds.
+  version:
+    name: version gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.VOCAGATEWAY_TAG }}
+          persist-credentials: false
+      - name: The tag and the package must name one version
+        run: |
+          set -euo pipefail
+          tag="${VOCAGATEWAY_TAG#v}"
+          # A unit test already holds pyproject.toml and app/context.py to each
+          # other, so reading one of them here is enough.
+          package="$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)"
+          if [ "${tag}" != "${package}" ]; then
+            echo "::error::tag ${VOCAGATEWAY_TAG} does not match version ${package} in pyproject.toml" >&2
+            exit 1
+          fi
+          echo "Publishing ${package} from ${VOCAGATEWAY_TAG}."
+
+  build:
+    needs: version
+    name: build (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    # Two ggml projects from source, natively. Well clear of the ~35 minutes a
+    # cold cache actually takes, so a slow runner does not fail a release.
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          # Free for public repositories, and the reason this is not QEMU.
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.VOCAGATEWAY_TAG }}
+          persist-credentials: false
+
+      # The commit stamp the gateway reports in /v1/admin/status and the WebUI.
+      # Read from the checkout rather than from the event, so a published image
+      # names the commit it was actually built from. The commit *subject* is
+      # deliberately left out, exactly as in the container workflow: it is
+      # free text, and nothing here is worth expanding it for.
+      - name: Collect the build stamp
+        id: stamp
+        run: |
+          set -euo pipefail
+          {
+            echo "sha=$(git rev-parse HEAD)"
+            echo "date=$(git log -1 --format=%cI)"
+          } >> "${GITHUB_OUTPUT}"
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Log in to Docker Hub
+        if: env.PUSH == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build ${{ matrix.platform }}
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            ACCEL=cpu
+            VOCAGATEWAY_GIT_COMMIT=${{ steps.stamp.outputs.sha }}
+            VOCAGATEWAY_GIT_COMMIT_DATE=${{ steps.stamp.outputs.date }}
+          # Off so each architecture pushes one plain image manifest. An
+          # attestation would make it an index, and an index of indexes is not
+          # what `imagetools create` should be handed.
+          provenance: false
+          sbom: false
+          # Pushed without a tag: the tag is the manifest list the merge job
+          # assembles from both architectures. Tagging here would leave the
+          # last architecture pushed owning the tag on its own.
+          outputs: type=image,name=${{ env.DOCKERHUB_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.PUSH }}
+          cache-from: type=gha,scope=release-cpu-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=release-cpu-${{ matrix.platform }}
+
+      - name: Record the digest
+        if: env.PUSH == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          # Filename is the digest so publish can glob it for imagetools.
+          # Content is the platform so the smoke can pick linux/amd64.
+          printf '%s\n' "${PLATFORM}" > "/tmp/digests/${DIGEST#sha256:}"
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          PLATFORM: ${{ matrix.platform }}
+
+      - name: Upload the digest
+        if: env.PUSH == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: digest-${{ strategy.job-index }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: publish manifest
+    needs: build
+    if: github.event_name == 'release' || inputs.push
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # Git tags decide whether `major.minor` and `latest` may move. The
+      # version job's checkout is too shallow for that, and this job had no
+      # checkout at all.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.VOCAGATEWAY_TAG }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Floating tags mean "newest 0.1" and "newest release". Rebuilding
+      # v0.1.0 must not rewrite `0.1` or `latest` if v0.1.5 already exists.
+      # The version tag always publishes; it is an immutable pin. Git tags
+      # are the source of truth, not the registry.
+      - name: Decide which floating tags move
+        id: gate
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin
+
+          this="${VOCAGATEWAY_TAG#v}"
+          move_minor=false
+          move_latest=false
+
+          if echo "${this}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            major="${this%%.*}"
+            rest="${this#*.}"
+            minor="${rest%%.*}"
+            line_re="${major}\\.${minor}"
+
+            final_tags="$(
+              { git tag --list; printf '%s\n' "${VOCAGATEWAY_TAG}"; } \
+                | sed 's/^v//' \
+                | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+                | sort -u -V
+            )"
+            newest_line="$(
+              printf '%s\n' "${final_tags}" \
+                | grep -E "^${line_re}\\.[0-9]+$" \
+                | tail -n1 || true
+            )"
+            newest_all="$(printf '%s\n' "${final_tags}" | tail -n1)"
+
+            [ "${this}" = "${newest_line}" ] && move_minor=true
+            [ "${this}" = "${newest_all}" ] && move_latest=true
+          fi
+
+          {
+            echo "move_minor=${move_minor}"
+            echo "move_latest=${move_latest}"
+          } >> "${GITHUB_OUTPUT}"
+          echo "tag ${this}: move_minor=${move_minor} move_latest=${move_latest}"
+
+      # `latest` still requires a published GitHub release of a final
+      # version, and now also that this tag is the newest final tag overall.
+      # `major.minor` is enabled only when this patch is the newest final
+      # for that line.
+      - name: Work out the tags
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: |
+            ${{ env.DOCKERHUB_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ env.VOCAGATEWAY_TAG }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.VOCAGATEWAY_TAG }},enable=${{ steps.gate.outputs.move_minor == 'true' }}
+          flavor: |
+            latest=${{ github.event_name == 'release' && !github.event.release.prerelease && steps.gate.outputs.move_latest == 'true' }}
+          labels: |
+            org.opencontainers.image.title=VocaGateway
+            org.opencontainers.image.description=Self-hosted speech-to-text gateway for Voca clients
+            org.opencontainers.image.licenses=AGPL-3.0-only
+
+      # A tag nobody has run is not a release. Smoke the already-pushed
+      # amd64 digest — no public tag required — under the same hardening
+      # Compose applies. Public tags are assembled only if this passes.
+      - name: Smoke-test the amd64 image
+        run: |
+          set -euo pipefail
+          amd64=""
+          for digest_file in /tmp/digests/*; do
+            [ -f "${digest_file}" ] || continue
+            if [ "$(cat "${digest_file}")" = "linux/amd64" ]; then
+              amd64="$(basename "${digest_file}")"
+              break
+            fi
+          done
+          if [ -z "${amd64}" ]; then
+            echo "::error::no linux/amd64 digest to smoke" >&2
+            exit 1
+          fi
+          image="${DOCKERHUB_IMAGE}@sha256:${amd64}"
+          docker run --detach --name vg-release --platform linux/amd64 \
+            --publish 18765:8765 \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --tmpfs /tmp:size=64m,mode=1777 \
+            --env VOCAGATEWAY_TOKEN=release-smoke-token-with-enough-characters \
+            "${image}"
+
+          for _ in $(seq 1 30); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' vg-release)"
+            [ "${status}" = "healthy" ] && break
+            [ "${status}" = "unhealthy" ] && break
+            sleep 2
+          done
+          if [ "${status}" != "healthy" ]; then
+            echo "::error::image never became healthy (${status})" >&2
+            docker logs vg-release >&2
+            exit 1
+          fi
+
+          curl --fail --silent --show-error --output /dev/null \
+            http://127.0.0.1:18765/health/live
+          # The cleanup runtime ships in the image; a release that lost it would
+          # otherwise only be noticed by an operator opening the Cleanup tab.
+          docker run --rm --platform linux/amd64 \
+            --entrypoint /opt/llama/bin/llama-server \
+            "${image}" --list-devices
+
+      - name: Container logs
+        if: failure()
+        run: docker logs vg-release || true
+
+      - name: Assemble the manifest list
+        working-directory: /tmp/digests
+        run: |
+          set -euo pipefail
+          # One list per tag, from the per-architecture digests both build jobs
+          # pushed. `jq -cr` turns the metadata action's JSON into the -t flags.
+          # shellcheck disable=SC2046
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "${DOCKER_METADATA_OUTPUT_JSON}") \
+            $(printf "${DOCKERHUB_IMAGE}@sha256:%s " *)
+
+      # Copied rather than rebuilt, so GHCR serves the same digests Docker Hub
+      # does and nothing can drift between the two registries.
+      - name: Copy the manifest to GHCR
+        run: |
+          set -euo pipefail
+          jq -cr '.tags[]' <<< "${DOCKER_METADATA_OUTPUT_JSON}" | while read -r tag; do
+            docker buildx imagetools create \
+              --tag "${GHCR_IMAGE}:${tag##*:}" "${tag}"
+          done
+
+      - name: Summarise what was published
+        if: success()
+        run: |
+          set -euo pipefail
+          {
+            echo "### Published images"
+            echo
+            jq -cr '.tags[]' <<< "${DOCKER_METADATA_OUTPUT_JSON}" | while read -r tag; do
+              echo "- \`${tag}\`"
+              echo "- \`${GHCR_IMAGE}:${tag##*:}\`"
+            done
+            echo
+            echo "Smoked \`linux/amd64\` by digest, then promoted the tags above."
+            echo
+            # The backticks below are markdown, not a command substitution.
+            # shellcheck disable=SC2016
+            echo 'After this publish, deploy with `docker compose -f compose.prod.yaml up --detach`.'
+          } >> "${GITHUB_STEP_SUMMARY}"

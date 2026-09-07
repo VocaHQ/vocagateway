@@ -63,6 +63,9 @@ dev = [
   "pytest-asyncio>=1.1,<2",
   # `just unit` runs the suite across cores.
   "pytest-xdist>=3.8,<4",
+  # tests/test_compose_files.py reads compose.yaml and compose.prod.yaml
+  # directly, so the deployment file cannot drift from the one contributors run.
+  "pyyaml>=6,<7",
   "ruff>=0.12,<1",
   # WPS provides stricter complexity/readability checks. Its optional MCP
   # server explains unfamiliar violations locally to coding agents.

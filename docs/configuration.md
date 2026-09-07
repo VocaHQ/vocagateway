@@ -125,7 +125,7 @@ git; see [Stamping the build commit](../README.md#stamping-the-build-commit).
 | `VOCAGATEWAY_PUBLISH_HOST` | `127.0.0.1` | Host interface Docker publishes |
 | `VOCAGATEWAY_PUBLISH_PORT` | `8765` | Host port Docker publishes |
 | `VOCAGATEWAY_NETWORK_MODE` | `bridge` | Set `host` on Linux Docker Engine only |
-| `VOCAGATEWAY_IMAGE` | `vocagateway:local` | Tag for the default CPU `gateway` service. It renames what gets built rather than switching Compose to pulling; use `docker compose pull` then `up --no-build` for a registry image. The `gateway-cuda` and `gateway-vulkan` services ignore it |
+| `VOCAGATEWAY_IMAGE` | `docker.io/vocahq/vocagateway:latest` in `compose.prod.yaml`, `vocagateway:local` in `compose.yaml` | The image the `gateway` service runs. In the deployment file it selects what to pull once a release has published — pin a version for production. In the build file it only renames what gets built. `ghcr.io/vocahq/vocagateway` serves the same digests. The `gateway-cuda` and `gateway-vulkan` services ignore it |
 | `VOCAGATEWAY_WHISPER_CMAKE_EXTRA` | unset | Extra CMake flags appended to the image's `whisper.cpp` build |
 | `VOCAGATEWAY_LLAMA_CMAKE_EXTRA` | unset | The same for the image's `llama.cpp` cleanup-runtime build. Separate builds, so narrowing one does nothing for the other |
 | `VOCAGATEWAY_BUILD_JOBS` | builder CPU count | Maximum concurrent compile jobs, for both builds; lower it when a build is memory constrained |

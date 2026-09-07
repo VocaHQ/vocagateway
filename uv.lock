@@ -2019,6 +2019,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-xdist" },
+    { name = "pyyaml" },
     { name = "ruff" },
     { name = "wemake-python-styleguide", extra = ["mcp"] },
 ]
@@ -2050,6 +2051,7 @@ dev = [
     { name = "pytest", specifier = ">=9.0.3,<10" },
     { name = "pytest-asyncio", specifier = ">=1.1,<2" },
     { name = "pytest-xdist", specifier = ">=3.8,<4" },
+    { name = "pyyaml", specifier = ">=6,<7" },
     { name = "ruff", specifier = ">=0.12,<1" },
     { name = "wemake-python-styleguide", extras = ["mcp"], specifier = ">=1.8,<2" },
 ]

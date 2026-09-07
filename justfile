@@ -71,11 +71,13 @@ package:
 # The token only has to satisfy the length rule; it serves nothing. It sits up
 # here because a comment inside a recipe body is echoed as a command.
 #
-# Validate the Compose deployment
+# Validate both Compose deployments: the source build and the published image
 [group('testing')]
 compose:
     VOCAGATEWAY_TOKEN=test-token-with-at-least-thirty-two-characters \
       docker compose config --quiet
+    VOCAGATEWAY_TOKEN=test-token-with-at-least-thirty-two-characters \
+      docker compose -f compose.prod.yaml config --quiet
 
 # Start the gateway on http://127.0.0.1:8765/
 [group('run')]
@@ -106,6 +108,20 @@ diag:
 [group('container')]
 up:
     docker compose up --detach --build
+
+# Run a published image instead of building. Needs a release that has pushed
+# one; until then use `just up`. `just up-release 0.1.0` pins the version.
+[group('container')]
+up-release version='':
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # No version given means "whatever the deployment file and .env already
+    # say", so an operator who pinned a version there keeps it. A version given
+    # here wins for this one command.
+    if [ -n "{{ version }}" ]; then
+      export VOCAGATEWAY_IMAGE="docker.io/vocahq/vocagateway:{{ version }}"
+    fi
+    docker compose -f compose.prod.yaml up --detach --pull always
 
 # Stop the container deployment; `just down -v` also drops models, config and DB
 [group('container')]
