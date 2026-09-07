@@ -109,7 +109,8 @@ diag:
 up:
     docker compose up --detach --build
 
-# Run the published image instead of building; `just up-release 0.1.0` pins it
+# Run a published image instead of building. Needs a release that has pushed
+# one; until then use `just up`. `just up-release 0.1.0` pins the version.
 [group('container')]
 up-release version='':
     #!/usr/bin/env bash

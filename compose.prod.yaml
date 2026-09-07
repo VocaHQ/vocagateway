@@ -1,12 +1,13 @@
 name: vocagateway
 
 # The deployment file for running a published image, with no source checkout
-# and no build. `compose.yaml` beside it is the contributor's file: it compiles
-# whisper.cpp and llama.cpp from this repository, which takes tens of minutes
-# and is not something an operator should have to do to run a gateway.
+# and no build. Use it after a GitHub release has published images; until then
+# there is nothing to pull, and `compose.yaml` beside it is the path that
+# works. That file compiles whisper.cpp and llama.cpp from this repository,
+# which takes tens of minutes.
 #
 # This file is self-contained on purpose — it is meant to be downloaded on its
-# own, next to a `.env`:
+# own, next to a `.env`, once Hub has an image:
 #
 #   curl -O https://raw.githubusercontent.com/VocaHQ/vocagateway/main/compose.prod.yaml
 #   curl -o .env https://raw.githubusercontent.com/VocaHQ/vocagateway/main/.env.example
@@ -17,16 +18,18 @@ name: vocagateway
 # volume and secret — is identical to the `gateway` service in `compose.yaml`;
 # only the image differs. A test asserts that, so the two cannot drift.
 #
-# Only the CPU image is published, and it is portable: one tag carries both
-# linux/amd64 and linux/arm64, and ggml picks the best CPU backend for the host
-# at startup. For a CUDA or Vulkan deployment, build from the repository with
-# `compose.yaml` and its `cuda` / `vulkan` profiles — those images are pinned to
-# a driver stack, which is not something a published tag can promise.
+# Only the CPU image is published, once a release has done so, and it is
+# portable: one tag carries both linux/amd64 and linux/arm64, and ggml picks
+# the best CPU backend for the host at startup. For a CUDA or Vulkan
+# deployment, build from the repository with `compose.yaml` and its `cuda` /
+# `vulkan` profiles — those images are pinned to a driver stack, which is not
+# something a published tag can promise.
 
 services:
   gateway:
-    # `latest` is the newest final release, never a pre-release. Pin it for a
-    # deployment you care about — `VOCAGATEWAY_IMAGE=docker.io/vocahq/vocagateway:0.1.0`
+    # `latest` is the newest final release, never a pre-release, and only
+    # moves when this publish is that newest tag. Pin it for a deployment
+    # you care about — `VOCAGATEWAY_IMAGE=docker.io/vocahq/vocagateway:0.1.0`
     # in `.env` — so a restart cannot quietly move you to a new version.
     # `ghcr.io/vocahq/vocagateway` serves the same digests if Docker Hub's
     # anonymous pull limits get in the way.

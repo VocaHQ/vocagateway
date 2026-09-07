@@ -15,9 +15,11 @@ full `VOCAGATEWAY_*` table. These pages go deeper on one topic each.
 ## I just want it running
 
 1. **Docker on Linux** — [Compose quick start](../README.md#docker-compose-quick-start):
-   `compose.prod.yaml` pulls a published image, so there is nothing to build.
-   Then [`.env.example`](../.env.example) for every knob. On the default bridge
-   network, set `VOCAGATEWAY_PUBLIC_URL` before you scan the pairing QR.
+   `compose.yaml` builds from a checkout (`docker compose up --detach --build`).
+   After a GitHub release has published images, `compose.prod.yaml` can pull
+   instead. Then [`.env.example`](../.env.example) for every knob. On the
+   default bridge network, set `VOCAGATEWAY_PUBLIC_URL` before you scan the
+   pairing QR.
 2. **Apple silicon Mac** — [native macOS quick start](../README.md#native-macos-quick-start).
    MLX Audio and WhisperKit are the fast paths; Docker Desktop cannot reach them.
 3. **Linux desktop or home server, no container** —
