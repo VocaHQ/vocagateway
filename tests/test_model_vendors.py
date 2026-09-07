@@ -9,12 +9,14 @@ ends up with no monogram either and shows an empty box. Each has a test.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
 import pytest
 from conftest import TOKEN
 
+from app import admin_queries
 from app.catalog import DEFAULT_CATALOG, RETIRED_CATALOG
 from app.config import Settings
 from app.main import create_app
@@ -93,15 +95,23 @@ def test_the_glyphs_are_credited_where_they_came_from() -> None:
     assert "trademark" in macros.lower()
 
 
+@pytest.mark.parametrize("apple_silicon", [True, False], ids=["apple-host", "linux-host"])
 async def test_the_shipped_catalog_renders_a_badge_on_every_family(
-    settings: Settings,
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, apple_silicon: bool
 ) -> None:
-    """The whole catalog, not a fixture of one: both badge shapes have to appear.
+    """Every family the list shows carries a badge, on either kind of host.
 
-    A glyph vendor and a monogram vendor exercise different halves of the
-    macro, and "every tile has a badge" is the claim the mapping test above
-    makes in data — this is the same claim in rendered HTML.
+    Both hosts, because they show different lists: a Linux gateway hides the
+    Apple-only MLX families, so a count taken on a Mac is four too high there.
+    What holds everywhere is the property — no tile without a mark — and both
+    badge shapes appearing, which exercises the two halves of the macro.
     """
+    probe = admin_queries.detect_system
+    monkeypatch.setattr(
+        admin_queries,
+        "detect_system",
+        lambda **kwargs: replace(probe(**kwargs), is_apple_silicon=apple_silicon),
+    )
     app = create_app(settings)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
@@ -111,11 +121,11 @@ async def test_the_shipped_catalog_renders_a_badge_on_every_family(
         ).text
 
     tiles = re.findall(r'<div class="family-tile".*?</button>', page, re.S)
-    assert len(tiles) == len({model.family for model in DEFAULT_CATALOG})
+    rendered = {re.search(r'data-family="([^"]+)"', tile).group(1) for tile in tiles}  # type: ignore[union-attr]
+    assert rendered <= mapped_families()
+    assert rendered
     for tile in tiles:
-        family = re.search(r'data-family="([^"]+)"', tile)
-        assert family is not None
-        assert "vendor-badge" in tile, f"{family.group(1)} has no vendor badge"
+        assert "vendor-badge" in tile
         assert "vendor-glyph" in tile or "vendor-monogram" in tile
 
     assert 'class="vendor-glyph"' in page
