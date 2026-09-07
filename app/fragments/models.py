@@ -9,6 +9,7 @@ from urllib.parse import quote
 from app.catalog import DEFAULT_CATALOG, LANGUAGE_NAMES
 from app.fragments.engine import ENGINE_LABELS
 from app.fragments.shared import _format_bytes
+from app.model_vendors import vendor_for
 from app.schemas import AdminModelEntry
 from app.templating import render
 
@@ -135,6 +136,10 @@ class _ModelCardView:
         engines = sorted({ENGINE_LABELS.get(entry.engine, entry.engine) for entry in models})
         return {
             "name": family,
+            # Whose model this is. None for a family nobody published — an
+            # imported file — which the tile renders without a badge rather
+            # than with a placeholder.
+            "vendor": vendor_for(family),
             "dom_id": cls.family_dom_id(family),
             "count_label": cls._count_label(len(models)),
             "installed_label": f"{installed} installed" if installed else "none installed",
