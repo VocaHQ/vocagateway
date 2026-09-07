@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -71,6 +71,10 @@ class CleanupStatusReport:
     """What an operator is told about cleanup, with no prompts and no transcripts."""
 
     enabled: bool
+    # Whether an `inherit` request would be corrected: enabled, with a runtime
+    # and a model to run it on. Reported apart from `enabled`, which is only the
+    # operator's switch.
+    usable: bool
     state: str
     mode: str
     model_id: str | None
@@ -98,9 +102,17 @@ class CleanupPreferences:
     with a default. That is why the override fields are tri-state.
     """
 
-    def __init__(self, settings: config.Settings, run_config: runtime_config.RuntimeConfig) -> None:
+    def __init__(
+        self,
+        settings: config.Settings,
+        run_config: runtime_config.RuntimeConfig,
+        # What "no model chosen" falls back to. Supplied by the manager, which
+        # is the half of this pair that knows what is installed on disk.
+        installed_default: Callable[[], str | None],
+    ) -> None:
         self.settings = settings
         self.runtime_config = run_config
+        self._installed_default = installed_default
 
     @property
     def enabled(self) -> bool:
@@ -116,8 +128,17 @@ class CleanupPreferences:
 
     @property
     def model_id(self) -> str | None:
+        """The selected model, or the installed one when nothing was selected.
+
+        Downloading a cleanup model is already the deliberate act that turns
+        corrections on, and until a second one is installed there is nothing to
+        choose between — so requiring a separate "select" click only produced a
+        gateway that had everything it needed and still corrected nothing. An
+        explicit choice, from the WebUI or from the environment, always wins;
+        the fallback disappears the moment there is more than one candidate.
+        """
         chosen = self.settings.cleanup_model or self.runtime_config.cleanup_model
-        return chosen or None
+        return chosen or self._installed_default()
 
     @property
     def timeout_seconds(self) -> float:
@@ -215,10 +236,12 @@ class CleanupManager:
         config_path: Path,
         models: model_manager.ModelManager,
     ) -> None:
-        self.preferences = CleanupPreferences(settings, run_config)
+        self.models = models
+        self.preferences = CleanupPreferences(
+            settings, run_config, lambda: only_installed_model(self.models)
+        )
         self.runtime_config = run_config
         self.config_path = config_path
-        self.models = models
         self.host = WorkerHost(settings, run_config)
         self._slot = asyncio.Semaphore(1)
         self._active_leases = 0
@@ -237,7 +260,37 @@ class CleanupManager:
     def model_id(self) -> str | None:
         return self.preferences.model_id
 
+    @property
+    def usable(self) -> bool:
+        """Whether this gateway can correct anything at all right now.
+
+        The question a client's `inherit` turns on, and it is not the same as
+        "is cleanup enabled": a gateway with the feature on and no model
+        installed has nothing to inherit into. Answering it here rather than in
+        the preferences keeps that a fact about the deployment — the runtime and
+        the installed artifacts — instead of a setting.
+
+        An operator-run endpoint is taken at its word. The gateway did not start
+        that process and has no local binary or model file to look at, so
+        refusing to use it because it cannot find one locally would be wrong.
+        """
+        if not self.preferences.managed:
+            return self.enabled
+        return self.enabled and self.host.runtime_available() and self.model_path() is not None
+
     def options(self, requested: str | None) -> CleanupOptions:
+        """The resolved decision for one unit of work.
+
+        `inherit` on a gateway that cannot correct anything resolves to `off`
+        rather than to the configured default: the transcript is identical
+        either way, and reporting it as a cleanup that was attempted and fell
+        back would add a block to every packet on every deployment that has
+        never installed a cleanup model. An explicit `conservative` is left
+        alone — a client that asked for correction is owed the reason it did not
+        happen.
+        """
+        if requested in (None, MODE_INHERIT) and not self.usable:
+            return self.preferences.options(MODE_OFF)
         return self.preferences.options(requested)
 
     def supported_languages(self) -> tuple[str, ...]:
@@ -294,7 +347,13 @@ class CleanupManager:
         Never while a lease is out, and never for a server the gateway does not
         own: stopping somebody else's process is not this object's business.
         """
-        if not self._can_offload():
+        offloadable = (
+            self.runtime_config.cleanup_idle_unload_enabled
+            and self.preferences.managed
+            and not self._active_leases
+            and self.host.is_running
+        )
+        if not offloadable:
             return False
         idle_minutes = self.runtime_config.cleanup_idle_unload_minutes
         if (now or time.monotonic()) - self._last_used < idle_minutes * SECONDS_PER_MINUTE:
@@ -312,6 +371,7 @@ class CleanupManager:
         available = self.host.runtime_available()
         return CleanupStatusReport(
             enabled=preferences.enabled,
+            usable=self.usable,
             state=self._state(installed, available),
             mode=preferences.default_mode,
             model_id=preferences.model_id,
@@ -411,23 +471,37 @@ class CleanupManager:
             return None
         return await self.host.runtime(selected_id, model_file)
 
-    def _can_offload(self) -> bool:
-        if not self.runtime_config.cleanup_idle_unload_enabled:
-            return False
-        if not self.preferences.managed or self._active_leases:
-            return False
-        return self.host.is_running
-
     def _state(self, installed: bool, runtime_available: bool) -> str:
+        """The one word the WebUI pill shows, and it has to match the checklist.
+
+        The local runtime and model file are preconditions only for a worker
+        this gateway would launch. An operator-run endpoint has neither on this
+        host by definition, so judging it by them reported "Not available" for a
+        deployment that corrects transcripts perfectly well — while the
+        checklist beside it said every step was done.
+        """
         if not self.enabled:
             return STATE_DISABLED
         if self.host.failure:
             return STATE_ERROR
-        if not runtime_available or not installed:
+        if self.preferences.managed and not (runtime_available and installed):
             return STATE_UNAVAILABLE
         if self.loading:
             return STATE_LOADING
         return STATE_OFFLOADED if self.host.offloaded else STATE_READY
+
+
+def only_installed_model(models: model_manager.ModelManager) -> str | None:
+    """The one installed cleanup artifact, when exactly one is installed.
+
+    Read on demand rather than cached: a model finishes downloading in the
+    background, and an operator watching the Cleanup tab has to see the
+    checklist tick over without restarting the gateway.
+    """
+    installed = [
+        model.id for model in catalog.CLEANUP_CATALOG if models.installed_path(model.id) is not None
+    ]
+    return installed[0] if len(installed) == 1 else None
 
 
 @dataclass(frozen=True, slots=True)

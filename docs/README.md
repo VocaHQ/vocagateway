@@ -5,7 +5,7 @@ full `VOCAGATEWAY_*` table. These pages go deeper on one topic each.
 
 | Page | Read it when |
 | --- | --- |
-| [deployment.md](deployment.md) | Choosing between native macOS, native Linux, and Docker; running at login; backups; the portable CPU service and `cuda`/`vulkan` Compose profiles; where the phone reaches the host |
+| [deployment.md](deployment.md) | Choosing between native macOS, native Linux, and Docker; running at login; backups; the portable CPU service and `cuda`/`vulkan` Compose profiles; transcript cleanup in the container; where the phone reaches the host |
 | [configuration.md](configuration.md) | You need the exact value of a path, an environment variable, or the pairing QR payload |
 | [tailscale.md](tailscale.md) | You want private HTTPS to the gateway without opening a port |
 | [troubleshooting.md](troubleshooting.md) | Something is failing and you want the symptom, not the theory |
@@ -24,6 +24,12 @@ full `VOCAGATEWAY_*` table. These pages go deeper on one topic each.
 
 In all three, the gateway is live before any model exists. `GET /health/ready`
 answers `503` until you download and select one in the WebUI.
+
+[Transcript cleanup](../README.md#transcript-cleanup) is part of the same setup:
+the runtime ships in the container (and is a host tool natively). Fresh installs
+default on and stay inert until you download a cleanup model in the WebUI. A
+config written before cleanup existed stays off until you enable it.
+**Overview → Libraries & tools** says whether this host has the runtime.
 
 ## Before you expose it
 

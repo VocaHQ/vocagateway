@@ -157,6 +157,14 @@ doctor:
       echo "MISSING  docker — needed by just compose and the container recipes"
       ok=1
     fi
+    # Transcript cleanup runs on this. The container builds its own, so this is
+    # a note rather than a failure: only a native gateway needs one on the host.
+    if command -v llama-server >/dev/null 2>&1; then
+      echo "ok       llama-server"
+    else
+      echo "note     llama-server absent — transcript cleanup stays off until"
+      echo "         one exists (brew install llama.cpp, or VOCAGATEWAY_CLEANUP_BINARY)"
+    fi
     if [ "$(uname -s)" = "Darwin" ]; then
       for tool in whisperkit-cli whisper-cli; do
         if command -v "${tool}" >/dev/null 2>&1; then

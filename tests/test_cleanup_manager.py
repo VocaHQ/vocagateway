@@ -9,6 +9,7 @@ after the model was switched, an idle unload that fires mid-request.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from collections.abc import Callable
 from dataclasses import replace
@@ -18,6 +19,7 @@ from typing import Any
 import pytest
 from conftest import CLEANUP_MODEL_ID, FakeCleanupRuntime, FakeWorkerHost
 
+from app.cleanup import catalog as cleanup_catalog
 from app.cleanup import host as host_module
 from app.cleanup import manager as manager_module
 from app.cleanup.base import (
@@ -50,11 +52,85 @@ def manager_for(settings: Settings, **config: object) -> object:
     return build_manager(settings, run_config, settings.config_path)
 
 
-def test_the_gateway_default_is_off(settings: Settings) -> None:
+def install_model(manager: Any, model_id: str = CLEANUP_MODEL_ID) -> Path:
+    """Put a cleanup artifact where the manager's own model manager finds it.
+
+    The real path, not a patched one: whether a downloaded model is picked up
+    without a separate selection click is exactly what several tests below are
+    about, and a stubbed `model_path` would answer that question for them.
+    """
+    model = cleanup_catalog.cleanup_model(model_id)
+    assert model is not None
+    installed = manager.models.models_dir / "llama.cpp" / model.filename
+    installed.parent.mkdir(parents=True, exist_ok=True)
+    installed.write_bytes(b"gguf")
+    return installed
+
+
+def usable_manager(settings: Settings, **config: object) -> Any:
+    """A manager with both halves of a working deployment: a runtime and a model."""
+    manager = manager_for(settings, **config)
+    manager.host = FakeWorkerHost(FakeCleanupRuntime())
+    install_model(manager)
+    return manager
+
+
+def test_the_gateway_default_is_on_and_inert_until_a_model_is_installed(
+    settings: Settings,
+) -> None:
+    """Shipped on, but a gateway with nothing to run it on corrects nothing.
+
+    `inherit` resolving to `off` here is what keeps the default free: a
+    deployment that never installs a cleanup model returns exactly the packets
+    it returned before the feature existed.
+    """
     manager = manager_for(settings)
-    assert manager.enabled is False
+    assert manager.enabled is True
+    assert manager.usable is False
     assert manager.options(MODE_INHERIT).mode == MODE_OFF
-    assert manager.options(MODE_CONSERVATIVE).mode == MODE_OFF
+    # An explicit request is not silently downgraded: it runs, finds no model,
+    # and is answered with a reason rather than with silence.
+    assert manager.options(MODE_CONSERVATIVE).mode == MODE_CONSERVATIVE
+
+
+def test_a_pre_cleanup_config_stays_inert_even_with_a_leftover_model(
+    settings: Settings,
+) -> None:
+    """A missing key on an already-written config is not consent to correct.
+
+    A leftover GGUF from an earlier cleanup experiment would otherwise start
+    editing transcripts on upgrade, because the only-installed-model fallback
+    would pick it up the moment enabled inherited on.
+    """
+    settings.config_path.write_text(json.dumps({"engine": "moonshine"}), encoding="utf-8")
+    manager = build_manager(
+        settings, RuntimeConfig.load(settings.config_path), settings.config_path
+    )
+    manager.host = FakeWorkerHost(FakeCleanupRuntime())
+    install_model(manager)
+    assert manager.enabled is False
+    assert manager.usable is False
+    assert manager.options(MODE_INHERIT).mode == MODE_OFF
+
+
+def test_a_downloaded_model_needs_no_second_selection(settings: Settings) -> None:
+    manager = manager_for(settings)
+    manager.host = FakeWorkerHost(FakeCleanupRuntime())
+    assert manager.model_id is None
+    install_model(manager)
+    assert manager.model_id == CLEANUP_MODEL_ID
+    assert manager.usable is True
+    assert manager.options(MODE_INHERIT).mode == MODE_CONSERVATIVE
+
+
+def test_a_second_installed_model_restores_the_choice(settings: Settings) -> None:
+    """Two candidates and no saved choice is a decision the operator has to make."""
+    manager = manager_for(settings)
+    install_model(manager)
+    install_model(manager, "cleanup:qwen3-1.7b")
+    assert manager.model_id is None
+    manager.configure(CleanupUpdate(model_id="cleanup:qwen3-1.7b"))
+    assert manager.model_id == "cleanup:qwen3-1.7b"
 
 
 def test_an_explicit_opt_in_cannot_override_an_operator_who_said_no(
@@ -66,7 +142,7 @@ def test_an_explicit_opt_in_cannot_override_an_operator_who_said_no(
 
 
 def test_inherit_follows_the_gateway_default(settings: Settings) -> None:
-    manager = manager_for(settings, cleanup_enabled=True, cleanup_mode=MODE_CONSERVATIVE)
+    manager = usable_manager(settings, cleanup_enabled=True, cleanup_mode=MODE_CONSERVATIVE)
     assert manager.options(MODE_INHERIT).mode == MODE_CONSERVATIVE
     assert manager.options(None).mode == MODE_CONSERVATIVE
     # An explicit opt-out always wins over the default.
@@ -226,7 +302,7 @@ ENVIRONMENT_CASES = (
     ("VOCAGATEWAY_CLEANUP_MODEL", CLEANUP_MODEL_ID, "cleanup_model", CLEANUP_MODEL_ID),
     ("VOCAGATEWAY_CLEANUP_TIMEOUT_SECONDS", "7.5", "cleanup_timeout_seconds", 7.5),
     ("VOCAGATEWAY_CLEANUP_LANGUAGES", "en, hi", "cleanup_languages", ("en", "hi")),
-    ("VOCAGATEWAY_CLEANUP_ENDPOINT", "cleanup:8080", "cleanup_endpoint", ("cleanup", 8080)),
+    ("VOCAGATEWAY_CLEANUP_ENDPOINT", "my-cleanup:8080", "cleanup_endpoint", ("my-cleanup", 8080)),
 )
 
 
@@ -255,6 +331,7 @@ def test_an_unset_cleanup_switch_is_neither_on_nor_off(
 
 
 ROUTABLE_ENDPOINTS = ("https://api.example.com/v1", "example.com:8080", "8.8.8.8:80", "nope")
+REMOVED_SIDECAR_ENDPOINTS = ("cleanup:8080", "cleanup:1234", "CLEANUP:8080")
 
 
 @pytest.mark.parametrize("endpoint", ROUTABLE_ENDPOINTS)
@@ -266,6 +343,20 @@ def test_a_routable_cleanup_endpoint_is_refused_at_startup(
     monkeypatch.setenv("VOCAGATEWAY_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("VOCAGATEWAY_CLEANUP_ENDPOINT", endpoint)
     with pytest.raises(RuntimeError):
+        Settings.from_env()
+
+
+@pytest.mark.parametrize("endpoint", REMOVED_SIDECAR_ENDPOINTS)
+def test_the_old_cleanup_sidecar_endpoint_is_refused_at_startup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, endpoint: str
+) -> None:
+    """The Compose service named cleanup is gone; keep using it and the
+    in-image runtime sits unused while every request hits a dead host.
+    """
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN", "env-" + ("x" * 48))
+    monkeypatch.setenv("VOCAGATEWAY_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("VOCAGATEWAY_CLEANUP_ENDPOINT", endpoint)
+    with pytest.raises(RuntimeError, match="sidecar"):
         Settings.from_env()
 
 

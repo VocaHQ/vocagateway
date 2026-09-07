@@ -273,6 +273,10 @@ async def test_status_reports_system_and_setup(
         "Moonshine Voice",
         SHERPA_ONNX_ENGINE,
         "MLX Audio",
+        # The transcript-cleanup runtime is a host requirement like the others,
+        # so a missing one is visible from the Overview rather than only from
+        # inside the Cleanup tab.
+        "llama.cpp server",
     }
     assert payload["setup"]["token_configured"] is True
     assert payload["setup"]["model_installed"] is False

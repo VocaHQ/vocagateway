@@ -62,3 +62,43 @@ def test_invalid_idle_offload_policy_uses_safe_defaults(tmp_path: Path) -> None:
 
     assert loaded.idle_offload_enabled is False
     assert loaded.idle_offload_minutes == 15
+
+
+def test_a_config_written_before_cleanup_existed_stays_off(tmp_path: Path) -> None:
+    """A missing key on an already-written config is not consent.
+
+    Every gateway that ran before cleanup has a saved config with no
+    `cleanup_enabled` key. Inheriting the shipped default would start
+    corrections on upgrade the moment a leftover GGUF was on disk.
+    """
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"engine": "moonshine"}), encoding="utf-8")
+
+    assert RuntimeConfig.load(path).cleanup_enabled is False
+
+
+def test_a_fresh_install_defaults_cleanup_on(tmp_path: Path) -> None:
+    """No file at all is a brand-new install, not an upgrade.
+
+    RuntimeConfig.load treats a missing or unreadable path as payload is None
+    and returns cls(), which keeps the shipped default on. That is distinct
+    from a file that exists and simply never heard of cleanup.
+    """
+    path = tmp_path / "config.json"
+    assert not path.exists()
+    assert RuntimeConfig.load(path).cleanup_enabled is True
+    assert RuntimeConfig().cleanup_enabled is True
+
+
+def test_an_operator_who_turned_cleanup_off_keeps_it_off(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"cleanup_enabled": False}), encoding="utf-8")
+
+    assert RuntimeConfig.load(path).cleanup_enabled is False
+
+
+def test_a_junk_cleanup_flag_falls_back_rather_than_being_believed(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"cleanup_enabled": "yes"}), encoding="utf-8")
+
+    assert RuntimeConfig.load(path).cleanup_enabled is False

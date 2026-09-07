@@ -43,6 +43,11 @@ ENGINE_HOST_REQUIREMENTS = MappingProxyType(
 
 
 CPU_ACCELERATOR = "CPU"
+# The transcript-cleanup runtime, looked up on PATH when no explicit binary is
+# configured. Named here rather than imported from app.cleanup: this module is
+# the host probe every panel reads, and it must not depend on the feature it
+# reports on.
+LLAMA_SERVER_BINARY_NAME = "llama-server"
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +60,7 @@ class SystemInfo:
     is_apple_silicon: bool
     ffmpeg_path: str | None
     whisper_cpp_path: str | None
+    llama_server_path: str | None
     whisperkit_cli_path: str | None
     handy_installed: bool
     vocamac_installed: bool
@@ -491,6 +497,7 @@ class _HostDetector:
         whisperkit_binary: str,
         handy_binary: Path,
         vocamac_app: Path = DEFAULT_VOCAMAC_APPLICATION_PATH,
+        cleanup_binary: Path | None = None,
     ) -> SystemInfo:
         arch = platform.machine()
         is_mac = platform.system() == "Darwin"
@@ -501,6 +508,13 @@ class _HostDetector:
         whisper_cli = (
             str(whisper_binary) if whisper_binary.is_file() else shutil.which("whisper-cli")
         )
+        # The transcript-cleanup runtime. Resolved through the same setting the
+        # cleanup worker launches (`VOCAGATEWAY_CLEANUP_BINARY`), so the
+        # Libraries panel cannot report one thing while the worker finds
+        # another. The container ships it; a native install supplies it.
+        llama_server = _SysProbe.resolve_binary(
+            str(cleanup_binary) if cleanup_binary else LLAMA_SERVER_BINARY_NAME
+        )
         return SystemInfo(
             os_name=platform.system(),
             os_version=platform.release(),
@@ -510,6 +524,7 @@ class _HostDetector:
             is_apple_silicon=is_mac and arch == ARM64_ARCHITECTURE,
             ffmpeg_path=shutil.which("ffmpeg"),
             whisper_cpp_path=whisper_cli,
+            llama_server_path=llama_server,
             whisperkit_cli_path=_SysProbe.resolve_binary(whisperkit_binary),
             handy_installed=handy_binary.is_file(),
             vocamac_installed=vocamac_app.exists(),

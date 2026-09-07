@@ -130,13 +130,7 @@ def setup_steps(config: CleanupConfigResponse) -> list[SetupStep]:
     them turns "it does nothing" into "step three is not done".
     """
     return [
-        SetupStep(
-            "A runtime to run it",
-            "llama-server found on this host"
-            if config.runtime_available
-            else "No llama-server found. Install llama.cpp, or set VOCAGATEWAY_CLEANUP_BINARY",
-            config.runtime_available,
-        ),
+        _runtime_step(config),
         SetupStep(
             "A model downloaded",
             f"Using {config.model_label}"
@@ -159,6 +153,28 @@ def setup_steps(config: CleanupConfigResponse) -> list[SetupStep]:
             bool(config.auto_language),
         ),
     ]
+
+
+def _runtime_step(config: CleanupConfigResponse) -> SetupStep:
+    """Whether there is a process to run the corrections.
+
+    An operator-run endpoint satisfies this step without a local executable:
+    the gateway does not launch that server, so telling someone to install
+    `llama-server` on this host would be a fix for a problem they do not have.
+    """
+    if not config.managed:
+        return SetupStep(
+            "A runtime to run it",
+            "Using the cleanup server you configured, not one this gateway starts",
+            True,
+        )
+    return SetupStep(
+        "A runtime to run it",
+        "llama-server found on this host"
+        if config.runtime_available
+        else f"No llama-server found. {config.runtime_hint}",
+        config.runtime_available,
+    )
 
 
 def _auto_language_options(languages: list[str]) -> list[tuple[str, str]]:

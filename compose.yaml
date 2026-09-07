@@ -11,11 +11,15 @@ x-gateway-build-args: &gateway-build-args
   VOCAGATEWAY_GIT_COMMIT: ${VOCAGATEWAY_GIT_COMMIT:-}
   VOCAGATEWAY_GIT_COMMIT_SUBJECT: ${VOCAGATEWAY_GIT_COMMIT_SUBJECT:-}
   VOCAGATEWAY_GIT_COMMIT_DATE: ${VOCAGATEWAY_GIT_COMMIT_DATE:-}
-  # Extra cmake flags for the whisper.cpp build, appended last so they override
-  # the Dockerfile's defaults. See "Tuning the whisper.cpp build" in
+  # Extra cmake flags for the two ggml builds, appended last so they override
+  # the Dockerfile's defaults. See "Tuning the compiled runtimes" in
   # docs/deployment.md — the common one is
   # VOCAGATEWAY_WHISPER_CMAKE_EXTRA=-DCMAKE_CUDA_ARCHITECTURES=89-real
   WHISPER_CMAKE_EXTRA: ${VOCAGATEWAY_WHISPER_CMAKE_EXTRA:-}
+  # The same, for the llama.cpp cleanup runtime. Separate because the two are
+  # separate builds: narrowing the CUDA spread for one does nothing for the
+  # other, and the build time saved is roughly half each.
+  LLAMA_CMAKE_EXTRA: ${VOCAGATEWAY_LLAMA_CMAKE_EXTRA:-}
   # Blank is resolved to the builder's CPU count. Lower it if a build is killed
   # for memory — the cuda one is the hungry one.
   BUILD_JOBS: ${VOCAGATEWAY_BUILD_JOBS:-}
@@ -41,16 +45,30 @@ x-gateway-environment: &gateway-environment
   VOCAGATEWAY_WHISPER_DECODER_PRESET: ${VOCAGATEWAY_WHISPER_DECODER_PRESET:-quality}
   VOCAGATEWAY_RETENTION_HOURS: ${VOCAGATEWAY_RETENTION_HOURS:-24}
   VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO: ${VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO:-true}
-  # Transcript cleanup. Off unless the `cleanup` profile is up: the gateway
-  # image ships no text model and no llama.cpp runtime, so leaving these blank
-  # is the same as the feature not existing. Only the address is set here — the
-  # rest stays under the operator's control in the WebUI.
+  # Transcript cleanup. The runtime is in the image and the gateway launches it
+  # itself, so this container is the whole feature — there is no profile to
+  # enable and no second service to run. It stays inert until a cleanup model is
+  # downloaded in the WebUI, which is the deliberate act that turns it on.
   #
-  #   docker compose --profile cleanup up -d
-  #
-  # The address names the sidecar on Compose's own private network. It is never
-  # published, and the gateway refuses any address that is not loopback, a
-  # private range, or a bare service name like this one.
+  # Every variable below is blank on purpose. Blank means "not set", which
+  # leaves the operator's saved WebUI choice in charge; a value here wins over
+  # the UI and shows the affected control as locked. That is the reason not to
+  # write `true` in here to turn cleanup on: a fresh install is already on by
+  # default, and setting it would take the off switch away from the WebUI. A
+  # config written before cleanup existed loads as off until the operator
+  # enables it in the WebUI.
+  VOCAGATEWAY_CLEANUP_ENABLED: ${VOCAGATEWAY_CLEANUP_ENABLED:-}
+  VOCAGATEWAY_CLEANUP_MODE: ${VOCAGATEWAY_CLEANUP_MODE:-}
+  VOCAGATEWAY_CLEANUP_MODEL: ${VOCAGATEWAY_CLEANUP_MODEL:-}
+  VOCAGATEWAY_CLEANUP_TIMEOUT_SECONDS: ${VOCAGATEWAY_CLEANUP_TIMEOUT_SECONDS:-}
+  VOCAGATEWAY_CLEANUP_LANGUAGES: ${VOCAGATEWAY_CLEANUP_LANGUAGES:-}
+  VOCAGATEWAY_CLEANUP_AUTO_LANGUAGE: ${VOCAGATEWAY_CLEANUP_AUTO_LANGUAGE:-}
+  # An operator-run cleanup server, for evaluating one this image did not build.
+  # Setting it gives up warm-up and idle unloading, because the gateway then
+  # does not own the process. The address is never published, and the gateway
+  # refuses any that is not loopback, a private range, or a bare service name.
+  # The retired sidecar hostname `cleanup` is refused too; unset the variable
+  # to use the in-image runtime.
   VOCAGATEWAY_CLEANUP_ENDPOINT: ${VOCAGATEWAY_CLEANUP_ENDPOINT:-}
   VOCAGATEWAY_CLEANUP_API_KEY: ${VOCAGATEWAY_CLEANUP_API_KEY:-}
 
@@ -70,10 +88,11 @@ x-gateway-service: &gateway-service
   # default.
   security_opt: [no-new-privileges:true]
   cap_drop: [ALL]
-  # whisper-cli writes its transcript to a per-request temporary directory. On
-  # the default overlay filesystem every one of those is a copy-up; in RAM it is
-  # free. The cap is well above what a transcript needs — it exists so a runaway
-  # cannot spend the host's memory.
+  # whisper-cli writes its transcript to a per-request temporary directory, and
+  # the cleanup worker's stderr capture lands here too. On the default overlay
+  # filesystem every one of those is a copy-up; in RAM it is free. The cap is
+  # well above what either needs — it exists so a runaway cannot spend the
+  # host's memory.
   tmpfs:
     - /tmp:size=64m,mode=1777
   # json-file keeps every byte forever by default, which on an appliance that is
@@ -132,68 +151,9 @@ services:
       - "${VOCAGATEWAY_RENDER_GID:-993}"
       - "${VOCAGATEWAY_VIDEO_GID:-44}"
 
-  # Optional transcript-cleanup sidecar. Opt-in, pinned by digest, and never
-  # published: only the gateway can reach it, over Compose's private network.
-  #
-  # The model is *not* baked into the image. Mount a GGUF you installed
-  # yourself, read-only, and point VOCAGATEWAY_CLEANUP_MODEL_FILE at it:
-  #
-  #   VOCAGATEWAY_CLEANUP_MODEL_FILE=/models/Qwen3-0.6B-Q8_0.gguf \
-  #   VOCAGATEWAY_CLEANUP_MODEL_DIR=$HOME/.local/share/vocagateway/models/cleanup \
-  #   VOCAGATEWAY_CLEANUP_ENDPOINT=cleanup:8080 \
-  #   VOCAGATEWAY_CLEANUP_API_KEY=$(openssl rand -hex 24) \
-  #   docker compose --profile cleanup up -d
-  cleanup:
-    profiles: ["cleanup"]
-    # Pinned by digest, not by tag: a moving tag would change the runtime under
-    # a gateway that was tested against a specific one. Refresh deliberately.
-    image: ${VOCAGATEWAY_CLEANUP_IMAGE:-ghcr.io/ggml-org/llama.cpp:server}
-    restart: unless-stopped
-    init: true
-    # Deliberately no `ports:`. The gateway reaches it by service name on the
-    # project's default network; nothing outside the project can.
-    expose: ["8080"]
-    command:
-      - --model
-      - ${VOCAGATEWAY_CLEANUP_MODEL_FILE:-/models/model.gguf}
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8080"
-      - --ctx-size
-      - "8192"
-      - --parallel
-      - "1"
-      # Required for the non-thinking chat-template switch the gateway sends.
-      - --jinja
-      - --no-webui
-      # Read from a secret file rather than argv: the key would otherwise be
-      # visible in `docker inspect` and in the process list. A missing secret
-      # fails this service at start, and leaves `docker compose config` (which
-      # validates every profile) working for everyone not using cleanup.
-      - --api-key-file
-      - /run/secrets/vocagateway_cleanup_key
-    secrets: [vocagateway_cleanup_key]
-    volumes:
-      - ${VOCAGATEWAY_CLEANUP_MODEL_DIR:-./models}:/models:ro
-    read_only: true
-    security_opt: [no-new-privileges:true]
-    cap_drop: [ALL]
-    tmpfs:
-      - /tmp:size=64m,mode=1777
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
 secrets:
   vocagateway_token:
     environment: VOCAGATEWAY_TOKEN
-  # Only read by the opt-in `cleanup` profile. The gateway gets the same value
-  # through VOCAGATEWAY_CLEANUP_API_KEY, which is how the two agree on it.
-  vocagateway_cleanup_key:
-    environment: VOCAGATEWAY_CLEANUP_API_KEY
 
 volumes:
   vocagateway-data:
