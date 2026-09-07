@@ -100,6 +100,7 @@ variable. `compose.yaml` forwards only the keys it names, so a variable marked
 | `VOCAGATEWAY_CLEANUP_TIMEOUT_SECONDS` | unset (`5`) | forwarded | Total deadline for one correction, 1–30 s. Past it the plain transcript is returned |
 | `VOCAGATEWAY_CLEANUP_LANGUAGES` | unset (the model's list) | forwarded | Comma-separated allowlist of languages cleanup may run for |
 | `VOCAGATEWAY_CLEANUP_AUTO_LANGUAGE` | unset (do not guess) | forwarded | Which language a transcript left on `auto` is corrected as. Unset means `auto` falls back uncorrected unless its writing system names a language. Ignored if not on the allowlist |
+| `VOCAGATEWAY_CLEANUP_PROFILE` | unset (`auto`) | forwarded | How the managed `llama-server` is launched: `auto`, `compact`, or `full`. Auto uses compact on a CPU-only host under 16 GB RAM, and full when a GPU is present or RAM is 16 GB or more. See [cleanup.md](cleanup.md) |
 | `VOCAGATEWAY_CLEANUP_BINARY` | `llama-server` on `PATH` | `/opt/llama/bin/llama-server`, built into the image | Explicit `llama-server` for the gateway to launch and own |
 | `VOCAGATEWAY_CLEANUP_ENDPOINT` | unset | forwarded | `host:port` of a cleanup server the **operator** runs, instead of the one the gateway would launch. Setting it gives up gateway-controlled warm-up and idle unloading, because the gateway then does not own the process. Only loopback, private addresses, and bare container service names are accepted; anything routable is refused at startup. The old Compose sidecar hostname `cleanup` is refused too (including `cleanup:8080`); unset the variable to use the in-image runtime, or use a different service name such as `my-cleanup` |
 | `VOCAGATEWAY_CLEANUP_API_KEY` | unset | forwarded | Credential the gateway presents to that operator-run server. Unused by the gateway-managed worker, which generates a key of its own per launch. A client's bearer token is never forwarded |
@@ -169,7 +170,7 @@ Two deployment shapes, and they are not interchangeable:
   typically to evaluate a runtime or model the image did not build. The gateway
   will use it but promises nothing about its lifecycle, because it does not own
   the process. Give it `--ctx-size 4096` or more, or it is declined with
-  `context_too_small`.
+  `context_too_small`. Compact vs full command lines are in [cleanup.md](cleanup.md).
 
 Which model runs is the operator's choice, but only once there is a choice to
 make: with exactly one cleanup model installed and nothing selected, that one is

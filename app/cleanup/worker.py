@@ -29,6 +29,7 @@ from typing import IO
 from app import system
 from app.cleanup import transport
 from app.cleanup.base import CleanupUnavailable
+from app.cleanup.profile import COMPACT_PROFILE, CleanupLaunchProfile
 
 LOOPBACK_HOST = "127.0.0.1"
 SERVER_BINARY_NAME = "llama-server"
@@ -47,14 +48,6 @@ MAXIMUM_DIAGNOSTIC_LENGTH = 400
 # would only split the KV cache without ever being used.
 PARALLEL_SLOTS = 1
 HEALTH_PROBE_SECONDS = 1.0
-# Q8 KV is about half the f16 cache. For Qwen3 0.6B at 4096 tokens that is
-# hundreds of megabytes rather than close to a gigabyte, which is what made
-# the 8k f16 window dominate RAM on a low-end host.
-KV_CACHE_TYPE = "q8_0"
-# Prompt eval of a short transcript does not need llama.cpp's 2048/512
-# defaults; smaller batches cut the peak scratch buffer.
-PROMPT_BATCH_TOKENS = 512
-PROMPT_UBATCH_TOKENS = 256
 
 
 def resolve_binary(override: Path | None = None) -> Path | None:
@@ -77,12 +70,17 @@ class LlamaServerWorker:
         binary: Path,
         model: Path,
         *,
-        context_tokens: int,
+        context_tokens: int | None = None,
         cpu_threads: int = 0,
+        profile: CleanupLaunchProfile | None = None,
     ) -> None:
         self.binary = binary
         self.model = model
-        self.context_tokens = context_tokens
+        self.profile = profile or COMPACT_PROFILE
+        if context_tokens is None:
+            self.context_tokens = self.profile.context_tokens
+        else:
+            self.context_tokens = context_tokens
         self.cpu_threads = cpu_threads
         # A credential of the worker's own, so the gateway authenticates to it
         # without ever forwarding a client's bearer token.
@@ -188,13 +186,13 @@ class LlamaServerWorker:
             "--ctx-size",
             str(self.context_tokens),
             "--batch-size",
-            str(PROMPT_BATCH_TOKENS),
+            str(self.profile.batch_tokens),
             "--ubatch-size",
-            str(PROMPT_UBATCH_TOKENS),
+            str(self.profile.ubatch_tokens),
             "--cache-type-k",
-            KV_CACHE_TYPE,
+            self.profile.kv_cache_type,
             "--cache-type-v",
-            KV_CACHE_TYPE,
+            self.profile.kv_cache_type,
             "--threads",
             str(system.inference_thread_count(self.cpu_threads)),
             "--parallel",

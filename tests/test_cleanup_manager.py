@@ -31,14 +31,9 @@ from app.cleanup.base import (
     CleanupReason,
 )
 from app.cleanup.manager import CleanupUpdate, build_manager, preserve_implicit_model_selection
+from app.cleanup.profile import COMPACT_PROFILE, FULL_PROFILE
 from app.cleanup.transport import Endpoint
-from app.cleanup.worker import (
-    KV_CACHE_TYPE,
-    PROMPT_BATCH_TOKENS,
-    PROMPT_UBATCH_TOKENS,
-    LlamaServerWorker,
-    resolve_binary,
-)
+from app.cleanup.worker import LlamaServerWorker, resolve_binary
 from app.config import Settings
 from app.runtime_config import RuntimeConfig
 
@@ -300,10 +295,10 @@ def test_the_worker_is_launched_with_argv_and_a_private_credential(
     assert "--jinja" in arguments
     assert "--no-webui" in arguments
     assert arguments[arguments.index("--ctx-size") + 1] == str(MINIMUM_CONTEXT_TOKENS)
-    assert arguments[arguments.index("--batch-size") + 1] == str(PROMPT_BATCH_TOKENS)
-    assert arguments[arguments.index("--ubatch-size") + 1] == str(PROMPT_UBATCH_TOKENS)
-    assert arguments[arguments.index("--cache-type-k") + 1] == KV_CACHE_TYPE
-    assert arguments[arguments.index("--cache-type-v") + 1] == KV_CACHE_TYPE
+    assert arguments[arguments.index("--batch-size") + 1] == str(COMPACT_PROFILE.batch_tokens)
+    assert arguments[arguments.index("--ubatch-size") + 1] == str(COMPACT_PROFILE.ubatch_tokens)
+    assert arguments[arguments.index("--cache-type-k") + 1] == COMPACT_PROFILE.kv_cache_type
+    assert arguments[arguments.index("--cache-type-v") + 1] == COMPACT_PROFILE.kv_cache_type
     assert arguments[arguments.index("--threads") + 1] == "2"
     # A credential of the worker's own: the client's bearer token never travels.
     assert worker.api_key in arguments
@@ -323,6 +318,21 @@ def test_the_worker_caps_threads_the_same_way_speech_engines_do(tmp_path: Path) 
     arguments = worker._arguments(9999)
 
     assert arguments[arguments.index("--threads") + 1] == str(system.inference_thread_count(0))
+
+
+def test_the_full_profile_launches_with_a_larger_window_and_f16_cache(tmp_path: Path) -> None:
+    binary = tmp_path / "llama-server"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"gguf")
+    worker = LlamaServerWorker(binary, model, profile=FULL_PROFILE, cpu_threads=2)
+
+    arguments = worker._arguments(9999)
+
+    assert arguments[arguments.index("--ctx-size") + 1] == str(FULL_PROFILE.context_tokens)
+    assert arguments[arguments.index("--cache-type-k") + 1] == "f16"
+    assert arguments[arguments.index("--batch-size") + 1] == str(FULL_PROFILE.batch_tokens)
 
 
 def test_catalog_models_use_the_low_end_context_window() -> None:
@@ -528,6 +538,9 @@ class _ContextRuntime:
     async def context_is_sufficient(self) -> bool:
         self.asks += 1
         return not self.tokens or self.tokens >= MINIMUM_CONTEXT_TOKENS
+
+    async def context_tokens(self) -> int:
+        return self.tokens
 
     async def available(self) -> bool:
         return True

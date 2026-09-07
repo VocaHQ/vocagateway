@@ -10,6 +10,9 @@
   <div class="cleanup-status-head">
     <span class="pill {{ state_tone }}">{{ state_label }}</span>
     <p class="cleanup-status-line">{{ state_sentence }}</p>
+    {% if config.profile_detail %}
+    <p class="muted small settings-hint">{{ config.profile_detail }}</p>
+    {% endif %}
     <div class="cleanup-status-actions">
       {% if config.model_installed and config.state != "loading" %}
       <button type="button" class="ghost small"

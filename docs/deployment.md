@@ -265,9 +265,10 @@ missing one is visible without opening the Cleanup tab.
 Worth knowing before you turn it loose:
 
 - **Memory.** The cleanup model stays resident alongside whatever the speech
-  engine is holding. The managed worker uses a 4096-token window and an 8-bit
-  KV cache so the context is a few hundred megabytes rather than about a
-  gigabyte; the compact 0.6B Q4 artifact is the low-end download. Measure both
+  engine is holding. On a CPU-only host under 16 GB RAM the managed worker uses
+  the **compact** profile (4096 context, 8-bit KV). On a GPU or 16 GB+ host it
+  uses **full** (8192 context, 16-bit KV). Force one with
+  `VOCAGATEWAY_CLEANUP_PROFILE`. See [cleanup.md](cleanup.md). Measure both
   models together on the host you actually run on. *Unload after idle* is on
   for a fresh install and gives the memory back between bursts, at the cost of
   a reload on the next correction.
@@ -296,7 +297,9 @@ services:
     volumes: [./models:/models:ro]
     command:
        [--model, /models/your.gguf, --host, 0.0.0.0, --port, "8080",
-        --ctx-size, "4096", --parallel, "1", --jinja, --no-webui,
+        --ctx-size, "4096", --batch-size, "512", --ubatch-size, "256",
+        --cache-type-k, q8_0, --cache-type-v, q8_0,
+        --parallel, "1", --jinja, --no-webui,
         --api-key, "${VOCAGATEWAY_CLEANUP_API_KEY}"]
 ```
 
@@ -315,7 +318,9 @@ Three things the gateway will hold you to. It refuses any address that is not
 loopback, a private range, or a bare container service name on this project's
 own network, because "runs on your gateway" has to stay true. It makes no
 lifecycle promises for a process it did not start — no warm-up, no idle unload,
-no restart. And the window has to be `--ctx-size 4096` or more: a window too
+no restart. Match compact or full flags to the machine that runs that
+server — see [cleanup.md](cleanup.md). And the window has to be
+`--ctx-size 4096` or more: a window too
 small does not fail loudly, it silently drops the system instruction, so the
 gateway declines with `context_too_small` rather than trusting the result.
 

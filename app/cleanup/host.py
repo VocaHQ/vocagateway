@@ -19,10 +19,11 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from app import config, runtime_config
+from app import config, runtime_config, system
 from app.cleanup import catalog, worker
 from app.cleanup.base import MINIMUM_CONTEXT_TOKENS, CleanupRuntime, CleanupUnavailable
 from app.cleanup.llama_server import LlamaServerRuntime
+from app.cleanup.profile import CleanupLaunchProfile, describe_profile, resolve_profile
 
 
 class WorkerHost:
@@ -31,11 +32,17 @@ class WorkerHost:
     def __init__(self, settings: config.Settings, run_config: runtime_config.RuntimeConfig) -> None:
         self.settings = settings
         self.runtime_config = run_config
+        self.profile: CleanupLaunchProfile = resolve_profile(
+            settings.cleanup_profile, _host_info(settings)
+        )
         self.failure = ""
         self.offloaded = False
         self._worker: worker.LlamaServerWorker | None = None
         self._key: tuple[str, str] | None = None
         self._loading: asyncio.Task[None] | None = None
+
+    def profile_detail(self) -> str:
+        return describe_profile(self.profile, self.settings.cleanup_profile)
 
     @property
     def is_loading(self) -> bool:
@@ -66,7 +73,11 @@ class WorkerHost:
         active = self._ensure(binary, model_file, model_id)
         if not self._resident(active):
             return None
-        return LlamaServerRuntime(active.endpoint, model_id=model_id)
+        return LlamaServerRuntime(
+            active.endpoint,
+            model_id=model_id,
+            chunk_char_limit=self.profile.chunk_char_limit,
+        )
 
     def stop(self, *, offloaded: bool = False) -> None:
         """Detach and terminate, without blocking the caller.
@@ -147,8 +158,9 @@ class WorkerHost:
         self._worker = worker.LlamaServerWorker(
             binary,
             model_file,
-            context_tokens=_context_tokens(model_id),
+            context_tokens=max(_context_tokens(model_id), self.profile.context_tokens),
             cpu_threads=self.runtime_config.cpu_threads,
+            profile=self.profile,
         )
         self._key = key
         return self._worker
@@ -176,3 +188,13 @@ def _context_tokens(model_id: str) -> int:
     selected = catalog.cleanup_model(model_id)
     declared = selected.context_tokens if selected else MINIMUM_CONTEXT_TOKENS
     return max(MINIMUM_CONTEXT_TOKENS, declared)
+
+
+def _host_info(settings: config.Settings) -> system.SystemInfo:
+    return system.detect_system(
+        whisper_binary=settings.whisper_binary,
+        whisperkit_binary=settings.whisperkit_binary,
+        handy_binary=settings.handy_binary,
+        vocamac_app=settings.vocamac_app,
+        cleanup_binary=settings.cleanup_binary,
+    )

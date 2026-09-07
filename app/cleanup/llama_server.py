@@ -60,10 +60,12 @@ class LlamaServerRuntime:
         *,
         model_id: str,
         model_name: str = "cleanup",
+        chunk_char_limit: int = CHUNK_CHAR_LIMIT,
     ) -> None:
         self.endpoint = endpoint
         self._model_id = model_id
         self._model_name = model_name
+        self._chunk_char_limit = chunk_char_limit
 
     @property
     def model_id(self) -> str | None:
@@ -121,7 +123,7 @@ class LlamaServerRuntime:
 
     async def clean(self, transcript: str, language: str, *, budget_seconds: float) -> str:
         deadline = time.monotonic() + budget_seconds
-        pieces = chunks.pack(transcript, limit=CHUNK_CHAR_LIMIT)
+        pieces = chunks.pack(transcript, limit=self._chunk_char_limit)
         if len(pieces) <= 1:
             return await self._complete(transcript, language, deadline, budget_seconds)
         return await self._complete_pieces(pieces, language, deadline, budget_seconds)
@@ -166,7 +168,7 @@ class LlamaServerRuntime:
         return _decode_completion(_parsed(reply))
 
     async def _check_length(self, transcript: str, deadline: float) -> None:
-        if len(transcript) <= CHUNK_CHAR_LIMIT:
+        if len(transcript) <= self._chunk_char_limit:
             return
         counted = await self.count_tokens(
             transcript, budget=remaining(deadline, TOKENIZE_TIMEOUT_SECONDS)

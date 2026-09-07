@@ -386,6 +386,8 @@ class CleanupConfigResponse(BaseModel):
     # locked rather than pretending a save changed them.
     locked_settings: list[str] = []
     detail: str = ""
+    profile: str = ""
+    profile_detail: str = ""
 
 
 class CleanupConfigUpdateRequest(BaseModel):

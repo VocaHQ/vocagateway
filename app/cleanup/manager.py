@@ -37,6 +37,7 @@ from app.cleanup.base import (
 )
 from app.cleanup.host import WorkerHost
 from app.cleanup.llama_server import LlamaServerRuntime
+from app.cleanup.profile import PROFILE_COMPACT, PROFILE_FULL, chunk_limit_for_window
 from app.cleanup.transport import Endpoint
 
 SECONDS_PER_MINUTE = 60
@@ -91,6 +92,8 @@ class CleanupStatusReport:
     idle_unload_minutes: int
     locked_settings: tuple[str, ...]
     detail: str = ""
+    profile: str = ""
+    profile_detail: str = ""
 
 
 class CleanupPreferences:
@@ -159,6 +162,10 @@ class CleanupPreferences:
             ("timeout_seconds", self.settings.cleanup_timeout_seconds is not None),
             ("auto_language", self.settings.cleanup_auto_language is not None),
             ("endpoint", self.settings.cleanup_endpoint is not None),
+            (
+                "profile",
+                (self.settings.cleanup_profile or "") in {PROFILE_COMPACT, PROFILE_FULL},
+            ),
         )
         return tuple(name for name, locked in overrides if locked)
 
@@ -251,6 +258,7 @@ class CleanupManager:
         # and found big enough. A managed worker needs no such check: the
         # gateway passes its own `--ctx-size`.
         self._external_ok: bool | None = None
+        self._external_window = 0
 
     @property
     def enabled(self) -> bool:
@@ -388,6 +396,8 @@ class CleanupManager:
             idle_unload_minutes=self.runtime_config.cleanup_idle_unload_minutes,
             locked_settings=preferences.locked_settings(),
             detail=self._failure or self.host.failure,
+            profile=self.host.profile.id,
+            profile_detail=self.host.profile_detail(),
         )
 
     def configure(self, update: CleanupUpdate) -> None:
@@ -403,6 +413,7 @@ class CleanupManager:
         update.apply(self.runtime_config)
         self.runtime_config.save(self.config_path)
         self._external_ok = None
+        self._external_window = 0
         if (changed_model or not self.enabled) and self._active_leases == 0:
             # Applies to new work only. An in-flight request keeps the runtime
             # it was admitted against; the swap happens once its lease drains.
@@ -418,10 +429,17 @@ class CleanupManager:
         A server that does not report one is used as before: an unknown window
         is not evidence of a bad one.
         """
-        runtime = LlamaServerRuntime(endpoint, model_id=self.model_id or EXTERNAL_MODEL_NAME)
         if self._external_ok is None:
-            self._external_ok = await runtime.context_is_sufficient()
-        return runtime if self._external_ok else None
+            probe = LlamaServerRuntime(endpoint, model_id=self.model_id or EXTERNAL_MODEL_NAME)
+            self._external_ok = await probe.context_is_sufficient()
+            self._external_window = await probe.context_tokens() if self._external_ok else 0
+        if not self._external_ok:
+            return None
+        return LlamaServerRuntime(
+            endpoint,
+            model_id=self.model_id or EXTERNAL_MODEL_NAME,
+            chunk_char_limit=chunk_limit_for_window(self._external_window),
+        )
 
     async def _lease(self) -> Lease:
         runtime = await self._runtime()
