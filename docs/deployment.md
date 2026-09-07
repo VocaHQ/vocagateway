@@ -213,11 +213,13 @@ docker compose up --detach --build
 ```
 
 Until that download lands there is nothing to run cleanup on, and every
-transcript takes exactly the path it would with the feature off. Once it lands,
-a downloaded model needs no second "select" click while it is the only one
-installed, and corrections start on the next dictation. **Overview → Libraries &
-tools** reports the runtime beside FFmpeg and whisper.cpp, so a missing one is
-visible without opening the Cleanup tab.
+transcript takes exactly the path it would with the feature off. Once it lands
+on a fresh install, a downloaded model needs no second "select" click while it
+is the only one installed, and corrections start on the next dictation. A
+config written before cleanup existed loads with the feature off, even if a
+leftover model is already on disk; enable it in the Cleanup tab. **Overview →
+Libraries & tools** reports the runtime beside FFmpeg and whisper.cpp, so a
+missing one is visible without opening the Cleanup tab.
 
 Worth knowing before you turn it loose:
 
@@ -260,6 +262,11 @@ VOCAGATEWAY_CLEANUP_ENDPOINT=my-cleanup:8080 \
 VOCAGATEWAY_CLEANUP_API_KEY="$(openssl rand -hex 24)" \
 docker compose up --detach
 ```
+
+Do not reuse the old sidecar hostname. `VOCAGATEWAY_CLEANUP_ENDPOINT=cleanup:8080`
+(or `cleanup` on any other port) is refused at startup: that Compose service is
+gone. Unset the variable to use the in-image runtime. If you run a server of
+your own, give it a different service name, as above.
 
 Three things the gateway will hold you to. It refuses any address that is not
 loopback, a private range, or a bare container service name on this project's

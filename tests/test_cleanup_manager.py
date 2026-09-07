@@ -9,6 +9,7 @@ after the model was switched, an idle unload that fires mid-request.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from collections.abc import Callable
 from dataclasses import replace
@@ -90,6 +91,26 @@ def test_the_gateway_default_is_on_and_inert_until_a_model_is_installed(
     # An explicit request is not silently downgraded: it runs, finds no model,
     # and is answered with a reason rather than with silence.
     assert manager.options(MODE_CONSERVATIVE).mode == MODE_CONSERVATIVE
+
+
+def test_a_pre_cleanup_config_stays_inert_even_with_a_leftover_model(
+    settings: Settings,
+) -> None:
+    """A missing key on an already-written config is not consent to correct.
+
+    A leftover GGUF from an earlier cleanup experiment would otherwise start
+    editing transcripts on upgrade, because the only-installed-model fallback
+    would pick it up the moment enabled inherited on.
+    """
+    settings.config_path.write_text(json.dumps({"engine": "moonshine"}), encoding="utf-8")
+    manager = build_manager(
+        settings, RuntimeConfig.load(settings.config_path), settings.config_path
+    )
+    manager.host = FakeWorkerHost(FakeCleanupRuntime())
+    install_model(manager)
+    assert manager.enabled is False
+    assert manager.usable is False
+    assert manager.options(MODE_INHERIT).mode == MODE_OFF
 
 
 def test_a_downloaded_model_needs_no_second_selection(settings: Settings) -> None:
@@ -281,7 +302,7 @@ ENVIRONMENT_CASES = (
     ("VOCAGATEWAY_CLEANUP_MODEL", CLEANUP_MODEL_ID, "cleanup_model", CLEANUP_MODEL_ID),
     ("VOCAGATEWAY_CLEANUP_TIMEOUT_SECONDS", "7.5", "cleanup_timeout_seconds", 7.5),
     ("VOCAGATEWAY_CLEANUP_LANGUAGES", "en, hi", "cleanup_languages", ("en", "hi")),
-    ("VOCAGATEWAY_CLEANUP_ENDPOINT", "cleanup:8080", "cleanup_endpoint", ("cleanup", 8080)),
+    ("VOCAGATEWAY_CLEANUP_ENDPOINT", "my-cleanup:8080", "cleanup_endpoint", ("my-cleanup", 8080)),
 )
 
 
@@ -310,6 +331,7 @@ def test_an_unset_cleanup_switch_is_neither_on_nor_off(
 
 
 ROUTABLE_ENDPOINTS = ("https://api.example.com/v1", "example.com:8080", "8.8.8.8:80", "nope")
+REMOVED_SIDECAR_ENDPOINTS = ("cleanup:8080", "cleanup:1234", "CLEANUP:8080")
 
 
 @pytest.mark.parametrize("endpoint", ROUTABLE_ENDPOINTS)
@@ -321,6 +343,20 @@ def test_a_routable_cleanup_endpoint_is_refused_at_startup(
     monkeypatch.setenv("VOCAGATEWAY_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("VOCAGATEWAY_CLEANUP_ENDPOINT", endpoint)
     with pytest.raises(RuntimeError):
+        Settings.from_env()
+
+
+@pytest.mark.parametrize("endpoint", REMOVED_SIDECAR_ENDPOINTS)
+def test_the_old_cleanup_sidecar_endpoint_is_refused_at_startup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, endpoint: str
+) -> None:
+    """The Compose service named cleanup is gone; keep using it and the
+    in-image runtime sits unused while every request hits a dead host.
+    """
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN", "env-" + ("x" * 48))
+    monkeypatch.setenv("VOCAGATEWAY_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("VOCAGATEWAY_CLEANUP_ENDPOINT", endpoint)
+    with pytest.raises(RuntimeError, match="sidecar"):
         Settings.from_env()
 
 

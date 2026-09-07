@@ -109,11 +109,11 @@ class _AppBuilder:
     def _build_cleanup(
         self, cfg: config.Settings, run_cfg: runtime_config.RuntimeConfig
     ) -> CleanupManager:
-        """Always constructed, and off until an operator turns it on.
+        """Always constructed. Fresh installs default on; a pre-cleanup config stays off.
 
-        Building it unconditionally is what keeps one code path: the disabled
-        manager answers every question with "no" rather than leaving callers to
-        branch on whether cleanup exists at all.
+        Building it unconditionally is what keeps one code path: a manager that
+        is off, or on with no model, answers every question with "no" rather
+        than leaving callers to branch on whether cleanup exists at all.
         """
         return build_manager(cfg, run_cfg, cfg.config_path)
 

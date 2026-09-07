@@ -53,8 +53,10 @@ x-gateway-environment: &gateway-environment
   # Every variable below is blank on purpose. Blank means "not set", which
   # leaves the operator's saved WebUI choice in charge; a value here wins over
   # the UI and shows the affected control as locked. That is the reason not to
-  # write `true` in here to turn cleanup on: it is already on by default, and
-  # setting it would take the off switch away from the WebUI.
+  # write `true` in here to turn cleanup on: a fresh install is already on by
+  # default, and setting it would take the off switch away from the WebUI. A
+  # config written before cleanup existed loads as off until the operator
+  # enables it in the WebUI.
   VOCAGATEWAY_CLEANUP_ENABLED: ${VOCAGATEWAY_CLEANUP_ENABLED:-}
   VOCAGATEWAY_CLEANUP_MODE: ${VOCAGATEWAY_CLEANUP_MODE:-}
   VOCAGATEWAY_CLEANUP_MODEL: ${VOCAGATEWAY_CLEANUP_MODEL:-}
@@ -65,6 +67,8 @@ x-gateway-environment: &gateway-environment
   # Setting it gives up warm-up and idle unloading, because the gateway then
   # does not own the process. The address is never published, and the gateway
   # refuses any that is not loopback, a private range, or a bare service name.
+  # The retired sidecar hostname `cleanup` is refused too; unset the variable
+  # to use the in-image runtime.
   VOCAGATEWAY_CLEANUP_ENDPOINT: ${VOCAGATEWAY_CLEANUP_ENDPOINT:-}
   VOCAGATEWAY_CLEANUP_API_KEY: ${VOCAGATEWAY_CLEANUP_API_KEY:-}
 

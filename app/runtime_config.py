@@ -32,10 +32,13 @@ CLEANUP_CONSERVATIVE = "conservative"
 CLEANUP_MODES = (CLEANUP_OFF, CLEANUP_CONSERVATIVE)
 # Cleanup is part of the shipped deployment rather than a feature to discover:
 # the container builds its runtime, and a native install that has one gets the
-# same behaviour. On by default costs nothing until a cleanup model is
-# downloaded — with no model there is nothing to run, and every transcript takes
-# the same path it would with the feature off. Downloading one is the deliberate
-# act that starts corrections, and the WebUI toggle turns them off again.
+# same behaviour. A brand-new install (no config file, an unreadable file, or
+# a fresh RuntimeConfig()) defaults on. That costs nothing until a cleanup
+# model is downloaded: with no model there is nothing to run, and every
+# transcript takes the same path it would with the feature off. An
+# already-written config that lacks `cleanup_enabled` is the upgrade path and
+# stays off. A missing key on a file that already existed is not consent.
+# Explicit true or false in the file is honoured; junk values are off.
 DEFAULT_CLEANUP_ENABLED = True
 DEFAULT_CLEANUP_MODE = CLEANUP_CONSERVATIVE
 DEFAULT_CLEANUP_TIMEOUT_SECONDS = 5.0
@@ -183,18 +186,20 @@ def _parse_memory_fields(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _parse_cleanup_fields(payload: dict[str, Any]) -> dict[str, Any]:
-    """Read the cleanup block, defaulting anything unrecognised to the shipped value.
+    """Read the cleanup block from an already-written config file.
 
-    A config file written by a newer build, hand-edited, or truncated falls back
-    to what this build ships rather than to whatever happens to be in the file.
-    Only a real `false` turns cleanup off, so an operator who unticked it keeps
-    it unticked; a missing key is not a decision and inherits the default.
+    Called only when RuntimeConfig.load has a dict payload, so this is never
+    the brand-new-install path (that returns cls() with DEFAULT_CLEANUP_ENABLED).
+    A missing cleanup_enabled key is off: the file was written before the
+    cleanup block existed, or the key was omitted, and neither is consent to
+    start correcting. Only a real JSON true turns it on; false and junk are off.
+    Unrecognised values for the other fields fall back to what this build ships.
     """
     mode = payload.get("cleanup_mode")
     idle_minutes = payload.get("cleanup_idle_unload_minutes")
     enabled = payload.get("cleanup_enabled")
     return {
-        "cleanup_enabled": DEFAULT_CLEANUP_ENABLED if enabled is None else enabled is True,
+        "cleanup_enabled": enabled is True,
         "cleanup_mode": mode if mode in CLEANUP_MODES else DEFAULT_CLEANUP_MODE,
         "cleanup_model": _optional_str(payload.get("cleanup_model")),
         "cleanup_timeout_seconds": clamp_cleanup_timeout(payload.get("cleanup_timeout_seconds")),

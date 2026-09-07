@@ -26,9 +26,10 @@ In all three, the gateway is live before any model exists. `GET /health/ready`
 answers `503` until you download and select one in the WebUI.
 
 [Transcript cleanup](../README.md#transcript-cleanup) is part of the same setup:
-the runtime ships in the container (and is a host tool natively), corrections
-are on by default, and nothing happens until you download a cleanup model in the
-WebUI. **Overview → Libraries & tools** says whether this host has the runtime.
+the runtime ships in the container (and is a host tool natively). Fresh installs
+default on and stay inert until you download a cleanup model in the WebUI. A
+config written before cleanup existed stays off until you enable it.
+**Overview → Libraries & tools** says whether this host has the runtime.
 
 ## Before you expose it
 

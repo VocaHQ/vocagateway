@@ -508,9 +508,12 @@ changed, and the commit message should say why.
 
 ## Transcript cleanup
 
-On by default, and inert until you download a cleanup model. That download is
-the opt-in: with no model there is nothing to run, and every transcript comes
-back exactly as it would from a gateway built before the feature existed.
+On by default on a brand-new install, and inert until you download a cleanup
+model. That download is the opt-in: with no model there is nothing to run, and
+every transcript comes back exactly as it would from a gateway built before the
+feature existed. A gateway that already had a saved config from before cleanup
+existed stays off until you enable it in the WebUI, even if a leftover model is
+already on disk.
 
 A small text model runs **after** speech recognition and fixes grammar,
 punctuation, capitalization, and paragraph breaks while keeping what you said.
@@ -531,8 +534,8 @@ leaves the load running behind it; the next one finds the model resident.
 **Load model now** is how you pay that cost once, deliberately.
 
 **Setup.** Open the **Cleanup** tab → download a model → **Load model now**.
-That is the whole thing: corrections are on by default, and a model that is the
-only one installed needs no separate selection.
+That is the whole thing on a fresh install: corrections are on by default, and
+a model that is the only one installed needs no separate selection.
 
 The runtime under it is a `llama-server` the gateway launches and owns, on
 loopback, on a port that is never published, with a credential it generates
@@ -542,6 +545,12 @@ speech engine, so there is no profile and no second service:
 ```sh
 docker compose up -d
 ```
+
+If your `.env` still has `VOCAGATEWAY_CLEANUP_ENDPOINT=cleanup:8080` from the
+old Compose sidecar, remove or comment it out. That service is gone; leaving
+the line set fails at startup. Unset the variable to use the in-image runtime.
+If you run a server of your own, give it a different service name (for example
+`my-cleanup:8080`).
 
 A native install supplies its own (`brew install llama.cpp`, or point
 `VOCAGATEWAY_CLEANUP_BINARY` at a build of your own). Either way, **Overview →
