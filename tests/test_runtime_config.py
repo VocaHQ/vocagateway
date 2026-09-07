@@ -62,3 +62,32 @@ def test_invalid_idle_offload_policy_uses_safe_defaults(tmp_path: Path) -> None:
 
     assert loaded.idle_offload_enabled is False
     assert loaded.idle_offload_minutes == 15
+
+
+def test_a_config_written_before_cleanup_existed_gets_the_shipped_default(
+    tmp_path: Path,
+) -> None:
+    """A missing key is not a decision, so it inherits what this build ships.
+
+    Every gateway has a saved config, most of them written before the cleanup
+    block existed. Treating a missing `cleanup_enabled` as `false` would have
+    left the shipped default reachable only by a fresh install.
+    """
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"engine": "moonshine"}), encoding="utf-8")
+
+    assert RuntimeConfig.load(path).cleanup_enabled is True
+
+
+def test_an_operator_who_turned_cleanup_off_keeps_it_off(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"cleanup_enabled": False}), encoding="utf-8")
+
+    assert RuntimeConfig.load(path).cleanup_enabled is False
+
+
+def test_a_junk_cleanup_flag_falls_back_rather_than_being_believed(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"cleanup_enabled": "yes"}), encoding="utf-8")
+
+    assert RuntimeConfig.load(path).cleanup_enabled is False

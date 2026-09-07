@@ -12,7 +12,7 @@ portability.
 - [Host tool requirements](#host-tool-requirements)
 - [Native macOS deployment](#native-macos-deployment) — [install](#install-and-run) · [run at login](#run-at-login)
 - [Native Linux deployment](#native-linux-deployment) — [install](#install-and-run-1) · [systemd user service](#run-as-a-systemd-user-service)
-- [Docker Compose deployment](#docker-compose-deployment) — [prerequisites](#prerequisites) · [first model](#first-model) · [routine operations](#routine-operations) · [backup](#persistent-data-and-backup) · [performance profiles](#performance-profiles) · [cleanup sidecar](#transcript-cleanup-sidecar) · [Vulkan GPU access](#giving-the-vulkan-container-access-to-the-gpu) · [build tuning](#tuning-the-whispercpp-build)
+- [Docker Compose deployment](#docker-compose-deployment) — [prerequisites](#prerequisites) · [first model](#first-model) · [transcript cleanup](#transcript-cleanup-in-the-container) · [routine operations](#routine-operations) · [backup](#persistent-data-and-backup) · [performance profiles](#performance-profiles) · [Vulkan GPU access](#giving-the-vulkan-container-access-to-the-gpu) · [build tuning](#tuning-the-compiled-runtimes)
 - [Multi-architecture image](#multi-architecture-image)
 - [Gateway URL and network placement](#gateway-url-and-network-placement) — [trusted LAN](#trusted-local-network) · [Tailscale Serve](#tailscale-serve) · [VPS or public DNS](#vps-or-public-dns)
 - [Configuration paths and env vars](#configuration-paths-and-env-vars)
@@ -66,6 +66,7 @@ Python packages in `pyproject.toml` / `uv.lock` are installed by `uv sync` or
 | `whisper-cli` | Selecting `whisper.cpp` | Homebrew `whisper-cpp`, or an upstream native build |
 | `whisper-server` | Keeping `whisper.cpp` resident | Same whisper.cpp build as `whisper-cli`; optional fallback to CLI |
 | `whisperkit-cli` | Standalone WhisperKit on macOS | `brew install whisperkit-cli` |
+| `llama-server` | Transcript cleanup on a **native** install | `brew install llama.cpp`, or an upstream build named by `VOCAGATEWAY_CLEANUP_BINARY`. The container builds its own |
 
 Run `just doctor` to check the host tools.
 ## Native macOS deployment
@@ -195,6 +196,79 @@ curl --fail http://127.0.0.1:8765/health/live
 `/health/ready` returns HTTP `503` until the selected model is runnable. After
 selection it should return HTTP `200` with `"status":"ready"`.
 
+### Transcript cleanup in the container
+
+Nothing to enable and nothing extra to run: the image compiles
+`llama-server` for the same accelerator as the speech runtime, and the gateway
+launches and owns it on loopback, on an unpublished ephemeral port, with a
+credential of its own. `docker compose up` is the whole deployment.
+
+What is left is the model, which is not baked into the image — it is downloaded
+through the WebUI, verified against a pinned SHA-256, and stored in the same
+`/data` volume as the speech models:
+
+```sh
+docker compose up --detach --build
+# WebUI → Cleanup → download a model → Load model now
+```
+
+Until that download lands there is nothing to run cleanup on, and every
+transcript takes exactly the path it would with the feature off. Once it lands,
+a downloaded model needs no second "select" click while it is the only one
+installed, and corrections start on the next dictation. **Overview → Libraries &
+tools** reports the runtime beside FFmpeg and whisper.cpp, so a missing one is
+visible without opening the Cleanup tab.
+
+Worth knowing before you turn it loose:
+
+- **Memory.** The cleanup model stays resident alongside whatever the speech
+  engine is holding — roughly 0.7 GB for the 0.6B artifact, 1.9 GB for the 1.7B
+  one, plus its context. Measure both together on the host you actually run on.
+  *Unload after idle* in the Cleanup tab gives the memory back between bursts,
+  at the cost of a reload on the next correction.
+- **Build time.** Two ggml projects are compiled instead of one. See
+  [Tuning the compiled runtimes](#tuning-the-compiled-runtimes) for narrowing
+  the CUDA architecture spread and for capping concurrent compile jobs.
+- **No new exposure.** The worker binds `127.0.0.1` inside the container, on a
+  port that is never published, and the gateway authenticates to it with a key
+  it generates per worker. A client's bearer token is never forwarded to it.
+- **Turning it off.** Untick *Correct transcripts by default* in the Cleanup
+  tab, or set `VOCAGATEWAY_CLEANUP_ENABLED=false` to take the decision away from
+  the WebUI entirely. Deleting the model has the same practical effect.
+
+#### Using a cleanup server you run yourself
+
+For evaluating a runtime or a model this image did not build, point the gateway
+at a server you run instead. Add it as a service of your own — Compose merges
+`compose.override.yaml` automatically — and name it in `.env`:
+
+```yaml
+# compose.override.yaml
+services:
+  my-cleanup:
+    image: ghcr.io/ggml-org/llama.cpp:server@sha256:...   # pin it by digest
+    expose: ["8080"]                                      # never `ports:`
+    volumes: [./models:/models:ro]
+    command:
+      [--model, /models/your.gguf, --host, 0.0.0.0, --port, "8080",
+       --ctx-size, "8192", --parallel, "1", --jinja, --no-webui,
+       --api-key, "${VOCAGATEWAY_CLEANUP_API_KEY}"]
+```
+
+```sh
+VOCAGATEWAY_CLEANUP_ENDPOINT=my-cleanup:8080 \
+VOCAGATEWAY_CLEANUP_API_KEY="$(openssl rand -hex 24)" \
+docker compose up --detach
+```
+
+Three things the gateway will hold you to. It refuses any address that is not
+loopback, a private range, or a bare container service name on this project's
+own network, because "runs on your gateway" has to stay true. It makes no
+lifecycle promises for a process it did not start — no warm-up, no idle unload,
+no restart. And the window has to be `--ctx-size 8192` or more: a window too
+small does not fail loudly, it silently drops the system instruction, so the
+gateway declines with `context_too_small` rather than trusting the result.
+
 ### Routine operations
 
 ```sh
@@ -289,10 +363,14 @@ The Vulkan profile ships the Mesa ICDs, so it covers AMD and Intel GPUs. NVIDIA
 over Vulkan needs the host ICD injected by the Container Toolkit instead; on an
 NVIDIA host use the CUDA profile.
 
-#### Tuning the whisper.cpp build
+#### Tuning the compiled runtimes
 
-`VOCAGATEWAY_WHISPER_CMAKE_EXTRA` in `.env` is appended to the `cmake` line
-after the defaults, so a flag set there overrides one the Dockerfile sets.
+The image compiles two ggml projects: whisper.cpp for speech, and llama.cpp's
+`llama-server` for transcript cleanup. Each has its own `.env` variable, which
+is appended to that project's `cmake` line after the defaults, so a flag set
+there overrides one the Dockerfile sets. They are separate because the builds
+are separate — narrowing the CUDA architecture spread for one does nothing for
+the other, and the two are roughly half the build each.
 
 ```sh
 # Build CUDA kernels for one known GPU instead of the portable spread of
@@ -302,6 +380,10 @@ VOCAGATEWAY_WHISPER_CMAKE_EXTRA=-DCMAKE_CUDA_ARCHITECTURES=89-real
 
 # Build the CPU image without OpenBLAS.
 VOCAGATEWAY_WHISPER_CMAKE_EXTRA=-DGGML_BLAS=OFF
+
+# The same flags for the cleanup runtime. Set both when narrowing the CUDA
+# spread, or the llama.cpp half still compiles every architecture.
+VOCAGATEWAY_LLAMA_CMAKE_EXTRA=-DCMAKE_CUDA_ARCHITECTURES=89-real
 ```
 
 `VOCAGATEWAY_BUILD_JOBS` caps how many compile jobs run at once; blank is
@@ -348,46 +430,6 @@ issues a matmul from one thread at a time rather than from each of its workers,
 so the two pools never nest. Pinned to 1 and unset were within run-to-run noise
 for `ggml-tiny.en` and `ggml-base.en`, at `--cpus 4` and `--cpus 2` on a 10-CPU
 host. Pinning it would only cap OpenBLAS's own parallelism for no gain.
-
-### Transcript-cleanup sidecar
-
-Optional, opt-in, and off unless the profile is up. The gateway image ships no
-text model and no llama.cpp runtime, so this is a separate service that the
-gateway talks to over Compose's own private network.
-
-```sh
-export VOCAGATEWAY_CLEANUP_MODEL_DIR="$HOME/.local/share/vocagateway/models/cleanup"
-export VOCAGATEWAY_CLEANUP_MODEL_FILE=/models/llama.cpp/Qwen3-0.6B-Q8_0.gguf
-export VOCAGATEWAY_CLEANUP_ENDPOINT=cleanup:8080
-export VOCAGATEWAY_CLEANUP_API_KEY="$(openssl rand -hex 24)"
-docker compose --profile cleanup up -d
-```
-
-Install the model first through the WebUI (Cleanup tab), which
-verifies it against the pinned SHA-256, then point
-`VOCAGATEWAY_CLEANUP_MODEL_DIR` at the directory it landed in and mount it.
-
-What the profile does and does not do:
-
-- **No published port.** The sidecar is reachable only from the gateway, by
-  service name, on the project's private network. `VOCAGATEWAY_CLEANUP_ENDPOINT`
-  refuses any address that is not loopback, a private range, or a bare service
-  name, so a routable address cannot quietly turn "runs on your gateway" into a
-  request to somebody else.
-- **A credential of its own.** `VOCAGATEWAY_CLEANUP_API_KEY` is what the gateway
-  presents. A client's bearer token is never forwarded.
-- **Read-only model mount**, read-only root filesystem, no new privileges, and
-  every capability dropped, matching the gateway service.
-- **No lifecycle promises.** The gateway does not own this process, so it cannot
-  warm it, unload it when idle, or restart it. Those are only available for the
-  `llama-server` a native gateway launches itself.
-- **Pin the image by digest** before relying on it. The default is a moving tag,
-  which would change the runtime under a gateway that was tested against a
-  specific one.
-
-Memory is the constraint worth checking: the sidecar holds its model resident
-alongside whatever the gateway's speech engine is holding. Measure both together
-on the host you actually run on before enabling it by default.
 
 ## Multi-architecture image
 

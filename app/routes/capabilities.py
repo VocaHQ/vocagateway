@@ -45,13 +45,19 @@ def _cleanup_capability(ctx: GatewayContextDependency) -> CleanupCapability:
     if manager is None:
         return CleanupCapability(supported=False, enabled=False, default_mode="off", modes=["off"])
     report = manager.status()
-    usable = report.runtime_available and report.model_installed
+    # One definition of usable, taken from the manager rather than re-derived
+    # here: it is the same answer a request's `inherit` gets, and it covers the
+    # operator-run endpoint, where there is no local runtime or model to see.
+    usable = report.usable
     return CleanupCapability(
         supported=usable,
         enabled=report.enabled and usable,
         # Always the resolved default, never `inherit`: `inherit` is something a
-        # request says, not something a gateway is.
-        default_mode=CONSERVATIVE_MODE if report.mode == CONSERVATIVE_MODE else OFF_MODE,
+        # request says, not something a gateway is. A gateway that cannot
+        # correct anything reports `off`, because that is what an `inherit`
+        # request actually resolves to there — anything else would name a
+        # default that is not even in `modes`.
+        default_mode=CONSERVATIVE_MODE if usable and report.mode == CONSERVATIVE_MODE else OFF_MODE,
         modes=list(RESOLVED_MODES) if usable else [OFF_MODE],
         model_id=report.model_id,
         languages=list(report.languages),

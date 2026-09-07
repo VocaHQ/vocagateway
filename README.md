@@ -76,7 +76,7 @@ contract is in [configuration.md](docs/configuration.md).
 - [WebUI](#webui)
   - [Fast model guide](#fast-model-guide)
 - [Model download integrity](#model-download-integrity)
-- [Transcript cleanup](#transcript-cleanup) — optional local grammar and punctuation repair
+- [Transcript cleanup](#transcript-cleanup) — local grammar and punctuation repair, on once a model is installed
 - [Engine selection](#engine-selection)
 - [Configuration](#configuration) — every `VOCAGATEWAY_*` variable and its default
 - [Listener and network access](#listener-and-network-access)
@@ -508,7 +508,9 @@ changed, and the commit message should say why.
 
 ## Transcript cleanup
 
-Optional. Off by default, and off until you install a model and turn it on.
+On by default, and inert until you download a cleanup model. That download is
+the opt-in: with no model there is nothing to run, and every transcript comes
+back exactly as it would from a gateway built before the feature existed.
 
 A small text model runs **after** speech recognition and fixes grammar,
 punctuation, capitalization, and paragraph breaks while keeping what you said.
@@ -528,15 +530,24 @@ or an idle unload takes the plain speech result, reports `model_loading`, and
 leaves the load running behind it; the next one finds the model resident.
 **Load model now** is how you pay that cost once, deliberately.
 
-**Setup.** Open the **Cleanup** tab → download a model → **Load model now**
-→ tick *Correct transcripts by default*. Natively the gateway launches and owns
-a `llama-server` on loopback (install llama.cpp, or set
-`VOCAGATEWAY_CLEANUP_BINARY`). Under Compose it is an opt-in sidecar that
-publishes no port:
+**Setup.** Open the **Cleanup** tab → download a model → **Load model now**.
+That is the whole thing: corrections are on by default, and a model that is the
+only one installed needs no separate selection.
+
+The runtime under it is a `llama-server` the gateway launches and owns, on
+loopback, on a port that is never published, with a credential it generates
+itself. The container builds that runtime for the same accelerator as the
+speech engine, so there is no profile and no second service:
 
 ```sh
-docker compose --profile cleanup up -d
+docker compose up -d
 ```
+
+A native install supplies its own (`brew install llama.cpp`, or point
+`VOCAGATEWAY_CLEANUP_BINARY` at a build of your own). Either way, **Overview →
+Libraries & tools** reports it beside FFmpeg and whisper.cpp, with the install
+line for this host when it is missing — so a runtime that is not there is
+visible before you go looking in the Cleanup tab.
 
 **Seeing it work.** The **Cleanup** tab has a *See what it changes* box: type
 or paste a sentence the way a speech model hands it over — no capitals, no
@@ -550,6 +561,11 @@ The same before-and-after appears under **Pair & test** on a real recording.
 Either way, if it corrected nothing, the status line says why and what to
 change — and the Cleanup tab's checklist names which of the four setup steps is
 still outstanding.
+
+**Turning it off.** Untick *Correct transcripts by default* in the Cleanup tab,
+or set `VOCAGATEWAY_CLEANUP_ENABLED=false` to take that decision away from the
+WebUI entirely. Deleting the model has the same practical effect. Per request,
+a client can always send `cleanup: "off"`.
 
 **What it will not do.** It does not translate, summarise, answer questions,
 add content, or invent facts. **Raw is never corrected**, whatever a request
@@ -580,7 +596,10 @@ client must then omit the new fields. Session responses carry
 the same retention rules, so the recognised text is always recoverable.
 
 See [configuration.md](docs/configuration.md#transcript-cleanup) for the
-`VOCAGATEWAY_CLEANUP_*` variables and both deployment shapes.
+`VOCAGATEWAY_CLEANUP_*` variables and both deployment shapes, and
+[deployment.md](docs/deployment.md#transcript-cleanup-in-the-container) for what
+the container builds, what it costs in memory, and how to point the gateway at
+a cleanup server you run yourself.
 
 ## Engine selection
 
@@ -959,6 +978,12 @@ ggml CPU backend per micro-architecture and the best one the host reports is
 loaded at startup, so a portable image still runs AVX2/AVX-512 code on x86 and
 dotprod/i8mm code on arm64.
 
+Each image compiles two runtimes against that same accelerator: whisper.cpp for
+speech, and llama.cpp's `llama-server` for
+[transcript cleanup](#transcript-cleanup). The second lives in its own prefix,
+`/opt/llama`, and is never on the loader path — both projects ship libraries
+with the same names, and only one of them may answer for `libggml.so`.
+
 An Apple silicon Docker Desktop build validates only the Linux arm64 CPU path;
 it cannot validate Linux amd64 or an NVIDIA CUDA image. The Container GitHub
 Actions workflow builds CPU, CUDA, and Vulkan separately and smoke-tests the CPU
@@ -966,7 +991,7 @@ image. Its compile-only CUDA check targets one representative GPU architecture
 instead of producing the Dockerfile's portable architecture spread. Treat that
 matrix as the cross-platform build result, not as a release image. If a local
 build is killed for memory, set `VOCAGATEWAY_BUILD_JOBS` in `.env`; see
-[Tuning the whisper.cpp build](docs/deployment.md#tuning-the-whispercpp-build).
+[Tuning the compiled runtimes](docs/deployment.md#tuning-the-compiled-runtimes).
 
 The CUDA profile supports both faster-whisper CUDA and the CUDA `whisper.cpp`
 binary. The Vulkan profile accelerates `whisper.cpp`; faster-whisper remains on

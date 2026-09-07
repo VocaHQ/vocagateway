@@ -7,8 +7,10 @@ client that does ask gets a bounded, honest answer about what happened.
 
 from __future__ import annotations
 
+import json
 from array import array
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -272,11 +274,21 @@ async def test_diagnostics_carry_the_cleanup_block_and_no_text(gateway: Any) -> 
         data={"cleanup": "conservative", "language": "en"},
         headers=AUTH,
     )
-    body = (await client.get("/v1/admin/diagnostics", headers=AUTH)).text
+    response = await client.get("/v1/admin/diagnostics", headers=AUTH)
+    bundle, body = response.json(), response.text
     assert '"cleanup"' in body
     assert SPOKEN not in body
     assert CORRECTED not in body
-    assert "llama-server" not in body
+    # The cleanup block itself still describes no topology: no executable, no
+    # endpoint, no credential. The runtime appears only as a dependency tile —
+    # the same shape, and the same redaction, as whisper.cpp and FFmpeg — so an
+    # operator reading a shared bundle can tell a missing runtime from a
+    # missing model.
+    cleanup_block = bundle["config"]["cleanup"]
+    assert not {"binary", "endpoint", "api_key", "path"} & set(cleanup_block)
+    assert "llama-server" not in json.dumps(cleanup_block)
+    tile = next(item for item in bundle["dependencies"] if item["name"] == "llama.cpp server")
+    assert tile["path"] is None or "llama-server" in tile["path"]
 
 
 async def test_metrics_count_cleanup_outcomes_without_text(gateway: Any) -> None:
@@ -598,6 +610,87 @@ async def test_the_setup_checklist_names_the_step_that_is_not_done(gateway: Any)
     covered = _flattened(await client.get("/ui/partials/cleanup", headers=AUTH))
     assert "come back uncorrected. Set one below" not in covered
     assert "corrected as en" in covered
+
+
+async def test_a_missing_runtime_is_reported_on_the_dashboard_and_the_checklist(
+    settings: Settings,
+) -> None:
+    """The runtime is a host requirement, so it is reported where those are.
+
+    Before, a missing `llama-server` was named only inside the Cleanup tab —
+    the one page an operator has no reason to open until they already suspect
+    cleanup. It is now a Libraries tile beside FFmpeg and whisper.cpp, and both
+    places quote the same install line, so the two cannot give different advice.
+    """
+    absent = replace(settings, cleanup_binary=Path("/nonexistent/llama-server"))
+    app = create_app(absent, engine=FakeEngine(SPOKEN), normalizer=FakeNormalizer())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        tile = await _runtime_tile(client)
+        assert tile["available"] is False
+        assert tile["path"] is None
+        assert "VOCAGATEWAY_CLEANUP_BINARY" in tile["install_hint"]
+
+        page = _flattened(await client.get("/ui/partials/cleanup", headers=AUTH))
+        assert f"No llama-server found. {tile['install_hint']}" in page
+
+
+async def test_an_installed_runtime_is_reported_with_the_path_it_was_found_at(
+    settings: Settings, tmp_path: Path
+) -> None:
+    """The tile answers from the manager, so it cannot disagree with the worker."""
+    binary = tmp_path / "llama-server"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    app = create_app(
+        replace(settings, cleanup_binary=binary),
+        engine=FakeEngine(SPOKEN),
+        normalizer=FakeNormalizer(),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        tile = await _runtime_tile(client)
+        assert tile["available"] is True
+        assert tile["path"] == str(binary)
+        assert app.state.ctx.cleanup.host.runtime_available() is True
+
+
+async def test_an_operator_run_endpoint_is_not_asked_for_a_local_runtime(
+    settings: Settings,
+) -> None:
+    """A deployment that points at its own server does not need a binary here.
+
+    Reporting the missing executable as a step to fix would be advice for a
+    problem that deployment does not have — the gateway is not launching
+    anything on this host.
+    """
+    external = replace(
+        settings,
+        cleanup_binary=Path("/nonexistent/llama-server"),
+        cleanup_endpoint=("127.0.0.1", 8080),
+    )
+    app = create_app(external, engine=FakeEngine(SPOKEN), normalizer=FakeNormalizer())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        tile = await _runtime_tile(client)
+        assert tile["available"] is False
+        assert "VOCAGATEWAY_CLEANUP_ENDPOINT" in tile["install_hint"]
+
+        page = _flattened(await client.get("/ui/partials/cleanup", headers=AUTH))
+        assert "Using the cleanup server you configured" in page
+        assert "No llama-server found" not in page
+        # The pill has to agree with the checklist beside it: a card reading
+        # "Not available" above four ticked steps helps nobody.
+        assert "Not available" not in page
+        assert (await client.get(CLEANUP_CONFIG, headers=AUTH)).json()["state"] == "ready"
+
+
+async def _runtime_tile(client: httpx.AsyncClient) -> Any:
+    payload = (await client.get("/v1/admin/status", headers=AUTH)).json()
+    return next(item for item in payload["dependencies"] if item["name"] == "llama.cpp server")
 
 
 def _flattened(response: Any) -> str:

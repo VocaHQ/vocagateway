@@ -311,24 +311,26 @@ carries much less evidence of which language it is than a full sentence.
 
 ## Transcript cleanup is not correcting anything
 
-Cleanup is off by default and, once on, declines rather than guesses. Work
-through these in order — each one is reported as the `reason` on the session's
+Cleanup declines rather than guesses, and says which precondition it is. Start
+on the **Cleanup** tab: its checklist names the outstanding step, and **Overview
+→ Libraries & tools** shows whether the runtime itself is even on this host.
+Then work through these — each is reported as the `reason` on the session's
 `cleanup` block, in the WebUI mic test, or in the `X-Voca-Cleanup-Reason`
 header.
 
 | Reason | What it means | What to do |
 | --- | --- | --- |
-| no `cleanup` block at all | The session never opted in | Send `cleanup: "conservative"`, or tick *Correct transcripts by default* in Settings |
+| no `cleanup` block at all | Nothing was attempted: either the request asked for `off`, or this gateway has no cleanup model installed, in which case `inherit` resolves to `off` rather than to a correction that would fall back | Cleanup tab → download a model. A client can also ask for `cleanup: "conservative"` explicitly, which then answers with one of the reasons below |
 | `raw_style` | Raw is never corrected, whatever a request asks for | Choose any other writing style |
 | `unsupported_language` | The language is not on the allowlist — most often a session left on `auto` | Ask for `en` (or another listed language) explicitly, or set **When language is auto** on the Cleanup tab. Latin script does not name a language, and nothing detects one, so `auto` will not resolve to English on its own |
-| `model_unavailable` | No model installed, no `llama-server` found, or the session was pinned to a model that is no longer selected | Cleanup tab → download a model and **Load model now**. Natively, install llama.cpp or set `VOCAGATEWAY_CLEANUP_BINARY` |
+| `model_unavailable` | No model installed, no `llama-server` found, or the session was pinned to a model that is no longer selected | Cleanup tab → download a model and **Load model now**. If the *Libraries & tools* tile says the llama.cpp server is missing, that is the fix first: the container ships one, so natively install llama.cpp (`brew install llama.cpp`) or point `VOCAGATEWAY_CLEANUP_BINARY` at your own build |
 | `model_loading` | The model is still being loaded into memory. A request never waits for a cold load — that takes minutes, and a request's budget is seconds | Nothing, or press **Load model now** in Settings to pay the cost once. The next dictation finds the model resident |
 | `context_too_small` | An operator-run `VOCAGATEWAY_CLEANUP_ENDPOINT` reports a context window too small to hold the prompt, which would silently drop the system instruction | Restart that server with a larger `--ctx-size` (8192 or more). A gateway-managed worker sets its own and cannot hit this |
 | `busy` | A correction was already running; cleanup admits one at a time and does not queue | Nothing. The transcript is correct, just uncorrected |
 | `timeout` | The correction did not finish inside the time limit | Raise the limit in Settings, warm the model, or choose the smaller model |
 | `input_too_long` | Past the input ceiling. Nothing is ever half-corrected | Nothing. The full transcript is returned |
 | `unsafe_edit` | The model's answer changed a number, a name, a negation, an address, a weekday, or too much of the text | Nothing to fix — this is the safety net working. Repeated `unsafe_edit` on ordinary sentences means the model is a poor fit; try the other one |
-| `invalid_output` | The answer was malformed, wrapped in prose, truncated, or leaked reasoning | Check the runtime version supports `--jinja` and the non-thinking chat template |
+| `invalid_output` | The answer was malformed, wrapped in prose, truncated, or leaked reasoning | Check the runtime version supports `--jinja` and the non-thinking chat template. The version the image builds does; a much older host `llama-server` may not |
 
 A correction that **runs** and returns the text unchanged reports `unchanged`,
 not a failure: leaving already-correct text alone is the intended behaviour.

@@ -176,9 +176,11 @@ class Settings:
     cleanup_languages: tuple[str, ...] = ()
     cleanup_auto_language: str | None = None
     # Operator-only. An explicit `llama-server` executable for the gateway to
-    # launch, or an address of a server the operator runs themselves. Setting
-    # the address gives up gateway-controlled warm-up and idle unloading,
-    # because the gateway then does not own the process.
+    # launch, or an address of a server the operator runs themselves. The
+    # container image sets the first to the runtime it built; a native install
+    # leaves it unset and the gateway looks on PATH. Setting the address gives
+    # up gateway-controlled warm-up and idle unloading, because the gateway
+    # then does not own the process.
     cleanup_binary: Path | None = None
     cleanup_endpoint: tuple[str, int] | None = None
     cleanup_api_key: str | None = None

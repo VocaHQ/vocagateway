@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 from conftest import CLEANUP_MODEL_ID, FakeCleanupRuntime, FakeWorkerHost
 
+from app.cleanup import catalog as cleanup_catalog
 from app.cleanup import host as host_module
 from app.cleanup import manager as manager_module
 from app.cleanup.base import (
@@ -50,11 +51,65 @@ def manager_for(settings: Settings, **config: object) -> object:
     return build_manager(settings, run_config, settings.config_path)
 
 
-def test_the_gateway_default_is_off(settings: Settings) -> None:
+def install_model(manager: Any, model_id: str = CLEANUP_MODEL_ID) -> Path:
+    """Put a cleanup artifact where the manager's own model manager finds it.
+
+    The real path, not a patched one: whether a downloaded model is picked up
+    without a separate selection click is exactly what several tests below are
+    about, and a stubbed `model_path` would answer that question for them.
+    """
+    model = cleanup_catalog.cleanup_model(model_id)
+    assert model is not None
+    installed = manager.models.models_dir / "llama.cpp" / model.filename
+    installed.parent.mkdir(parents=True, exist_ok=True)
+    installed.write_bytes(b"gguf")
+    return installed
+
+
+def usable_manager(settings: Settings, **config: object) -> Any:
+    """A manager with both halves of a working deployment: a runtime and a model."""
+    manager = manager_for(settings, **config)
+    manager.host = FakeWorkerHost(FakeCleanupRuntime())
+    install_model(manager)
+    return manager
+
+
+def test_the_gateway_default_is_on_and_inert_until_a_model_is_installed(
+    settings: Settings,
+) -> None:
+    """Shipped on, but a gateway with nothing to run it on corrects nothing.
+
+    `inherit` resolving to `off` here is what keeps the default free: a
+    deployment that never installs a cleanup model returns exactly the packets
+    it returned before the feature existed.
+    """
     manager = manager_for(settings)
-    assert manager.enabled is False
+    assert manager.enabled is True
+    assert manager.usable is False
     assert manager.options(MODE_INHERIT).mode == MODE_OFF
-    assert manager.options(MODE_CONSERVATIVE).mode == MODE_OFF
+    # An explicit request is not silently downgraded: it runs, finds no model,
+    # and is answered with a reason rather than with silence.
+    assert manager.options(MODE_CONSERVATIVE).mode == MODE_CONSERVATIVE
+
+
+def test_a_downloaded_model_needs_no_second_selection(settings: Settings) -> None:
+    manager = manager_for(settings)
+    manager.host = FakeWorkerHost(FakeCleanupRuntime())
+    assert manager.model_id is None
+    install_model(manager)
+    assert manager.model_id == CLEANUP_MODEL_ID
+    assert manager.usable is True
+    assert manager.options(MODE_INHERIT).mode == MODE_CONSERVATIVE
+
+
+def test_a_second_installed_model_restores_the_choice(settings: Settings) -> None:
+    """Two candidates and no saved choice is a decision the operator has to make."""
+    manager = manager_for(settings)
+    install_model(manager)
+    install_model(manager, "cleanup:qwen3-1.7b")
+    assert manager.model_id is None
+    manager.configure(CleanupUpdate(model_id="cleanup:qwen3-1.7b"))
+    assert manager.model_id == "cleanup:qwen3-1.7b"
 
 
 def test_an_explicit_opt_in_cannot_override_an_operator_who_said_no(
@@ -66,7 +121,7 @@ def test_an_explicit_opt_in_cannot_override_an_operator_who_said_no(
 
 
 def test_inherit_follows_the_gateway_default(settings: Settings) -> None:
-    manager = manager_for(settings, cleanup_enabled=True, cleanup_mode=MODE_CONSERVATIVE)
+    manager = usable_manager(settings, cleanup_enabled=True, cleanup_mode=MODE_CONSERVATIVE)
     assert manager.options(MODE_INHERIT).mode == MODE_CONSERVATIVE
     assert manager.options(None).mode == MODE_CONSERVATIVE
     # An explicit opt-out always wins over the default.

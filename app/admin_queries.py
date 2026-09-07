@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import platform
 from importlib import util as importlib_util
 from types import MappingProxyType
 from typing import Any, cast
@@ -15,13 +16,39 @@ from app.runtime_config import DEFAULT_IDLE_OFFLOAD_MINUTES
 from app.serializers import metrics_status, model_covers
 from app.system import SystemInfo, detect_system, is_cpu_only
 
+DARWIN_OS_NAME = "Darwin"
 PYTHON_PACKAGE_PATH = "Python package"
 INSTALLED_STATE = "installed"
 DOWNLOADING_STATE = "downloading"
 NOT_INSTALLED_STATE = "not_installed"
 PYTHON_ENGINE_INSTALL_HINT = "Install vocagateway[engines] or use the Docker image"
+# The transcript-cleanup runtime, named once for both places that report it: the
+# Overview "Libraries & tools" tile and the Cleanup tab's setup checklist.
+CLEANUP_RUNTIME_NAME = "llama.cpp server"
+# What the tile says when the operator runs their own cleanup server. The
+# binary genuinely is not a requirement in that deployment, and a hint telling
+# them to install one would be advice for a problem they do not have.
+CLEANUP_RUNTIME_EXTERNAL_HINT = (
+    "Not needed here: cleanup uses the server at VOCAGATEWAY_CLEANUP_ENDPOINT"
+)
 # One engine paired with the single runtime it needs.
 _EngineRuntime = tuple[str, schemas.DependencyStatus]
+
+
+def cleanup_runtime_hint(*, is_mac: bool) -> str:
+    """How to get `llama-server` on this host, in one copy-pasteable line.
+
+    The container needs no advice: the image builds the runtime and points
+    VOCAGATEWAY_CLEANUP_BINARY at it, so a missing one there is a broken image
+    rather than a setup step. Native installs get the packaged route for their
+    platform, and the override for a build of their own.
+    """
+    if is_mac:
+        return "brew install llama.cpp, or set VOCAGATEWAY_CLEANUP_BINARY"
+    return (
+        "Included in the Docker image. Natively: build llama.cpp, "
+        "then set VOCAGATEWAY_CLEANUP_BINARY to its llama-server"
+    )
 
 
 SIZE_FILTER_CAPS: MappingProxyType[str, int] = MappingProxyType(
@@ -76,7 +103,7 @@ class _EngineRuntimes:
         return self._cached
 
     def _build(self) -> list[_EngineRuntime]:
-        is_mac = self.system.os_name == "Darwin"
+        is_mac = self.system.os_name == DARWIN_OS_NAME
         silicon = self.system.is_apple_silicon
         return [
             *self._binary_tiles(is_mac),
@@ -184,11 +211,12 @@ class _SystemDependencyHelper:
             whisperkit_binary=self.settings.whisperkit_binary,
             handy_binary=self.settings.handy_binary,
             vocamac_app=self.settings.vocamac_app,
+            cleanup_binary=self.settings.cleanup_binary,
         )
         self.runtimes = _EngineRuntimes(self.system, self.settings)
 
     def build_dependencies(self) -> list[schemas.DependencyStatus]:
-        is_mac = self.system.os_name == "Darwin"
+        is_mac = self.system.os_name == DARWIN_OS_NAME
         ffmpeg_hint = (
             "brew install ffmpeg" if is_mac else "Install FFmpeg with your Linux package manager"
         )
@@ -198,7 +226,35 @@ class _SystemDependencyHelper:
             path=self.system.ffmpeg_path,
             install_hint=ffmpeg_hint,
         )
-        return [ffmpeg, *self.runtimes.tiles()]
+        return [ffmpeg, *self.runtimes.tiles(), self.build_cleanup_runtime()]
+
+    def build_cleanup_runtime(self) -> schemas.DependencyStatus:
+        """The transcript-cleanup runtime, as a Libraries tile like any other.
+
+        A missing command-line runtime used to be visible only from inside the
+        Cleanup tab, which is the one place an operator does not look when they
+        have not turned cleanup on yet. It is a host requirement in exactly the
+        way FFmpeg and whisper.cpp are, so it is reported beside them.
+
+        Availability comes from the cleanup manager rather than from the probe
+        whenever there is one: that is the object which actually decides whether
+        a worker can be launched, and a panel disagreeing with it would send an
+        operator looking for the wrong fix.
+        """
+        manager = self.ctx.cleanup
+        found = self.system.llama_server_path is not None
+        available = found if manager is None else manager.host.runtime_available()
+        managed = manager is None or manager.preferences.managed
+        return schemas.DependencyStatus(
+            name=CLEANUP_RUNTIME_NAME,
+            available=available,
+            path=self.system.llama_server_path if available else None,
+            install_hint=(
+                cleanup_runtime_hint(is_mac=self.system.os_name == DARWIN_OS_NAME)
+                if managed
+                else CLEANUP_RUNTIME_EXTERNAL_HINT
+            ),
+        )
 
     def build_checklist(self, ready: bool) -> schemas.SetupChecklist:
         return schemas.SetupChecklist(
@@ -480,6 +536,11 @@ def cleanup_config(ctx: GatewayContext) -> schemas.CleanupConfigResponse:
         model_label=report.model_label,
         model_installed=report.model_installed,
         runtime_available=report.runtime_available,
+        runtime_hint=(
+            cleanup_runtime_hint(is_mac=platform.system() == DARWIN_OS_NAME)
+            if report.managed
+            else CLEANUP_RUNTIME_EXTERNAL_HINT
+        ),
         managed=report.managed,
         state=cast(Any, report.state),
         timeout_seconds=report.timeout_seconds,

@@ -2,8 +2,9 @@
 
 # One Dockerfile builds all three accelerator images. ACCEL picks the builder
 # base and the runtime base; everything between them — the whisper.cpp build,
-# the Python environment, the user, the ENV block, the healthcheck — is written
-# once and shared, so the three images cannot drift apart.
+# the llama.cpp build, the Python environment, the user, the ENV block, the
+# healthcheck — is written once and shared, so the three images cannot drift
+# apart.
 #
 #   cpu     Debian build with runtime CPU dispatch (default, portable)
 #   cuda    NVIDIA CUDA build on the CUDA runtime base
@@ -11,9 +12,17 @@
 #
 # Compose selects it per service; by hand it is
 # `docker build --build-arg ACCEL=cuda .`
+#
+# Two runtimes are compiled, both against the accelerator this image is for:
+# whisper.cpp for speech, and llama.cpp's `llama-server` for the transcript
+# cleanup the gateway launches and owns. Cleanup is part of the image rather
+# than a second container so that `docker compose up` is the whole deployment,
+# and so the gateway can warm and idle-unload the process it started — neither
+# of which is possible against a server it does not own.
 ARG ACCEL=cpu
 
 ARG WHISPER_CPP_VERSION=v1.9.1
+ARG LLAMA_CPP_VERSION=v0.4.0
 ARG UV_VERSION=0.8.0
 ARG PYTHON_VERSION=3.12
 # The CPU builder and its runtime must share a Debian release. The ARM variant
@@ -31,7 +40,7 @@ ARG CUDA_VERSION=12.8.1
 # deletes every .deb the moment it is unpacked and the cache stays empty.
 
 FROM debian:${DEBIAN_VERSION}-slim AS builder-base-cpu
-ENV WHISPER_ACCEL_CMAKE="-DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS"
+ENV GGML_ACCEL_CMAKE="-DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS"
 RUN rm -f /etc/apt/apt.conf.d/docker-clean \
     && echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' \
       > /etc/apt/apt.conf.d/keep-cache
@@ -42,7 +51,7 @@ RUN --mount=type=cache,id=apt-cache-debian,target=/var/cache/apt,sharing=locked 
       build-essential ca-certificates ccache cmake curl libopenblas-dev pkg-config
 
 FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION} AS builder-base-cuda
-ENV WHISPER_ACCEL_CMAKE="-DGGML_CUDA=ON"
+ENV GGML_ACCEL_CMAKE="-DGGML_CUDA=ON"
 # GCC 13, Ubuntu 24.04's default, rejects `-march=armv9.2-a+...+sme` with
 # "invalid feature modifier 'sme'", which fails the armv9.2 CPU variants on an
 # arm64 builder. GCC 14 knows the flag, and noble's runtime libstdc++6 is
@@ -59,7 +68,7 @@ RUN --mount=type=cache,id=apt-cache-cuda,target=/var/cache/apt,sharing=locked \
       build-essential ca-certificates ccache cmake curl gcc-14 g++-14
 
 FROM ubuntu:${UBUNTU_VERSION} AS builder-base-vulkan
-ENV WHISPER_ACCEL_CMAKE="-DGGML_VULKAN=ON"
+ENV GGML_ACCEL_CMAKE="-DGGML_VULKAN=ON"
 # GCC 13, Ubuntu 24.04's default, rejects `-march=armv9.2-a+...+sme` with
 # "invalid feature modifier 'sme'", which fails the armv9.2 CPU variants on an
 # arm64 builder. GCC 14 knows the flag, and noble's runtime libstdc++6 is
@@ -131,7 +140,7 @@ RUN --mount=type=cache,id=ccache-${ACCEL},target=/root/.cache/ccache \
       -DGGML_BACKEND_DIR=/usr/local/lib/ggml \
       -DWHISPER_BUILD_TESTS=OFF \
       -DWHISPER_BUILD_EXAMPLES=ON \
-      ${WHISPER_ACCEL_CMAKE} \
+      ${GGML_ACCEL_CMAKE} \
       ${WHISPER_CMAKE_EXTRA} \
     && cmake --build build --config Release \
       --parallel "${BUILD_JOBS:-$(nproc)}"
@@ -146,6 +155,89 @@ RUN --mount=type=cache,id=ccache-${ACCEL},target=/root/.cache/ccache \
 RUN set -eu; \
     mkdir -p /out/bin /out/lib/ggml; \
     cp build/bin/whisper-cli build/bin/whisper-server /out/bin/; \
+    for lib in build/bin/*.so*; do \
+      case "${lib##*/}" in \
+        libggml-cpu*|libggml-blas*|libggml-cuda*|libggml-vulkan*) \
+          cp -P "${lib}" /out/lib/ggml/ ;; \
+        *) \
+          cp -P "${lib}" /out/lib/ ;; \
+      esac; \
+    done
+
+# ---------------------------------------------------------------------------
+# llama.cpp — the transcript-cleanup runtime, built for the same accelerator.
+# ---------------------------------------------------------------------------
+# Kept in its own prefix, /opt/llama, and never on the loader path. Both
+# projects vendor their own ggml and ship libraries with the same sonames, so a
+# shared /usr/local/lib would have one build's `libggml.so` answering for the
+# other's — which fails, when it fails, at dlopen time inside a running
+# gateway. `$ORIGIN` RPATHs make the binary find its own libraries by their
+# position relative to itself instead, so nothing outside this prefix can be
+# picked up and nothing here can shadow whisper.cpp.
+
+FROM builder-base-${ACCEL} AS llama-builder
+ARG ACCEL
+ARG LLAMA_CPP_VERSION
+# Appended last, same contract as WHISPER_CMAKE_EXTRA: a -D here overrides a
+# default below it. CI narrows the CUDA architecture spread with it.
+ARG LLAMA_CMAKE_EXTRA=""
+ARG BUILD_JOBS=""
+WORKDIR /src
+RUN curl --fail --location --show-error \
+      "https://github.com/ggml-org/llama.cpp/archive/refs/tags/${LLAMA_CPP_VERSION}.tar.gz" \
+      | tar --extract --gzip --strip-components=1
+
+# The ggml flags are the whisper.cpp ones and are chosen for the same reasons:
+# portable image, host-dispatched CPU kernels, backends dlopen'd from a
+# compiled-in directory. What differs is llama.cpp's own surface:
+#
+#   LLAMA_BUILD_SERVER    the only artifact the gateway launches
+#   LLAMA_BUILD_APP/
+#   EXAMPLES/TESTS=OFF    everything else in the default target is build fallout
+#   LLAMA_OPENSSL=OFF     the server's HTTPS support exists to pull models from
+#                         Hugging Face. The gateway does that itself, against a
+#                         pinned digest, so the runtime needs no TLS stack and
+#                         the image needs no OpenSSL headers to build one
+#   LLAMA_USE_PREBUILT_UI/
+#   LLAMA_BUILD_UI=OFF    no browser surface at all: the worker is started with
+#                         --no-webui, and OFF also keeps the build from
+#                         reaching out to a Hugging Face bucket for assets
+#   LLAMA_TOOLS_INSTALL   left OFF because only `llama-server` is copied out
+#
+# `--target llama-server` is enough here, unlike the whisper build above: the
+# dlopen'd ggml backends are declared as dependencies of the `ggml` target,
+# which the server links, so they are built with it.
+RUN --mount=type=cache,id=ccache-${ACCEL},target=/root/.cache/ccache \
+    cmake -S . -B build \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+      -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+      -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache \
+      -DCMAKE_BUILD_RPATH='$ORIGIN;$ORIGIN/../lib' \
+      -DBUILD_SHARED_LIBS=ON \
+      -DGGML_NATIVE=OFF \
+      -DGGML_BACKEND_DL=ON \
+      -DGGML_CPU_ALL_VARIANTS=ON \
+      -DGGML_BACKEND_DIR=/opt/llama/lib/ggml \
+      -DLLAMA_BUILD_SERVER=ON \
+      -DLLAMA_BUILD_APP=OFF \
+      -DLLAMA_BUILD_EXAMPLES=OFF \
+      -DLLAMA_BUILD_TESTS=OFF \
+      -DLLAMA_TOOLS_INSTALL=OFF \
+      -DLLAMA_OPENSSL=OFF \
+      -DLLAMA_BUILD_UI=OFF \
+      -DLLAMA_USE_PREBUILT_UI=OFF \
+      ${GGML_ACCEL_CMAKE} \
+      ${LLAMA_CMAKE_EXTRA} \
+    && cmake --build build --config Release --target llama-server \
+      --parallel "${BUILD_JOBS:-$(nproc)}"
+
+# Same sort as the whisper stage, into the private prefix: linked libraries
+# beside each other in lib/, dlopen'd backends in the lib/ggml/ that was
+# compiled into this build as GGML_BACKEND_DIR.
+RUN set -eu; \
+    mkdir -p /out/bin /out/lib/ggml; \
+    cp build/bin/llama-server /out/bin/; \
     for lib in build/bin/*.so*; do \
       case "${lib##*/}" in \
         libggml-cpu*|libggml-blas*|libggml-cuda*|libggml-vulkan*) \
@@ -211,22 +303,46 @@ ARG ACCEL
 COPY --from=uv /uv /uvx /bin/
 COPY --from=whisper-builder /out/bin/ /usr/local/bin/
 COPY --from=whisper-builder /out/lib/ /usr/local/lib/
+# The cleanup runtime stays in its own prefix, off the loader path: see the
+# llama-builder stage for why two ggml builds must not share one lib directory.
+COPY --from=llama-builder /out/ /opt/llama/
 # A successful compiler exit is not enough: these backends are dlopen'd and no
 # linked target forces them into the runtime image. Fail the build instead of
 # shipping an accelerator tag that silently falls back to CPU. Every image also
 # keeps a CPU backend for unsupported operations and graceful fallback.
+#
+# The cleanup runtime is then checked twice over, because moving it out of the
+# builder's directory layout is exactly what its $ORIGIN RPATHs have to
+# survive: every linked library must still resolve from the new prefix, and the
+# binary must actually start. Neither needs a GPU, which the cuda and vulkan
+# builds do not have in front of them at build time.
+#
+# The dlopen'd ggml modules are deliberately not part of the ldd sweep. `ldd`
+# traces a module as if it were a program, without the process that will load
+# it, so their `$ORIGIN/../lib` dependency on `libggml-base.so` reads as
+# missing even where it resolves perfectly at runtime — where the loading
+# process already holds that library open. The CI smoke test proves those by
+# listing the devices ggml actually registers.
 RUN set -eu; \
-    set -- /usr/local/lib/ggml/libggml-cpu*.so; \
-    [ -e "$1" ] || { echo "missing ggml CPU backend" >&2; exit 1; }; \
-    case "${ACCEL}" in \
-      cpu) ;; \
-      cuda) test -e /usr/local/lib/ggml/libggml-cuda.so \
-        || { echo "missing ggml CUDA backend" >&2; exit 1; } ;; \
-      vulkan) test -e /usr/local/lib/ggml/libggml-vulkan.so \
-        || { echo "missing ggml Vulkan backend" >&2; exit 1; } ;; \
-      *) echo "unsupported ACCEL=${ACCEL}" >&2; exit 1 ;; \
-    esac; \
-    ldconfig
+    for prefix in /usr/local /opt/llama; do \
+      set -- "${prefix}"/lib/ggml/libggml-cpu*.so; \
+      [ -e "$1" ] || { echo "missing ggml CPU backend in ${prefix}" >&2; exit 1; }; \
+      case "${ACCEL}" in \
+        cpu) ;; \
+        cuda) test -e "${prefix}/lib/ggml/libggml-cuda.so" \
+          || { echo "missing ggml CUDA backend in ${prefix}" >&2; exit 1; } ;; \
+        vulkan) test -e "${prefix}/lib/ggml/libggml-vulkan.so" \
+          || { echo "missing ggml Vulkan backend in ${prefix}" >&2; exit 1; } ;; \
+        *) echo "unsupported ACCEL=${ACCEL}" >&2; exit 1 ;; \
+      esac; \
+    done; \
+    ldconfig; \
+    for object in /opt/llama/bin/llama-server /opt/llama/lib/*.so*; do \
+      if ldd "${object}" | grep 'not found'; then \
+        echo "unresolved library for ${object}" >&2; exit 1; \
+      fi; \
+    done; \
+    /opt/llama/bin/llama-server --version
 
 WORKDIR /app
 # The uv cache lives on a build cache mount rather than inside the layer: the
@@ -261,6 +377,7 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     VOCAGATEWAY_CONFIG_FILE=/data/config/config.json \
     VOCAGATEWAY_TOKEN_FILE=/run/secrets/vocagateway_token \
     VOCAGATEWAY_WHISPER_BINARY=/usr/local/bin/whisper-cli \
+    VOCAGATEWAY_CLEANUP_BINARY=/opt/llama/bin/llama-server \
     VOCAGATEWAY_ENGINE=auto
 
 # OPENBLAS_NUM_THREADS is deliberately not set here. It looks like it should be:

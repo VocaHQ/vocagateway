@@ -55,7 +55,8 @@ Rules:
 The justfile exports `UV_NO_SYNC=1`, so `uv run` in recipes does not auto-sync.
 Run `just install` after clone or lockfile changes. FFmpeg is required (unit
 audio tests shell out to it). `just doctor` reports missing `uv` / `ffmpeg` /
-`docker`.
+`docker`, and notes an absent `llama-server` (the transcript-cleanup runtime,
+which the container builds for itself).
 
 | Recipe | What it runs |
 | --- | --- |
@@ -160,7 +161,7 @@ behind a reverse proxy at a **domain root**, not a subpath.
 | Workflow | When | What |
 | --- | --- | --- |
 | `quality.yml` | `app/`, `tests/`, `scripts/`, `pyproject.toml`, `uv.lock`, `compose.yaml` | ffmpeg, ruff, format `--check`, `mypy app`, pytest, compose config |
-| `container.yml` | `Dockerfile`, `.dockerignore`, `compose.yaml`, `pyproject.toml`, `uv.lock`, workflow | `docker buildx` CPU/CUDA/Vulkan matrix (representative CUDA architecture), CPU backend/runtime smoke test, all-profile Compose config |
+| `container.yml` | `Dockerfile`, `.dockerignore`, `compose.yaml`, `pyproject.toml`, `uv.lock`, workflow | `docker buildx` CPU/CUDA/Vulkan matrix (representative CUDA architecture), CPU backend/runtime smoke test, cleanup-runtime device listing, all-profile Compose config |
 | `verify-model-pins.yml` | pin/catalog/harvester paths + weekly | `scripts/verify-model-pins.py` |
 | `deploy-pages.yml` | `web/**` on `main` | GitHub Pages |
 
