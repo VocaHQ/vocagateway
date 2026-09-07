@@ -35,6 +35,7 @@ from starlette.status import (
 )
 
 from app import admin_queries
+from app.cleanup import catalog as cleanup_catalog
 from app.config import Settings
 from app.main import create_app
 from app.models.base import EngineHealth
@@ -217,15 +218,42 @@ async def test_an_unknown_model_cannot_be_downloaded(gateway: Any) -> None:
     assert response.status_code == HTTP_404_NOT_FOUND
 
 
+async def test_starting_a_second_download_keeps_the_implicit_selection(
+    gateway: Any, monkeypatch: MonkeyPatch
+) -> None:
+    client, app = gateway
+    manager = app.state.ctx.cleanup
+    installed = cleanup_catalog.cleanup_model(CLEANUP_MODEL_ID)
+    assert installed is not None
+    model_path = manager.models.models_dir / "llama.cpp" / installed.filename
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    model_path.write_bytes(b"gguf")
+    monkeypatch.setattr(manager.models, "start_download", lambda _model_id: None)
+
+    response = await client.post(
+        "/v1/admin/cleanup/models/cleanup:qwen3-0.6b-q4/download", headers=AUTH
+    )
+
+    assert response.status_code == HTTP_200_OK
+    assert manager.runtime_config.cleanup_model == CLEANUP_MODEL_ID
+
+
 async def test_the_cleanup_catalog_lists_provenance(gateway: Any) -> None:
     client, _ = gateway
     entries = (await client.get("/v1/admin/cleanup/models", headers=AUTH)).json()
-    assert [entry["id"] for entry in entries] == ["cleanup:qwen3-0.6b", "cleanup:qwen3-1.7b"]
+    assert [entry["id"] for entry in entries] == [
+        "cleanup:qwen3-0.6b",
+        "cleanup:qwen3-0.6b-q4",
+        "cleanup:qwen3-1.7b",
+    ]
     for entry in entries:
         # A model with no pinned digest must not be installable at all.
         assert entry["installable"] is (entry["sha256"] is not None)
         assert entry["upstream_model"].startswith("Qwen/")
         assert entry["evaluated_languages"] == []
+    compact = next(entry for entry in entries if entry["id"] == "cleanup:qwen3-0.6b-q4")
+    assert compact["languages"] == ["en"]
+    assert compact["conversion_source"].startswith("llama.cpp project")
 
 
 async def test_a_cleanup_model_is_never_offered_as_a_speech_engine(gateway: Any) -> None:

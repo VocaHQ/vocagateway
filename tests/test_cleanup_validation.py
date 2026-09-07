@@ -37,6 +37,7 @@ ACCEPTED = (
     ("it is not ready", "It isn't ready."),
     ("ship it on friday", "Ship it on Friday."),
     ("run the deploy_script now", "Run the deploy_script now."),
+    ("i said go go now", "I said, ‘Go, go now.’"),
     ("well i mean i think so", "Well, I mean, I think so."),
     # Returning already-correct text unchanged is a success, not a no-op bug.
     ("This is already correct.", "This is already correct."),
@@ -57,6 +58,10 @@ REJECTED = (
     # A swapped weekday reads as fluent English and changes the appointment.
     ("ship it on friday", "Ship it on Monday.", CleanupReason.UNSAFE_EDIT),
     ("the demo is tomorrow", "The demo is today.", CleanupReason.UNSAFE_EDIT),
+    # Repetition can carry emphasis, hesitation, or a quoted instruction. The
+    # cleanup prompt explicitly promises not to remove it.
+    ("i said go go now", "I said go now.", CleanupReason.UNSAFE_EDIT),
+    ("i said go now", "I said go go now.", CleanupReason.UNSAFE_EDIT),
     # A rewritten address looks plausible and is wrong.
     ("mail ops@example.com", "Mail ops@example.io.", CleanupReason.UNSAFE_EDIT),
     ("see https://example.com/a", "See https://example.com/b.", CleanupReason.UNSAFE_EDIT),
@@ -150,6 +155,11 @@ def test_span_guard_ignores_an_ordinary_sentence_ending() -> None:
 def test_digit_runs_are_compared_in_order() -> None:
     assert SpanGuard.digits("2 apples and 30 pears") == ["2", "30"]
     assert SpanGuard.digits("30 apples and 2 pears") == ["30", "2"]
+
+
+def test_repetition_guard_ignores_case_and_punctuation() -> None:
+    assert SpanGuard.repetitions("Go, go now") == ["go"]
+    assert SpanGuard.repetitions("go now") == []
 
 
 def test_unspaced_scripts_compare_by_character() -> None:

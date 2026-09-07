@@ -46,6 +46,7 @@ CANDIDATE_LANGUAGES: tuple[str, ...] = ("en", "hi", "hinglish_roman")
 # figures; the SHA-256 in the pin file is what actually vouches for the bytes.
 QWEN3_06B_BYTES = 639_446_688
 QWEN3_06B_MINIMUM_RAM_GB = 4.0
+QWEN3_06B_Q4_BYTES = 428_970_080
 QWEN3_17B_BYTES = 1_834_426_016
 QWEN3_17B_MINIMUM_RAM_GB = 8.0
 
@@ -131,8 +132,7 @@ _BASE_CATALOG: tuple[CleanupModel, ...] = (
         id="cleanup:qwen3-0.6b",
         label="Qwen3 0.6B (Q8_0)",
         description=(
-            "Smallest cleanup candidate. Fixes grammar, punctuation, and casing "
-            "without changing what was said."
+            "Higher-precision 0.6B baseline for grammar, punctuation, and casing cleanup."
         ),
         runtime=RUNTIME_LLAMA_CPP,
         huggingface_repo="Qwen/Qwen3-0.6B-GGUF",
@@ -149,6 +149,27 @@ _BASE_CATALOG: tuple[CleanupModel, ...] = (
         conversion_source="Upstream-published quantization (Qwen/Qwen3-0.6B-GGUF)",
         chat_template_source="Embedded in the GGUF by the upstream conversion",
         license_notice="Apache License 2.0, Alibaba Cloud (Qwen).",
+    ),
+    CleanupModel(
+        id="cleanup:qwen3-0.6b-q4",
+        label="Qwen3 0.6B Compact (Q4_0)",
+        description=(
+            "English-only compact candidate. One-third smaller than Q8_0; "
+            "choose it for disk footprint, not for an unproven 2x speed claim."
+        ),
+        runtime=RUNTIME_LLAMA_CPP,
+        huggingface_repo="ggml-org/Qwen3-0.6B-GGUF",
+        filename="Qwen3-0.6B-Q4_0.gguf",
+        size_bytes=QWEN3_06B_Q4_BYTES,
+        minimum_ram_gb=QWEN3_06B_MINIMUM_RAM_GB,
+        upstream_model="Qwen/Qwen3-0.6B",
+        quantization="Q4_0",
+        conversion_source="llama.cpp project conversion (ggml-org/Qwen3-0.6B-GGUF)",
+        chat_template_source="Embedded in the GGUF by the llama.cpp project conversion",
+        license_notice=(
+            "Apache License 2.0, Alibaba Cloud (Qwen); GGUF conversion published by ggml-org."
+        ),
+        candidate_languages=("en",),
     ),
     CleanupModel(
         id="cleanup:qwen3-1.7b",

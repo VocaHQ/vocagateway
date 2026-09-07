@@ -25,7 +25,7 @@
       <span class="model-spec">{{ model.minimum_ram_gb | int }} GB RAM minimum</span>
       <span class="model-spec">{{ model.quantization }}</span>
     </p>
-    <p class="model-blurb">{% if model.id == "cleanup:qwen3-0.6b" %}Smaller download. Lower memory requirement.{% elif model.id == "cleanup:qwen3-1.7b" %}Larger model. Needs more memory alongside speech recognition.{% else %}{{ model.description }}{% endif %}</p>
+    <p class="model-blurb">{{ model.description }}</p>
     <p class="cleanup-languages"><span class="muted">Languages</span>
       {% for code in model.languages %}
       {{ {"en": "English", "hi": "Hindi", "hinglish_roman": "Hinglish (Roman)"}.get(code, code) }}{% if not loop.last %} · {% endif %}

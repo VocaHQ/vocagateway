@@ -504,6 +504,24 @@ def only_installed_model(models: model_manager.ModelManager) -> str | None:
     return installed[0] if len(installed) == 1 else None
 
 
+def preserve_implicit_model_selection(manager: CleanupManager) -> None:
+    """Persist a sole-model fallback before another download can remove it.
+
+    With one installed model an empty saved selection deliberately resolves to
+    that model. Once a second download completes there is no sole model, so
+    persisting the effective choice here keeps an installation from silently
+    turning cleanup off. An environment-selected model remains an environment
+    decision and is never copied into the saved configuration.
+    """
+    if manager.preferences.settings.cleanup_model or manager.runtime_config.cleanup_model:
+        return
+    selected = manager.preferences.model_id
+    if selected is None:
+        return
+    manager.runtime_config.cleanup_model = selected
+    manager.runtime_config.save(manager.config_path)
+
+
 @dataclass(frozen=True, slots=True)
 class CleanupUpdate:
     """A partial change to the cleanup block. `None` means "leave this alone"."""
