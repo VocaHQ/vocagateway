@@ -245,27 +245,15 @@ async def test_the_cleanup_catalog_lists_provenance(gateway: Any) -> None:
         "cleanup:qwen3-0.6b",
         "cleanup:qwen3-0.6b-q4",
         "cleanup:qwen3-1.7b",
-        "cleanup:gemma-3-270m",
-        "cleanup:gemma-3-1b",
     ]
     for entry in entries:
         # A model with no pinned digest must not be installable at all.
         assert entry["installable"] is (entry["sha256"] is not None)
+        assert entry["upstream_model"].startswith("Qwen/")
         assert entry["evaluated_languages"] == []
-    qwen = [entry for entry in entries if entry["id"].startswith("cleanup:qwen3-")]
-    assert qwen
-    assert all(entry["upstream_model"].startswith("Qwen/") for entry in qwen)
     compact = next(entry for entry in entries if entry["id"] == "cleanup:qwen3-0.6b-q4")
     assert compact["languages"] == ["en"]
     assert compact["conversion_source"].startswith("llama.cpp project")
-    gemma_small = next(entry for entry in entries if entry["id"] == "cleanup:gemma-3-270m")
-    assert gemma_small["languages"] == ["en"]
-    assert gemma_small["license_name"] == "Gemma"
-    assert gemma_small["upstream_model"] == "google/gemma-3-270m-it"
-    gemma_1b = next(entry for entry in entries if entry["id"] == "cleanup:gemma-3-1b")
-    assert gemma_1b["languages"] == ["en"]
-    assert gemma_1b["license_name"] == "Gemma"
-    assert gemma_1b["upstream_model"] == "google/gemma-3-1b-it"
 
 
 async def test_a_cleanup_model_is_never_offered_as_a_speech_engine(gateway: Any) -> None:
