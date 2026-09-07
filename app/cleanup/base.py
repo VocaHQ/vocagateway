@@ -92,16 +92,20 @@ class TokenBudget:
         return max(1, self.input_tokens - TOKENIZER_MARGIN_TOKENS)
 
     @property
-    def maximum_packed_chars(self) -> int:
-        """Characters a same-length correction can emit under this window's decode budget.
+    def packed_tokens(self) -> int:
+        """Transcript tokens one pass can both hold *and* write back.
 
-        `output_token_budget` sizes `max_tokens` from character length (one
-        token per character is the safe upper bound for a same-length rewrite)
-        and caps it at `output_tokens`. A piece longer than this still fits
-        the input side of the window after the tokenizer counts it, but the
-        decode hits `finish_reason=length` and fail-opens.
+        A correction is the transcript again, so a piece has to fit the decode
+        half of the window as well as the input half. Both halves are measured
+        in tokens and so is this: a character bound would be four times too
+        tight for English, where five characters cost one token, and still
+        wrong for a script that costs more than one token per character.
+
+        `budget_for_context` gives the decode half a quarter more than the
+        input half, so this is normally the input budget unmodified. It bites
+        only if that ratio is ever lowered.
         """
-        return max(1, self.output_tokens - JSON_WRAPPER_TOKENS)
+        return max(1, min(self.input_tokens, self.output_tokens - JSON_WRAPPER_TOKENS))
 
 
 def budget_for_context(context_tokens: int) -> TokenBudget:

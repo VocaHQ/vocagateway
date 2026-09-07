@@ -20,6 +20,7 @@ import pytest
 from app.cleanup import prompts, transport
 from app.cleanup.base import (
     DEFAULT_TOKEN_BUDGET,
+    JSON_WRAPPER_TOKENS,
     MAXIMUM_OUTPUT_BYTES,
     CleanupReason,
     CleanupRejected,
@@ -328,27 +329,28 @@ async def test_a_long_transcript_is_corrected_in_pieces(serve: Any) -> None:
 
 
 async def test_a_transcript_the_tokenizer_says_fits_is_corrected_whole(serve: Any) -> None:
-    """English runs about five characters to the token; splitting it would be
-    a second inference and a piece corrected without its neighbours, for
-    nothing. The count from the runtime's own tokenizer is what decides, as
-    long as the character length still fits a same-length decode."""
-    runtime = await serve(_counted(DEFAULT_TOKEN_BUDGET.input_tokens // 2))
-    # Stay above the no-tokenize byte shortcut but inside the decode char cap.
-    long = "Hello world. " * 120
-    assert (
-        DEFAULT_TOKEN_BUDGET.certain_bytes < len(long) <= DEFAULT_TOKEN_BUDGET.maximum_packed_chars
-    )
+    """English runs about five characters to the token; splitting a transcript
+    the tokenizer says fits would be a second inference and a piece corrected
+    without its neighbours, for nothing. The count from the runtime's own
+    tokenizer is what decides, and nothing else."""
+    runtime = await serve(_counted(DEFAULT_TOKEN_BUDGET.packed_tokens // 2))
+    long = "Hello world. " * (DEFAULT_TOKEN_BUDGET.certain_bytes // 4)
+    assert len(long) > DEFAULT_TOKEN_BUDGET.certain_bytes
     assert await runtime.clean(long, "en", budget_seconds=BUDGET) == long
     assert len(_completions(runtime)) == 1
 
 
-async def test_a_token_fit_still_splits_when_decode_chars_would_truncate(serve: Any) -> None:
-    """Tokenizer fit is not enough when characters outrun max_tokens."""
-    runtime = await serve(_counted(DEFAULT_TOKEN_BUDGET.input_tokens // 2))
-    long = "Hello world. " * (DEFAULT_TOKEN_BUDGET.certain_bytes // 4)
-    assert len(long) > DEFAULT_TOKEN_BUDGET.maximum_packed_chars
-    assert await runtime.clean(long, "en", budget_seconds=BUDGET) == long
-    assert len(_completions(runtime)) >= 2
+async def test_the_decode_ceiling_is_sized_in_bytes_not_characters(serve: Any) -> None:
+    """Tamil costs 0.85 characters to the token and Runic 0.66, so a character
+    ceiling cuts those corrections off at `finish_reason=length`. Bytes are
+    never fewer than tokens, and for ASCII the two are the same."""
+    dense = "\u16a0\u16a2\u16a6 \u16a8\u16b1\u16b2 " * 20
+    ascii_text = "hello world. " * 20
+    assert prompts.output_token_budget(dense) > len(dense) + JSON_WRAPPER_TOKENS
+    assert prompts.output_token_budget(ascii_text) == len(ascii_text) + JSON_WRAPPER_TOKENS
+    # And it is still capped by the window the worker was launched with.
+    huge = "\u16a0" * 100_000
+    assert prompts.output_token_budget(huge) == DEFAULT_TOKEN_BUDGET.output_tokens
 
 
 async def test_health_and_context_size_are_read_from_the_running_server(serve: Any) -> None:

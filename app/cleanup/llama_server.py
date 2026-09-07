@@ -130,10 +130,10 @@ class LlamaServerRuntime:
         which usually says it fits after all - English dictation is around five
         characters to the token, so a full two-minute recording is a few
         hundred. Only a transcript that genuinely does not fit is split, and
-        that same count is what sizes the pieces. The pack limit is also capped
-        by the decode budget: a same-length correction needs one `max_tokens`
-        slot per character, so a piece that fits the input window can still
-        hit `finish_reason=length` if it outruns `output_tokens`.
+        that same count is what sizes the pieces. The budget it is measured
+        against is `packed_tokens`, which is the smaller of the two halves of
+        the window: a piece has to be one the model can write back as well as
+        read.
         """
         deadline = time.monotonic() + budget_seconds
         if len(transcript.encode("utf-8")) <= self._budget.certain_bytes:
@@ -141,12 +141,9 @@ class LlamaServerRuntime:
         counted = await self.count_tokens(
             transcript, budget=remaining(deadline, TOKENIZE_TIMEOUT_SECONDS)
         )
-        limit = min(
-            chunks.character_limit(len(transcript), counted, self._budget.input_tokens),
-            self._budget.maximum_packed_chars,
-        )
-        if counted <= self._budget.input_tokens and len(transcript) <= limit:
+        if counted <= self._budget.packed_tokens:
             return await self._complete(transcript, language, deadline, budget_seconds)
+        limit = chunks.character_limit(len(transcript), counted, self._budget.packed_tokens)
         pieces = chunks.pack(transcript, limit=limit)
         return await self._complete_pieces(pieces, language, deadline, budget_seconds, limit)
 

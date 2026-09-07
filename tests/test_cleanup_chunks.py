@@ -4,7 +4,7 @@ from app.cleanup.base import DEFAULT_TOKEN_BUDGET, JSON_WRAPPER_TOKENS
 from app.cleanup.chunks import character_limit, pack
 
 LIMIT = DEFAULT_TOKEN_BUDGET.input_tokens
-PACKED = DEFAULT_TOKEN_BUDGET.maximum_packed_chars
+PACKED = DEFAULT_TOKEN_BUDGET.packed_tokens
 
 
 def test_a_short_transcript_is_one_piece() -> None:

@@ -107,21 +107,17 @@ def test_only_the_compact_profile_needs_flash_attention() -> None:
     assert FULL_PROFILE.quantized_value_cache is False
 
 
-def test_profile_piece_size_fits_the_output_budget() -> None:
-    """Packed pieces must leave room for a same-length correction under max_tokens."""
+def test_a_packed_piece_fits_both_halves_of_the_window() -> None:
+    """A piece has to be one the model can write back as well as read."""
     for profile in (COMPACT_PROFILE, FULL_PROFILE):
         budget = profile.budget
-        assert budget.maximum_packed_chars == budget.output_tokens - JSON_WRAPPER_TOKENS
-        piece = "x" * budget.maximum_packed_chars
-        assert len(piece) + JSON_WRAPPER_TOKENS <= budget.output_tokens
+        assert budget.packed_tokens <= budget.input_tokens
+        assert budget.packed_tokens + JSON_WRAPPER_TOKENS <= budget.output_tokens
+        # The shipped ratio gives decode the larger half, so the input budget
+        # is what binds. A character cap here would be four times tighter.
+        assert budget.packed_tokens == budget.input_tokens
 
 
-def test_a_larger_window_raises_the_decode_char_cap() -> None:
-    assert (
-        budget_for_window(8_192).maximum_packed_chars
-        > budget_for_window(4_096).maximum_packed_chars
-    )
-    assert (
-        budget_for_window(32_768).maximum_packed_chars
-        >= budget_for_window(8_192).maximum_packed_chars
-    )
+def test_a_larger_window_raises_the_packed_token_budget() -> None:
+    assert budget_for_window(8_192).packed_tokens > budget_for_window(4_096).packed_tokens
+    assert budget_for_window(32_768).packed_tokens >= budget_for_window(8_192).packed_tokens

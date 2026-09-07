@@ -95,11 +95,19 @@ def output_token_budget(transcript: str, budget: TokenBudget = DEFAULT_TOKEN_BUD
 
     The JSON schema already stops at a complete object, but a tight ceiling
     stops a ramble inside ``text`` before it burns the request deadline.
-    Character length is an upper bound on tokens for a same-length correction.
-    The ceiling comes from the window the worker was launched with, so a
-    high-end host is not held to a low-end host's decode budget.
+
+    Encoded *bytes* are the upper bound on the tokens a same-length correction
+    costs, not characters. Characters are an upper bound only for a script the
+    tokenizer has entries for: Tamil measures 0.85 characters to the token and
+    Runic 0.66, so a character ceiling silently cuts those corrections off at
+    `finish_reason=length` and throws the whole answer away. Bytes are never
+    fewer than tokens, and for ASCII the two counts are the same, so English
+    keeps exactly the ceiling it had.
+
+    The cap comes from the window the worker was launched with, so a high-end
+    host is not held to a low-end host's decode budget.
     """
-    needed = len(transcript) + JSON_WRAPPER_TOKENS
+    needed = len(transcript.encode("utf-8")) + JSON_WRAPPER_TOKENS
     return min(budget.output_tokens, max(MINIMUM_OUTPUT_TOKENS, needed))
 
 
