@@ -13,7 +13,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.cleanup.base import MAXIMUM_OUTPUT_TOKENS
+from app.cleanup.base import (
+    JSON_WRAPPER_TOKENS,
+    MAXIMUM_OUTPUT_TOKENS,
+    MINIMUM_OUTPUT_TOKENS,
+)
 
 # Pinned non-thinking sampling. Near-greedy because the task is a correction,
 # not a composition; not called deterministic, because identical sampling
@@ -85,6 +89,17 @@ def user_message(transcript: str, language: str) -> dict[str, str]:
     return {"role": "user", "content": payload}
 
 
+def output_token_budget(transcript: str) -> int:
+    """Decode budget for one correction, scaled to the transcript.
+
+    The JSON schema already stops at a complete object, but a tight ceiling
+    stops a ramble inside ``text`` before it burns the request deadline.
+    Character length is an upper bound on tokens for a same-length correction.
+    """
+    needed = len(transcript) + JSON_WRAPPER_TOKENS
+    return min(MAXIMUM_OUTPUT_TOKENS, max(MINIMUM_OUTPUT_TOKENS, needed))
+
+
 def chat_request(transcript: str, language: str, *, model: str) -> dict[str, Any]:
     """The full chat-completions body, in non-thinking mode with no tools."""
     return {
@@ -94,7 +109,7 @@ def chat_request(transcript: str, language: str, *, model: str) -> dict[str, Any
         "top_p": TOP_P,
         "top_k": TOP_K,
         "repeat_penalty": REPEAT_PENALTY,
-        "max_tokens": MAXIMUM_OUTPUT_TOKENS,
+        "max_tokens": output_token_budget(transcript),
         "stream": False,
         # Structural guarantee, not a semantic one: it constrains the shape of
         # the answer, never its truthfulness. The validators still run.

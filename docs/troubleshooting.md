@@ -345,7 +345,7 @@ header.
 | `context_too_small` | An operator-run `VOCAGATEWAY_CLEANUP_ENDPOINT` reports a context window too small to hold the prompt, which would silently drop the system instruction | Restart that server with a larger `--ctx-size` (4096 or more). A gateway-managed worker sets its own and cannot hit this |
 | `busy` | A correction was already running; cleanup admits one at a time and does not queue | Nothing. The transcript is correct, just uncorrected |
 | `timeout` | The correction did not finish inside the time limit | Raise the limit in Settings, warm the model, or choose the smaller model |
-| `input_too_long` | Past the input ceiling. Nothing is ever half-corrected | Nothing. The full transcript is returned |
+| `input_too_long` | Past the 16 KiB input ceiling. Ordinary long dictations are split on sentence boundaries and corrected in pieces; only an enormous transcript is refused whole | Nothing. The full transcript is returned |
 | `unsafe_edit` | The model's answer changed a number, a name, a negation, an address, a weekday, or too much of the text | Nothing to fix — this is the safety net working. Repeated `unsafe_edit` on ordinary sentences means the model is a poor fit; try the other one |
 | `invalid_output` | The answer was malformed, wrapped in prose, truncated, or leaked reasoning | Check the runtime version supports `--jinja` and the non-thinking chat template. The version the image builds does; a much older host `llama-server` may not |
 

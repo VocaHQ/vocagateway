@@ -251,11 +251,11 @@ class SpanGuard:
 def exceeds_input_ceiling(text: str) -> bool:
     """Whether a transcript is too long to correct in one bounded pass.
 
-    Measured in encoded bytes, which is what the ceiling is written in. The real
-    limit is the runtime's own token count, checked later against its tokenizer;
-    this is the cheap guard that keeps an enormous transcript from being sent at
-    all. Over the ceiling the answer is the untouched ASR result — never a
-    truncated one, and never a transcript split and stitched back together.
+    Measured in encoded bytes, which is what the ceiling is written in. This is
+    the cheap guard that keeps an enormous transcript from being sent at all.
+    Over it the answer is the untouched ASR result, never a truncated one.
+    Transcripts that fit in bytes but not in one KV window are split on
+    sentence boundaries inside the runtime and stitched back together.
     """
     return len(text.encode("utf-8")) > MAXIMUM_INPUT_BYTES
 

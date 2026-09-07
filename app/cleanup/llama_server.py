@@ -17,8 +17,9 @@ import json
 import time
 from typing import Any
 
-from app.cleanup import prompts, transport
+from app.cleanup import chunks, prompts, transport
 from app.cleanup.base import (
+    CHUNK_CHAR_LIMIT,
     MAXIMUM_INPUT_TOKENS,
     MAXIMUM_OUTPUT_BYTES,
     MINIMUM_CONTEXT_TOKENS,
@@ -120,6 +121,39 @@ class LlamaServerRuntime:
 
     async def clean(self, transcript: str, language: str, *, budget_seconds: float) -> str:
         deadline = time.monotonic() + budget_seconds
+        pieces = chunks.pack(transcript, limit=CHUNK_CHAR_LIMIT)
+        if len(pieces) <= 1:
+            return await self._complete(transcript, language, deadline, budget_seconds)
+        return await self._complete_pieces(pieces, language, deadline, budget_seconds)
+
+    async def _complete_pieces(
+        self,
+        pieces: list[str],
+        language: str,
+        deadline: float,
+        budget_seconds: float,
+    ) -> str:
+        """Correct each packed piece. A failed slice keeps its original text."""
+        cleaned: list[str] = []
+        remaining_pieces = len(pieces)
+        index = 0
+        while index < len(pieces):
+            share = remaining(deadline, budget_seconds) / remaining_pieces
+            remaining_pieces -= 1
+            piece = pieces[index]
+            try:
+                cleaned.append(await self._complete(piece, language, deadline, share))
+            except TimeoutError:
+                cleaned.extend(pieces[index:])
+                break
+            except CleanupRejected:
+                cleaned.append(piece)
+            index += 1
+        return "".join(cleaned)
+
+    async def _complete(
+        self, transcript: str, language: str, deadline: float, budget_seconds: float
+    ) -> str:
         await self._check_length(transcript, deadline)
         reply = await transport.post_json(
             self.endpoint,
@@ -132,6 +166,8 @@ class LlamaServerRuntime:
         return _decode_completion(_parsed(reply))
 
     async def _check_length(self, transcript: str, deadline: float) -> None:
+        if len(transcript) <= CHUNK_CHAR_LIMIT:
+            return
         counted = await self.count_tokens(
             transcript, budget=remaining(deadline, TOKENIZE_TIMEOUT_SECONDS)
         )

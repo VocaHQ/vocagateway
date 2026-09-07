@@ -1026,7 +1026,8 @@
       "The cleanup model is still loading. Try again in a moment.",
     busy: "Another correction was already running. The transcript is fine, just uncorrected.",
     timeout: "The correction ran out of time. Raise the time limit in Settings, or warm the model.",
-    input_too_long: "The transcript is longer than cleanup will process in one pass.",
+    input_too_long:
+      "The transcript is larger than cleanup will accept. Ordinary long dictations are split and corrected in pieces; this one was refused whole.",
     unsafe_edit:
       "The model\u2019s answer changed something it should not have \u2014 a number, a name, "
       + "or a negation \u2014 so it was thrown away and the plain transcript kept.",

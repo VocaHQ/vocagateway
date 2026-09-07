@@ -43,6 +43,13 @@ MAXIMUM_OUTPUT_BYTES = 32_768
 MAXIMUM_INPUT_TOKENS = 1_536
 MAXIMUM_OUTPUT_TOKENS = 1_920
 MINIMUM_CONTEXT_TOKENS = 4_096
+# A character cannot be more than one token. Packing to this many characters
+# keeps each piece inside the token ceiling without a tokenize round-trip.
+# The margin is for BOS / template tokens a tokenizer might add on top.
+TOKENIZER_MARGIN_TOKENS = 32
+CHUNK_CHAR_LIMIT = MAXIMUM_INPUT_TOKENS - TOKENIZER_MARGIN_TOKENS
+MINIMUM_OUTPUT_TOKENS = 64
+JSON_WRAPPER_TOKENS = 24
 
 
 class CleanupStatus(StrEnum):

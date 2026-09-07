@@ -17,8 +17,9 @@ from typing import Any
 
 import pytest
 
-from app.cleanup import transport
+from app.cleanup import prompts, transport
 from app.cleanup.base import (
+    CHUNK_CHAR_LIMIT,
     MAXIMUM_OUTPUT_BYTES,
     CleanupReason,
     CleanupRejected,
@@ -149,6 +150,7 @@ async def test_the_transcript_travels_as_json_data_not_as_an_instruction(serve: 
     assert sent["tools"] == []
     assert sent["tool_choice"] == "none"
     assert sent["cache_prompt"] is True
+    assert sent["max_tokens"] == prompts.output_token_budget(dictated)
 
 
 REJECTIONS = (
@@ -258,12 +260,36 @@ async def test_a_hanging_server_times_out_and_the_socket_is_closed(serve: Any) -
         await server.wait_closed()
 
 
-async def test_a_transcript_over_the_token_ceiling_is_refused(serve: Any) -> None:
+async def test_a_short_transcript_does_not_tokenize(serve: Any) -> None:
     tokens = http(json.dumps({"tokens": list(range(4_000))}))
-    runtime = await serve(routed({"/tokenize": tokens}))
-    with pytest.raises(CleanupRejected) as raised:
-        await runtime.clean("fix it", "en", budget_seconds=BUDGET)
-    assert raised.value.reason is CleanupReason.INPUT_TOO_LONG
+    runtime = await serve(
+        routed({"/v1/chat/completions": http(answer("Fixed.")), "/tokenize": tokens})
+    )
+    assert await runtime.clean("fix it", "en", budget_seconds=BUDGET) == "Fixed."
+    paths = [request.split(b" ")[1] for request in runtime.server.requests]
+    assert b"/tokenize" not in paths
+
+
+def _echo_transcript(request: bytes) -> bytes:
+    path = request.split(b" ")[1].decode("latin-1")
+    if path != "/v1/chat/completions":
+        return http(json.dumps({"tokens": [1, 2, 3]}))
+    body = json.loads(request.split(b"\r\n\r\n", 1)[1])
+    payload = json.loads(body["messages"][1]["content"])
+    return http(answer(payload["transcript"]))
+
+
+async def test_a_long_transcript_is_corrected_in_pieces(serve: Any) -> None:
+    runtime = await serve(_echo_transcript)
+    long = "Hello world. " * (CHUNK_CHAR_LIMIT // 4)
+    assert len(long) > CHUNK_CHAR_LIMIT
+    assert await runtime.clean(long, "en", budget_seconds=BUDGET) == long
+    completions = [
+        request
+        for request in runtime.server.requests
+        if request.split(b" ")[1] == b"/v1/chat/completions"
+    ]
+    assert len(completions) >= 2
 
 
 async def test_health_and_context_size_are_read_from_the_running_server(serve: Any) -> None:
