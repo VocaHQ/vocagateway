@@ -1,10 +1,11 @@
 """The deployment file and the contributor's file must describe one gateway.
 
-`compose.prod.yaml` is deliberately self-contained: an operator downloads it on
-its own, without a checkout, and runs a published image with it. The cost of
-that is a second copy of the service definition, and a second copy is a thing
-that drifts — a hardening flag tightened in one file and not the other, an
-environment variable forwarded to contributors and not to deployments.
+`compose.prod.yaml` is deliberately self-contained: after a release has
+published an image, an operator downloads it on its own, without a checkout,
+and runs that image. The cost of that is a second copy of the service
+definition, and a second copy is a thing that drifts — a hardening flag
+tightened in one file and not the other, an environment variable forwarded
+to contributors and not to deployments.
 
 These tests are what makes the duplication safe. They read both files and hold
 everything but the image to be identical, so the divergence has to be
@@ -103,3 +104,45 @@ def test_the_data_volume_is_named_the_same_in_both(
 ) -> None:
     """A renamed volume is a silently empty gateway: no models, no config, no tokens."""
     assert list(production["volumes"]) == list(development["volumes"])
+
+
+def _section(text: str, heading: str) -> str:
+    start = text.index(heading)
+    next_heading = text.find("\n## ", start + 1)
+    return text[start:] if next_heading == -1 else text[start:next_heading]
+
+
+def test_readme_compose_quick_start_builds_from_source_first() -> None:
+    """Hub is not live yet; the first command a clone runs has to be a build."""
+    readme = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+    section = _section(readme, "## Docker Compose quick start")
+    build_at = section.index("docker compose up --detach --build")
+    prod_at = section.index("docker compose -f compose.prod.yaml up --detach")
+    assert build_at < prod_at
+
+
+def test_deployment_docs_build_from_source_before_published_pull() -> None:
+    docs = (REPOSITORY_ROOT / "docs" / "deployment.md").read_text(encoding="utf-8")
+    section = _section(docs, "## Docker Compose deployment")
+    assert section.index("### Building from the checkout") < section.index(
+        "### Running a published image"
+    )
+    assert section.index("docker compose up --detach --build") < section.index(
+        "docker compose -f compose.prod.yaml up --detach"
+    )
+
+
+def test_release_workflow_smokes_digest_before_promoting_tags() -> None:
+    """Public tags must not move until the amd64 digest has been run."""
+    workflow = (REPOSITORY_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    smoke = workflow.index("name: Smoke-test the amd64 image")
+    assemble = workflow.index("name: Assemble the manifest list")
+    copy = workflow.index("name: Copy the manifest to GHCR")
+    assert smoke < assemble < copy
+    smoke_run = workflow[smoke:assemble]
+    assert "@sha256:" in smoke_run
+    assert "imagetools create" not in smoke_run
+    assert "enable=${{ steps.gate.outputs.move_minor == 'true' }}" in workflow
+    assert "steps.gate.outputs.move_latest == 'true'" in workflow
+    assert "pattern={{version}}" in workflow
+    assert "git tag --list" in workflow

@@ -12,7 +12,7 @@ portability.
 - [Host tool requirements](#host-tool-requirements)
 - [Native macOS deployment](#native-macos-deployment) — [install](#install-and-run) · [run at login](#run-at-login)
 - [Native Linux deployment](#native-linux-deployment) — [install](#install-and-run-1) · [systemd user service](#run-as-a-systemd-user-service)
-- [Docker Compose deployment](#docker-compose-deployment) — [prerequisites](#prerequisites) · [published image](#running-a-published-image) · [from source](#building-from-the-checkout) · [first model](#first-model) · [transcript cleanup](#transcript-cleanup-in-the-container) · [routine operations](#routine-operations) · [backup](#persistent-data-and-backup) · [performance profiles](#performance-profiles) · [Vulkan GPU access](#giving-the-vulkan-container-access-to-the-gpu) · [build tuning](#tuning-the-compiled-runtimes)
+- [Docker Compose deployment](#docker-compose-deployment) — [prerequisites](#prerequisites) · [from source](#building-from-the-checkout) · [published image](#running-a-published-image) · [first model](#first-model) · [transcript cleanup](#transcript-cleanup-in-the-container) · [routine operations](#routine-operations) · [backup](#persistent-data-and-backup) · [performance profiles](#performance-profiles) · [Vulkan GPU access](#giving-the-vulkan-container-access-to-the-gpu) · [build tuning](#tuning-the-compiled-runtimes)
 - [Published images](#published-images) — [tags](#tags) · [upgrading](#upgrading-and-going-back) · [building your own](#building-and-pushing-your-own)
 - [Gateway URL and network placement](#gateway-url-and-network-placement) — [trusted LAN](#trusted-local-network) · [Tailscale Serve](#tailscale-serve) · [VPS or public DNS](#vps-or-public-dns)
 - [Configuration paths and env vars](#configuration-paths-and-env-vars)
@@ -155,12 +155,15 @@ Two files, and the difference is where the image comes from:
 
 | File | Image | Use it when |
 | --- | --- | --- |
-| [`compose.prod.yaml`](../compose.prod.yaml) | Pulled: `docker.io/vocahq/vocagateway` | You want to run a gateway. No checkout, no compiler, ~1 minute |
-| [`compose.yaml`](../compose.yaml) | Built from this checkout | You are changing the code, or you need a `cuda` / `vulkan` image |
+| [`compose.yaml`](../compose.yaml) | Built from this checkout | Cloning today, changing the code, or you need a `cuda` / `vulkan` image |
+| [`compose.prod.yaml`](../compose.prod.yaml) | Pulled: `docker.io/vocahq/vocagateway` | After a GitHub release has published images. No checkout, no compiler, ~1 minute |
 
 Everything else about the two is identical — the same environment, the same
 volume, the same hardening — and a test asserts that, so a deployment never
 gets a weaker container than a contributor's.
+
+Until the first successful publish, Hub has nothing to pull. Build from
+`compose.yaml`.
 
 ### Prerequisites
 
@@ -168,25 +171,9 @@ gets a weaker container than a contributor's.
 - At least enough free memory and disk space for the selected model
 - Tailscale on the host when the iPhone connects over the tailnet
 
-### Running a published image
-
-Nothing to clone. Two files and a token:
-
-```sh
-umask 077
-curl -O https://raw.githubusercontent.com/VocaHQ/vocagateway/main/compose.prod.yaml
-curl -o .env https://raw.githubusercontent.com/VocaHQ/vocagateway/main/.env.example
-printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
-docker compose -f compose.prod.yaml up --detach
-```
-
-That pulls one multi-architecture tag covering `linux/amd64` and `linux/arm64`;
-Docker picks the right one. See [Published images](#published-images) for the
-tags, the second registry, and how to upgrade or roll back.
-
 ### Building from the checkout
 
-The contributor's path, and the only one that produces a `cuda` or `vulkan`
+The path that works today, and the only one that produces a `cuda` or `vulkan`
 image:
 
 ```sh
@@ -214,6 +201,27 @@ template; Compose uses the last assignment when a key repeats in `.env`.
 `VOCAGATEWAY_PUBLISH_HOST=127.0.0.1` is the safe default for Tailscale Serve. Set
 it to `0.0.0.0` only when direct LAN access is intentional and protected by the
 host firewall. Never forward the port from the public internet.
+
+### Running a published image
+
+Use this only after a GitHub release has successfully published images, and
+after maintainers have set the Docker Hub secrets (`DOCKERHUB_USERNAME` /
+`DOCKERHUB_TOKEN`). Until then `docker.io/vocahq/vocagateway` has nothing to
+pull; stay on [Building from the checkout](#building-from-the-checkout).
+
+Nothing to clone. Two files and a token:
+
+```sh
+umask 077
+curl -O https://raw.githubusercontent.com/VocaHQ/vocagateway/main/compose.prod.yaml
+curl -o .env https://raw.githubusercontent.com/VocaHQ/vocagateway/main/.env.example
+printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
+docker compose -f compose.prod.yaml up --detach
+```
+
+That pulls one multi-architecture tag covering `linux/amd64` and `linux/arm64`;
+Docker picks the right one. See [Published images](#published-images) for the
+tags, the second registry, and how to upgrade or roll back.
 
 ### First model
 
@@ -480,13 +488,16 @@ host. Pinning it would only cap OpenBLAS's own parallelism for no gain.
 
 ## Published images
 
-Every GitHub release publishes the CPU image to two registries, with identical
-digests in both:
+Once a GitHub release has published successfully, the CPU image is available
+from two registries, with identical digests in both:
 
 | Registry | Image |
 | --- | --- |
 | Docker Hub | `docker.io/vocahq/vocagateway` |
 | GitHub Container Registry | `ghcr.io/vocahq/vocagateway` |
+
+Until that first publish, build from [`compose.yaml`](../compose.yaml) instead.
+`compose.prod.yaml` will 404 on pull.
 
 GHCR is there for the day Docker Hub's anonymous pull limit gets in the way;
 either serves the same bytes. Point `VOCAGATEWAY_IMAGE` at whichever you
@@ -497,8 +508,8 @@ prefer.
 | Tag | Moves | Use it for |
 | --- | --- | --- |
 | `0.1.0` | Never | A deployment you want to stay put. **Pin this in production** |
-| `0.1` | On each patch release of that minor series | Automatic patch updates, no minor jumps |
-| `latest` | On each final release; never on a pre-release | Trying it out, and home deployments that track the newest version |
+| `0.1` | Only when this patch is the newest final release of that minor series. Rebuilding an older patch does not rewrite it | Automatic patch updates, no minor jumps |
+| `latest` | Only for a published GitHub release of the newest final version overall; never on a pre-release, and never when rebuilding an older tag | Trying it out, and home deployments that track the newest version |
 
 `compose.prod.yaml` defaults to `latest`. Pin a version in `.env` when the
 gateway matters to you:
@@ -584,10 +595,17 @@ tags and ignore it.
 
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) runs when a
 GitHub release is published. It builds `linux/amd64` on `ubuntu-24.04` and
-`linux/arm64` on `ubuntu-24.04-arm`, pushes each by digest, assembles one
-manifest list per tag, copies that list to GHCR, and then — before anyone can
-pull it — starts the published image under the same hardening Compose applies
-and waits for its health check, failing the release if it does not come up.
+`linux/arm64` on `ubuntu-24.04-arm`, pushes each by digest, smoke-tests the
+amd64 digest under the same hardening Compose applies, and only then assembles
+one manifest list per tag and copies those tags to GHCR. Digests may exist on
+the registry while the smoke runs; public tags (`0.1.0`, `0.1`, `latest`) do
+not move until it passes. A failed smoke leaves floating tags pointing at
+whatever they already named.
+
+The version tag always publishes. `major.minor` (for example `0.1`) is
+emitted only when this tag is the newest final release of that line among git
+tags. `latest` moves only for a published non-pre-release GitHub release of
+the newest final tag overall.
 
 Maintainers: the workflow needs two repository secrets, `DOCKERHUB_USERNAME`
 and `DOCKERHUB_TOKEN` (a Docker Hub access token with **Read & Write** scope).

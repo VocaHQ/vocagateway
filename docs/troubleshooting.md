@@ -227,10 +227,12 @@ docker compose -f compose.prod.yaml logs gateway
 
 A pull that fails with `denied` or `manifest unknown` is usually a tag that
 does not exist — check
-[Published images](deployment.md#published-images) for the ones that do. If
-Docker Hub answers `429 Too Many Requests`, its anonymous pull limit has been
-reached for your IP; either log in with `docker login` or switch to the other
-registry, which serves the same digests:
+[Published images](deployment.md#published-images) for the ones that do.
+Until the first successful release publish, Hub has no image; build from
+`compose.yaml` instead. If Docker Hub answers `429 Too Many Requests`, its
+anonymous pull limit has been reached for your IP; either log in with
+`docker login` or switch to the other registry, which serves the same
+digests:
 
 ```sh
 VOCAGATEWAY_IMAGE=ghcr.io/vocahq/vocagateway:latest \

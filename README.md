@@ -71,7 +71,7 @@ contract is in [configuration.md](docs/configuration.md).
 - [Native macOS quick start](#native-macos-quick-start)
 - [Native Linux quick start](#native-linux-quick-start)
   - [Phone pairing QR](#phone-pairing-qr)
-- [Docker Compose quick start](#docker-compose-quick-start) — published image, or built from source
+- [Docker Compose quick start](#docker-compose-quick-start) — build from source; published image after a release
   - [Stamping the build commit](#stamping-the-build-commit)
 - [WebUI](#webui)
   - [Fast model guide](#fast-model-guide)
@@ -229,10 +229,28 @@ and is dropped immediately on revoke.
 
 ## Docker Compose quick start
 
-[compose.prod.yaml](compose.prod.yaml) runs the published image. No checkout and
-no compiler: one non-root Linux image with FFmpeg, the gateway, a pinned
-`whisper.cpp`, and the `llama-server` transcript cleanup runs on. Every release
-publishes one tag covering `linux/amd64` and `linux/arm64`.
+[compose.yaml](compose.yaml) is the path that works today: it builds the CPU
+image from this checkout. That is also the only way to get a `cuda` or
+`vulkan` image. It compiles whisper.cpp and llama.cpp for your accelerator,
+which takes tens of minutes:
+
+```sh
+umask 077
+cp .env.example .env
+printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
+docker compose up --detach --build
+```
+
+[compose.prod.yaml](compose.prod.yaml) pulls a published image instead of
+building one. Use it only after a GitHub release has successfully published
+images, and after maintainers have set the Docker Hub secrets
+(`DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN`). Until then Hub has nothing to
+pull: `docker.io/vocahq/vocagateway` is not live yet.
+
+Once that publish has happened, no checkout and no compiler: one non-root
+Linux image with FFmpeg, the gateway, a pinned `whisper.cpp`, and the
+`llama-server` transcript cleanup runs on. One tag covers `linux/amd64` and
+`linux/arm64`.
 
 ```sh
 umask 077
@@ -244,25 +262,14 @@ docker compose -f compose.prod.yaml ps
 curl --fail http://127.0.0.1:8765/health/live
 ```
 
-Images are published to `docker.io/vocahq/vocagateway` and, with identical
-digests, `ghcr.io/vocahq/vocagateway`. `latest` is the newest final release;
-pin `VOCAGATEWAY_IMAGE=docker.io/vocahq/vocagateway:0.1.0` in `.env` for a
+Images then live at `docker.io/vocahq/vocagateway` and, with identical
+digests, `ghcr.io/vocahq/vocagateway`. `latest` is the newest final release
+and only moves when that release is the newest final tag overall; pin
+`VOCAGATEWAY_IMAGE=docker.io/vocahq/vocagateway:0.1.0` in `.env` for a
 deployment you would rather not have move under you. Upgrades are
 `docker compose -f compose.prod.yaml pull && docker compose -f compose.prod.yaml up --detach`,
 and your models, config and database stay in the named volume across them. See
 [Published images](docs/deployment.md#published-images) for the full tag list.
-
-[compose.yaml](compose.yaml) is the same deployment built from this checkout —
-what contributors run, and the only way to get a `cuda` or `vulkan` image. It
-compiles whisper.cpp and llama.cpp for your accelerator, which takes tens of
-minutes:
-
-```sh
-umask 077
-cp .env.example .env
-printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
-docker compose up --detach --build
-```
 
 The two files describe the same service — same environment, same volume, same
 hardening; a test holds them to it — so nothing below is specific to one of
@@ -1003,7 +1010,7 @@ gateway service at a time: every profile publishes the same port and shares the
 same model volume.
 
 ```sh
-# Portable CPU (default; amd64 and arm64) — or just pull it, see the quick start
+# Portable CPU (default; amd64 and arm64)
 docker compose up --detach --build gateway
 
 # NVIDIA host with Container Toolkit
