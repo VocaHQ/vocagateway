@@ -34,6 +34,7 @@ from starlette.status import (
     HTTP_422_UNPROCESSABLE_CONTENT,
 )
 
+from app import admin_queries
 from app.config import Settings
 from app.main import create_app
 from app.models.base import EngineHealth
@@ -265,8 +266,18 @@ async def test_the_settings_page_renders_transcripts_as_text(gateway: Any) -> No
     assert "never sees your audio" in " ".join(body.split())
 
 
-async def test_diagnostics_carry_the_cleanup_block_and_no_text(gateway: Any) -> None:
+@pytest.mark.parametrize("host_os", ["Darwin", "Linux"])
+async def test_diagnostics_carry_the_cleanup_block_and_no_text(
+    gateway: Any, monkeypatch: MonkeyPatch, host_os: str
+) -> None:
+    """Run for both platforms: the install hint differs, and the rule must not.
+
+    Naming a host explicitly is the point. The advice for a Mac and the advice
+    for a Linux host are different sentences, and a check written against
+    whichever one the developer happened to be on is a check that fails in CI.
+    """
     client, app = gateway
+    monkeypatch.setattr(admin_queries.platform, "system", lambda: host_os)
     enable_cleanup(app, FakeCleanupRuntime(CORRECTED))
     await client.post(
         TRANSCRIPTIONS,
@@ -279,14 +290,17 @@ async def test_diagnostics_carry_the_cleanup_block_and_no_text(gateway: Any) -> 
     assert '"cleanup"' in body
     assert SPOKEN not in body
     assert CORRECTED not in body
-    # The cleanup block itself still describes no topology: no executable, no
-    # endpoint, no credential. The runtime appears only as a dependency tile —
-    # the same shape, and the same redaction, as whisper.cpp and FFmpeg — so an
-    # operator reading a shared bundle can tell a missing runtime from a
-    # missing model.
+    # The cleanup block itself still describes no topology: no executable path,
+    # no endpoint, no credential. One field names the runtime — `runtime_hint`,
+    # which is install advice and identical on every host of a platform — and
+    # nothing else in the block mentions it at all.
     cleanup_block = bundle["config"]["cleanup"]
     assert not {"binary", "endpoint", "api_key", "path"} & set(cleanup_block)
-    assert "llama-server" not in json.dumps(cleanup_block)
+    described = {key: text for key, text in cleanup_block.items() if key != "runtime_hint"}
+    assert "llama-server" not in json.dumps(described)
+    # The runtime appears with a path only as a dependency tile — the same
+    # shape, and the same redaction, as whisper.cpp and FFmpeg — so an operator
+    # reading a shared bundle can tell a missing runtime from a missing model.
     tile = next(item for item in bundle["dependencies"] if item["name"] == "llama.cpp server")
     assert tile["path"] is None or "llama-server" in tile["path"]
 
@@ -634,6 +648,12 @@ async def test_a_missing_runtime_is_reported_on_the_dashboard_and_the_checklist(
 
         page = _flattened(await client.get("/ui/partials/cleanup", headers=AUTH))
         assert f"No llama-server found. {tile['install_hint']}" in page
+
+        # Where the gateway looked is the operator's business and nobody
+        # else's: the configured path reaches the dashboard tile and stops
+        # there, never the cleanup block a diagnostics bundle carries.
+        cleanup = (await client.get(CLEANUP_CONFIG, headers=AUTH)).json()
+        assert "/nonexistent" not in json.dumps(cleanup)
 
 
 async def test_an_installed_runtime_is_reported_with_the_path_it_was_found_at(
