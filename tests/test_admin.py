@@ -638,6 +638,26 @@ async def test_models_ui_filter_panel_is_multi_select(
     assert "Fits this machine" in page.text
 
 
+async def test_the_model_list_marks_each_family_with_its_vendor(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    """Whose model this is, before what it is called.
+
+    Both halves are asserted because they fail apart: a vendor with a
+    redistributable mark draws a glyph, one without draws a monogram, and the
+    name in the meta line is what a screen reader reads and what tells a person
+    that "OAI" was OpenAI.
+    """
+    page = (await admin_client.get("/ui/partials/models", headers=auth)).text
+
+    # This fixture ships one Whisper model, so OpenAI is the family on the
+    # page — the vendor with no redistributable mark, and therefore the one
+    # whose badge has to work from a monogram alone.
+    assert 'class="vendor-badge vendor-openai"' in page
+    assert '<span class="vendor-monogram">OAI</span>' in page
+    assert 'class="family-vendor">OpenAI<' in page
+
+
 async def test_models_list_accepts_cleared_filters(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:

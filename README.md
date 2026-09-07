@@ -363,6 +363,8 @@ The authenticated WebUI provides:
 - process uptime, active/queued work, outcomes, rejections, and stage-level latency
 - detected CPU allocation/features, container state, and available accelerators
 - hardware-aware model recommendations and disk-size/RAM guidance
+- a vendor mark on every model family — whose model it is, at a glance: NVIDIA's
+  Parakeet and Canary, OpenAI's Whisper, Alibaba's SenseVoice, and so on
 - background downloads with scoped progress polling and cancellation
 - model selection/deletion and persistent engine settings
 - custom `.bin`/`.gguf` model downloads from HTTPS URLs, with an optional

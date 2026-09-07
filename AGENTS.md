@@ -42,6 +42,7 @@ Rules:
 | `app/routes/` | HTTP and `/v1/stream` WebSocket |
 | `app/models/` | Engine adapters (sherpa-onnx, faster-whisper, Moonshine, whisper.cpp, MLX, WhisperKit, VocaMac, Handy) |
 | `app/catalog.py` / `app/model_pins.json` | Downloadable models and SHA-256 pins |
+| `app/model_vendors.py` | Which organisation published each model family, for the badge on its card. Hand-mapped: the download URL names the converter, not the lab. Tests hold it to the catalog |
 | `app/fragments/` | HTMX HTML partials |
 | `app/webui/` | Authenticated admin UI (static assets) |
 | `tests/` | pytest (`asyncio_mode = auto`) |

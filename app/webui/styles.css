@@ -1501,6 +1501,74 @@ button.family-summary:focus-visible {
   gap: 6px;
   flex: 0 0 auto;
 }
+
+/* Vendor badge — whose model this family is.
+
+   One shape for every vendor, whether it holds a glyph or a monogram: the
+   marks come from different sources and would otherwise sit at different
+   weights and sizes, and a row of badges that do not line up reads as broken
+   rather than as brand-accurate. The colour is the vendor's, at a tint that
+   stays legible on both themes rather than at full brand saturation, which is
+   too loud beside the accent green and unreadable in light mode. */
+.vendor-badge {
+  --vendor-mark: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  margin-top: 1px;
+  border: 1px solid color-mix(in srgb, var(--vendor-mark) 35%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vendor-mark) 12%, transparent);
+  color: var(--vendor-mark);
+}
+.vendor-glyph {
+  display: block;
+}
+/* Monograms carry the vendors with no redistributable mark, so they have to
+   hold their own beside a real glyph: tight tracking, and a step down in size
+   for the three-letter ones rather than overflowing the badge. */
+.vendor-monogram {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.vendor-ibm .vendor-monogram,
+.vendor-openai .vendor-monogram {
+  font-size: 9px;
+}
+/* Brand colours, following the hardware panel's .sys-vendor-* convention: the
+   published colour on light, a lifted one on dark. NVIDIA green and Sber green
+   are the reason — both go muddy against the dark surface. */
+.vendor-nvidia { --vendor-mark: #76b900; }
+.vendor-openai { --vendor-mark: #0f9d76; }
+.vendor-alibaba { --vendor-mark: #ff6a00; }
+.vendor-qwen { --vendor-mark: #6950ef; }
+.vendor-mediatek { --vendor-mark: #d97f14; }
+.vendor-ibm { --vendor-mark: #0f62fe; }
+.vendor-cohere { --vendor-mark: #9333ea; }
+.vendor-useful-sensors { --vendor-mark: #64748b; }
+.vendor-dataocean { --vendor-mark: #0891b2; }
+.vendor-salute { --vendor-mark: #21a038; }
+.vendor-k2fsa { --vendor-mark: #7c3aed; }
+html[data-theme="dark"] .vendor-nvidia { --vendor-mark: #a3e635; }
+html[data-theme="dark"] .vendor-openai { --vendor-mark: #34d399; }
+html[data-theme="dark"] .vendor-alibaba { --vendor-mark: #fb923c; }
+html[data-theme="dark"] .vendor-qwen { --vendor-mark: #a78bfa; }
+html[data-theme="dark"] .vendor-mediatek { --vendor-mark: #fbbf24; }
+html[data-theme="dark"] .vendor-ibm { --vendor-mark: #60a5fa; }
+html[data-theme="dark"] .vendor-cohere { --vendor-mark: #d18ee2; }
+html[data-theme="dark"] .vendor-useful-sensors { --vendor-mark: #94a3b8; }
+html[data-theme="dark"] .vendor-dataocean { --vendor-mark: #38bdf8; }
+html[data-theme="dark"] .vendor-salute { --vendor-mark: #4ade80; }
+html[data-theme="dark"] .vendor-k2fsa { --vendor-mark: #a78bfa; }
+.family-vendor {
+  color: var(--muted);
+}
 .family-meta {
   display: flex;
   flex-wrap: nowrap;
