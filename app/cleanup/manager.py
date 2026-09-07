@@ -37,7 +37,7 @@ from app.cleanup.base import (
 )
 from app.cleanup.host import WorkerHost
 from app.cleanup.llama_server import LlamaServerRuntime
-from app.cleanup.profile import PROFILE_COMPACT, PROFILE_FULL, chunk_limit_for_window
+from app.cleanup.profile import PROFILE_COMPACT, PROFILE_FULL, budget_for_window
 from app.cleanup.transport import Endpoint
 
 SECONDS_PER_MINUTE = 60
@@ -438,7 +438,7 @@ class CleanupManager:
         return LlamaServerRuntime(
             endpoint,
             model_id=self.model_id or EXTERNAL_MODEL_NAME,
-            chunk_char_limit=chunk_limit_for_window(self._external_window),
+            budget=budget_for_window(self._external_window),
         )
 
     async def _lease(self) -> Lease:

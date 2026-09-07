@@ -10,10 +10,14 @@ flags cannot serve both. The gateway therefore has two profiles:
   a GPU (Metal, CUDA, or AMD) is present, or when the host has 16 GB RAM or
   more.
 
+The window is not only a memory figure: it is what `TokenBudget` divides
+between the transcript and its correction, so the full profile's larger
+`--ctx-size` buys longer one-pass corrections rather than an idle KV cache.
+
 ``auto`` (the shipped default) picks between them. ``VOCAGATEWAY_CLEANUP_PROFILE``
 forces one. An operator-run server is not launched by us, so these flags are
 documented for that case rather than applied to it; the runtime still sizes
-its sentence packing from the window that server reports.
+its budget from the window that server reports.
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app import system
-from app.cleanup.base import CHUNK_CHAR_LIMIT, MINIMUM_CONTEXT_TOKENS
+from app.cleanup.base import MINIMUM_CONTEXT_TOKENS, TokenBudget, budget_for_context
 
 PROFILE_AUTO = "auto"
 PROFILE_COMPACT = "compact"
@@ -33,9 +37,10 @@ COMPACT_UBATCH_TOKENS = 256
 FULL_CONTEXT_TOKENS = 8_192
 FULL_BATCH_TOKENS = 2_048
 FULL_UBATCH_TOKENS = 512
-# Tokens reserved in n_ctx for the system instruction, chat template, and
-# JSON output, so the packed transcript does not crowd generation off the end.
-PROMPT_AND_OUTPUT_RESERVE = 2_500
+# The unquantized KV cache type, and the only one `llama-server` will build a
+# context for without flash attention.
+KV_CACHE_F16 = "f16"
+KV_CACHE_Q8 = "q8_0"
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,17 +52,32 @@ class CleanupLaunchProfile:
     kv_cache_type: str
     batch_tokens: int
     ubatch_tokens: int
-    chunk_char_limit: int
     summary: str
+
+    @property
+    def budget(self) -> TokenBudget:
+        """How this profile's window splits between transcript and correction."""
+        return budget_for_context(self.context_tokens)
+
+    @property
+    def quantized_value_cache(self) -> bool:
+        """Whether the V cache this profile asks for needs flash attention.
+
+        `llama-server` refuses to create a context with a quantized V cache and
+        flash attention off — "quantized V cache requires flash_attn" — and
+        `--flash-attn auto` resolves to off on a backend that cannot do it. The
+        worker therefore asks for flash attention explicitly here, and falls
+        back to an f16 V cache on a build too old to be asked.
+        """
+        return self.kv_cache_type != KV_CACHE_F16
 
 
 COMPACT_PROFILE = CleanupLaunchProfile(
     id=PROFILE_COMPACT,
     context_tokens=MINIMUM_CONTEXT_TOKENS,
-    kv_cache_type="q8_0",
+    kv_cache_type=KV_CACHE_Q8,
     batch_tokens=COMPACT_BATCH_TOKENS,
     ubatch_tokens=COMPACT_UBATCH_TOKENS,
-    chunk_char_limit=CHUNK_CHAR_LIMIT,
     summary=(
         "Low-end profile: 4096 context and 8-bit KV cache, for CPU-only machines under 16 GB RAM."
     ),
@@ -66,10 +86,9 @@ COMPACT_PROFILE = CleanupLaunchProfile(
 FULL_PROFILE = CleanupLaunchProfile(
     id=PROFILE_FULL,
     context_tokens=FULL_CONTEXT_TOKENS,
-    kv_cache_type="f16",
+    kv_cache_type=KV_CACHE_F16,
     batch_tokens=FULL_BATCH_TOKENS,
     ubatch_tokens=FULL_UBATCH_TOKENS,
-    chunk_char_limit=FULL_CONTEXT_TOKENS - PROMPT_AND_OUTPUT_RESERVE,
     summary=(
         "High-end profile: 8192 context and 16-bit KV cache, for GPUs and "
         "machines with 16 GB RAM or more."
@@ -101,8 +120,12 @@ def describe_profile(profile: CleanupLaunchProfile, requested: str | None) -> st
     return f"{profile.summary} Chosen automatically for this host."
 
 
-def chunk_limit_for_window(n_ctx: int) -> int:
-    """How many characters one inference can take, given a server's ``n_ctx``."""
-    if n_ctx <= 0:
-        return CHUNK_CHAR_LIMIT
-    return max(CHUNK_CHAR_LIMIT, n_ctx - PROMPT_AND_OUTPUT_RESERVE)
+def budget_for_window(n_ctx: int) -> TokenBudget:
+    """The token split for a window the gateway did not choose.
+
+    An operator-run server that reports nothing is treated as the smallest
+    window the gateway will work with, which is the conservative reading: too
+    small a budget costs an extra piece, too large a one silently drops the
+    system instruction.
+    """
+    return budget_for_context(n_ctx if n_ctx > 0 else MINIMUM_CONTEXT_TOKENS)

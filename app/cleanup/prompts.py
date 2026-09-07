@@ -14,9 +14,10 @@ import json
 from typing import Any
 
 from app.cleanup.base import (
+    DEFAULT_TOKEN_BUDGET,
     JSON_WRAPPER_TOKENS,
-    MAXIMUM_OUTPUT_TOKENS,
     MINIMUM_OUTPUT_TOKENS,
+    TokenBudget,
 )
 
 # Pinned non-thinking sampling. Near-greedy because the task is a correction,
@@ -89,18 +90,26 @@ def user_message(transcript: str, language: str) -> dict[str, str]:
     return {"role": "user", "content": payload}
 
 
-def output_token_budget(transcript: str) -> int:
+def output_token_budget(transcript: str, budget: TokenBudget = DEFAULT_TOKEN_BUDGET) -> int:
     """Decode budget for one correction, scaled to the transcript.
 
     The JSON schema already stops at a complete object, but a tight ceiling
     stops a ramble inside ``text`` before it burns the request deadline.
     Character length is an upper bound on tokens for a same-length correction.
+    The ceiling comes from the window the worker was launched with, so a
+    high-end host is not held to a low-end host's decode budget.
     """
     needed = len(transcript) + JSON_WRAPPER_TOKENS
-    return min(MAXIMUM_OUTPUT_TOKENS, max(MINIMUM_OUTPUT_TOKENS, needed))
+    return min(budget.output_tokens, max(MINIMUM_OUTPUT_TOKENS, needed))
 
 
-def chat_request(transcript: str, language: str, *, model: str) -> dict[str, Any]:
+def chat_request(
+    transcript: str,
+    language: str,
+    *,
+    model: str,
+    budget: TokenBudget = DEFAULT_TOKEN_BUDGET,
+) -> dict[str, Any]:
     """The full chat-completions body, in non-thinking mode with no tools."""
     return {
         "model": model,
@@ -109,7 +118,7 @@ def chat_request(transcript: str, language: str, *, model: str) -> dict[str, Any
         "top_p": TOP_P,
         "top_k": TOP_K,
         "repeat_penalty": REPEAT_PENALTY,
-        "max_tokens": output_token_budget(transcript),
+        "max_tokens": output_token_budget(transcript, budget),
         "stream": False,
         # Structural guarantee, not a semantic one: it constrains the shape of
         # the answer, never its truthfulness. The validators still run.

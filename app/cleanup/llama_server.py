@@ -19,13 +19,13 @@ from typing import Any
 
 from app.cleanup import chunks, prompts, transport
 from app.cleanup.base import (
-    CHUNK_CHAR_LIMIT,
-    MAXIMUM_INPUT_TOKENS,
+    DEFAULT_TOKEN_BUDGET,
     MAXIMUM_OUTPUT_BYTES,
     MINIMUM_CONTEXT_TOKENS,
     CleanupReason,
     CleanupRejected,
     CleanupUnavailable,
+    TokenBudget,
 )
 
 HEALTH_PATH = "/health"
@@ -60,12 +60,12 @@ class LlamaServerRuntime:
         *,
         model_id: str,
         model_name: str = "cleanup",
-        chunk_char_limit: int = CHUNK_CHAR_LIMIT,
+        budget: TokenBudget = DEFAULT_TOKEN_BUDGET,
     ) -> None:
         self.endpoint = endpoint
         self._model_id = model_id
         self._model_name = model_name
-        self._chunk_char_limit = chunk_char_limit
+        self._budget = budget
 
     @property
     def model_id(self) -> str | None:
@@ -122,11 +122,27 @@ class LlamaServerRuntime:
         return len(tokens)
 
     async def clean(self, transcript: str, language: str, *, budget_seconds: float) -> str:
+        """Correct a transcript in as few inferences as its length allows.
+
+        Three cases, cheapest first. A transcript small enough that no
+        tokenizer could turn it into more tokens than the budget goes straight
+        out. Anything larger is counted once by the runtime's own tokenizer,
+        which usually says it fits after all - English dictation is around five
+        characters to the token, so a full two-minute recording is a few
+        hundred. Only a transcript that genuinely does not fit is split, and
+        that same count is what sizes the pieces.
+        """
         deadline = time.monotonic() + budget_seconds
-        pieces = chunks.pack(transcript, limit=self._chunk_char_limit)
-        if len(pieces) <= 1:
+        if len(transcript.encode("utf-8")) <= self._budget.certain_bytes:
             return await self._complete(transcript, language, deadline, budget_seconds)
-        return await self._complete_pieces(pieces, language, deadline, budget_seconds)
+        counted = await self.count_tokens(
+            transcript, budget=remaining(deadline, TOKENIZE_TIMEOUT_SECONDS)
+        )
+        if counted <= self._budget.input_tokens:
+            return await self._complete(transcript, language, deadline, budget_seconds)
+        limit = chunks.character_limit(len(transcript), counted, self._budget.input_tokens)
+        pieces = chunks.pack(transcript, limit=limit)
+        return await self._complete_pieces(pieces, language, deadline, budget_seconds, limit)
 
     async def _complete_pieces(
         self,
@@ -134,15 +150,22 @@ class LlamaServerRuntime:
         language: str,
         deadline: float,
         budget_seconds: float,
+        limit: int,
     ) -> str:
         """Correct each packed piece. A failed slice keeps its original text."""
         cleaned: list[str] = []
-        remaining_pieces = len(pieces)
         index = 0
         while index < len(pieces):
-            share = remaining(deadline, budget_seconds) / remaining_pieces
-            remaining_pieces -= 1
             piece = pieces[index]
+            if len(piece) > limit:
+                # An indivisible unit larger than one inference: a URL or a
+                # path with nowhere to break it. Correcting everything around
+                # it beats refusing the whole transcript over one span.
+                cleaned.append(piece)
+                index += 1
+                continue
+            # An even share of what is left, over the pieces that are left.
+            share = remaining(deadline, budget_seconds) / (len(pieces) - index)
             try:
                 cleaned.append(await self._complete(piece, language, deadline, share))
             except TimeoutError:
@@ -156,25 +179,15 @@ class LlamaServerRuntime:
     async def _complete(
         self, transcript: str, language: str, deadline: float, budget_seconds: float
     ) -> str:
-        await self._check_length(transcript, deadline)
         reply = await transport.post_json(
             self.endpoint,
             COMPLETIONS_PATH,
-            prompts.chat_request(transcript, language, model=self._model_name),
+            prompts.chat_request(transcript, language, model=self._model_name, budget=self._budget),
             budget=remaining(deadline, budget_seconds),
         )
         if reply.status != transport.HTTP_OK:
             raise CleanupUnavailable("The cleanup runtime rejected the request.")
         return _decode_completion(_parsed(reply))
-
-    async def _check_length(self, transcript: str, deadline: float) -> None:
-        if len(transcript) <= self._chunk_char_limit:
-            return
-        counted = await self.count_tokens(
-            transcript, budget=remaining(deadline, TOKENIZE_TIMEOUT_SECONDS)
-        )
-        if counted > MAXIMUM_INPUT_TOKENS:
-            raise CleanupRejected(CleanupReason.INPUT_TOO_LONG)
 
 
 def _parsed(reply: transport.Reply) -> Any:

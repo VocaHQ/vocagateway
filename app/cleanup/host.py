@@ -21,7 +21,12 @@ from pathlib import Path
 
 from app import config, runtime_config, system
 from app.cleanup import catalog, worker
-from app.cleanup.base import MINIMUM_CONTEXT_TOKENS, CleanupRuntime, CleanupUnavailable
+from app.cleanup.base import (
+    MINIMUM_CONTEXT_TOKENS,
+    CleanupRuntime,
+    CleanupUnavailable,
+    budget_for_context,
+)
 from app.cleanup.llama_server import LlamaServerRuntime
 from app.cleanup.profile import CleanupLaunchProfile, describe_profile, resolve_profile
 
@@ -73,10 +78,14 @@ class WorkerHost:
         active = self._ensure(binary, model_file, model_id)
         if not self._resident(active):
             return None
+        # The budget follows the window this worker was actually launched with,
+        # not the profile's nominal one: a model whose ceiling is lower than the
+        # profile asked for gets a smaller window, and a runtime that believed
+        # otherwise would pack pieces the server cannot hold.
         return LlamaServerRuntime(
             active.endpoint,
             model_id=model_id,
-            chunk_char_limit=self.profile.chunk_char_limit,
+            budget=budget_for_context(active.context_tokens),
         )
 
     def stop(self, *, offloaded: bool = False) -> None:
@@ -158,7 +167,7 @@ class WorkerHost:
         self._worker = worker.LlamaServerWorker(
             binary,
             model_file,
-            context_tokens=max(_context_tokens(model_id), self.profile.context_tokens),
+            context_tokens=_context_tokens(model_id, self.profile),
             cpu_threads=self.runtime_config.cpu_threads,
             profile=self.profile,
         )
@@ -184,10 +193,18 @@ def _reap(active: worker.LlamaServerWorker) -> None:
     loop.run_in_executor(None, active.stop).add_done_callback(lambda done: done.exception())
 
 
-def _context_tokens(model_id: str) -> int:
+def _context_tokens(model_id: str, profile: CleanupLaunchProfile) -> int:
+    """The window to launch with: the profile's, capped by the model's ceiling.
+
+    A cap in both directions, and the direction matters. The compact profile
+    exists to keep the KV cache from dwarfing a 0.6B model's weights on a
+    4-8 GB host, so a catalog entry recording a 40k trained window must not be
+    able to raise it; and the full profile must not ask for more window than
+    the weights were trained for. An unknown model gets the floor.
+    """
     selected = catalog.cleanup_model(model_id)
-    declared = selected.context_tokens if selected else MINIMUM_CONTEXT_TOKENS
-    return max(MINIMUM_CONTEXT_TOKENS, declared)
+    ceiling = selected.maximum_context_tokens if selected else MINIMUM_CONTEXT_TOKENS
+    return max(MINIMUM_CONTEXT_TOKENS, min(profile.context_tokens, ceiling))
 
 
 def _host_info(settings: config.Settings) -> system.SystemInfo:

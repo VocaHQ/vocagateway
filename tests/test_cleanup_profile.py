@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from app.cleanup.base import CHUNK_CHAR_LIMIT, MINIMUM_CONTEXT_TOKENS
+from app.cleanup.base import MINIMUM_CONTEXT_TOKENS
 from app.cleanup.profile import (
     COMPACT_PROFILE,
     FULL_PROFILE,
     FULL_RAM_GB,
-    chunk_limit_for_window,
+    budget_for_window,
     describe_profile,
     resolve_profile,
 )
@@ -85,7 +85,23 @@ def test_describe_profile_says_when_it_was_forced() -> None:
     assert "VOCAGATEWAY_CLEANUP_PROFILE" not in automatic
 
 
-def test_chunk_limit_grows_with_a_larger_server_window() -> None:
-    assert chunk_limit_for_window(0) == CHUNK_CHAR_LIMIT
-    assert chunk_limit_for_window(4_096) >= CHUNK_CHAR_LIMIT
-    assert chunk_limit_for_window(8_192) > chunk_limit_for_window(4_096)
+def test_the_budget_grows_with_a_larger_server_window() -> None:
+    """An operator-run server that reports nothing gets the smallest budget."""
+    assert budget_for_window(0) == COMPACT_PROFILE.budget
+    assert budget_for_window(MINIMUM_CONTEXT_TOKENS) == COMPACT_PROFILE.budget
+    assert budget_for_window(8_192).input_tokens > budget_for_window(4_096).input_tokens
+
+
+def test_the_full_profile_spends_its_larger_window_on_longer_passes() -> None:
+    """The point of 8192 is a longer one-pass correction, not an idle cache."""
+    assert FULL_PROFILE.budget.input_tokens > COMPACT_PROFILE.budget.input_tokens
+    assert FULL_PROFILE.budget.output_tokens > COMPACT_PROFILE.budget.output_tokens
+    # Prompt, transcript, and answer all have to fit the window that was asked for.
+    for profile in (COMPACT_PROFILE, FULL_PROFILE):
+        budget = profile.budget
+        assert budget.input_tokens + budget.output_tokens <= profile.context_tokens
+
+
+def test_only_the_compact_profile_needs_flash_attention() -> None:
+    assert COMPACT_PROFILE.quantized_value_cache is True
+    assert FULL_PROFILE.quantized_value_cache is False

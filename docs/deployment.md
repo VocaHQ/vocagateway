@@ -298,8 +298,8 @@ services:
     command:
        [--model, /models/your.gguf, --host, 0.0.0.0, --port, "8080",
         --ctx-size, "4096", --batch-size, "512", --ubatch-size, "256",
-        --cache-type-k, q8_0, --cache-type-v, q8_0,
-        --parallel, "1", --jinja, --no-webui,
+        --cache-type-k, q8_0, --cache-type-v, q8_0, --flash-attn, on,
+        --no-context-shift, --parallel, "1", --jinja, --no-webui,
         --api-key, "${VOCAGATEWAY_CLEANUP_API_KEY}"]
 ```
 

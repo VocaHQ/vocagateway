@@ -5,6 +5,11 @@ thing leaves grammar uncorrected for no reason other than the KV window.
 Pieces are packed on paragraph, then sentence, then whitespace boundaries so
 a URL or path is not cut in half. Joining them in order recovers the original
 bytes exactly; the runtime stitches model output the same way.
+
+Splitting is a last resort, not a default: a piece is corrected without the
+sentences on either side of it, so the fewer pieces a transcript needs, the
+better the correction. `character_limit` therefore sizes them from the
+transcript's own measured token density rather than from a worst case.
 """
 
 from __future__ import annotations
@@ -12,14 +17,28 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 
-from app.cleanup.base import CHUNK_CHAR_LIMIT
+from app.cleanup.base import TOKEN_ESTIMATE_MARGIN
 
 _PARAGRAPH = re.compile(r"\n\n+")
 _SENTENCE = re.compile(r"[.!?。！？।…][\"'”’)\]]*\s+")
 _WHITESPACE = re.compile(r"\s+")
 
 
-def pack(text: str, *, limit: int = CHUNK_CHAR_LIMIT) -> list[str]:
+def character_limit(characters: int, tokens: int, budget_tokens: int) -> int:
+    """How many characters of *this* text fit one inference's token budget.
+
+    The ratio is measured from the transcript in hand instead of assumed.
+    English dictation runs about five characters to the token, Devanagari
+    close to one, and a script the tokenizer has no entries for costs more
+    than one token per character - so a single fixed number is either wrong
+    for most languages or four times too small for the common one.
+    """
+    if characters <= 0 or tokens <= 0:
+        return max(1, budget_tokens)
+    return max(1, int(budget_tokens * TOKEN_ESTIMATE_MARGIN * characters / tokens))
+
+
+def pack(text: str, *, limit: int) -> list[str]:
     """Split *text* into pieces of at most *limit* characters.
 
     A single whitespace-delimited token longer than *limit* is left whole so a
