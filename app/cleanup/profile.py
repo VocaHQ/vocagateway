@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """Launch flags for the cleanup worker, chosen from this machine.
 
 A 0.6B cleanup model is cheap on a GPU or a 16 GB host and expensive on a

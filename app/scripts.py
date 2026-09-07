@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """Detect when a transcript came back in the wrong writing system.
 
 Several catalog models decide the language themselves and cannot be pinned

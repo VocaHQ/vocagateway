@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """A gateway-owned `llama-server` child process.
 
 The gateway launches this itself so that enabling cleanup does not require an

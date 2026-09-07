@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """Authenticated operator controls for transcript cleanup.
 
 Kept in its own router, with its own partial-update contract, because cleanup

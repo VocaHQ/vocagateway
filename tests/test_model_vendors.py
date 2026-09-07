@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """The vendor badge is a factual claim about who made a model, so it is tested.
 
 Three things can go wrong with it and none of them are visible in review: a new

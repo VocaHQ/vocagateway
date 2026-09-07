@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """Check that app/model_pins.json still matches what Hugging Face serves today.
 
 This is the guard for the bug fixed in harvest-model-pins.py: a wrong digest

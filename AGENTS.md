@@ -167,6 +167,7 @@ behind a reverse proxy at a **domain root**, not a subpath.
 | `container.yml` | `Dockerfile`, `.dockerignore`, `compose.yaml`, `compose.prod.yaml`, `pyproject.toml`, `uv.lock`, workflow | `docker buildx` CPU/CUDA/Vulkan matrix (representative CUDA architecture), CPU backend/runtime smoke test, cleanup-runtime device listing, Compose config for every profile and the deployment file |
 | `release.yml` | A published GitHub release, or `workflow_dispatch` | Builds the CPU image on native amd64 and arm64 runners, pushes by digest, smoke-tests the amd64 digest, then assembles one manifest list per tag and copies it to GHCR. Needs the `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` secrets |
 | `verify-model-pins.yml` | pin/catalog/harvester paths + weekly | `scripts/verify-model-pins.py` |
+| `copyright-check.yml` | `app/`, `tests/`, `scripts/`, `web/`, `COPYRIGHT.txt`, workflow | `addlicense -check -f COPYRIGHT.txt` over Python, shell, JS and CSS. HTML fragments and vendored assets (htmx, swagger-ui) are excluded. `just copyright` writes the missing headers |
 | `deploy-pages.yml` | `web/**` on `main` | GitHub Pages |
 
 Docs-only / `AGENTS.md` PRs skip quality and container jobs. That is expected.

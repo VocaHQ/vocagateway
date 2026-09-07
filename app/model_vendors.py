@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """Who made each model family, and how to mark it in the model list.
 
 The family cards answer "how many models, how big, which engine" but not the

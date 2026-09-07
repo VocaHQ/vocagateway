@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """Bearer authentication: the boundary every route and the WebSocket share.
 
 Coverage elsewhere exercises auth incidentally (`test_admin.py` for device
