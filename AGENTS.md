@@ -12,6 +12,11 @@ Product and operator docs: [README.md](README.md) and the
 [troubleshooting](docs/troubleshooting.md), [models](docs/models.md)).
 This file is for coding agents.
 
+## Commit attribution
+
+Agents must not add themselves as commit co-authors or add `Co-authored-by`
+trailers for agents.
+
 ## Critical: git worktrees for every branch and PR
 
 Never create a branch, commit, or open a pull request in the primary checkout. Always use a linked git worktree so the main working tree stays on `main` and stays clean. Do not `git switch` / `git checkout` a feature branch in the primary directory, and do not leave it dirty.
