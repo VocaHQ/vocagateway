@@ -16,7 +16,7 @@ WHISPER_CPP_ENGINE = "whisper.cpp"
 
 def _status(paths: schemas.PathStatus) -> schemas.AdminStatusResponse:
     return schemas.AdminStatusResponse(
-        version="0.1.0",
+        version="0.2.0",
         engine=schemas.EngineStatus(
             id=WHISPER_CPP_ENGINE,
             name="whisper.cpp:ggml-base.en.bin",
