@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """The `llama.cpp` server protocol adapter.
 
 Everything model-specific about talking to a pinned `llama-server` lives here:

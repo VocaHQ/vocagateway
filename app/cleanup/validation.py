@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """Risk-reduction checks between a cleanup candidate and the original transcript.
 
 None of this proves the two mean the same thing — no text-only check can. What

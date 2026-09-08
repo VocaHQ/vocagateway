@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """Selection, lifecycle, and admission for the optional cleanup runtime.
 
 This is the only object that owns a cleanup process. It decides which model is

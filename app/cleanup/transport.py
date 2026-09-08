@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """A minimal, cancellable JSON-over-HTTP client for one fixed local endpoint.
 
 Written on asyncio streams rather than a general HTTP library for three

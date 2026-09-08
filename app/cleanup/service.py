@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """The one place a final transcript becomes the text a client inserts.
 
 Sessions, one-shot requests, and streaming finals all come through here, so the

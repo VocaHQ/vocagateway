@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """Generate docs/models.md — the model and language reference.
 
 The WebUI already answers "what does this model speak?" on each card. This

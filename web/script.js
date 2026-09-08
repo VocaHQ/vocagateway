@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2025-present VocaHQ, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * See the LICENSE file for details.
+ */
+
 document.documentElement.classList.add("js");
 
 const menuToggle = document.querySelector("[data-menu-toggle]");

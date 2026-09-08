@@ -47,6 +47,21 @@ lint:
     uv run python -m ruff format --check --diff
     uv run flake8 --select=WPS,E999 app tests
 
+# `just copyright -check` only reports, which is what CI runs
+# (.github/workflows/copyright-check.yml). HTML is skipped on purpose: a comment
+# on top of an HTMX fragment would ship in every response body.
+#
+# Write the COPYRIGHT.txt header into every source file that is missing one
+[group('dev')]
+copyright *args='':
+    addlicense {{ args }} -f COPYRIGHT.txt \
+      -ignore '**/*.html' \
+      -ignore 'app/webui/htmx.min.js' \
+      -ignore 'app/webui/swagger/swagger-ui-bundle.js' \
+      -ignore 'app/webui/swagger/swagger-ui.css' \
+      -ignore 'web/sitemap.xml' \
+      app tests scripts web
+
 # Run all checks
 [group('dev')]
 test: lint type-check package unit compose

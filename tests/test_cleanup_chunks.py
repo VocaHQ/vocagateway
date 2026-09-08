@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 from __future__ import annotations
 
 from app.cleanup.base import DEFAULT_TOKEN_BUDGET, JSON_WRAPPER_TOKENS

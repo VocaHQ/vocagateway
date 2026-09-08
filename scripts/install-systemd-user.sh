@@ -1,4 +1,8 @@
 #!/bin/sh
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 # Install a systemd --user unit that keeps the native Linux gateway running.
 # Requires: uv sync already done in this checkout (creates .venv/bin/vocagateway).
 set -eu

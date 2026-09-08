@@ -1112,6 +1112,9 @@ uv run ruff check .
 uv run ruff format --check .
 uv run mypy app
 uv run pytest
+# Copyright headers, checked by the copyright workflow. Needs addlicense
+# (brew install addlicense); `just copyright` without -check writes them.
+just copyright -check
 VOCAGATEWAY_TOKEN=test-token-with-at-least-thirty-two-characters docker compose config --quiet
 docker build --tag vocagateway:test .
 ```
@@ -1187,7 +1190,14 @@ git clone --recurse-submodules https://github.com/VocaHQ/vocaphone.git
 
 ## License and contact
 
-[AGPL-3.0](LICENSE). Questions and contributions:
+[AGPL-3.0](LICENSE). Every source file carries the notice from
+[COPYRIGHT.txt](COPYRIGHT.txt), and a workflow rejects a file that lacks it.
+
+Contributions are covered by the [contributor agreement](CLA.md). The CLA bot
+comments on your first pull request; replying to it with the sentence the
+agreement names records the signature. That happens once, not per pull request.
+
+Questions and contributions:
 [Discord](https://discord.gg/t6muquAJbm),
 [@vocahq](https://x.com/vocahq) on X, or
 [hello@vocahq.com](mailto:hello@vocahq.com).

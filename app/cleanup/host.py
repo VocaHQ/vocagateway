@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """The gateway's ownership of a managed cleanup worker.
 
 Split from the manager so that "which model is selected" and "is a process
