@@ -5,7 +5,7 @@
 # VocaGateway
 
 [![Quality](https://github.com/VocaHQ/vocagateway/actions/workflows/quality.yml/badge.svg)](https://github.com/VocaHQ/vocagateway/actions/workflows/quality.yml)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 [![Status: Beta](https://img.shields.io/badge/status-Beta-0f6b57)](#vocagateway)
 [![Release](https://img.shields.io/github/v/release/VocaHQ/vocagateway?label=Release)](https://github.com/VocaHQ/vocagateway/releases)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
@@ -22,7 +22,7 @@
 
 **Beta** optional self-hosted transcription gateway for the
 [Voca](https://github.com/VocaHQ) family. License:
-[AGPL-3.0](LICENSE). Contact:
+[Apache-2.0](LICENSE). Contact:
 [hello@vocahq.com](mailto:hello@vocahq.com).
 
 The public landing page is in [`web/`](web/) and deploys to
@@ -1187,7 +1187,18 @@ git clone --recurse-submodules https://github.com/VocaHQ/vocaphone.git
 
 ## License and contact
 
-[AGPL-3.0](LICENSE). Questions and contributions:
+[Apache-2.0](LICENSE).
+
+The one exception is the [`ee/`](ee/) directory, which is licensed under
+the [Elastic License 2.0](ee/LICENSE). That code is public and readable,
+but running it in production needs a licence key, and it may not be offered
+to third parties as a hosted service. Everything outside `ee/` is Apache-2.0,
+and the gateway is fully functional without it.
+
+Releases up to v0.1.0 were AGPL-3.0. See [NOTICE](NOTICE) for the
+relicensing record.
+
+Questions and contributions:
 [Discord](https://discord.gg/t6muquAJbm),
 [@vocahq](https://x.com/vocahq) on X, or
 [hello@vocahq.com](mailto:hello@vocahq.com).
