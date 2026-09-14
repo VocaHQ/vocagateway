@@ -265,7 +265,7 @@ curl --fail http://127.0.0.1:8765/health/live
 Images then live at `docker.io/vocahq/vocagateway` and, with identical
 digests, `ghcr.io/vocahq/vocagateway`. `latest` is the newest final release
 and only moves when that release is the newest final tag overall; pin
-`VOCAGATEWAY_IMAGE=docker.io/vocahq/vocagateway:0.1.0` in `.env` for a
+`VOCAGATEWAY_IMAGE=docker.io/vocahq/vocagateway:0.2.0` in `.env` for a
 deployment you would rather not have move under you. Upgrades are
 `docker compose -f compose.prod.yaml pull && docker compose -f compose.prod.yaml up --detach`,
 and your models, config and database stay in the named volume across them. See
