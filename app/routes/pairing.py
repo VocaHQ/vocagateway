@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Form, Query, Response
+from fastapi import APIRouter, Depends, Form, Query, Request, Response
 from fastapi.responses import HTMLResponse
 
 from app.context import GatewayContextDependency, require_token
@@ -25,6 +25,15 @@ OptionalTokenIdQuery = Annotated[str | None, Query()]
 PairingLabelForm = Annotated[str, Form(min_length=1, max_length=100)]
 OptionalUrlForm = Annotated[str | None, Form()]
 PairingUrlQuery = Annotated[str, Query()]
+IncludePortQuery = Annotated[bool, Query()]
+_TRUE_FLAGS = frozenset(("1", "true", "yes", "on"))
+
+
+def _include_port_flag(request: Request) -> bool | None:
+    submitted = request.query_params.getlist("include_port")
+    if not submitted:
+        return None
+    return submitted[-1].strip().lower() in _TRUE_FLAGS
 
 
 @router.get("/v1/admin/pairing")
@@ -32,8 +41,9 @@ async def get_pairing(
     ctx: GatewayContextDependency,
     url: OptionalUrlQuery = None,
     token_id: OptionalTokenIdQuery = None,
+    include_port: IncludePortQuery = True,
 ) -> dict[str, Any]:
-    selected = resolve_pairing_url(ctx, url)
+    selected = resolve_pairing_url(ctx, url, include_port=include_port)
     _, token, _, _ = resolve_pairing_token(ctx, token_id)
     payload = encode_pairing_payload(selected, token)
     # Round-trip so clients and tests share one format.
@@ -51,8 +61,9 @@ async def get_pairing_qr(
     ctx: GatewayContextDependency,
     url: OptionalUrlQuery = None,
     token_id: OptionalTokenIdQuery = None,
+    include_port: IncludePortQuery = True,
 ) -> Response:
-    selected = resolve_pairing_url(ctx, url)
+    selected = resolve_pairing_url(ctx, url, include_port=include_port)
     _, token, _, _ = resolve_pairing_token(ctx, token_id)
     payload = encode_pairing_payload(selected, token)
     svg = qr_svg_for_payload(payload)
@@ -65,11 +76,20 @@ async def get_pairing_qr(
 
 @router.get("/ui/partials/pairing", response_class=HTMLResponse)
 async def ui_pairing(
+    request: Request,
     ctx: GatewayContextDependency,
     url: OptionalUrlQuery = None,
     token_id: OptionalTokenIdQuery = None,
 ) -> HTMLResponse:
-    return HTMLResponse(pairing_html(ctx, url, token_id, persist=True))
+    return HTMLResponse(
+        pairing_html(
+            ctx,
+            url,
+            token_id,
+            persist=True,
+            include_port=_include_port_flag(request),
+        )
+    )
 
 
 @router.post("/ui/partials/pairing/tokens", response_class=HTMLResponse)

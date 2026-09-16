@@ -16,6 +16,12 @@ from app.pairing import decode_pairing_payload
 from app.runtime_config import RuntimeConfig
 
 MINIMUM_QR_SVG_BYTES = 200
+INCLUDE_PORT_CHECKBOX_ID = 'id="pairing-include-port"'
+
+
+def _include_port_checkbox_checked(html: str) -> bool:
+    after = html.split(INCLUDE_PORT_CHECKBOX_ID, 1)[1].split(">", 1)[0]
+    return "checked" in after
 
 
 def _assert_pairing_payload(body: dict[str, object]) -> None:
@@ -387,3 +393,142 @@ async def test_refresh_keeps_an_undiscoverable_custom_address(
 
     assert runtime_config.pairing_url == custom_url
     assert custom_url in runtime_config.pairing_urls
+
+
+@pytest.mark.asyncio
+async def test_pairing_custom_address_can_omit_listen_port(
+    client: httpx.AsyncClient,
+    authorization: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(PUBLIC_URL_ENV, PUBLIC_GATEWAY_URL)
+    host = "vocagateway.example.com"
+    without_port = f"http://{host}"
+    with_port = f"{without_port}:8765"
+
+    omitted = await client.get(
+        PAIRING_UI_PATH,
+        headers=authorization,
+        params=[(URL_KEY, host), ("include_port", "false")],
+    )
+    assert omitted.status_code == HTTP_200_OK
+    assert without_port in omitted.text
+    assert with_port not in omitted.text
+    assert _include_port_checkbox_checked(omitted.text) is False
+
+    included = await client.get(
+        PAIRING_UI_PATH,
+        headers=authorization,
+        params=[(URL_KEY, host), ("include_port", "false"), ("include_port", "true")],
+    )
+    assert included.status_code == HTTP_200_OK
+    assert with_port in included.text
+    assert _include_port_checkbox_checked(included.text) is True
+
+    api = await client.get(
+        PAIRING_API_PATH,
+        headers=authorization,
+        params={URL_KEY: host, "include_port": "false"},
+    )
+    assert api.status_code == HTTP_200_OK
+    assert api.json()[URL_KEY] == without_port
+    decoded = decode_pairing_payload(api.json()[PAYLOAD_KEY])
+    assert decoded.url == without_port
+
+
+@pytest.mark.asyncio
+async def test_refresh_and_forget_keep_a_portless_custom_address(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    custom_url = "https://vocagateway.example.com"
+    monkeypatch.setattr(
+        "app.pairing_view.discover_gateway_base_urls", lambda port: ["http://192.168.1.20:8765"]
+    )
+    settings = Settings(
+        token=TOKEN,
+        data_dir=tmp_path,
+        whisper_binary=tmp_path / "whisper-cli",
+        whisper_model=tmp_path / "model.bin",
+        config_path=tmp_path / "config.json",
+    )
+    runtime_config = RuntimeConfig()
+    app = create_app(
+        settings,
+        model_manager=ModelManager(tmp_path / "models"),
+        runtime_config=runtime_config,
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        headers = {"Authorization": f"Bearer {TOKEN}"}
+        added = await client.get(
+            PAIRING_UI_PATH,
+            headers=headers,
+            params=[(URL_KEY, custom_url), ("include_port", "false")],
+        )
+        assert added.status_code == HTTP_200_OK
+        assert custom_url in added.text
+        assert f"{custom_url}:8765" not in added.text
+        assert _include_port_checkbox_checked(added.text) is False
+
+        refreshed = await client.get(PAIRING_UI_PATH, headers=headers)
+        assert refreshed.status_code == HTTP_200_OK
+        assert custom_url in refreshed.text
+        assert _include_port_checkbox_checked(refreshed.text) is False
+
+        selected = await client.get(PAIRING_UI_PATH, headers=headers, params={URL_KEY: custom_url})
+        assert selected.status_code == HTTP_200_OK
+        assert custom_url in selected.text
+        assert f"{custom_url}:8765" not in selected.text
+
+        forgotten = await client.delete(
+            PAIRING_UI_PATH, headers=headers, params={URL_KEY: custom_url}
+        )
+        assert forgotten.status_code == HTTP_200_OK
+        assert custom_url not in forgotten.text
+
+    assert runtime_config.pairing_url != custom_url
+    assert custom_url not in runtime_config.pairing_urls
+
+
+@pytest.mark.asyncio
+async def test_pairing_can_restore_port_on_saved_custom_address(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    custom_url = "https://vocagateway.example.com"
+    monkeypatch.setattr(
+        "app.pairing_view.discover_gateway_base_urls", lambda port: ["http://192.168.1.20:8765"]
+    )
+    settings = Settings(
+        token=TOKEN,
+        data_dir=tmp_path,
+        whisper_binary=tmp_path / "whisper-cli",
+        whisper_model=tmp_path / "model.bin",
+        config_path=tmp_path / "config.json",
+    )
+    runtime_config = RuntimeConfig()
+    app = create_app(
+        settings,
+        model_manager=ModelManager(tmp_path / "models"),
+        runtime_config=runtime_config,
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        headers = {"Authorization": f"Bearer {TOKEN}"}
+        added = await client.get(
+            PAIRING_UI_PATH,
+            headers=headers,
+            params=[(URL_KEY, custom_url), ("include_port", "false")],
+        )
+        assert added.status_code == HTTP_200_OK
+        restored = await client.get(
+            PAIRING_UI_PATH,
+            headers=headers,
+            params=[(URL_KEY, custom_url), ("include_port", "true")],
+        )
+        assert restored.status_code == HTTP_200_OK
+        assert f"{custom_url}:8765" in restored.text
+        assert _include_port_checkbox_checked(restored.text) is True
+
+    assert runtime_config.pairing_url == f"{custom_url}:8765"

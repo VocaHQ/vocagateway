@@ -178,6 +178,25 @@ def test_normalize_gateway_input_rejects_empty() -> None:
         normalize_gateway_input("   ", DEFAULT_GATEWAY_PORT)
 
 
+def test_normalize_gateway_input_can_omit_default_port() -> None:
+    assert (
+        normalize_gateway_input("vocagateway.example.com", DEFAULT_GATEWAY_PORT, include_port=False)
+        == "http://vocagateway.example.com"
+    )
+    assert (
+        normalize_gateway_input(
+            "https://vocagateway.example.com",
+            DEFAULT_GATEWAY_PORT,
+            include_port=False,
+        )
+        == "https://vocagateway.example.com"
+    )
+    assert (
+        normalize_gateway_input("100.101.102.103:9000", DEFAULT_GATEWAY_PORT, include_port=False)
+        == "http://100.101.102.103:9000"
+    )
+
+
 def test_parse_ifconfig_ipv4_addresses_find_b716f() -> None:
     # Trimmed macOS `ifconfig` output: a LAN NIC plus a Tailscale utun.
     output = """

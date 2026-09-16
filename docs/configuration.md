@@ -55,7 +55,9 @@ Version `1`. Fields are `url` (phone-reachable gateway base URL) and `token`
 Show the bootstrap token (and an ASCII QR on a TTY) with `just token` or
 `uv run vocagateway-token`. Override the encoded address with
 `VOCAGATEWAY_PUBLIC_URL` or `VOCAGATEWAY_PAIRING_URL` when auto-discovery is
-wrong.
+wrong. The WebUI **Custom address** field appends the listen port unless
+**Include port in the link** is cleared (`include_port=false` on
+`/v1/admin/pairing`).
 
 ## Environment variables
 

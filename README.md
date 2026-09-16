@@ -227,6 +227,12 @@ plaintext is cached in memory only for the life of the gateway process, long
 enough to regenerate its QR at a different address without creating a duplicate,
 and is dropped immediately on revoke.
 
+**Custom address** encodes a host discovery cannot see (Tailscale IP, MagicDNS,
+reverse proxy, tunnel). **Include port in the link** is on by default and
+appends the listen port (`8765` unless you set `VOCAGATEWAY_PORT`). Clear it
+when the phone should use 80 or 443. `/v1/admin/pairing` accepts the same
+choice as `include_port=false`.
+
 ## Docker Compose quick start
 
 [compose.yaml](compose.yaml) is the path that works today: it builds the CPU

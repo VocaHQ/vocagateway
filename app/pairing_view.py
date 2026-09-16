@@ -92,9 +92,12 @@ class PairingPresenter:
         token_id: str | None = None,
         *,
         persist: bool = False,
+        include_port: bool | None = None,
     ) -> str:
         candidates = self._candidates()
-        selected, candidates = self._select_url(selected_url, candidates, persist)
+        selected, candidates = self._select_url(
+            selected_url, candidates, persist, include_port=include_port
+        )
         token_info = resolve_pairing_token(self.ctx, token_id)
         token = token_info[1]
         svg = qr_svg_for_payload(encode_pairing_payload(selected, token)) if selected else ""
@@ -111,12 +114,13 @@ class PairingPresenter:
                 token_status=token_info[2],
                 requested_token_id=token_id or "",
                 requested_token_label=token_info[3],
+                gateway_port=self.ctx.settings.port,
             )
         )
 
     def forget_url(self, url: str) -> str:
         try:
-            normalized = normalize_gateway_input(url, self.ctx.settings.port)
+            normalized = normalize_gateway_input(url, self.ctx.settings.port, include_port=False)
         except ValueError as error:
             raise APIProblem(HTTP_400_BAD_REQUEST, "invalid_pairing_url", str(error)) from error
         cfg = self.ctx.pairing_config
@@ -135,13 +139,23 @@ class PairingPresenter:
         return candidates
 
     def _select_url(
-        self, selected_url: str | None, candidates: list[str], persist: bool
+        self,
+        selected_url: str | None,
+        candidates: list[str],
+        persist: bool,
+        *,
+        include_port: bool | None = None,
     ) -> tuple[str | None, list[str]]:
         cfg = self.ctx.pairing_config
         selected: str | None = None
         if selected_url:
             try:
-                selected = normalize_gateway_input(selected_url, self.ctx.settings.port)
+                add_port = selected_url not in candidates if include_port is None else include_port
+                selected = normalize_gateway_input(
+                    selected_url,
+                    self.ctx.settings.port,
+                    include_port=add_port,
+                )
             except ValueError:
                 selected = None
             if selected and persist:
@@ -175,19 +189,27 @@ def pairing_html(
     token_id: str | None = None,
     *,
     persist: bool = False,
+    include_port: bool | None = None,
 ) -> str:
-    return PairingPresenter(ctx).render_html(selected_url, token_id, persist=persist)
+    return PairingPresenter(ctx).render_html(
+        selected_url, token_id, persist=persist, include_port=include_port
+    )
 
 
 def forget_pairing_url(ctx: GatewayContext, url: str) -> str:
     return PairingPresenter(ctx).forget_url(url)
 
 
-def resolve_pairing_url(ctx: GatewayContext, url: str | None) -> str:
+def resolve_pairing_url(
+    ctx: GatewayContext,
+    url: str | None,
+    *,
+    include_port: bool = True,
+) -> str:
     candidates = discover_gateway_base_urls(ctx.settings.port)
     if url:
         try:
-            return normalize_gateway_input(url, ctx.settings.port)
+            return normalize_gateway_input(url, ctx.settings.port, include_port=include_port)
         except ValueError as error:
             raise APIProblem(HTTP_400_BAD_REQUEST, "invalid_pairing_url", str(error)) from error
     if not candidates:
