@@ -20,6 +20,7 @@ class PairingFragmentData:
     token_status: str
     requested_token_id: str
     requested_token_label: str | None
+    gateway_port: int
 
 
 def redact_token(token: str) -> str:
@@ -63,4 +64,5 @@ def pairing_fragment(pairing_data: PairingFragmentData) -> str:
         token_status=pairing_data.token_status,
         requested_token_id=pairing_data.requested_token_id,
         requested_token_label=pairing_data.requested_token_label,
+        gateway_port=pairing_data.gateway_port,
     )

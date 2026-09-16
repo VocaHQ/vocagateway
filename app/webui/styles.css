@@ -1308,6 +1308,26 @@ html[data-theme="dark"] button.pairing-qr.is-copied .pairing-qr-hint {
   margin-top: 0;
   max-width: none;
 }
+.pairing-include-port {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 4px;
+  cursor: pointer;
+}
+.pairing-include-port input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+.pairing-include-port span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.35;
+}
 .pairing-saved { margin-top: 16px; }
 .pairing-subhead {
   margin: 0 0 8px;

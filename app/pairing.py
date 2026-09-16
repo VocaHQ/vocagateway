@@ -111,14 +111,14 @@ class _GatewayUrls:
         return f"{parsed.scheme}://{host}{port}{path}"
 
     @classmethod
-    def normalize_input(cls, raw: str, default_port: int) -> str:
+    def normalize_input(cls, raw: str, default_port: int, *, include_port: bool = True) -> str:
         trimmed = raw.strip()
         if not trimmed:
             raise ValueError("Address must not be empty.")
         if "://" not in trimmed:
             trimmed = f"http://{trimmed}"
         parsed = urlparse(trimmed)
-        if parsed.hostname and parsed.port is None:
+        if include_port and parsed.hostname and parsed.port is None:
             trimmed = cls._with_default_port(parsed, default_port)
         return cls.normalize(trimmed)
 

@@ -118,6 +118,14 @@
             <button type="submit" class="ghost small">Use address</button>
           </div>
         </label>
+        <label class="pairing-include-port">
+          <input type="hidden" name="include_port" value="false" />
+          <input id="pairing-include-port" name="include_port" type="checkbox"
+                 value="true" checked />
+          <span>Include port in the link</span>
+        </label>
+        <p class="field-hint">Adds <code>:{{ gateway_port }}</code> when the address
+          has no port. Clear this for a reverse proxy, tunnel, or HTTPS on 443.</p>
       </form>
       <form class="pairing-panel" hx-post="/ui/partials/pairing/tokens"
             hx-target="#pairing-card" hx-swap="outerHTML">
