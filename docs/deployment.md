@@ -514,7 +514,7 @@ prefer.
 
 | Tag | Moves | Use it for |
 | --- | --- | --- |
-| `0.1.0` | Never | A deployment you want to stay put. **Pin this in production** |
+| `0.2.0` | Never | A deployment you want to stay put. **Pin this in production** |
 | `0.1` | Only when this patch is the newest final release of that minor series. Rebuilding an older patch does not rewrite it | Automatic patch updates, no minor jumps |
 | `latest` | Only for a published GitHub release of the newest final version overall; never on a pre-release, and never when rebuilding an older tag | Trying it out, and home deployments that track the newest version |
 
@@ -522,7 +522,7 @@ prefer.
 gateway matters to you:
 
 ```sh
-VOCAGATEWAY_IMAGE=docker.io/vocahq/vocagateway:0.1.0
+VOCAGATEWAY_IMAGE=docker.io/vocahq/vocagateway:0.2.0
 ```
 
 Each tag is a manifest list covering `linux/amd64` and `linux/arm64`, built
@@ -539,7 +539,7 @@ docker compose -f compose.prod.yaml pull
 docker compose -f compose.prod.yaml up --detach
 
 # Go back: pin the previous version and recreate
-VOCAGATEWAY_IMAGE=docker.io/vocahq/vocagateway:0.1.0 \
+VOCAGATEWAY_IMAGE=docker.io/vocahq/vocagateway:0.2.0 \
   docker compose -f compose.prod.yaml up --detach
 ```
 
