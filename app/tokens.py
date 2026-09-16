@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """Named, individually revocable bearer tokens for additional paired devices.
 
 `Settings.token` (from `VOCAGATEWAY_TOKEN` / the token file) remains a permanent

@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """Shared vocabulary for optional local transcript cleanup.
 
 Cleanup is a bounded, text-only pass that runs *after* speech recognition has

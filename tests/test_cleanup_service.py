@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """The shared finalization contract every entry point depends on.
 
 The single most important property under test: with cleanup off, skipped, or

@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """Phone pairing payload and QR for the authenticated WebUI.
 
 The payload is a compact JSON document the iPhone and Android apps scan:

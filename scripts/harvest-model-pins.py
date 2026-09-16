@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """Regenerate app/model_pins.json from the upstream model hosts.
 
 The pin file records, per catalog model, the Hugging Face commit to download

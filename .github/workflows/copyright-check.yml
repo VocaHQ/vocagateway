@@ -1,0 +1,67 @@
+name: Copyright headers
+
+# Every file this project authors carries the notice from COPYRIGHT.txt, so the
+# AGPL header cannot be dropped quietly and a new file cannot land without one.
+# addlicense renders the header from COPYRIGHT.txt itself rather than from a
+# copy kept here, so the wording has exactly one source of truth.
+#
+# HTML is excluded deliberately: app/templates/ holds HTMX fragments, and a
+# comment at the top of a fragment would ship in every response body. Vendored
+# assets (htmx, swagger-ui) keep the upstream headers they arrived with.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'web/**'
+      - 'COPYRIGHT.txt'
+      - '.github/workflows/copyright-check.yml'
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'app/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'web/**'
+      - 'COPYRIGHT.txt'
+      - '.github/workflows/copyright-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  copyright:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: stable
+          cache: false
+      # There is no go.mod in this repository, so Dependabot cannot see this
+      # pin. Bump it by hand; the addlicense version is what makes the job
+      # reproducible, not the Go toolchain it is built with.
+      - run: go install github.com/google/addlicense@v1.2.0
+      # Prints every file that is missing the header and exits non-zero.
+      # `just copyright` writes those same headers locally.
+      - name: Verify copyright headers
+        run: >
+          "$(go env GOPATH)"/bin/addlicense -check -f COPYRIGHT.txt
+          -ignore '**/*.html'
+          -ignore 'app/webui/htmx.min.js'
+          -ignore 'app/webui/swagger/swagger-ui-bundle.js'
+          -ignore 'app/webui/swagger/swagger-ui.css'
+          -ignore 'web/sitemap.xml'
+          app tests scripts web
