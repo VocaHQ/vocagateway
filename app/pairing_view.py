@@ -92,7 +92,7 @@ class PairingPresenter:
         token_id: str | None = None,
         *,
         persist: bool = False,
-        include_port: bool = True,
+        include_port: bool | None = None,
     ) -> str:
         candidates = self._candidates()
         selected, candidates = self._select_url(
@@ -144,17 +144,17 @@ class PairingPresenter:
         candidates: list[str],
         persist: bool,
         *,
-        include_port: bool = True,
+        include_port: bool | None = None,
     ) -> tuple[str | None, list[str]]:
         cfg = self.ctx.pairing_config
         selected: str | None = None
         if selected_url:
             try:
-                already_known = selected_url in candidates
+                add_port = selected_url not in candidates if include_port is None else include_port
                 selected = normalize_gateway_input(
                     selected_url,
                     self.ctx.settings.port,
-                    include_port=include_port and not already_known,
+                    include_port=add_port,
                 )
             except ValueError:
                 selected = None
@@ -189,7 +189,7 @@ def pairing_html(
     token_id: str | None = None,
     *,
     persist: bool = False,
-    include_port: bool = True,
+    include_port: bool | None = None,
 ) -> str:
     return PairingPresenter(ctx).render_html(
         selected_url, token_id, persist=persist, include_port=include_port
@@ -200,14 +200,16 @@ def forget_pairing_url(ctx: GatewayContext, url: str) -> str:
     return PairingPresenter(ctx).forget_url(url)
 
 
-def resolve_pairing_url(ctx: GatewayContext, url: str | None, *, include_port: bool = True) -> str:
+def resolve_pairing_url(
+    ctx: GatewayContext,
+    url: str | None,
+    *,
+    include_port: bool = True,
+) -> str:
     candidates = discover_gateway_base_urls(ctx.settings.port)
     if url:
         try:
-            known = url in candidates
-            return normalize_gateway_input(
-                url, ctx.settings.port, include_port=include_port and not known
-            )
+            return normalize_gateway_input(url, ctx.settings.port, include_port=include_port)
         except ValueError as error:
             raise APIProblem(HTTP_400_BAD_REQUEST, "invalid_pairing_url", str(error)) from error
     if not candidates:

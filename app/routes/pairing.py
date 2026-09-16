@@ -29,10 +29,10 @@ IncludePortQuery = Annotated[bool, Query()]
 _TRUE_FLAGS = frozenset(("1", "true", "yes", "on"))
 
 
-def _include_port_flag(request: Request) -> bool:
+def _include_port_flag(request: Request) -> bool | None:
     submitted = request.query_params.getlist("include_port")
     if not submitted:
-        return True
+        return None
     return submitted[-1].strip().lower() in _TRUE_FLAGS
 
 

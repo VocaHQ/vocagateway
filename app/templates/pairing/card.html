@@ -121,7 +121,7 @@
         <label class="pairing-include-port">
           <input type="hidden" name="include_port" value="false" />
           <input id="pairing-include-port" name="include_port" type="checkbox"
-                 value="true" checked />
+                 value="true"{% if include_port_checked %} checked{% endif %} />
           <span>Include port in the link</span>
         </label>
         <p class="field-hint">Adds <code>:{{ gateway_port }}</code> when the address

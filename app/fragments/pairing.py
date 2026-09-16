@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from markupsafe import Markup
 
@@ -36,7 +37,8 @@ def redact_token(token: str) -> str:
 
 def pairing_fragment(pairing_data: PairingFragmentData) -> str:
     """See app/templates/pairing/card.html for the markup and behavior notes."""
-    if not pairing_data.selected_url:
+    selected_url = pairing_data.selected_url
+    if not selected_url:
         return render("pairing/empty.html")
     selected_token_label = next(
         (
@@ -52,7 +54,7 @@ def pairing_fragment(pairing_data: PairingFragmentData) -> str:
         inline_svg = inline_svg.split("?>", 1)[-1].lstrip()
     return render(
         "pairing/card.html",
-        selected_url=pairing_data.selected_url,
+        selected_url=selected_url,
         candidates=pairing_data.candidates,
         token_redacted=pairing_data.token_redacted,
         token_plaintext=pairing_data.token_plaintext,
@@ -65,4 +67,5 @@ def pairing_fragment(pairing_data: PairingFragmentData) -> str:
         requested_token_id=pairing_data.requested_token_id,
         requested_token_label=pairing_data.requested_token_label,
         gateway_port=pairing_data.gateway_port,
+        include_port_checked=urlparse(selected_url).port is not None,
     )
