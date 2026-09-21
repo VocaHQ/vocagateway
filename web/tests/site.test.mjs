@@ -64,9 +64,35 @@ test("product truth stays scoped to Beta self-hosted infrastructure", () => {
   assert.doesNotMatch(html, /military-grade/i);
   assert.doesNotMatch(html, /VocaServer/);
   assert.doesNotMatch(html, /googletagmanager|gtag\(|G-SHWKRJMCEN/i);
-  assert.doesNotMatch(html, /\bplanned\b/i);
-  assert.match(html, /VocaPhone is the current gateway client/);
-  assert.match(html, /Desktop gateway mode is not\s+available yet/);
+
+  const howSection = html.match(
+    /<section class="how-section"[\s\S]*?<\/section>/,
+  );
+  assert.ok(howSection, "how-it-works section is present");
+  const familySection = html.match(
+    /<section class="family-section"[\s\S]*?<\/section>/,
+  );
+  assert.ok(familySection, "family eco-grid is present");
+  const faqSection = html.match(
+    /<section class="faq-section"[\s\S]*?<\/section>/,
+  );
+  assert.ok(faqSection, "FAQ section is present");
+  for (const slice of [howSection[0], familySection[0], faqSection[0]]) {
+    assert.doesNotMatch(slice, /\bplanned\b/i);
+    assert.doesNotMatch(slice, /coming soon/i);
+  }
+
+  assert.match(html, /VocaPhone is the primary phone client/);
+  assert.match(
+    html,
+    /Desktop apps may use\s+this gateway as a remote client where supported/,
+  );
+  assert.match(
+    html,
+    /Desktop apps may use the gateway as a remote client where supported/,
+  );
+  assert.match(html, /Desktop gateway hosting is not available yet/);
+  assert.match(html, /There is no Voca account/);
 });
 
 test("names the primary CLI vocagateway and keeps deprecated aliases honest", () => {
@@ -125,8 +151,10 @@ test("VocaPhone family card names public TestFlight, not source-only iPhone", ()
   assert.match(phoneCard[0], /iOS 17\+ source build/);
   assert.match(phoneCard[0], /href="https:\/\/vocaphone\.vocahq\.com\/"/);
   assert.match(phoneCard[0], /href="https:\/\/github\.com\/VocaHQ\/vocaphone"/);
+  assert.match(phoneCard[0], /The primary phone client for this gateway/);
   assert.match(phoneCard[0], /on-device is the default path/i);
   assert.match(phoneCard[0], /gateway is optional/i);
+  assert.doesNotMatch(phoneCard[0], /The current gateway client/);
   assert.doesNotMatch(phoneCard[0], /beta \/ source build/);
   assert.doesNotMatch(phoneCard[0], /currently needs an iOS 17\+ source build/);
 });

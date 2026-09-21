@@ -324,7 +324,9 @@
             <p>
               The client records. Audio travels to this host. The selected
               model runs here and the transcript goes back to the app.
-              VocaPhone is the current gateway client.
+              VocaPhone is the primary phone client. Desktop apps may use
+              this gateway as a remote client where supported.
+              Desktop gateway hosting is not available yet.
             </p>
           </article>
         </div>
@@ -476,8 +478,8 @@ docker compose up --detach --build</code></pre>
             </div>
             <h3>VocaPhone</h3>
             <p>
-              The current gateway client. Android has a public beta. iPhone
-              is a public TestFlight beta capped at 1,000 seats, or an
+              The primary phone client for this gateway. Android has a public beta.
+              iPhone is a public TestFlight beta capped at 1,000 seats, or an
               iOS 17+ source build. On-device is the default path; this
               gateway is optional.
             </p>
@@ -572,8 +574,9 @@ docker compose up --detach --build</code></pre>
           <details>
             <summary>What can pair with it today?<span aria-hidden="true">＋</span></summary>
             <p>
-              VocaPhone on iOS and Android. Desktop gateway mode is not
-              available yet. There is no Voca account.
+              VocaPhone on iOS and Android pairs over the QR path.
+              Desktop apps may use the gateway as a remote client where supported.
+              Desktop gateway hosting is not available yet. There is no Voca account.
             </p>
           </details>
           <details>
