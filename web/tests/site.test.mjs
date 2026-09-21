@@ -64,6 +64,9 @@ test("product truth stays scoped to Beta self-hosted infrastructure", () => {
   assert.doesNotMatch(html, /military-grade/i);
   assert.doesNotMatch(html, /VocaServer/);
   assert.doesNotMatch(html, /googletagmanager|gtag\(|G-SHWKRJMCEN/i);
+  assert.doesNotMatch(html, /\bplanned\b/i);
+  assert.match(html, /VocaPhone is the current gateway client/);
+  assert.match(html, /Desktop gateway mode is not\s+available yet/);
 });
 
 test("names the primary CLI vocagateway and keeps deprecated aliases honest", () => {
@@ -114,7 +117,7 @@ test("VocaPhone family card names public TestFlight, not source-only iPhone", ()
   );
   assert.ok(phoneCard, "VocaPhone eco-card is present");
   assert.match(phoneCard[0], /<h3>VocaPhone<\/h3>/);
-  assert.match(phoneCard[0], /<small>beta \/ testflight<\/small>/);
+  assert.match(phoneCard[0], /<small>android beta \/ ios testflight<\/small>/);
   assert.match(phoneCard[0], /Android has a public beta/);
   assert.match(phoneCard[0], /href="https:\/\/testflight\.apple\.com\/join\/wd85wQ3W"/);
   assert.match(phoneCard[0], /eco-links[\s\S]*TestFlight/);
