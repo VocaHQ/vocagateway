@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from app.cleanup.base import MODE_OFF, CleanupOutcome
+from app.cleanup.base import CleanupOutcome
 from app.metrics import MetricsSnapshot, PipelineTiming
 from app.schemas import (
     AdminModelEntry,
@@ -34,17 +34,18 @@ def session_response(stored: StoredSession) -> SessionResponse:
 def stored_cleanup(stored: StoredSession) -> CleanupResult | None:
     """The cleanup block for a session, or None when there is nothing to report.
 
-    A legacy row and a cleanup-off session both answer None rather than an empty
-    object, so a client that predates the feature sees the response it always
-    saw. An old row with no stored original reports null — never an original
-    manufactured by treating an already styled transcript as raw.
+    A legacy row, a cleanup-off session, and an unfinished one all answer None
+    rather than an empty object. Inventing `disabled` for a pending conservative
+    run would let a client confuse "not yet finished" with "turned off". An old
+    row with no stored original reports null — never an original manufactured
+    by treating an already styled transcript as raw.
     """
     record = stored.cleanup_result
-    if stored.cleanup.mode == MODE_OFF and record.status is None:
+    if record.status is None:
         return None
     return CleanupResult(
         requested=cast(ResolvedCleanupMode, stored.cleanup.mode),
-        status=cast(Any, record.status or "disabled"),
+        status=cast(Any, record.status),
         reason=record.reason,
         model_id=stored.cleanup.model_id,
         prompt_version=stored.cleanup.prompt_version,
