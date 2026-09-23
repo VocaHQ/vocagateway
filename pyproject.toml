@@ -55,7 +55,7 @@ dev = [
   "httpx>=0.28,<1",
   # starlette.testclient (used for WebSocket streaming tests) prefers this
   # over plain httpx; without it every run prints a deprecation warning.
-  "httpx2>=2,<3",
+  "httpx2>=2.12,<3",
   "mypy>=1.17,<2",
   # 9.0.3 is the floor that clears CVE-2025-71176 (tmpdir handling), which
   # `just package` audits for.

@@ -25,6 +25,8 @@ on:
       - 'compose.prod.yaml'
       - '.github/workflows/quality.yml'
   workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * 1'
 
 permissions:
   contents: read
@@ -48,6 +50,7 @@ jobs:
       # tests/test_audio.py shells out to FFmpeg against real audio.
       - run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ffmpeg
       - run: uv sync --locked --all-groups
+      - run: uv audit
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       # Enforce WPS rules across the application package and tests.
