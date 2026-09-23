@@ -1146,7 +1146,7 @@ is the live consumer. Embedding this gateway in a desktop app stays Planned.
 | Product | Status | Website | Source |
 | --- | --- | --- | --- |
 | [VocaLinux](https://vocalinux.com/) | Available now (`v0.16.0`) | [vocalinux.com](https://vocalinux.com/) | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) |
-| [VocaMac](https://vocamac.com/) | Beta (`v0.9.0`) | [vocamac.com](https://vocamac.com/) | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) |
+| [VocaMac](https://vocamac.com/) | Available now (`v1.0.0`) | [vocamac.com](https://vocamac.com/) | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) |
 | [VocaWin](https://vocawin.com/) | Unsigned beta (`v0.1.0-beta.1`) | [vocawin.com](https://vocawin.com/) | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) |
 | [VocaPhone](https://vocaphone.vocahq.com) | Android beta / iOS [TestFlight](https://testflight.apple.com/join/wd85wQ3W) (live consumer) | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) |
 | [VocaGateway](https://vocagateway.vocahq.com/) | Beta | [vocagateway.vocahq.com](https://vocagateway.vocahq.com/) | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) |
