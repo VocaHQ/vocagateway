@@ -29,7 +29,7 @@ services:
   gateway:
     # `latest` is the newest final release, never a pre-release, and only
     # moves when this publish is that newest tag. Pin it for a deployment
-    # you care about — `VOCAGATEWAY_IMAGE=docker.io/vocahq/vocagateway:0.1.0`
+    # you care about — `VOCAGATEWAY_IMAGE=docker.io/vocahq/vocagateway:0.2.0`
     # in `.env` — so a restart cannot quietly move you to a new version.
     # `ghcr.io/vocahq/vocagateway` serves the same digests if Docker Hub's
     # anonymous pull limits get in the way.
