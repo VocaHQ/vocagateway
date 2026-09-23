@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """The versioned cleanup instruction and the payload that carries a transcript.
 
 Two rules shape this module. The transcript is *data*: it is serialised as JSON

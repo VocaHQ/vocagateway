@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """What this gateway can be asked for, so a client need not guess.
 
 Deliberately descriptive rather than revealing: it names the modes and languages

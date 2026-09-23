@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2025-present VocaHQ, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * See the LICENSE file for details.
+ */
+
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";

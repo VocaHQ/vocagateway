@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """The deployment file and the contributor's file must describe one gateway.
 
 `compose.prod.yaml` is deliberately self-contained: after a release has

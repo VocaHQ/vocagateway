@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """Benchmark a local cleanup server with the production prompt and validators.
 
 The input is JSON Lines. Every row needs ``id``, ``category``, ``input``, and

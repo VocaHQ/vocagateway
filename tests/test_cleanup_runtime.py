@@ -1,3 +1,7 @@
+# Copyright (c) 2025-present VocaHQ, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
 """The llama.cpp protocol adapter, against a real socket that misbehaves.
 
 A fake HTTP server rather than a patched client: the transport's whole reason to

@@ -1,0 +1,60 @@
+name: CLA
+
+# Contributions here are covered by CLA.md, and this job is what collects the
+# signature: it comments on any pull request from someone who has not signed
+# yet, and records the signature when they reply with the sentence CLA.md
+# names. A signature is a commit to the `cla-signatures` branch, so that branch
+# has to exist and has to stay unprotected: the action writes the file but
+# never creates the branch, and main is protected.
+#
+# `pull_request_target` runs with a write token and repository secrets, so this
+# workflow deliberately never checks out the pull request: no code from a fork
+# is executed here. Do not add actions/checkout to this file.
+#
+# There is no concurrency group, unlike the other workflows in this directory.
+# A cancelled run on an issue_comment event would silently drop a signature the
+# contributor already posted.
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  cla:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # The signing sentence is quoted from CLA.md. Keep all three copies of it
+      # identical (the document, the `if` below, and custom-pr-sign-comment).
+      # Otherwise a contributor will type exactly what CLA.md tells them to
+      # and the bot will not accept it.
+      - name: Check or record the CLA signature
+        if: >
+          github.event_name == 'pull_request_target' ||
+          github.event.comment.body == 'recheck' ||
+          github.event.comment.body == 'I have read the CLA document and I hereby sign the CLA'
+        uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path-to-document: 'https://github.com/VocaHQ/vocagateway/blob/main/CLA.md'
+          # Do not create this file by hand; the action creates it on the first
+          # signature and fails if it finds one it did not write.
+          path-to-signatures: 'signatures/version1/cla.json'
+          branch: 'cla-signatures'
+          custom-pr-sign-comment: 'I have read the CLA document and I hereby sign the CLA'
+          # Bots cannot agree to a contributor agreement. Add maintainer logins
+          # here, comma-separated, to stop the bot asking them.
+          allowlist: 'dependabot[bot],github-actions[bot]'
+          # The action locks merged pull requests by default, so nobody can
+          # delete the comment their signature came from. The signature file on
+          # cla-signatures is the real record, so keep merged pull requests
+          # open to discussion instead.
+          lock-pullrequest-aftermerge: false
