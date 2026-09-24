@@ -97,18 +97,26 @@ async def upload_audio(
 
 
 @router.post("/v1/sessions/{session_id}/finish", response_model=SessionResponse)
-async def finish(session_id: UUID, ctx: GatewayContextDependency) -> SessionResponse:
-    return session_response(await ctx.service.finish(session_id))
+async def finish(
+    session_id: UUID, request: Request, ctx: GatewayContextDependency
+) -> SessionResponse:
+    return session_response(
+        await ctx.service.finish(session_id, disconnected=request.is_disconnected)
+    )
 
 
 @router.post("/v1/sessions/{session_id}/retry", response_model=SessionResponse)
-async def retry(session_id: UUID, ctx: GatewayContextDependency) -> SessionResponse:
+async def retry(
+    session_id: UUID, request: Request, ctx: GatewayContextDependency
+) -> SessionResponse:
     stored = ctx.service.require(session_id)
     if stored.state not in {"failed", "uploaded", "completed"}:
         raise APIProblem(
             HTTP_409_CONFLICT, "session_not_retryable", "This session cannot be retried."
         )
-    return session_response(await ctx.service.finish(session_id))
+    return session_response(
+        await ctx.service.finish(session_id, disconnected=request.is_disconnected)
+    )
 
 
 @router.delete("/v1/sessions/{session_id}", response_model=DeleteResponse)

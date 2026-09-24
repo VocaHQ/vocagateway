@@ -817,13 +817,17 @@ uv run vocagateway
 | `VOCAGATEWAY_HANDY_FALLBACK_MODEL` | `handy-computer/whisper-base-gguf/whisper-base-Q8_0.gguf` | unavailable | Model used when the pinned Handy model is missing |
 | `VOCAGATEWAY_RETENTION_HOURS` | `24` | `24` | Failed-session retry retention |
 | `VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO` | `true` | `true` | Delete source/normalized audio after success |
+| `VOCAGATEWAY_MAX_CONCURRENT_TRANSCRIPTIONS` | `2` | `2` | Decode cap. The loaded engine may be tighter (1 for Whisper/MLX/sherpa/Moonshine) |
+| `VOCAGATEWAY_MAX_QUEUED_TRANSCRIPTIONS` | `16` | `16` | How many requests may wait for a decode slot. `0` rejects immediately when busy |
+| `VOCAGATEWAY_TRANSCRIPTION_QUEUE_TIMEOUT_SECONDS` | `300` | `300` | How long a request may wait before its decode starts, counted from arrival and including FFmpeg, before `503 engine_overloaded` |
 | `VOCAGATEWAY_PUBLIC_URL` | unset | unset | Address the pairing QR encodes, overriding auto-discovery |
 | `VOCAGATEWAY_PAIRING_URL` | unset | unset | Alias for `VOCAGATEWAY_PUBLIC_URL`, checked second |
 | `VOCAGATEWAY_DEBUG` | `false` | `false` | Serve the Swagger UI at `/docs` and the schema at `/openapi.json`, and report the build commit in `/v1/admin/status` |
 
 Under Compose, `VOCAGATEWAY_BIND_HOST`, `PORT`, `ENGINE`, `RETENTION_HOURS`,
-`DELETE_SUCCESSFUL_AUDIO`, `PUBLIC_URL`, `PAIRING_URL`, and `DEBUG` are read
-from `.env` and passed into the container. `VOCAGATEWAY_TOKEN` becomes a
+`DELETE_SUCCESSFUL_AUDIO`, `MAX_CONCURRENT_TRANSCRIPTIONS`, `MAX_QUEUED_TRANSCRIPTIONS`,
+`TRANSCRIPTION_QUEUE_TIMEOUT_SECONDS`, `PUBLIC_URL`, `PAIRING_URL`, and `DEBUG`
+are read from `.env` and passed into the container. `VOCAGATEWAY_TOKEN` becomes a
 Compose secret at `/run/secrets/vocagateway_token` rather than an environment
 variable. Every other variable in the table above is fixed by the image or
 simply absent from a Linux container, and — this is the part that bites —
@@ -1176,9 +1180,10 @@ curl -H "Authorization: Bearer $TOKEN" -F file=@sample.wav -F model=whisper-1 \
 VocaLinux's Test Connection is `GET /` on that origin, which is the
 unauthenticated WebUI, so a bad key can still look green. The first dictation is
 the real check. The client times out after 30 seconds, and a cold model load can
-miss that. Default concurrency is one in-flight transcription; a busy gateway
-returns 503. The gateway speaks HTTP on the LAN by default. HTTPS needs a
-certificate the desktop OS trusts.
+miss that. Two overlapping requests can decode at once when the engine allows
+it; extra devices wait in a bounded queue, then a busy gateway returns 503. The
+gateway speaks HTTP on the LAN by default. HTTPS needs a certificate the desktop
+OS trusts.
 
 This is still optional self-hosted compute. Audio leaves the desktop and travels
 to the gateway host. It is not on-device transcription, and this endpoint does

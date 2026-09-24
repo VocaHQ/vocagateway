@@ -90,6 +90,29 @@ def test_runtime_metrics_history_samples_wh_aa(monkeypatch) -> None:
     assert len(metrics.snapshot().history) == HISTORY_MAX
 
 
+def test_offer_queue_admits_a_free_slot_even_when_waiting_is_forbidden() -> None:
+    metrics = RuntimeMetrics(concurrency_limit=1)
+    assert metrics.offer_queue(0) is True
+    assert metrics.offer_queue(0) is False
+    metrics.started()
+    assert metrics.offer_queue(0) is False
+    snapshot = metrics.snapshot()
+    assert snapshot.queue_depth == 0
+    assert snapshot.rejected_transcriptions == 2
+    assert snapshot.active_transcriptions == 1
+
+
+def test_offer_queue_caps_waiters_behind_a_busy_slot() -> None:
+    metrics = RuntimeMetrics(concurrency_limit=1)
+    assert metrics.offer_queue(1) is True
+    metrics.started()
+    assert metrics.offer_queue(1) is True
+    assert metrics.offer_queue(1) is False
+    snapshot = metrics.snapshot()
+    assert snapshot.queue_depth == 1
+    assert snapshot.rejected_transcriptions == 1
+
+
 def test_stream_activity_does_not_dequeue_a_batch_job() -> None:
     metrics = RuntimeMetrics(2)
     metrics.queued()

@@ -16,6 +16,8 @@ MAXIMUM_ERROR_MESSAGE_LENGTH = 200
 class HandyEngine:
     """Adapter for Handy's headless file-transcription interface."""
 
+    max_parallel_decodes = 2
+
     def __init__(
         self,
         binary: Path,
