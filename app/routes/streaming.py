@@ -378,18 +378,16 @@ async def stream_transcription(websocket: WebSocket) -> None:
         await websocket.close(code=WEBSOCKET_UNAUTHORIZED_CODE, reason="Unauthorized")
         return
     pending = None
-    # Slot before lease, matching batch: refuse when no decode slot is free
-    # now, without holding an engine while deciding. A job still in FFmpeg
-    # does not occupy a decode slot.
+    # Lease and gate first so unsupported/unready engines close with 4409/4410
+    # even when decode slots are full. wait=False still means busy-now (FFmpeg
+    # waiters do not occupy a slot); there is no wait that could deadlock a lease.
     try:
-        async with (
-            ctx.service.occupy_slot(wait=False),
-            ctx.engine_provider.lease() as selected_engine,
-        ):
+        async with ctx.engine_provider.lease() as selected_engine:
             engine = await _StreamGate.engine_or_close(websocket, selected_engine)
             if engine is None:
                 return
-            pending = await _StreamSession(websocket, engine).run()
+            async with ctx.service.occupy_slot(wait=False):
+                pending = await _StreamSession(websocket, engine).run()
     except errors.APIProblem as error:
         if error.code != ENGINE_OVERLOADED:
             raise

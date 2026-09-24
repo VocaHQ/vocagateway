@@ -293,6 +293,34 @@ def test_a_second_stream_is_refused_without_waiting(tmp_path: Path) -> None:
     assert waited < QUEUE_TIMEOUT_SECONDS
 
 
+def test_unsupported_engine_is_not_busy_when_slots_are_full(tmp_path: Path) -> None:
+    settings = Settings(
+        token=TOKEN,
+        data_dir=tmp_path,
+        whisper_binary=tmp_path / WHISPER_BINARY_NAME,
+        whisper_model=tmp_path / MODEL_FILE_NAME,
+        transcription_queue_timeout_seconds=QUEUE_TIMEOUT_SECONDS,
+    )
+    app = create_app(settings, engine=BatchOnlyEngine())
+    service = app.state.ctx.service
+    with TestClient(app) as client:
+        client.portal.call(service.acquire_transcription_slot)
+        try:
+            with client.websocket_connect(
+                STREAM_PATH, headers={AUTHORIZATION_HEADER: f"Bearer {TOKEN}"}
+            ) as websocket:
+                refusal = websocket.receive_json()
+        except BaseException:
+            raise
+        finally:
+            client.portal.call(service.release_transcription_slot)
+    assert refusal == {
+        MESSAGE_TYPE_KEY: "unsupported",
+        "reason": "active_engine",
+        ENGINE_KEY: "whisperkit:test-model",
+    }
+
+
 def test_authenticated_batch_engine_gets_st_aa(tmp_path: Path) -> None:
     settings = Settings(
         token=TOKEN,
