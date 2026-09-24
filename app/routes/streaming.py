@@ -80,6 +80,8 @@ class _StreamGate:
 
     @classmethod
     async def reject_busy(cls, websocket: WebSocket) -> None:
+        with suppress(RuntimeError):
+            await websocket.accept()
         with suppress(RuntimeError, WebSocketDisconnect):
             await websocket.send_json(
                 {MESSAGE_TYPE_KEY: "unavailable", "reason": ENGINE_OVERLOADED}
@@ -372,21 +374,27 @@ async def stream_transcription(websocket: WebSocket) -> None:
     zipformer model.
     """
     ctx: context.GatewayContext = websocket.app.state.ctx
+    if not ctx.token_is_valid(websocket.headers.get("authorization")):
+        await websocket.close(code=WEBSOCKET_UNAUTHORIZED_CODE, reason="Unauthorized")
+        return
     pending = None
-    async with ctx.engine_provider.lease() as selected_engine:
-        engine = await _StreamGate.engine_or_close(websocket, selected_engine)
-        if engine is None:
-            return
-        # A stream does not queue: its socket is already open, so a waiting
-        # client would hear nothing. Refuse at once and let it retry.
-        try:
-            async with ctx.service.occupy_slot(wait=False):
-                pending = await _StreamSession(websocket, engine).run()
-        except errors.APIProblem as error:
-            if error.code != ENGINE_OVERLOADED:
-                raise
-            await _StreamGate.reject_busy(websocket)
-            return
+    # Slot before lease, matching batch: refuse when no decode slot is free
+    # now, without holding an engine while deciding. A job still in FFmpeg
+    # does not occupy a decode slot.
+    try:
+        async with (
+            ctx.service.occupy_slot(wait=False),
+            ctx.engine_provider.lease() as selected_engine,
+        ):
+            engine = await _StreamGate.engine_or_close(websocket, selected_engine)
+            if engine is None:
+                return
+            pending = await _StreamSession(websocket, engine).run()
+    except errors.APIProblem as error:
+        if error.code != ENGINE_OVERLOADED:
+            raise
+        await _StreamGate.reject_busy(websocket)
+        return
     # Release speech resources before running cleanup.
     if pending is not None:
         await _StreamFinalizer(ctx, websocket, pending).send()

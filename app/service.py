@@ -231,11 +231,9 @@ class TranscriptionService:
 
     @asynccontextmanager
     async def occupy_slot(self, *, wait: bool = True) -> AsyncIterator[None]:
-        await self.acquire_transcription_slot(wait=wait)
-        try:
-            yield
-        finally:
-            self.release_transcription_slot()
+        with _Ticket(self, wait=wait) as ticket:
+            async with ticket.decode_slot():
+                yield
 
     def release_transcription_slot(self) -> None:
         self._decode_limiter.release()
@@ -247,6 +245,8 @@ class TranscriptionService:
         Batch jobs do not come through here: they take a `_Ticket` on arrival so
         FFmpeg and cleanup run outside the slot. This is the one-step form for
         callers that decode as soon as they are admitted, like a live stream.
+        `wait=False` refuses unless a decode slot is free now; a job still in
+        FFmpeg does not occupy one.
         """
         with _Ticket(self, wait=wait) as ticket:
             await ticket.take_slot()
@@ -297,15 +297,20 @@ class _Ticket:
         wait: bool = True,
         disconnected: Disconnected | None = None,
     ) -> None:
-        waiting = service.settings.maximum_queued_transcriptions if wait else 0
-        if not service.metrics.offer_queue(waiting, slots=service.parallel_limit()):
-            raise _busy_engine()
-        budget = service.settings.transcription_queue_timeout_seconds if wait else 0
+        if wait:
+            waiting = service.settings.maximum_queued_transcriptions
+            if not service.metrics.offer_queue(waiting, slots=service.parallel_limit()):
+                raise _busy_engine()
+            budget = service.settings.transcription_queue_timeout_seconds
+            in_line = True
+        else:
+            budget = 0
+            in_line = False
         self._service = service
         self._deadline = asyncio.get_running_loop().time() + budget
         self._disconnected = disconnected
         self._abandoned = False
-        self._in_line = True
+        self._in_line = in_line
 
     def __enter__(self) -> _Ticket:
         return self
@@ -318,7 +323,10 @@ class _Ticket:
         """Bound pre-decode work, such as FFmpeg, by this ticket's deadline."""
         try:
             async with asyncio.timeout_at(self._deadline):
-                yield
+                await self._abandon_if_gone()
+                async with self._guard_disconnect():
+                    yield
+                await self._abandon_if_gone()
         except TimeoutError as error:
             self._leave(rejected=True)
             raise _busy_engine() from error
@@ -327,36 +335,49 @@ class _Ticket:
         service = self._service
         remaining = self._deadline - asyncio.get_running_loop().time()
         try:
+            await self._abandon_if_gone()
             await self._unless_abandoned(service._decode_limiter.acquire(remaining))
+            await self._abandon_if_gone(held=True)
         except TimeoutError as error:
             self._leave(rejected=True)
             raise _busy_engine() from error
+        queued = self._in_line
         self._in_line = False
-        service.metrics.started()
+        service.metrics.started(queued=queued)
 
     @asynccontextmanager
     async def decode_slot(self) -> AsyncIterator[None]:
-        await self.take_slot()
+        held = False
         try:
+            await self.take_slot()
+            held = True
             yield
+        except BaseException:
+            raise
         finally:
-            self._service.release_transcription_slot()
+            if held:
+                self._service.release_transcription_slot()
 
     async def _unless_abandoned(self, acquire: Awaitable[None]) -> None:
-        """Give up the place in line if the client hangs up while waiting.
+        async with self._guard_disconnect():
+            await acquire
+
+    @asynccontextmanager
+    async def _guard_disconnect(self) -> AsyncIterator[None]:
+        """Give up the place in line if the client hangs up while this work runs.
 
         Starlette does not cancel a handler when its client goes away, so
         without this a phone that timed out would keep its place and later be
         decoded for nobody.
         """
         if self._disconnected is None:
-            await acquire
+            yield
             return
         waiter = asyncio.current_task()
         assert waiter is not None
         watcher = asyncio.create_task(self._watch(waiter))
         try:
-            await acquire
+            yield
         except asyncio.CancelledError:
             if not self._abandoned:
                 raise
@@ -374,10 +395,30 @@ class _Ticket:
         self._abandoned = True
         waiter.cancel()
 
+    async def _abandon_if_gone(self, *, held: bool = False) -> None:
+        disconnected = self._disconnected
+        if disconnected is None:
+            return
+        release_grant = held
+        try:
+            if not await disconnected():
+                release_grant = False
+                return
+            self._leave()
+            raise _client_gone()
+        except BaseException:
+            raise
+        finally:
+            if release_grant:
+                self._service._decode_limiter.release()
+
     def _leave(self, *, rejected: bool = False) -> None:
         if self._in_line:
             self._in_line = False
             self._service.metrics.dequeued(rejected=rejected)
+            return
+        if rejected:
+            self._service.metrics.reject()
 
 
 class _DecodeLimiter:
@@ -400,6 +441,13 @@ class _DecodeLimiter:
         self._wake()
         if not self._waiters and self._active < self._limit():
             self._active += 1
+            try:
+                # Checkpoint after the grant: a cancelling awaiter would otherwise
+                # discard this return and leak `_active` forever.
+                await asyncio.sleep(0)
+            except BaseException:
+                self.release()
+                raise
             return
         if wait_seconds <= 0:
             raise TimeoutError
@@ -708,6 +756,11 @@ class _SessionJob(_TranscriptionJob[storage.StoredSession]):
         )
 
     def _record_failure(self, mapped: Exception) -> Exception:
+        # A refusal before decode is not a failed transcription: restore the
+        # session to `uploaded` so the client can retry as it would after overflow.
+        if isinstance(mapped, errors.APIProblem) and mapped.code in _UNATTEMPTED:
+            self.service.repository.restore_uploaded(self.stored.session_id)
+            return mapped
         code = mapped.code if isinstance(mapped, errors.APIProblem) else "internal_error"
         # Leave unknown failures retryable: stuck "transcribing" rejects finish
         # and is not in the retry allow-list (failed/uploaded/completed).

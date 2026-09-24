@@ -71,10 +71,13 @@ async def test_an_abandoned_ffmpeg_never_holds_its_caller(
         with pytest.raises(asyncio.CancelledError):
             await normalize
         elapsed = time.monotonic() - started
-        # Let the pipe close while the loop still runs, so the transport finishes.
-        await asyncio.sleep(ABANDON_AFTER_SECONDS)
         assert elapsed < ABANDON_BOUND_SECONDS
         assert not destination.exists()
+        assert holder_pid is not None
+        # Production `_reap` must have killed the process group, including the
+        # grandchild that held stderr open. This runs before the safety-net
+        # SIGKILL in `finally`.
+        await asyncio.to_thread(_wait_until_dead, holder_pid)
     except BaseException:
         raise
     finally:
@@ -93,6 +96,16 @@ def _read_pid(pid_file: Path) -> int:
             return int(pid_file.read_text(encoding="utf-8"))
         time.sleep(ABANDON_AFTER_SECONDS)
     raise AssertionError("the wrapper never started its child")
+
+
+def _wait_until_dead(pid: int) -> None:
+    for _ in range(PID_POLL_ATTEMPTS):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(ABANDON_AFTER_SECONDS)
+    raise AssertionError("production reap left the FFmpeg grandchild running")
 
 
 async def test_ffmpeg_rejects_invalid_audio(tmp_path: Path) -> None:

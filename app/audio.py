@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import math
 import os
+import signal
 import wave
 from array import array
 from contextlib import suppress
@@ -49,9 +50,41 @@ async def _reap(process: asyncio.subprocess.Process) -> None:
     configured as the FFmpeg binary can leave a grandchild holding stderr open
     after the child is killed, and the wait would then never end, keeping the
     request's place in line. The bound is what guarantees the place comes back.
+    The child is started in its own session, so killing the process group
+    reaps the grandchild too, and the timed wait is shielded from caller
+    cancellation so a hang-up still collects the tree.
     """
+    _kill_process_group(process)
+    _close_pipes(process)
+    await asyncio.shield(_wait_reaped(process))
+
+
+def _kill_process_group(process: asyncio.subprocess.Process) -> None:
+    pid = process.pid
+    if pid is None:
+        return
+    with suppress(ProcessLookupError, PermissionError, OSError):
+        os.killpg(pid, signal.SIGKILL)
+        return
     with suppress(ProcessLookupError):
         process.kill()
+
+
+def _close_pipes(process: asyncio.subprocess.Process) -> None:
+    stdin = process.stdin
+    if stdin is not None:
+        with suppress(BrokenPipeError, ConnectionResetError, OSError):
+            stdin.close()
+    for reader in (process.stdout, process.stderr):
+        if reader is None:
+            continue
+        transport = getattr(reader, "_transport", None)
+        if transport is not None:
+            with suppress(OSError):
+                transport.close()
+
+
+async def _wait_reaped(process: asyncio.subprocess.Process) -> None:
     with suppress(TimeoutError):
         async with asyncio.timeout(FFMPEG_REAP_SECONDS):
             await process.wait()
@@ -83,6 +116,7 @@ class FFmpegNormalizer:
             str(destination),
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
         try:
             _, stderr = await process.communicate()

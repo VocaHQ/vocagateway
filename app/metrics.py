@@ -126,6 +126,10 @@ class RuntimeMetrics:
             if rejected:
                 self._rejected_transcriptions += 1
 
+    def reject(self) -> None:
+        with self._lock:
+            self._rejected_transcriptions += 1
+
     def started(self, *, queued: bool = True) -> None:
         with self._lock:
             if queued:

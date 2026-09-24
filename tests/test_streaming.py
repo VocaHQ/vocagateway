@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from array import array
+from contextlib import suppress
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -212,6 +213,61 @@ def test_authenticated_sherpa_onnx_style_st_b5a1f(tmp_path: Path) -> None:
         }
 
     assert engine._stream.closed is True
+
+
+class _StallingNormalizer:
+    def __init__(self) -> None:
+        self.stalled = asyncio.Event()
+
+    async def normalize(self, source: Path, destination: Path, maximum_seconds: int) -> Path:
+        self.stalled.set()
+        await asyncio.Event().wait()
+        return destination
+
+
+def test_stream_is_not_refused_while_ffmpeg_holds_the_line(
+    tmp_path: Path, audio_bytes: bytes
+) -> None:
+    settings = Settings(
+        token=TOKEN,
+        data_dir=tmp_path,
+        whisper_binary=tmp_path / WHISPER_BINARY_NAME,
+        whisper_model=tmp_path / MODEL_FILE_NAME,
+    )
+    normalizer = _StallingNormalizer()
+    source = tmp_path / "queued.wav"
+    source.write_bytes(audio_bytes)
+    app = create_app(settings, engine=FakeStreamingEngine(FakeStream()), normalizer=normalizer)
+    service = app.state.ctx.service
+    greeting: dict[str, object] | None = None
+    with TestClient(app) as client:
+
+        async def begin_ffmpeg() -> asyncio.Task[object]:
+            task: asyncio.Task[object] = asyncio.create_task(
+                service.transcribe_adhoc(source, "auto")
+            )
+            await asyncio.wait_for(normalizer.stalled.wait(), timeout=1)
+            return task
+
+        async def cancel_ffmpeg(task: asyncio.Task[object]) -> None:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+
+        stalled = client.portal.call(begin_ffmpeg)
+        try:
+            with client.websocket_connect(
+                STREAM_PATH, headers={AUTHORIZATION_HEADER: f"Bearer {TOKEN}"}
+            ) as websocket:
+                websocket.send_json(
+                    {MESSAGE_TYPE_KEY: "start", "sample_rate": 16_000, "style": "formal"}
+                )
+                greeting = websocket.receive_json()
+        except BaseException:
+            raise
+        finally:
+            client.portal.call(cancel_ffmpeg, stalled)
+    assert greeting == {MESSAGE_TYPE_KEY: "ready", ENGINE_KEY: "sherpa-onnx"}
 
 
 def test_a_second_stream_is_refused_without_waiting(tmp_path: Path) -> None:

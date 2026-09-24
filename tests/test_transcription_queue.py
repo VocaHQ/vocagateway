@@ -497,3 +497,149 @@ def test_no_middleware_hides_client_disconnects(settings: Settings) -> None:
     # waiting request polls for, so abandoned requests would decode for nobody.
     app = create_app(settings, engine=FakeEngine(), normalizer=FakeNormalizer())
     assert all(entry.cls is not BaseHTTPMiddleware for entry in app.user_middleware)
+
+
+async def test_a_disconnect_during_ffmpeg_never_decodes(
+    settings: Settings, audio_bytes: bytes, tmp_path: Path
+) -> None:
+    engine = FakeEngine()
+    normalizer = StallingNormalizer()
+    app = create_app(
+        _queued_settings(settings, queued=2, timeout=5.0),
+        engine=engine,
+        normalizer=normalizer,
+    )
+    service = app.state.ctx.service
+    source = tmp_path / "abandoned.wav"
+    source.write_bytes(audio_bytes)
+    gone = False
+
+    async def hung_up() -> bool:
+        return gone
+
+    waiting = asyncio.create_task(service.transcribe_adhoc(source, "auto", disconnected=hung_up))
+    await asyncio.wait_for(normalizer.stalled.wait(), timeout=1)
+    gone = True
+    with pytest.raises(APIProblem) as abandoned:
+        await asyncio.wait_for(waiting, timeout=2)
+    assert abandoned.value.code == "client_disconnected"
+    assert engine.calls == 0
+    assert service.metrics.snapshot().queue_depth == 0
+
+
+async def test_a_disconnect_on_a_free_slot_never_decodes(
+    settings: Settings, audio_bytes: bytes, tmp_path: Path
+) -> None:
+    engine = FakeEngine()
+    app = create_app(settings, engine=engine, normalizer=FakeNormalizer())
+    service = app.state.ctx.service
+    source = tmp_path / "abandoned.wav"
+    source.write_bytes(audio_bytes)
+
+    async def hung_up() -> bool:
+        return True
+
+    with pytest.raises(APIProblem) as abandoned:
+        await service.transcribe_adhoc(source, "auto", disconnected=hung_up)
+    assert abandoned.value.code == "client_disconnected"
+    assert engine.calls == 0
+    snapshot = service.metrics.snapshot()
+    assert snapshot.queue_depth == 0
+    assert snapshot.active_transcriptions == 0
+    async with service.occupy_slot(wait=False):
+        assert service.metrics.snapshot().active_transcriptions == 1
+
+
+async def test_limiter_fast_path_cancel_does_not_leak_a_slot() -> None:
+    limiter = _DecodeLimiter(lambda: 1)
+
+    async def grab() -> None:
+        current = asyncio.current_task()
+        assert current is not None
+        current.cancel()
+        await limiter.acquire(wait_seconds=1)
+
+    task = asyncio.create_task(grab())
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert limiter._active == 0
+    await asyncio.wait_for(limiter.acquire(wait_seconds=0.01), timeout=1)
+    limiter.release()
+
+
+async def test_cancelling_an_immediate_occupy_does_not_leak_a_slot(settings: Settings) -> None:
+    app = create_app(settings, engine=FakeEngine(), normalizer=FakeNormalizer())
+    service = app.state.ctx.service
+
+    async def grab() -> None:
+        current = asyncio.current_task()
+        assert current is not None
+        current.cancel()
+        async with service.occupy_slot(wait=False):
+            raise AssertionError("cancelled occupy entered the slot")
+
+    task = asyncio.create_task(grab())
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert service.metrics.snapshot().active_transcriptions == 0
+    async with service.occupy_slot(wait=False):
+        assert service.metrics.snapshot().active_transcriptions == 1
+    assert service.metrics.snapshot().active_transcriptions == 0
+
+
+async def test_a_queue_timeout_leaves_the_session_uploaded(
+    settings: Settings, audio_bytes: bytes
+) -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+    engine = SlowEngine(started, release)
+    _, client = _app_client(_queued_settings(settings, queued=4, timeout=0.05), engine)
+    async with client:
+        session_id = await _uploaded_session(client, audio_bytes)
+        first = asyncio.create_task(
+            client.post(TRANSCRIPTIONS, headers=AUTHORIZATION, files=_wav_file(audio_bytes))
+        )
+        await asyncio.wait_for(started.wait(), timeout=1)
+        refused = await client.post(f"/v1/sessions/{session_id}/finish", headers=AUTHORIZATION)
+        stored = await client.get(f"/v1/sessions/{session_id}", headers=AUTHORIZATION)
+        release.set()
+        await first
+    assert refused.status_code == HTTP_503_SERVICE_UNAVAILABLE
+    assert _error_code(refused) == ENGINE_OVERLOADED
+    assert stored.json()["state"] == "uploaded"
+
+
+async def test_an_ffmpeg_deadline_leaves_the_session_uploaded(
+    settings: Settings, audio_bytes: bytes
+) -> None:
+    app = create_app(
+        _queued_settings(settings, queued=0, timeout=0.1),
+        engine=FakeEngine(),
+        normalizer=StallingNormalizer(),
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        session_id = await _uploaded_session(client, audio_bytes)
+        refused = await client.post(f"/v1/sessions/{session_id}/finish", headers=AUTHORIZATION)
+        stored = await client.get(f"/v1/sessions/{session_id}", headers=AUTHORIZATION)
+    assert refused.status_code == HTTP_503_SERVICE_UNAVAILABLE
+    assert _error_code(refused) == ENGINE_OVERLOADED
+    assert stored.json()["state"] == "uploaded"
+
+
+async def test_a_disconnect_before_decode_leaves_the_session_uploaded(
+    settings: Settings, audio_bytes: bytes
+) -> None:
+    app, client = _app_client(_queued_settings(settings, queued=2, timeout=5.0), FakeEngine())
+    service = app.state.ctx.service
+    async with client:
+        session_id = await _uploaded_session(client, audio_bytes)
+
+        async def hung_up() -> bool:
+            return True
+
+        with pytest.raises(APIProblem) as abandoned:
+            await service.finish(UUID(session_id), disconnected=hung_up)
+        stored = service.require(UUID(session_id))
+    assert abandoned.value.code == "client_disconnected"
+    assert stored.state == "uploaded"
