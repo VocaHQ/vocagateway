@@ -145,6 +145,36 @@ def test_custom_token_file_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert settings.token_file == custom_token
 
 
+def test_admission_defaults_and_env_bounds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _isolate_home(monkeypatch, tmp_path)
+    monkeypatch.setenv(TOKEN_ENVIRONMENT_VARIABLE, PADDED_TEST_TOKEN)
+
+    settings = Settings.from_env()
+
+    assert settings.maximum_concurrent_transcriptions == 2
+    assert settings.maximum_queued_transcriptions == 16
+    assert settings.transcription_queue_timeout_seconds == 300
+
+    monkeypatch.setenv("VOCAGATEWAY_MAX_CONCURRENT_TRANSCRIPTIONS", "3")
+    monkeypatch.setenv("VOCAGATEWAY_MAX_QUEUED_TRANSCRIPTIONS", "2")
+    monkeypatch.setenv("VOCAGATEWAY_TRANSCRIPTION_QUEUE_TIMEOUT_SECONDS", "30")
+    overridden = Settings.from_env()
+    assert overridden.maximum_concurrent_transcriptions == 3
+    assert overridden.maximum_queued_transcriptions == 2
+    assert overridden.transcription_queue_timeout_seconds == 30
+
+
+def test_admission_env_rejects_out_of_range(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _isolate_home(monkeypatch, tmp_path)
+    monkeypatch.setenv(TOKEN_ENVIRONMENT_VARIABLE, PADDED_TEST_TOKEN)
+    monkeypatch.setenv("VOCAGATEWAY_MAX_QUEUED_TRANSCRIPTIONS", "99")
+
+    with pytest.raises(RuntimeError, match="between"):
+        Settings.from_env()
+
+
 def test_short_token_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _isolate_home(monkeypatch, tmp_path)
     monkeypatch.setenv(TOKEN_ENVIRONMENT_VARIABLE, "too-short")

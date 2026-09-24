@@ -500,6 +500,10 @@ class VocaMacEngine:
             delegate.close()
 
     @property
+    def max_parallel_decodes(self) -> int:
+        return 2 if _HeadlessClient(self).supported() else 1
+
+    @property
     def model_is_resident(self) -> bool:
         return self._delegate is not None and self._delegate.model_is_resident
 

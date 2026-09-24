@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import builtins
 import math
+import os
 import random
+import signal
+import time
 import wave
 from array import array
 from pathlib import Path
@@ -15,6 +19,10 @@ from app.errors import InvalidAudioError, SilentAudioError
 MAXIMUM_RECORDING_DURATION_SECONDS = 120
 NORMALIZED_SAMPLE_RATE_HZ = 16_000
 SILENT_AUDIO_FRAME_COUNT = 8_000
+ABANDON_AFTER_SECONDS = 0.05
+REAP_BOUND_SECONDS = 0.2
+ABANDON_BOUND_SECONDS = 3
+PID_POLL_ATTEMPTS = 100
 
 
 async def test_ffmpeg_normalizes_real_audio(
@@ -30,6 +38,63 @@ async def test_ffmpeg_normalizes_real_audio(
     with wave.open(str(operation_result), "rb") as normalized:
         assert normalized.getframerate() == NORMALIZED_SAMPLE_RATE_HZ
         assert normalized.getnchannels() == 1
+
+
+async def test_an_abandoned_ffmpeg_never_holds_its_caller(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A wrapper whose child keeps stderr open after the wrapper is killed, the
+    # case in which waiting for the exit alone never returns.
+    wrapper = tmp_path / "ffmpeg-wrapper"
+    holder = tmp_path / "holder.pid"
+    wrapper.write_text(
+        f'#!/bin/sh\nsleep 30 &\necho $! > "{holder}"\nexec sleep 30\n',
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setattr("app.audio.FFMPEG_REAP_SECONDS", REAP_BOUND_SECONDS)
+    source = tmp_path / "input.wav"
+    source.write_bytes(b"not audio")
+    destination = tmp_path / "normalized.wav"
+    holder_pid: int | None = None
+    normalize = asyncio.create_task(
+        FFmpegNormalizer(str(wrapper)).normalize(
+            source, destination, MAXIMUM_RECORDING_DURATION_SECONDS
+        )
+    )
+    try:
+        holder_pid = await asyncio.to_thread(_read_pid, holder)
+
+        started = time.monotonic()
+        normalize.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await normalize
+        elapsed = time.monotonic() - started
+        os.kill(holder_pid, signal.SIGKILL)
+        # Let the pipe close while the loop still runs, so the transport finishes.
+        await asyncio.sleep(ABANDON_AFTER_SECONDS)
+        assert elapsed < ABANDON_BOUND_SECONDS
+        assert not destination.exists()
+    finally:
+        if not normalize.done():
+            normalize.cancel()
+            try:
+                await normalize
+            except asyncio.CancelledError:
+                pass
+        if holder_pid is not None:
+            try:
+                os.kill(holder_pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+
+def _read_pid(pid_file: Path) -> int:
+    for _ in range(PID_POLL_ATTEMPTS):
+        if pid_file.exists() and pid_file.read_text(encoding="utf-8").strip():
+            return int(pid_file.read_text(encoding="utf-8"))
+        time.sleep(ABANDON_AFTER_SECONDS)
+    raise AssertionError("the wrapper never started its child")
 
 
 async def test_ffmpeg_rejects_invalid_audio(tmp_path: Path) -> None:

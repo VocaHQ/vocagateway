@@ -5,6 +5,7 @@ import math
 import os
 import wave
 from array import array
+from contextlib import suppress
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -24,6 +25,7 @@ MINIMUM_RECORDING_SECONDS = 0.15
 DURATION_LIMIT_TOLERANCE_SECONDS = 0.25
 SILENCE_RMS_THRESHOLD = 20
 MAXIMUM_FFMPEG_ERROR_LENGTH = 160
+FFMPEG_REAP_SECONDS = 5
 MINIMUM_AUDIO_UPLOAD_BYTES = 128
 
 ALLOWED_AUDIO_TYPES: MappingProxyType[str, str] = MappingProxyType(
@@ -38,6 +40,21 @@ ALLOWED_AUDIO_TYPES: MappingProxyType[str, str] = MappingProxyType(
         "audio/ogg": ".ogg",
     }
 )
+
+
+async def _reap(process: asyncio.subprocess.Process) -> None:
+    """Kill FFmpeg and collect it, but never let collecting it hold the caller.
+
+    asyncio reports a child's exit only once its pipes close. A wrapper script
+    configured as the FFmpeg binary can leave a grandchild holding stderr open
+    after the child is killed, and the wait would then never end, keeping the
+    request's place in line. The bound is what guarantees the place comes back.
+    """
+    with suppress(ProcessLookupError):
+        process.kill()
+    with suppress(TimeoutError):
+        async with asyncio.timeout(FFMPEG_REAP_SECONDS):
+            await process.wait()
 
 
 class FFmpegNormalizer:
@@ -67,7 +84,14 @@ class FFmpegNormalizer:
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
         )
-        _, stderr = await process.communicate()
+        try:
+            _, stderr = await process.communicate()
+        except BaseException:
+            # A queue deadline or a cancelled request stops waiting here, but
+            # FFmpeg would keep running unless it is killed with its caller.
+            await _reap(process)
+            destination.unlink(missing_ok=True)
+            raise
         if process.returncode != 0:
             destination.unlink(missing_ok=True)
             raise InvalidAudioError(_safe_ffmpeg_message(stderr))

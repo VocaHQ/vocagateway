@@ -6,6 +6,9 @@ import resource
 import time
 import wave
 from abc import ABC, abstractmethod
+from collections import deque
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -31,7 +34,14 @@ from app.models.base import (
     TranscriptionOptions,
 )
 
-TRANSCRIPTION_SLOT_TIMEOUT_SECONDS = 0.05
+ENGINE_OVERLOADED = "engine_overloaded"
+CLIENT_DISCONNECTED = "client_disconnected"
+TRANSCRIPTION_CANCELLED = "transcription_cancelled"
+# Not a failed decode: the gateway refused or dropped the request before one ran.
+_UNATTEMPTED = frozenset((ENGINE_OVERLOADED, CLIENT_DISCONNECTED))
+# nginx's "client closed request". Nobody reads it; it only labels the log line.
+CLIENT_CLOSED_REQUEST = 499
+DISCONNECT_POLL_SECONDS = 0.5
 FAILED_SESSION_STATE = "failed"
 COMPLETED_SESSION_STATE = "completed"
 RAW_STYLE = "raw"
@@ -56,6 +66,36 @@ class AdhocTranscription:
     timing: metrics.PipelineTiming
     original_transcript: str | None = None
     cleanup: CleanupOutcome | None = None
+
+
+def _busy_engine() -> errors.APIProblem:
+    return errors.APIProblem(
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        ENGINE_OVERLOADED,
+        "The local transcription engine is busy.",
+        recoverable=True,
+    )
+
+
+def _cancelled() -> errors.APIProblem:
+    return errors.APIProblem(
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        TRANSCRIPTION_CANCELLED,
+        "The transcription was cancelled before it finished.",
+        recoverable=True,
+    )
+
+
+def _client_gone() -> errors.APIProblem:
+    return errors.APIProblem(
+        CLIENT_CLOSED_REQUEST,
+        CLIENT_DISCONNECTED,
+        "The client disconnected while waiting for a decode slot.",
+        recoverable=True,
+    )
+
+
+Disconnected = Callable[[], Awaitable[bool]]
 
 
 def snapshot_options(snapshot: storage.CleanupSnapshot) -> CleanupOptions:
@@ -106,10 +146,12 @@ class TranscriptionService:
         self.repository = repository
         self.upload_dir = settings.data_dir / "audio"
         self.normalized_dir = settings.data_dir / "normalized"
-        self.metrics = metrics.RuntimeMetrics(settings.maximum_concurrent_transcriptions)
         self._engine_provider = engine_provider
+        # Both read the limit of whichever engine is loaded when they ask, so a
+        # model swap takes effect for waiters and for the status page at once.
+        self.metrics = metrics.RuntimeMetrics(self.parallel_limit)
         self._normalizer = normalizer
-        self._transcription_slots = asyncio.Semaphore(settings.maximum_concurrent_transcriptions)
+        self._decode_limiter = _DecodeLimiter(self.parallel_limit)
         # One shared finalization service for sessions, one-shot requests and
         # streaming finals, so the three cannot drift into different decisions.
         # Independent of the speech pipeline on purpose: cleanup has its own
@@ -117,7 +159,9 @@ class TranscriptionService:
         # transcriber to a client.
         self.cleanup = CleanupService(cleanup_manager, record=self._record_cleanup)
 
-    async def finish(self, session_id: UUID) -> storage.StoredSession:
+    async def finish(
+        self, session_id: UUID, *, disconnected: Disconnected | None = None
+    ) -> storage.StoredSession:
         """Transcribe a session exactly once, however many callers ask.
 
         A completed session answers from storage — including its original text
@@ -136,12 +180,13 @@ class TranscriptionService:
             )
         if stored.state == "transcribing":
             raise self._in_progress()
-        await self._acquire_transcription_slot()
-        claimed = self.repository.claim_transcribing(session_id)
-        if claimed is None:
-            self._release_slot()
-            return self._resolve_lost_claim(session_id)
-        return await _SessionJob(self, claimed).run()
+        # Take a place in line before the claim, so a full line leaves the
+        # session exactly as the client left it rather than failed.
+        with _Ticket(self, disconnected=disconnected) as ticket:
+            claimed = self.repository.claim_transcribing(session_id)
+            if claimed is None:
+                return self._resolve_lost_claim(session_id)
+            return await _SessionJob(self, ticket, claimed).run()
 
     async def transcribe_adhoc(
         self,
@@ -150,6 +195,7 @@ class TranscriptionService:
         *,
         style: str = RAW_STYLE,
         cleanup: CleanupOptions | None = None,
+        disconnected: Disconnected | None = None,
     ) -> AdhocTranscription:
         """One-shot transcription with no session stored.
 
@@ -157,8 +203,8 @@ class TranscriptionService:
         endpoint and the WebUI benchmark both depend on getting the model's own
         text back. Callers opt into anything else explicitly.
         """
-        await self._acquire_transcription_slot()
-        return await _AdhocJob(self, source, language, style, cleanup).run()
+        with _Ticket(self, disconnected=disconnected) as ticket:
+            return await _AdhocJob(self, ticket, source, language, style, cleanup).run()
 
     def require(self, session_id: UUID) -> storage.StoredSession:
         session = self.repository.get(session_id)
@@ -183,6 +229,33 @@ class TranscriptionService:
             self.delete(session.session_id)
         return len(expired)
 
+    @asynccontextmanager
+    async def occupy_slot(self, *, wait: bool = True) -> AsyncIterator[None]:
+        await self.acquire_transcription_slot(wait=wait)
+        try:
+            yield
+        finally:
+            self.release_transcription_slot()
+
+    def release_transcription_slot(self) -> None:
+        self._decode_limiter.release()
+        self.metrics.finished()
+
+    async def acquire_transcription_slot(self, *, wait: bool = True) -> None:
+        """Take a decode slot, queueing for one unless `wait` is false.
+
+        Batch jobs do not come through here: they take a `_Ticket` on arrival so
+        FFmpeg and cleanup run outside the slot. This is the one-step form for
+        callers that decode as soon as they are admitted, like a live stream.
+        """
+        with _Ticket(self, wait=wait) as ticket:
+            await ticket.take_slot()
+
+    def parallel_limit(self) -> int:
+        """How many clips the loaded engine may decode at once, right now."""
+        advertised = getattr(self._engine_provider.current(), "max_parallel_decodes", 1)
+        return max(1, min(self.settings.maximum_concurrent_transcriptions, int(advertised)))
+
     def _record_cleanup(self, outcome: CleanupOutcome) -> None:
         self.metrics.record_cleanup(str(outcome.status), outcome.reason_name, outcome.duration_ms)
 
@@ -206,28 +279,155 @@ class TranscriptionService:
             return current
         raise self._in_progress()
 
-    def _release_slot(self) -> None:
-        self._transcription_slots.release()
-        self.metrics.finished()
 
-    async def _acquire_transcription_slot(self) -> None:
-        self.metrics.queued()
+class _Ticket:
+    """One request's place in line, from arrival until it holds a decode slot.
+
+    Taken before FFmpeg runs and before a session is claimed, so a full line is
+    refused before any work is done. The queue timeout runs from arrival, so a
+    slow normalisation spends the same budget as waiting would. Clips enter the
+    decode line when their audio is ready: holding a place for one still in
+    FFmpeg would leave the engine idle while ready clips wait behind it.
+    """
+
+    def __init__(
+        self,
+        service: TranscriptionService,
+        *,
+        wait: bool = True,
+        disconnected: Disconnected | None = None,
+    ) -> None:
+        waiting = service.settings.maximum_queued_transcriptions if wait else 0
+        if not service.metrics.offer_queue(waiting, slots=service.parallel_limit()):
+            raise _busy_engine()
+        budget = service.settings.transcription_queue_timeout_seconds if wait else 0
+        self._service = service
+        self._deadline = asyncio.get_running_loop().time() + budget
+        self._disconnected = disconnected
+        self._abandoned = False
+        self._in_line = True
+
+    def __enter__(self) -> _Ticket:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self._leave()
+
+    @asynccontextmanager
+    async def before_decode(self) -> AsyncIterator[None]:
+        """Bound pre-decode work, such as FFmpeg, by this ticket's deadline."""
         try:
-            await asyncio.wait_for(
-                self._transcription_slots.acquire(), timeout=TRANSCRIPTION_SLOT_TIMEOUT_SECONDS
-            )
+            async with asyncio.timeout_at(self._deadline):
+                yield
         except TimeoutError as error:
-            self.metrics.dequeued(rejected=True)
-            raise errors.APIProblem(
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-                "engine_overloaded",
-                "The local transcription engine is busy.",
-                recoverable=True,
-            ) from error
+            self._leave(rejected=True)
+            raise _busy_engine() from error
+
+    async def take_slot(self) -> None:
+        service = self._service
+        remaining = self._deadline - asyncio.get_running_loop().time()
+        try:
+            await self._unless_abandoned(service._decode_limiter.acquire(remaining))
+        except TimeoutError as error:
+            self._leave(rejected=True)
+            raise _busy_engine() from error
+        self._in_line = False
+        service.metrics.started()
+
+    @asynccontextmanager
+    async def decode_slot(self) -> AsyncIterator[None]:
+        await self.take_slot()
+        try:
+            yield
+        finally:
+            self._service.release_transcription_slot()
+
+    async def _unless_abandoned(self, acquire: Awaitable[None]) -> None:
+        """Give up the place in line if the client hangs up while waiting.
+
+        Starlette does not cancel a handler when its client goes away, so
+        without this a phone that timed out would keep its place and later be
+        decoded for nobody.
+        """
+        if self._disconnected is None:
+            await acquire
+            return
+        waiter = asyncio.current_task()
+        assert waiter is not None
+        watcher = asyncio.create_task(self._watch(waiter))
+        try:
+            await acquire
+        except asyncio.CancelledError:
+            if not self._abandoned:
+                raise
+            waiter.uncancel()
+            raise _client_gone() from None
+        finally:
+            watcher.cancel()
+
+    async def _watch(self, waiter: asyncio.Task[object]) -> None:
+        disconnected = self._disconnected
+        assert disconnected is not None
+        # Starlette offers no disconnect event to wait on, only a probe.
+        while not await disconnected():  # noqa: ASYNC110
+            await asyncio.sleep(DISCONNECT_POLL_SECONDS)
+        self._abandoned = True
+        waiter.cancel()
+
+    def _leave(self, *, rejected: bool = False) -> None:
+        if self._in_line:
+            self._in_line = False
+            self._service.metrics.dequeued(rejected=rejected)
+
+
+class _DecodeLimiter:
+    """First-come, first-served decode slots under the loaded engine's limit.
+
+    A plain `asyncio.Condition` lets a newcomer take a freed slot before the
+    waiter it was freed for wakes up. Here a release hands the slot straight to
+    the head of the line, and nobody passes a waiter that is still in it. The
+    limit is read at every grant, so a swap to a single-decode engine stops
+    further grants until the decodes already running drain below it.
+    """
+
+    def __init__(self, limit: Callable[[], int]) -> None:
+        self._limit = limit
+        self._active = 0
+        self._waiters: deque[asyncio.Future[None]] = deque()
+
+    async def acquire(self, wait_seconds: float) -> None:
+        # A swap to a roomier engine raises the limit without a release.
+        self._wake()
+        if not self._waiters and self._active < self._limit():
+            self._active += 1
+            return
+        if wait_seconds <= 0:
+            raise TimeoutError
+        seat: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        self._waiters.append(seat)
+        try:
+            async with asyncio.timeout(wait_seconds):
+                await seat
         except BaseException:
-            self.metrics.dequeued()
+            if seat.done() and not seat.cancelled():
+                # Handed a slot in the same tick this waiter gave up.
+                self.release()
+            else:
+                with suppress(ValueError):
+                    self._waiters.remove(seat)
             raise
-        self.metrics.started()
+
+    def release(self) -> None:
+        self._active = max(0, self._active - 1)
+        self._wake()
+
+    def _wake(self) -> None:
+        limit = self._limit()
+        while self._waiters and self._active < limit:
+            seat = self._waiters.popleft()
+            if not seat.done():
+                self._active += 1
+                seat.set_result(None)
 
 
 def _require_matching_script(text: str, language: str) -> None:
@@ -323,7 +523,9 @@ class _Pipeline:
         runtime_metrics: metrics.RuntimeMetrics,
         started: float,
     ) -> Exception:
-        runtime_metrics.record_result(cls.elapsed_ms(started), success=False)
+        # A refusal is already counted as rejected; it is not a failed decode.
+        if not (isinstance(error, errors.APIProblem) and error.code in _UNATTEMPTED):
+            runtime_metrics.record_result(cls.elapsed_ms(started), success=False)
         for error_type, code, status_code, recoverable in _KNOWN_FAILURES:
             if isinstance(error, error_type):
                 problem = errors.APIProblem(status_code, code, str(error), recoverable=recoverable)
@@ -355,8 +557,11 @@ _KNOWN_FAILURES: tuple[_FailureRow, ...] = (
 
 
 class _EnginePass:
-    def __init__(self, service: TranscriptionService, language: str, style: str) -> None:
+    def __init__(
+        self, service: TranscriptionService, ticket: _Ticket, language: str, style: str
+    ) -> None:
         self.service = service
+        self.ticket = ticket
         self.language = language
         self.style = style
 
@@ -364,15 +569,21 @@ class _EnginePass:
         self, source: Path, normalized: Path
     ) -> tuple[EngineTranscription, int, TranscriptionEngine]:
         normalization_started = time.monotonic()
-        await self.service._normalizer.normalize(
-            source, normalized, self.service.settings.maximum_duration_seconds
-        )
+        async with self.ticket.before_decode():
+            await self.service._normalizer.normalize(
+                source, normalized, self.service.settings.maximum_duration_seconds
+            )
         normalization_ms = _Pipeline.elapsed_ms(normalization_started)
         outcome, engine = await self._infer(normalized)
         return outcome, normalization_ms, engine
 
     async def _infer(self, normalized: Path) -> tuple[EngineTranscription, TranscriptionEngine]:
-        async with self.service._engine_provider.lease() as engine:
+        # Slot before lease: a request still waiting must not hold a lease, or
+        # a model swap would keep the retired model resident until it ran.
+        async with (
+            self.ticket.decode_slot(),
+            self.service._engine_provider.lease() as engine,
+        ):
             inference_started = time.monotonic()
             raw_result = await engine.transcribe(
                 normalized,
@@ -382,8 +593,9 @@ class _EnginePass:
 
 
 class _TranscriptionJob[JobResult](ABC):
-    def __init__(self, service: TranscriptionService) -> None:
+    def __init__(self, service: TranscriptionService, ticket: _Ticket) -> None:
         self.service = service
+        self.ticket = ticket
 
     async def run(self) -> JobResult:
         normalized = self._normalized_path()
@@ -396,6 +608,11 @@ class _TranscriptionJob[JobResult](ABC):
             if mapped is error:
                 raise
             raise mapped from error
+        except asyncio.CancelledError:
+            # Shutdown, or a cancelled handler. A session left `transcribing`
+            # would refuse every later finish and retry, so free it first.
+            self._record_failure(_cancelled())
+            raise
         finally:
             self._release(normalized)
 
@@ -410,13 +627,13 @@ class _TranscriptionJob[JobResult](ABC):
 
     def _release(self, normalized: Path) -> None:
         normalized.unlink(missing_ok=True)
-        self.service._transcription_slots.release()
-        self.service.metrics.finished()
 
 
 class _SessionJob(_TranscriptionJob[storage.StoredSession]):
-    def __init__(self, service: TranscriptionService, stored: storage.StoredSession) -> None:
-        super().__init__(service)
+    def __init__(
+        self, service: TranscriptionService, ticket: _Ticket, stored: storage.StoredSession
+    ) -> None:
+        super().__init__(service, ticket)
         self.stored = stored
 
     def _normalized_path(self) -> Path:
@@ -427,7 +644,7 @@ class _SessionJob(_TranscriptionJob[storage.StoredSession]):
         stored = self.stored
         source = _Pipeline.safe_audio_path(self.service.upload_dir, stored.audio_name or "")
         outcome, normalization_ms, engine = await _EnginePass(
-            self.service, stored.language, stored.style
+            self.service, self.ticket, stored.language, stored.style
         ).run(source, normalized)
         _require_matching_script(outcome.text, stored.language)
         # The engine lease is already released here, so the optional text model
@@ -508,12 +725,13 @@ class _AdhocJob(_TranscriptionJob[AdhocTranscription]):
     def __init__(
         self,
         service: TranscriptionService,
+        ticket: _Ticket,
         source: Path,
         language: str,
         style: str = RAW_STYLE,
         cleanup: CleanupOptions | None = None,
     ) -> None:
-        super().__init__(service)
+        super().__init__(service, ticket)
         self.source = source
         self.language = language
         self.style = style
@@ -527,7 +745,7 @@ class _AdhocJob(_TranscriptionJob[AdhocTranscription]):
         # afterwards, so opting into cleanup cannot change what the model is
         # asked to produce.
         outcome, normalization_ms, engine = await _EnginePass(
-            self.service, self.language, RAW_STYLE
+            self.service, self.ticket, self.language, RAW_STYLE
         ).run(self.source, normalized)
         _require_matching_script(outcome.text, self.language)
         final = await self.service.cleanup.finalize(

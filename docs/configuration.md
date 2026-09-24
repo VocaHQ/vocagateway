@@ -86,6 +86,9 @@ variable. `compose.yaml` forwards only the keys it names, so a variable marked
 | `VOCAGATEWAY_DEBUG` | `false` | forwarded | Serve `/docs` and `/openapi.json`, and report the build commit in `/v1/admin/status` |
 | `VOCAGATEWAY_RETENTION_HOURS` | `24` | forwarded | Failed-session audio retention |
 | `VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO` | `true` | forwarded | Delete audio after success |
+| `VOCAGATEWAY_MAX_CONCURRENT_TRANSCRIPTIONS` | `2` | forwarded | Decode cap. Tightened to 1 for in-process models (Whisper, MLX, sherpa, Moonshine). Process-per-call engines (Handy, headless VocaMac, whisper.cpp CLI) can run two |
+| `VOCAGATEWAY_MAX_QUEUED_TRANSCRIPTIONS` | `16` | forwarded | How many requests may wait for a decode slot. `0` rejects immediately when busy |
+| `VOCAGATEWAY_TRANSCRIPTION_QUEUE_TIMEOUT_SECONDS` | `300` | forwarded | How long a request may wait before its decode starts, counted from arrival and including FFmpeg, before `503 engine_overloaded`. Range 0.05–600 |
 | `VOCAGATEWAY_WHISPER_BINARY` | `/opt/homebrew/bin/whisper-cli` | ignored — image pins `/usr/local/bin/whisper-cli` | `whisper.cpp` CLI |
 | `VOCAGATEWAY_WHISPER_MODEL` | `~/.local/share/whisper.cpp/models/ggml-base.en.bin` | ignored | Fallback `whisper.cpp` model, used only when no model is selected in the WebUI |
 | `VOCAGATEWAY_WHISPER_SERVER_BINARY` | the `whisper-server` beside `whisper-cli`, else `PATH` | ignored — image ships `/usr/local/bin/whisper-server` | Resident `whisper.cpp` worker; a missing binary falls back to one `whisper-cli` run per request |
@@ -223,8 +226,9 @@ processing.
 
 VocaLinux Test Connection is unauthenticated `GET /`, so it can look green with
 a bad key. First dictation is the real check. The client timeout is 30 seconds.
-Default concurrency is 1 (busy returns 503). LAN HTTP is the gateway default;
-HTTPS needs a certificate the desktop OS trusts.
+Default decode cap is 2, but in-process models still decode one at a time.
+Extra requests wait up to 300 s (16 waiters) then return 503. LAN HTTP is the
+gateway default; HTTPS needs a certificate the desktop OS trusts.
 
 ## Related docs
 

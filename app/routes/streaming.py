@@ -12,15 +12,17 @@ from typing import Any, cast
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app import context, scripts, serializers
+from app import context, errors, scripts, serializers
 from app.cleanup.base import MODE_INHERIT, REQUESTABLE_MODES, CleanupOptions, CleanupStatus
 from app.models.base import StreamingEngine, TranscriptionEngine
+from app.service import ENGINE_OVERLOADED
 
 router = APIRouter()
 
 WEBSOCKET_UNAUTHORIZED_CODE = 4401
 WEBSOCKET_UNSUPPORTED_ENGINE_CODE = 4409
 WEBSOCKET_ENGINE_UNAVAILABLE_CODE = 4410
+WEBSOCKET_ENGINE_BUSY_CODE = 4411
 WEBSOCKET_INTERNAL_ERROR_CODE = 1011
 MINIMUM_SAMPLE_RATE_HZ = 8_000
 MAXIMUM_SAMPLE_RATE_HZ = 96_000
@@ -75,6 +77,17 @@ class _StreamGate:
                 }
             )
             await websocket.close(code=WEBSOCKET_INTERNAL_ERROR_CODE)
+
+    @classmethod
+    async def reject_busy(cls, websocket: WebSocket) -> None:
+        with suppress(RuntimeError, WebSocketDisconnect):
+            await websocket.send_json(
+                {MESSAGE_TYPE_KEY: "unavailable", "reason": ENGINE_OVERLOADED}
+            )
+            await websocket.close(
+                code=WEBSOCKET_ENGINE_BUSY_CODE,
+                reason="The local transcription engine is busy.",
+            )
 
     @classmethod
     async def close_stream(cls, stream: object | None) -> None:
@@ -359,21 +372,24 @@ async def stream_transcription(websocket: WebSocket) -> None:
     zipformer model.
     """
     ctx: context.GatewayContext = websocket.app.state.ctx
-    active = False
-    try:
-        async with ctx.engine_provider.lease() as selected_engine:
-            engine = await _StreamGate.engine_or_close(websocket, selected_engine)
-            if engine is None:
-                return
-            ctx.service.metrics.started(queued=False)
-            active = True
-            pending = await _StreamSession(websocket, engine).run()
-        # Release speech resources before running cleanup.
-        if pending is not None:
-            await _StreamFinalizer(ctx, websocket, pending).send()
-    finally:
-        if active:
-            ctx.service.metrics.finished()
+    pending = None
+    async with ctx.engine_provider.lease() as selected_engine:
+        engine = await _StreamGate.engine_or_close(websocket, selected_engine)
+        if engine is None:
+            return
+        # A stream does not queue: its socket is already open, so a waiting
+        # client would hear nothing. Refuse at once and let it retry.
+        try:
+            async with ctx.service.occupy_slot(wait=False):
+                pending = await _StreamSession(websocket, engine).run()
+        except errors.APIProblem as error:
+            if error.code != ENGINE_OVERLOADED:
+                raise
+            await _StreamGate.reject_busy(websocket)
+            return
+    # Release speech resources before running cleanup.
+    if pending is not None:
+        await _StreamFinalizer(ctx, websocket, pending).send()
 
 
 def _elapsed_ms(started: float) -> int:

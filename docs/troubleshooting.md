@@ -8,6 +8,7 @@ Find the symptom, not the subsystem.
 - [Gateway unavailable](#gateway-unavailable)
 - [401 unauthorized](#401-unauthorized)
 - [413, 415, or 422](#413-415-or-422) — upload rejected
+- [503 engine_overloaded](#503-engine_overloaded) — two phones at once
 - [A model download fails SHA-256 verification](#a-model-download-fails-sha-256-verification)
 - [Reporting a gateway bug](#reporting-a-gateway-bug) — attach the redacted diagnostics bundle
 
@@ -310,6 +311,33 @@ save/test again. Never put the token in a URL or screenshot. See
   every language to the models covering it. This failure is deliberately not retryable,
   because retrying sends the same language to the same model. For Hindi and other
   South Asian languages, pin the language and use a multilingual Whisper model.
+
+## 503 engine_overloaded
+
+The gateway loads one model. How many clips it decodes at once is the tighter of
+`VOCAGATEWAY_MAX_CONCURRENT_TRANSCRIPTIONS` (default 2) and the engine: in-process
+models (Whisper, MLX, sherpa-onnx, Moonshine) stay at one decode because they
+share decoder or GPU state; Handy, headless VocaMac, and whisper.cpp's CLI can
+run two. FFmpeg normalisation always overlaps, so the second phone is not stuck
+behind the first's audio conversion or transcript cleanup.
+
+Extra phones wait in line (`VOCAGATEWAY_MAX_QUEUED_TRANSCRIPTIONS`, default 16)
+and are served first come, first served in the order their audio is ready. A
+clip still in FFmpeg does not hold up one that is ready to decode. Each request
+may wait `VOCAGATEWAY_TRANSCRIPTION_QUEUE_TIMEOUT_SECONDS` (default 300) from
+arrival, FFmpeg included. Past that, or if the line is already full, the request
+fails with recoverable `engine_overloaded` — the client can retry. A full line is
+refused before FFmpeg runs, and a refused session stays `uploaded`. Live `/v1/stream`
+sessions hold a decode slot for as long as they are open and do not queue: when
+no slot is free, the stream is told `unavailable` / `engine_overloaded`
+(WebSocket close 4411) straight away.
+
+Raising the concurrent cap above 2 does not make Whisper or MLX decode two
+clips at once; the WebUI and `/v1/admin/status` report the loaded engine's own
+limit as `concurrency_limit`. A client with a shorter HTTP timeout (VocaLinux is
+30 s) can still give up while the gateway is waiting; that is the client's
+deadline, not `engine_overloaded`. The gateway notices the hang-up and gives the
+place in line to the next phone, so an abandoned request is never decoded.
 
 ## The transcript came back in the wrong language
 

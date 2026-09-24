@@ -5,7 +5,7 @@ import os
 import secrets
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 DEFAULT_HANDY_FALLBACK_MODEL = "handy-computer/whisper-base-gguf/whisper-base-Q8_0.gguf"
 WILDCARD_BIND_HOST = "0.0.0.0"
@@ -159,6 +159,13 @@ def _default_config_file() -> Path:
 
 @dataclass(frozen=True, slots=True)
 class Settings:
+    _concurrent_default: ClassVar[int] = 2
+    _concurrent_cap: ClassVar[int] = 4
+    _queued_default: ClassVar[int] = 16
+    _queued_cap: ClassVar[int] = 32
+    _queue_timeout: ClassVar[float] = 300.0
+    _queue_timeout_floor: ClassVar[float] = 0.05
+    _queue_timeout_cap: ClassVar[float] = 600.0
     token: str
     data_dir: Path
     whisper_binary: Path
@@ -186,7 +193,16 @@ class Settings:
     maximum_duration_seconds: int = 120
     retention_hours: int = 24
     delete_successful_audio: bool = True
-    maximum_concurrent_transcriptions: int = 1
+    maximum_concurrent_transcriptions: int = _concurrent_default
+    # How many phones may wait for a decode slot. 0 is fail-fast
+    # (the old 50 ms 503). 16 covers a room of devices on a 16 GB host without
+    # letting a wedged client pile requests up forever.
+    maximum_queued_transcriptions: int = _queued_default
+    # How long a request may wait for its decode to start, counted from arrival
+    # and including FFmpeg, before `engine_overloaded`. Five minutes covers a
+    # line of short clips on Apple silicon; a hung decode still surfaces before
+    # the 600 s cap.
+    transcription_queue_timeout_seconds: float = _queue_timeout
     debug: bool = False
     # Transcript cleanup. Every one of these is an *override*: None or empty
     # means "the operator said nothing here", which leaves the saved WebUI
@@ -278,11 +294,61 @@ class Settings:
             in TRUTHY_VALUES,
             debug=_env("VOCAGATEWAY_DEBUG", "false").lower() in TRUTHY_VALUES,
             **cls._cleanup_env(),
+            **cls._admission_env(),
         )
 
     @property
     def token_file_display(self) -> str:
         return self._display_path(self.token_file)
+
+    @classmethod
+    def _admission_env(cls) -> dict[str, Any]:
+        return {
+            "maximum_concurrent_transcriptions": cls._bounded_int(
+                "VOCAGATEWAY_MAX_CONCURRENT_TRANSCRIPTIONS",
+                cls._concurrent_default,
+                1,
+                cls._concurrent_cap,
+            ),
+            "maximum_queued_transcriptions": cls._bounded_int(
+                "VOCAGATEWAY_MAX_QUEUED_TRANSCRIPTIONS",
+                cls._queued_default,
+                0,
+                cls._queued_cap,
+            ),
+            "transcription_queue_timeout_seconds": cls._bounded_float(
+                "VOCAGATEWAY_TRANSCRIPTION_QUEUE_TIMEOUT_SECONDS",
+                cls._queue_timeout,
+                cls._queue_timeout_floor,
+                cls._queue_timeout_cap,
+            ),
+        }
+
+    @classmethod
+    def _bounded_int(cls, name: str, default: int, minimum: int, maximum: int) -> int:
+        raw = _env(name)
+        if not raw:
+            return default
+        try:
+            parsed = int(raw)
+        except ValueError as error:
+            raise RuntimeError(f"{name} must be an integer.") from error
+        if not minimum <= parsed <= maximum:
+            raise RuntimeError(f"{name} must be between {minimum} and {maximum}.")
+        return parsed
+
+    @classmethod
+    def _bounded_float(cls, name: str, default: float, minimum: float, maximum: float) -> float:
+        raw = _env(name)
+        if not raw:
+            return default
+        try:
+            seconds = float(raw)
+        except ValueError as error:
+            raise RuntimeError(f"{name} must be a number of seconds.") from error
+        if not minimum <= seconds <= maximum:
+            raise RuntimeError(f"{name} must be between {minimum} and {maximum}.")
+        return seconds
 
     @classmethod
     def _cleanup_env(cls) -> dict[str, Any]:

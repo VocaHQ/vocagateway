@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from array import array
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,6 +23,7 @@ AUTHORIZATION_HEADER = "Authorization"
 MESSAGE_TYPE_KEY = "type"
 ENGINE_KEY = "engine"
 TRANSCRIPT_KEY = "transcript"
+QUEUE_TIMEOUT_SECONDS = 2.0
 
 _TOKEN_PADDING = "x" * TOKEN_PADDING_LENGTH
 TOKEN = f"stream-{_TOKEN_PADDING}"
@@ -210,6 +212,29 @@ def test_authenticated_sherpa_onnx_style_st_b5a1f(tmp_path: Path) -> None:
         }
 
     assert engine._stream.closed is True
+
+
+def test_a_second_stream_is_refused_without_waiting(tmp_path: Path) -> None:
+    settings = Settings(
+        token=TOKEN,
+        data_dir=tmp_path,
+        whisper_binary=tmp_path / WHISPER_BINARY_NAME,
+        whisper_model=tmp_path / MODEL_FILE_NAME,
+        transcription_queue_timeout_seconds=QUEUE_TIMEOUT_SECONDS,
+    )
+    app = create_app(settings, engine=FakeStreamingEngine(FakeStream()))
+    service = app.state.ctx.service
+    with TestClient(app) as client:
+        client.portal.call(service.acquire_transcription_slot)
+        started = time.monotonic()
+        with client.websocket_connect(
+            STREAM_PATH, headers={AUTHORIZATION_HEADER: f"Bearer {TOKEN}"}
+        ) as websocket:
+            refusal = websocket.receive_json()
+        waited = time.monotonic() - started
+        client.portal.call(service.release_transcription_slot)
+    assert refusal == {MESSAGE_TYPE_KEY: "unavailable", "reason": "engine_overloaded"}
+    assert waited < QUEUE_TIMEOUT_SECONDS
 
 
 def test_authenticated_batch_engine_gets_st_aa(tmp_path: Path) -> None:
