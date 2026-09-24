@@ -9,6 +9,7 @@ import signal
 import time
 import wave
 from array import array
+from contextlib import suppress
 from pathlib import Path
 
 import pytest
@@ -70,23 +71,20 @@ async def test_an_abandoned_ffmpeg_never_holds_its_caller(
         with pytest.raises(asyncio.CancelledError):
             await normalize
         elapsed = time.monotonic() - started
-        os.kill(holder_pid, signal.SIGKILL)
         # Let the pipe close while the loop still runs, so the transport finishes.
         await asyncio.sleep(ABANDON_AFTER_SECONDS)
         assert elapsed < ABANDON_BOUND_SECONDS
         assert not destination.exists()
+    except BaseException:
+        raise
     finally:
         if not normalize.done():
             normalize.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await normalize
-            except asyncio.CancelledError:
-                pass
         if holder_pid is not None:
-            try:
+            with suppress(ProcessLookupError):
                 os.kill(holder_pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
 
 
 def _read_pid(pid_file: Path) -> int:
