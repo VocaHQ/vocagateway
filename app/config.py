@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import os
 import secrets
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
@@ -158,8 +159,16 @@ def _default_config_file() -> Path:
 
 
 def _read_token_file(path: Path, *, empty_is_missing: bool = False) -> str | None:
-    if not path.is_file():
+    try:
+        file_status = path.stat()
+    except FileNotFoundError:
+        if path.is_symlink():
+            raise RuntimeError(f"Bootstrap token path is a broken symbolic link: {path}.") from None
         return None
+    except OSError as error:
+        raise RuntimeError(f"Unable to inspect bootstrap token file {path}: {error}.") from error
+    if not stat.S_ISREG(file_status.st_mode):
+        raise RuntimeError(f"Bootstrap token path is not a regular file: {path}.")
     try:
         token = path.read_text(encoding="utf-8").strip()
     except OSError as error:
@@ -423,5 +432,9 @@ class Settings:
         token_file.parent.mkdir(parents=True, exist_ok=True)
         token_file.parent.chmod(CONFIGURATION_DIRECTORY_MODE)
         descriptor = os.open(token_file, FILE_WRITE_FLAGS, TOKEN_FILE_MODE)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as token_handle:
-            token_handle.write(f"{token}\n")
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as token_handle:
+                token_handle.write(f"{token}\n")
+        except OSError:
+            token_file.unlink(missing_ok=True)
+            raise

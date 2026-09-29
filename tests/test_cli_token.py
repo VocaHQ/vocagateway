@@ -84,6 +84,24 @@ def test_token_missing_file_exits(
     assert "No token yet" in capsys.readouterr().err
 
 
+def test_token_empty_file_exits_without_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    home = _isolate_home(monkeypatch, tmp_path)
+    token_file = home / ".config" / "vocagateway" / "token"
+    token_file.parent.mkdir(parents=True)
+    token_file.touch()
+    monkeypatch.setattr(ARGV_ATTRIBUTE, [TOKEN_COMMAND_NAME, PLAIN_ARGUMENT])
+
+    with pytest.raises(SystemExit) as exc:
+        cli.token()
+
+    captured = capsys.readouterr()
+    assert exc.value.code == 1
+    assert "token file is empty" in captured.err
+    assert "Traceback" not in captured.err
+
+
 def test_token_reads_the_container_secret_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

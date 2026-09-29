@@ -212,6 +212,30 @@ def test_empty_external_source_mints_a_persistent_token(
     assert settings.token_file == persistent_token
 
 
+def test_external_source_directory_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _isolate_home(monkeypatch, tmp_path)
+    source_token = home / "secret"
+    source_token.mkdir()
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN_SOURCE_FILE", str(source_token))
+
+    with pytest.raises(RuntimeError, match="not a regular file"):
+        Settings.from_env()
+
+
+def test_broken_external_source_symlink_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _isolate_home(monkeypatch, tmp_path)
+    source_token = home / "secret"
+    source_token.symlink_to(home / "missing-secret")
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN_SOURCE_FILE", str(source_token))
+
+    with pytest.raises(RuntimeError, match="broken symbolic link"):
+        Settings.from_env()
+
+
 def test_empty_persistent_token_file_is_rejected(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -269,6 +293,25 @@ def test_unwritable_persistent_token_path_is_rejected(
 
     with pytest.raises(RuntimeError, match="Unable to write generated bootstrap token"):
         Settings.from_env()
+
+
+def test_failed_token_write_removes_partial_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _isolate_home(monkeypatch, tmp_path)
+    token_file = home / "persistent" / "token"
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN_FILE", str(token_file))
+
+    def refuse_fdopen(descriptor: int, *args: object, **kwargs: object) -> None:
+        os.close(descriptor)
+        raise OSError("write failed")
+
+    monkeypatch.setattr(os, "fdopen", refuse_fdopen)
+
+    with pytest.raises(RuntimeError, match="Unable to write generated bootstrap token"):
+        Settings.from_env()
+
+    assert not token_file.exists()
 
 
 def test_admission_defaults_and_env_bounds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

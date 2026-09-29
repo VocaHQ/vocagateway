@@ -104,7 +104,10 @@ class _TokenCommand:
             help="Print only the token (always used when stdout is not a TTY).",
         )
         args = parser.parse_args()
-        secret = _TokenSource.load_existing()
+        try:
+            secret = _TokenSource.load_existing()
+        except RuntimeError as error:
+            _Console.fail(str(error))
         if args.plain or not sys.stdout.isatty():
             _Console.emit(secret)
             return
