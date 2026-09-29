@@ -14,8 +14,8 @@ from app.config import (
     WILDCARD_BIND_HOSTS,
     Settings,
     _default_config_file,
-    _default_token_file,
     _env_path,
+    _existing_file_token,
     format_host_port,
     local_webui_url,
 )
@@ -44,20 +44,16 @@ class _TokenSource:
     def load_existing(cls) -> str:
         """Return the bootstrap token without minting a new secret.
 
-        Path resolution matches :meth:`Settings.from_env` (blank
-        ``VOCAGATEWAY_TOKEN_FILE`` falls back to the default; ``~`` and
-        ``XDG_CONFIG_HOME`` are expanded the same way).
+        Path resolution matches :meth:`Settings.from_env`, including an
+        operator-provided secret file ahead of the persistent token file.
         """
         token = os.environ.get("VOCAGATEWAY_TOKEN", "").strip()
         if token:
             return token
-        token_file = _env_path("VOCAGATEWAY_TOKEN_FILE", _default_token_file())
-        if not token_file.is_file():
+        file_token, token_file = _existing_file_token()
+        if file_token is None:
             _Console.fail("No token yet — the gateway writes one on first start: just run")
-        token = token_file.read_text(encoding="utf-8").strip()
-        if not token:
-            _Console.fail(f"Token file is empty: {token_file}")
-        return token
+        return file_token
 
     @classmethod
     def saved_pairing_url(cls) -> str | None:

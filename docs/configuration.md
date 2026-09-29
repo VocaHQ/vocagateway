@@ -41,7 +41,9 @@ License: [AGPL-3.0](../LICENSE). Contact: [hello@vocahq.com](mailto:hello@vocahq
 | `~/.local/share/vocagateway/models` | Downloaded models (`VOCAGATEWAY_MODELS_DIR` default) |
 
 Docker Compose mounts the same layout under `/data` in the
-`vocagateway_vocagateway-data` named volume (token via Compose secret).
+`vocagateway_vocagateway-data` named volume. With an empty
+`VOCAGATEWAY_TOKEN`, the generated token is `/data/config/token`; a non-empty
+value is mounted separately as a read-only Compose secret.
 
 ## QR pairing payload
 
@@ -75,8 +77,9 @@ variable. `compose.yaml` forwards only the keys it names, so a variable marked
 | --- | --- | --- | --- |
 | `VOCAGATEWAY_BIND_HOST` | `0.0.0.0` | forwarded | Listener interface. Keep it wildcard on the default bridge network, or the published port cannot reach the process |
 | `VOCAGATEWAY_PORT` | `8765` | forwarded | Listener port, and the container-side target of the published mapping |
-| `VOCAGATEWAY_TOKEN` | unset (file or auto-create) | Compose **secret** | Bearer token override (≥ 32 characters). Mounted at `/run/secrets/vocagateway_token`, never as a container env var |
-| `VOCAGATEWAY_TOKEN_FILE` | `~/.config/vocagateway/token` | ignored — image pins `/run/secrets/vocagateway_token` | Bearer-token file |
+| `VOCAGATEWAY_TOKEN` | unset (file or auto-create) | optional Compose **secret** | Bearer token override (≥ 32 characters). Mounted at `/run/secrets/vocagateway_token`, never as a container env var |
+| `VOCAGATEWAY_TOKEN_FILE` | `~/.config/vocagateway/token` | ignored — image pins `/data/config/token` | Persistent bearer-token file |
+| `VOCAGATEWAY_TOKEN_SOURCE_FILE` | unset | ignored — image pins `/run/secrets/vocagateway_token` | Optional read-only token source checked before the persistent file |
 | `VOCAGATEWAY_DATA_DIR` | `~/.local/share/vocagateway` | ignored — image pins `/data` | Sessions and application data |
 | `VOCAGATEWAY_MODELS_DIR` | `~/.local/share/vocagateway/models` | ignored — image pins `/data/models` | Downloaded models |
 | `VOCAGATEWAY_CONFIG_FILE` | `~/.config/vocagateway/config.json` | ignored — image pins `/data/config/config.json` | Persisted WebUI settings |

@@ -1,6 +1,6 @@
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
-# .env holds the Compose token. It belongs to the container, not to the
-# recipes, so it is never loaded into this file's environment.
+# .env may hold an operator-supplied Compose token. It belongs to the container,
+# not to the recipes, so it is never loaded into this file's environment.
 set dotenv-load := false
 
 # Do not update the env, when running
@@ -107,7 +107,7 @@ diag:
 # Build and start the container deployment in the background
 [group('container')]
 up:
-    docker compose up --detach --build
+    docker compose up --detach --build --wait
 
 # Run a published image instead of building. Needs a release that has pushed
 # one; until then use `just up`. `just up-release 0.1.0` pins the version.
@@ -121,7 +121,7 @@ up-release version='':
     if [ -n "{{ version }}" ]; then
       export VOCAGATEWAY_IMAGE="docker.io/vocahq/vocagateway:{{ version }}"
     fi
-    docker compose -f compose.prod.yaml up --detach --pull always
+    docker compose -f compose.prod.yaml up --detach --pull always --wait
 
 # Stop the container deployment; `just down -v` also drops models, config and DB
 [group('container')]

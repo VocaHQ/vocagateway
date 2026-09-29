@@ -157,6 +157,30 @@ def _default_config_file() -> Path:
     return base / APP_DIR_NAME / "config.json"
 
 
+def _read_token_file(path: Path, *, empty_is_missing: bool = False) -> str | None:
+    if not path.is_file():
+        return None
+    try:
+        token = path.read_text(encoding="utf-8").strip()
+    except OSError as error:
+        raise RuntimeError(f"Unable to read bootstrap token file {path}: {error}.") from error
+    if not token and empty_is_missing:
+        return None
+    if not token:
+        raise RuntimeError(f"Bootstrap token file is empty: {path}.")
+    return token
+
+
+def _existing_file_token() -> tuple[str | None, Path]:
+    token_file = _env_path("VOCAGATEWAY_TOKEN_FILE", _default_token_file())
+    source_file = _optional_path("VOCAGATEWAY_TOKEN_SOURCE_FILE")
+    if source_file is not None:
+        source_token = _read_token_file(source_file, empty_is_missing=True)
+        if source_token:
+            return source_token, source_file
+    return _read_token_file(token_file), token_file
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     _concurrent_default: ClassVar[int] = 2
@@ -234,12 +258,12 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> Settings:
-        token_file = _env_path("VOCAGATEWAY_TOKEN_FILE", _default_token_file())
         token = _env("VOCAGATEWAY_TOKEN")
-        if not token and token_file.is_file():
-            token = token_file.read_text(encoding="utf-8").strip()
-        if not token:
-            token = cls._generate_token(token_file)
+        if token:
+            token_file = _env_path("VOCAGATEWAY_TOKEN_FILE", _default_token_file())
+        else:
+            file_token, token_file = _existing_file_token()
+            token = file_token or cls._generate_token(token_file)
         if len(token) < MINIMUM_TOKEN_LENGTH:
             raise RuntimeError(
                 "Set VOCAGATEWAY_TOKEN to at least 32 characters or create "
@@ -387,8 +411,11 @@ class Settings:
         token = secrets.token_urlsafe(TOKEN_SECRET_BYTES)
         try:
             cls._write_token(token_file, token)
-        except OSError:
-            return token
+        except OSError as error:
+            raise RuntimeError(
+                f"Unable to write generated bootstrap token to "
+                f"{cls._display_path(token_file)}: {error}."
+            ) from error
         return token
 
     @classmethod

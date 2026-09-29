@@ -11,8 +11,8 @@ name: vocagateway
 #
 #   curl -O https://raw.githubusercontent.com/VocaHQ/vocagateway/main/compose.prod.yaml
 #   curl -o .env https://raw.githubusercontent.com/VocaHQ/vocagateway/main/.env.example
-#   printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
-#   docker compose -f compose.prod.yaml up --detach
+#   docker compose -f compose.prod.yaml up --detach --wait
+#   docker compose -f compose.prod.yaml exec gateway vocagateway-token --plain
 #
 # Everything the service is given below — its environment, its hardening, its
 # volume and secret — is identical to the `gateway` service in `compose.yaml`;
@@ -40,7 +40,8 @@ services:
     ports:
       - "${VOCAGATEWAY_PUBLISH_HOST:-127.0.0.1}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:${VOCAGATEWAY_PORT:-8765}"
     environment:
-      VOCAGATEWAY_TOKEN_FILE: /run/secrets/vocagateway_token
+      VOCAGATEWAY_TOKEN_FILE: /data/config/token
+      VOCAGATEWAY_TOKEN_SOURCE_FILE: /run/secrets/vocagateway_token
       VOCAGATEWAY_DEBUG: ${VOCAGATEWAY_DEBUG:-false}
       # Blank means "not set": the gateway ignores an empty override and falls
       # back to auto-discovery. On the default bridge network discovery only

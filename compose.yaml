@@ -25,7 +25,8 @@ x-gateway-build-args: &gateway-build-args
   BUILD_JOBS: ${VOCAGATEWAY_BUILD_JOBS:-}
 
 x-gateway-environment: &gateway-environment
-  VOCAGATEWAY_TOKEN_FILE: /run/secrets/vocagateway_token
+  VOCAGATEWAY_TOKEN_FILE: /data/config/token
+  VOCAGATEWAY_TOKEN_SOURCE_FILE: /run/secrets/vocagateway_token
   VOCAGATEWAY_DEBUG: ${VOCAGATEWAY_DEBUG:-false}
   # Blank means "not set": the gateway ignores an empty override and falls back
   # to auto-discovery. On the default bridge network discovery only ever sees

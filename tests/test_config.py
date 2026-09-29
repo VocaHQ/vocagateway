@@ -145,6 +145,132 @@ def test_custom_token_file_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert settings.token_file == custom_token
 
 
+def test_external_token_source_wins_without_copying_the_secret(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _isolate_home(monkeypatch, tmp_path)
+    persistent_token = home / "persistent" / "token"
+    source_token = home / "secret" / "token"
+    source_token.parent.mkdir(parents=True)
+    source_token.write_text("source-token-with-at-least-thirty-two-chars\n", encoding=UTF8_ENCODING)
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN_FILE", str(persistent_token))
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN_SOURCE_FILE", str(source_token))
+
+    settings = Settings.from_env()
+
+    assert settings.token == "source-token-with-at-least-thirty-two-chars"
+    assert settings.token_file == source_token
+    assert not persistent_token.exists()
+
+
+def test_token_environment_overrides_unreadable_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _isolate_home(monkeypatch, tmp_path)
+    token = "environment-token-with-at-least-thirty-two-chars"
+
+    def unexpected_read(path: Path, *args: object, **kwargs: object) -> str:
+        raise AssertionError(f"unexpected token-file read: {path}")
+
+    monkeypatch.setattr(Path, "read_text", unexpected_read)
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN", token)
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN_SOURCE_FILE", str(home / "unreadable-secret"))
+
+    settings = Settings.from_env()
+
+    assert settings.token == token
+
+
+def test_missing_external_source_mints_a_persistent_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _isolate_home(monkeypatch, tmp_path)
+    persistent_token = home / "persistent" / "token"
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN_FILE", str(persistent_token))
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN_SOURCE_FILE", str(home / "missing-secret"))
+
+    settings = Settings.from_env()
+
+    assert persistent_token.read_text(encoding=UTF8_ENCODING).strip() == settings.token
+    assert settings.token_file == persistent_token
+
+
+def test_empty_external_source_mints_a_persistent_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _isolate_home(monkeypatch, tmp_path)
+    persistent_token = home / "persistent" / "token"
+    source_token = home / "secret" / "token"
+    source_token.parent.mkdir(parents=True)
+    source_token.touch()
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN_FILE", str(persistent_token))
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN_SOURCE_FILE", str(source_token))
+
+    settings = Settings.from_env()
+
+    assert persistent_token.read_text(encoding=UTF8_ENCODING).strip() == settings.token
+    assert settings.token_file == persistent_token
+
+
+def test_empty_persistent_token_file_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _isolate_home(monkeypatch, tmp_path)
+    token_file = home / "persistent" / "token"
+    token_file.parent.mkdir(parents=True)
+    token_file.touch()
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN_FILE", str(token_file))
+
+    with pytest.raises(RuntimeError, match="token file is empty"):
+        Settings.from_env()
+
+
+def test_unreadable_external_source_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _isolate_home(monkeypatch, tmp_path)
+    source_token = home / "secret" / "token"
+    source_token.parent.mkdir(parents=True)
+    source_token.touch()
+    original_read_text = Path.read_text
+
+    def fail_for_source(path: Path, *args: object, **kwargs: object) -> str:
+        if path == source_token:
+            raise PermissionError("permission denied")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_for_source)
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN_SOURCE_FILE", str(source_token))
+
+    with pytest.raises(RuntimeError, match="Unable to read bootstrap token file"):
+        Settings.from_env()
+
+
+def test_short_external_source_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = _isolate_home(monkeypatch, tmp_path)
+    source_token = home / "secret" / "token"
+    source_token.parent.mkdir(parents=True)
+    source_token.write_text("too-short\n", encoding=UTF8_ENCODING)
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN_SOURCE_FILE", str(source_token))
+
+    with pytest.raises(RuntimeError, match="at least 32 characters"):
+        Settings.from_env()
+
+
+def test_unwritable_persistent_token_path_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _isolate_home(monkeypatch, tmp_path)
+
+    def refuse_write(cls: type[Settings], token_file: Path, token: str) -> None:
+        raise PermissionError("permission denied")
+
+    monkeypatch.setattr(Settings, "_write_token", classmethod(refuse_write))
+
+    with pytest.raises(RuntimeError, match="Unable to write generated bootstrap token"):
+        Settings.from_env()
+
+
 def test_admission_defaults_and_env_bounds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _isolate_home(monkeypatch, tmp_path)
     monkeypatch.setenv(TOKEN_ENVIRONMENT_VARIABLE, PADDED_TEST_TOKEN)

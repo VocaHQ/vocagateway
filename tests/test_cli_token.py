@@ -84,6 +84,22 @@ def test_token_missing_file_exits(
     assert "No token yet" in capsys.readouterr().err
 
 
+def test_token_reads_the_container_secret_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _isolate_home(monkeypatch, tmp_path)
+    source_token = tmp_path / "secret"
+    secret = "source-token-with-at-least-thirty-two-characters"
+    source_token.write_text(f"{secret}\n", encoding="utf-8")
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN_SOURCE_FILE", str(source_token))
+    monkeypatch.setenv("VOCAGATEWAY_TOKEN_FILE", str(tmp_path / "persistent"))
+    monkeypatch.setattr(ARGV_ATTRIBUTE, [TOKEN_COMMAND_NAME, PLAIN_ARGUMENT])
+
+    cli.token()
+
+    assert capsys.readouterr().out == f"{secret}\n"
+
+
 def test_token_tty_prints_pairing_qr(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

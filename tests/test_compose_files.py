@@ -94,9 +94,12 @@ def test_the_production_file_carries_only_the_published_service(
 def test_both_files_take_the_token_the_same_way(
     development: dict[str, Any], production: dict[str, Any]
 ) -> None:
-    """The token is the one piece of setup an operator cannot skip."""
+    """An optional operator token and the generated fallback behave identically."""
     assert production["secrets"] == development["secrets"]
     assert production["name"] == development["name"]
+    environment = production["services"][GATEWAY_SERVICE]["environment"]
+    assert environment["VOCAGATEWAY_TOKEN_FILE"] == "/data/config/token"
+    assert environment["VOCAGATEWAY_TOKEN_SOURCE_FILE"] == "/run/secrets/vocagateway_token"
 
 
 def test_the_data_volume_is_named_the_same_in_both(

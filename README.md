@@ -243,8 +243,8 @@ which takes tens of minutes:
 ```sh
 umask 077
 cp .env.example .env
-printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
-docker compose up --detach --build
+docker compose up --detach --build --wait
+docker compose exec gateway vocagateway-token --plain
 ```
 
 [compose.prod.yaml](compose.prod.yaml) pulls a published image instead of
@@ -262,9 +262,9 @@ Linux image with FFmpeg, the gateway, a pinned `whisper.cpp`, and the
 umask 077
 curl -O https://raw.githubusercontent.com/VocaHQ/vocagateway/main/compose.prod.yaml
 curl -o .env https://raw.githubusercontent.com/VocaHQ/vocagateway/main/.env.example
-printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
-docker compose -f compose.prod.yaml up --detach
+docker compose -f compose.prod.yaml up --detach --wait
 docker compose -f compose.prod.yaml ps
+docker compose -f compose.prod.yaml exec gateway vocagateway-token --plain
 curl --fail http://127.0.0.1:8765/health/live
 ```
 
@@ -287,17 +287,14 @@ gateway behaviour, the container listener, and — the section that saves the
 most time — the settings that look like they belong in `.env` but are never
 passed to the container. It ships the loopback publication defaults
 uncommented and everything else commented out, so starting from it is how you
-find out what is tunable. Appending the token overrides the empty
-`VOCAGATEWAY_TOKEN=` placeholder it ships with; Compose takes the last
-assignment of a repeated key.
+find out what is tunable.
 
-An empty `VOCAGATEWAY_TOKEN` is not a Compose error and not a startup error.
-The gateway falls back to a secret it generates and never prints, so
-`/health/live` looks healthy while every authenticated request returns `401`.
-Fill it in before the first `up`.
-
-The token is provided as a Compose secret rather than a container environment
-variable. Models, configuration, and the SQLite database persist in the
+Leave `VOCAGATEWAY_TOKEN` empty for a first-run token generated at
+`/data/config/token` in the named volume. Retrieve it with
+`docker compose exec gateway vocagateway-token --plain`. A non-empty value
+uses the Compose secret at `/run/secrets/vocagateway_token` instead; it never
+becomes a normal container environment variable. Models, generated tokens,
+configuration, and the SQLite database persist in the
 `vocagateway_vocagateway-data` named volume mounted at `/data`.
 
 Before pairing a phone, read the bridge-network note below. On the default
@@ -305,8 +302,9 @@ network the QR cannot auto-discover a reachable address, and
 `VOCAGATEWAY_PUBLIC_URL` in `.env` is what fixes it.
 
 The container is live before a model is installed, so `/health/ready` initially
-returns `503`. Open the WebUI, enter the token from `.env`, download and select a
-recommended sherpa-onnx, Moonshine, or faster-whisper model, and check again:
+returns `503`. Open the WebUI, enter the token printed by the command above,
+download and select a recommended sherpa-onnx, Moonshine, or faster-whisper
+model, and check again:
 
 ```sh
 curl --fail http://127.0.0.1:8765/health/ready
@@ -800,7 +798,8 @@ uv run vocagateway
 | `VOCAGATEWAY_BIND_HOST` | `0.0.0.0` | `0.0.0.0` inside container | Gateway listener |
 | `VOCAGATEWAY_PORT` | `8765` | `8765` | Gateway listener port |
 | `VOCAGATEWAY_TOKEN` | unset | unset | Direct token override; at least 32 characters |
-| `VOCAGATEWAY_TOKEN_FILE` | `~/.config/vocagateway/token` | `/run/secrets/vocagateway_token` | Bearer-token file |
+| `VOCAGATEWAY_TOKEN_FILE` | `~/.config/vocagateway/token` | `/data/config/token` | Persistent bearer-token file |
+| `VOCAGATEWAY_TOKEN_SOURCE_FILE` | unset | `/run/secrets/vocagateway_token` | Optional read-only token source checked before the persistent file |
 | `VOCAGATEWAY_DATA_DIR` | `~/.local/share/vocagateway` | `/data` | Sessions and application data |
 | `VOCAGATEWAY_MODELS_DIR` | `~/.local/share/vocagateway/models` | `/data/models` | Downloaded models |
 | `VOCAGATEWAY_CONFIG_FILE` | `~/.config/vocagateway/config.json` | `/data/config/config.json` | WebUI engine/model choice |
