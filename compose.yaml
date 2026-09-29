@@ -45,6 +45,13 @@ x-gateway-environment: &gateway-environment
   VOCAGATEWAY_WHISPER_DECODER_PRESET: ${VOCAGATEWAY_WHISPER_DECODER_PRESET:-quality}
   VOCAGATEWAY_RETENTION_HOURS: ${VOCAGATEWAY_RETENTION_HOURS:-24}
   VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO: ${VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO:-true}
+  # Up to two decodes at once where the engine allows it (in-process models
+  # still run one); extra phones wait in this bounded line instead of getting
+  # 503 immediately. 0 is fail-fast. The timeout runs from arrival, FFmpeg
+  # included, until engine_overloaded.
+  VOCAGATEWAY_MAX_CONCURRENT_TRANSCRIPTIONS: ${VOCAGATEWAY_MAX_CONCURRENT_TRANSCRIPTIONS:-2}
+  VOCAGATEWAY_MAX_QUEUED_TRANSCRIPTIONS: ${VOCAGATEWAY_MAX_QUEUED_TRANSCRIPTIONS:-16}
+  VOCAGATEWAY_TRANSCRIPTION_QUEUE_TIMEOUT_SECONDS: ${VOCAGATEWAY_TRANSCRIPTION_QUEUE_TIMEOUT_SECONDS:-300}
   # Transcript cleanup. The runtime is in the image and the gateway launches it
   # itself, so this container is the whole feature — there is no profile to
   # enable and no second service to run. It stays inert until a cleanup model is

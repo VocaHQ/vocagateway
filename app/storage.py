@@ -301,18 +301,11 @@ class SessionRepository:
 
     def fail_transcribing(self, session_id: UUID, error_code: str) -> StoredSession | None:
         """Record a failure, but only against the job that is actually running."""
-        now = datetime.now(UTC).isoformat()
-        with self._connect() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE sessions SET state = 'failed', error_code = ?, updated_at = ?
-                WHERE session_id = ? AND state = ?
-                """,
-                (error_code, now, str(session_id), TRANSCRIBING_STATE),
-            )
-            if cursor.rowcount != 1:
-                return None
-        return self.get(session_id)
+        return self._leave_transcribing(session_id, "failed", error_code)
+
+    def restore_uploaded(self, session_id: UUID) -> StoredSession | None:
+        """Undo a claim when finish never started a decode."""
+        return self._leave_transcribing(session_id, "uploaded", None)
 
     def delete(self, session_id: UUID) -> StoredSession | None:
         current = self.get(session_id)
@@ -329,6 +322,22 @@ class SessionRepository:
                 "SELECT * FROM sessions WHERE updated_at < ?", (cutoff.isoformat(),)
             ).fetchall()
         return [_from_row(row) for row in rows]
+
+    def _leave_transcribing(
+        self, session_id: UUID, state: str, error_code: str | None
+    ) -> StoredSession | None:
+        now = datetime.now(UTC).isoformat()
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE sessions SET state = ?, error_code = ?, updated_at = ?
+                WHERE session_id = ? AND state = ?
+                """,
+                (state, error_code, now, str(session_id), TRANSCRIBING_STATE),
+            )
+            if cursor.rowcount != 1:
+                return None
+        return self.get(session_id)
 
     def _connect(self) -> sqlite3.Connection:
         """One place the database is opened, so every statement shares its settings."""

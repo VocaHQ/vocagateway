@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 
 # ~5 minutes of history when the WebUI polls Live operations every 5s.
@@ -75,9 +76,13 @@ class MetricsSnapshot:
 class RuntimeMetrics:
     """Small, privacy-safe in-memory counters scoped to one server process."""
 
-    def __init__(self, concurrency_limit: int) -> None:
+    def __init__(self, concurrency_limit: int | Callable[[], int]) -> None:
         self._started_at = time.monotonic()
-        self._concurrency_limit = concurrency_limit
+        # A callable is the loaded engine's effective limit, read on demand, so
+        # the status page reports what can actually run rather than the cap.
+        self._concurrency_limit = (
+            concurrency_limit if callable(concurrency_limit) else lambda: concurrency_limit
+        )
         self._lock = threading.Lock()
         self._queue_depth = 0
         self._active_transcriptions = 0
@@ -97,11 +102,33 @@ class RuntimeMetrics:
         with self._lock:
             self._queue_depth += 1
 
+    def offer_queue(self, maximum_waiting: int, *, slots: int | None = None) -> bool:
+        """Count this caller as waiting, or refuse if the line is already full.
+
+        Capacity is in-flight work plus waiters. Counting both closes the race
+        where two requests sneak in before the first has called `started()`,
+        which used to admit a second job even when `maximum_waiting` was 0.
+        `slots` is the engine's effective decode cap when it is tighter than
+        the configured concurrency limit.
+        """
+        limit = self._concurrency_limit() if slots is None else slots
+        with self._lock:
+            occupied = self._queue_depth + self._active_transcriptions
+            if occupied >= limit + maximum_waiting:
+                self._rejected_transcriptions += 1
+                return False
+            self._queue_depth += 1
+            return True
+
     def dequeued(self, *, rejected: bool = False) -> None:
         with self._lock:
             self._queue_depth = max(0, self._queue_depth - 1)
             if rejected:
                 self._rejected_transcriptions += 1
+
+    def reject(self) -> None:
+        with self._lock:
+            self._rejected_transcriptions += 1
 
     def started(self, *, queued: bool = True) -> None:
         with self._lock:
@@ -140,6 +167,7 @@ class RuntimeMetrics:
             self._cleanup_last_ms = max(0, duration_ms)
 
     def snapshot(self, *, sample: bool = False) -> MetricsSnapshot:
+        limit = self._concurrency_limit()
         with self._lock:
             uptime = max(0, int(time.monotonic() - self._started_at))
             completed = self._successful_transcriptions + self._failed_transcriptions
@@ -150,7 +178,7 @@ class RuntimeMetrics:
                 uptime_seconds=uptime,
                 queue_depth=self._queue_depth,
                 active_transcriptions=self._active_transcriptions,
-                concurrency_limit=self._concurrency_limit,
+                concurrency_limit=limit,
                 successful_transcriptions=self._successful_transcriptions,
                 failed_transcriptions=self._failed_transcriptions,
                 rejected_transcriptions=self._rejected_transcriptions,

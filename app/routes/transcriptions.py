@@ -252,17 +252,26 @@ class _AdhocUpload:
             output.write(chunk)
 
 
+@dataclass(frozen=True, slots=True)
+class _TranscriptRequest:
+    stored: Path
+    language: str
+    mode: str
+    disconnected: service.Disconnected
+
+
 class _TranscriptionEndpoint:
     @classmethod
     async def create(
         cls,
         audio_file: Annotated[UploadFile, File(alias="file")],
+        request: Request,
         ctx: context.GatewayContextDependency,
         response: Response,
         fields: Annotated[_TranscriptionFields, Depends()],
     ) -> schemas.OpenAITranscriptionResponse:
         try:
-            return await cls._transcribe(audio_file, ctx, response, fields)
+            return await cls._transcribe(audio_file, request, ctx, response, fields)
         finally:
             await audio_file.close()
 
@@ -270,6 +279,7 @@ class _TranscriptionEndpoint:
     async def _transcribe(
         cls,
         audio_file: UploadFile,
+        request: Request,
         ctx: context.GatewayContext,
         response: Response,
         fields: _TranscriptionFields,
@@ -284,25 +294,28 @@ class _TranscriptionEndpoint:
         chosen_language = _AudioForm.language(fields.language)
         mode = _AudioForm.cleanup_mode(fields.cleanup)
         stored = await _AdhocUpload(ctx, audio_file, suffix).store()
-        return await cls._read_transcript(ctx, stored, chosen_language, mode, response)
+        transcript = _TranscriptRequest(stored, chosen_language, mode, request.is_disconnected)
+        return await cls._read_transcript(ctx, transcript, response)
 
     @classmethod
     async def _read_transcript(
         cls,
         ctx: context.GatewayContext,
-        stored: Path,
-        chosen_language: str,
-        mode: str,
+        transcript: _TranscriptRequest,
         response: Response,
     ) -> schemas.OpenAITranscriptionResponse:
-        style, options = _cleanup_request(ctx, mode)
+        style, options = _cleanup_request(ctx, transcript.mode)
         try:
             transcription = await ctx.service.transcribe_adhoc(
-                stored, chosen_language, style=style, cleanup=options
+                transcript.stored,
+                transcript.language,
+                style=style,
+                cleanup=options,
+                disconnected=transcript.disconnected,
             )
         finally:
-            stored.unlink(missing_ok=True)
-        if mode != MODE_OFF:
+            transcript.stored.unlink(missing_ok=True)
+        if transcript.mode != MODE_OFF:
             _report_cleanup(response, transcription)
         return schemas.OpenAITranscriptionResponse(text=transcription.transcript)
 

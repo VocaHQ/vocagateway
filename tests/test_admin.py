@@ -296,7 +296,9 @@ async def test_status_reports_system_and_setup(
         "uptime_seconds": payload[METRICS_KEY]["uptime_seconds"],
         "queue_depth": 0,
         "active_transcriptions": 0,
-        "concurrency_limit": 1,
+        # The loaded engine's own limit, which depends on what `auto` finds on
+        # this host; test_transcription_queue pins the exact values.
+        "concurrency_limit": payload[METRICS_KEY]["concurrency_limit"],
         "successful_transcriptions": 0,
         "failed_transcriptions": 0,
         "rejected_transcriptions": 0,
@@ -318,6 +320,7 @@ async def test_status_reports_system_and_setup(
         "history": payload[METRICS_KEY]["history"],
     }
     assert isinstance(payload[METRICS_KEY]["history"], list)
+    assert payload[METRICS_KEY]["concurrency_limit"] in {1, 2}
     assert payload["readiness"]["warmup_state"] == "pending"
 
 

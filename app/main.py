@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request, Response, responses, staticfiles
+from starlette.datastructures import URL, MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app import (
     audio,
@@ -93,7 +94,7 @@ class _AppBuilder:
             lifespan=_app_lifespan,
         )
         app.state.ctx = ctx
-        app.middleware("http")(_browser_security_middleware)
+        app.add_middleware(_BrowserSecurityHeaders)
         app.add_exception_handler(errors.APIProblem, _api_problem_handler)
         self._setup_routes(app, ctx)
         return app
@@ -243,23 +244,45 @@ async def _shutdown_runtime(
     await asyncio.to_thread(engines.close_engine, ctx.engine_provider.current())
 
 
-async def _browser_security_middleware(
-    request: Request,
-    call_next: Callable[[Request], Awaitable[Response]],
-) -> Response:
-    response = await call_next(request)
-    headers = response.headers
+class _BrowserSecurityHeaders:
+    """Set the browser hardening headers on every HTTP response.
+
+    Plain ASGI rather than `@app.middleware("http")`: Starlette's
+    BaseHTTPMiddleware hides a client's disconnect from the handler, and the
+    transcription queue polls for exactly that to drop an abandoned request.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        await self.app(scope, receive, _HeaderedSend(send, URL(scope=scope).path))
+
+
+class _HeaderedSend:
+    def __init__(self, send: Send, path: str) -> None:
+        self._send = send
+        self._path = path
+
+    async def __call__(self, message: Message) -> None:
+        if message["type"] == "http.response.start":
+            _set_security_headers(MutableHeaders(scope=message), self._path)
+        await self._send(message)
+
+
+def _set_security_headers(headers: MutableHeaders, path: str) -> None:
     headers["X-Content-Type-Options"] = "nosniff"
     headers["X-Frame-Options"] = "DENY"
     headers["Referrer-Policy"] = "no-referrer"
     headers["Permissions-Policy"] = "microphone=(self)"
     headers["Content-Security-Policy"] = SECURITY_CSP
-    path = request.url.path
     if path == "/" or path.startswith(("/ui/", "/v1/")):
         headers["Cache-Control"] = "no-store"
     elif path.startswith("/assets/"):
         headers["Cache-Control"] = "no-cache"
-    return response
 
 
 async def _api_problem_handler(_: Request, exc: Exception) -> responses.JSONResponse:

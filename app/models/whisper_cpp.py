@@ -110,6 +110,18 @@ class WhisperCppEngine:
         return self.model.stat().st_size if self.model_is_resident else advised
 
     @property
+    def max_parallel_decodes(self) -> int:
+        # A resident whisper-server holds a model mutex. The CLI fallback is a
+        # fresh process per clip, so two of those can overlap. A worker that is
+        # merely stopped (idle offload, a crash) still counts as one: the next
+        # clip restarts it, and a second clip would `reclaim()` the worker out
+        # from under the first. Only a worker that cannot start is dropped,
+        # which is when every clip really does run through the CLI.
+        if self._worker is None:
+            return 2
+        return 1
+
+    @property
     def model_is_resident(self) -> bool:
         return self._worker is not None and self._worker.is_running
 
