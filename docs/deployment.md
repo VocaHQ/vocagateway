@@ -179,8 +179,8 @@ image:
 ```sh
 umask 077
 cp .env.example .env
-printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
-docker compose up --detach --build
+docker compose up --detach --build --wait
+docker compose exec gateway vocagateway-token --plain
 ```
 
 Expect tens of minutes: the image compiles whisper.cpp and llama.cpp from
@@ -195,8 +195,10 @@ loopback publication defaults uncommented and everything else commented out
 with an explanation. Start from it rather than writing `.env` by hand, so the
 options are in front of you. Never commit the populated file.
 
-The appended token overrides the empty `VOCAGATEWAY_TOKEN=` placeholder in the
-template; Compose uses the last assignment when a key repeats in `.env`.
+The gateway generates its first token in the named volume when
+`VOCAGATEWAY_TOKEN` is empty. The final command prints it without putting it in
+the container environment. Set a non-empty token in `.env` only when you need
+a predetermined secret.
 
 `VOCAGATEWAY_PUBLISH_HOST=127.0.0.1` is the safe default for Tailscale Serve. Set
 it to `0.0.0.0` only when direct LAN access is intentional and protected by the
@@ -209,14 +211,14 @@ after maintainers have set the Docker Hub secrets (`DOCKERHUB_USERNAME` /
 `DOCKERHUB_TOKEN`). Until then `docker.io/vocahq/vocagateway` has nothing to
 pull; stay on [Building from the checkout](#building-from-the-checkout).
 
-Nothing to clone. Two files and a token:
+Nothing to clone. Two files, then retrieve the generated token:
 
 ```sh
 umask 077
 curl -O https://raw.githubusercontent.com/VocaHQ/vocagateway/main/compose.prod.yaml
 curl -o .env https://raw.githubusercontent.com/VocaHQ/vocagateway/main/.env.example
-printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
-docker compose -f compose.prod.yaml up --detach
+docker compose -f compose.prod.yaml up --detach --wait
+docker compose -f compose.prod.yaml exec gateway vocagateway-token --plain
 ```
 
 That pulls one multi-architecture tag covering `linux/amd64` and `linux/arm64`;

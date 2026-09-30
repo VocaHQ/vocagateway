@@ -240,13 +240,12 @@ VOCAGATEWAY_IMAGE=ghcr.io/vocahq/vocagateway:latest \
   docker compose -f compose.prod.yaml up --detach
 ```
 
-Confirm `.env` contains a `VOCAGATEWAY_TOKEN` of at least 32 characters and
-is not a copy with the placeholder unchanged. Nothing enforces this for you:
-`docker compose config` accepts the empty placeholder, and a container started
-without a token falls back to a secret it generates and never prints, so
-`/health/live` stays green while every authenticated request returns `401`. A
-healthy container can also be not ready until a model is selected; the Docker
-healthcheck measures liveness.
+Print the active container token with
+`docker compose exec gateway vocagateway-token --plain`. An empty
+`VOCAGATEWAY_TOKEN` is valid: the gateway generates and persists a private
+token in the named volume. A non-empty value must be at least 32 characters.
+A healthy container can still be not ready until a model is selected; the
+Docker healthcheck measures liveness.
 
 If port 8765 is already in use, change `VOCAGATEWAY_PUBLISH_PORT` in `.env` and
 recreate the service. Tailscale Serve must then point to that same host port.
@@ -293,10 +292,10 @@ change. See [deployment.md](deployment.md#trusted-local-network).
 If this device was paired with its own token, open the WebUI Settings tab and
 confirm it is still listed under **Paired device tokens** — revoking a token
 there immediately rejects it. Otherwise confirm the bootstrap token with
-`just token` or `uv run vocagateway-token` (reads `VOCAGATEWAY_TOKEN` or
-`~/.config/vocagateway/token`), copy the exact value into vocaphone, and
-save/test again. Never put the token in a URL or screenshot. See
-[configuration.md](configuration.md).
+`just token` or `uv run vocagateway-token` for a native install, or
+`docker compose exec gateway vocagateway-token --plain` for Compose. Copy the
+exact value into vocaphone and save/test again. Never put the token in a URL or
+screenshot. See [configuration.md](configuration.md).
 
 ## 413, 415, or 422
 

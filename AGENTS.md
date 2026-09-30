@@ -104,8 +104,9 @@ Primary CLIs: `vocagateway`, `vocagateway-token`, `vocagateway-status`,
 
 Bearer token ≥ 32 characters. Native first run writes `~/.config/vocagateway/token`
 (mode `600`). Override with `VOCAGATEWAY_TOKEN` or `VOCAGATEWAY_TOKEN_FILE`.
-Compose reads `VOCAGATEWAY_TOKEN` from `.env` and mounts it as a secret at
-`/run/secrets/vocagateway_token` — never as a container env var. Copy
+Compose generates `/data/config/token` in the named volume when
+`VOCAGATEWAY_TOKEN` is empty. A non-empty value from `.env` is mounted as a
+secret at `/run/secrets/vocagateway_token` — never as a container env var. Copy
 `.env.example` → `.env`; never commit `.env`. Older `VOCAPHONE_*` names and
 `~/.config/vocaphone/` are **unread**.
 
