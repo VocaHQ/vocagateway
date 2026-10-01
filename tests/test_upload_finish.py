@@ -16,6 +16,7 @@ from starlette.status import (
     HTTP_415_UNSUPPORTED_MEDIA_TYPE,
     HTTP_422_UNPROCESSABLE_CONTENT,
 )
+from starlette.types import ASGIApp, Message, Scope
 
 from app.audio import FFmpegNormalizer
 from app.config import Settings
@@ -39,6 +40,54 @@ class PausedEngine(FakeEngine):
         self.started.set()
         await self.release.wait()
         return self.transcript
+
+
+class PausedNormalizer(FakeNormalizer):
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def normalize(self, source: Path, destination: Path, maximum_seconds: int) -> Path:
+        await super().normalize(source, destination, maximum_seconds)
+        self.started.set()
+        await self.release.wait()
+        return destination
+
+
+class DisconnectingUpload:
+    """Drive the HTTP route with a real ASGI disconnect, without cancelling it."""
+
+    def __init__(self, path: str, headers: dict[str, str], body: bytes) -> None:
+        self.scope: Scope = {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "PUT",
+            "scheme": "http",
+            "path": path,
+            "raw_path": path.encode(),
+            "query_string": b"finish=true",
+            "root_path": "",
+            "headers": [(key.lower().encode(), value.encode()) for key, value in headers.items()],
+            "client": ("127.0.0.1", 12345),
+            "server": ("test", 80),
+        }
+        self.incoming: asyncio.Queue[Message] = asyncio.Queue()
+        self.incoming.put_nowait({"type": "http.request", "body": body, "more_body": False})
+        self.outgoing: list[Message] = []
+
+    async def send(self, message: Message) -> None:
+        self.outgoing.append(message)
+
+    def disconnect(self) -> None:
+        self.incoming.put_nowait({"type": "http.disconnect"})
+
+    async def disconnect_when(self, app: ASGIApp, ready: asyncio.Event) -> None:
+        async with asyncio.TaskGroup() as group:
+            pending = group.create_task(app(self.scope, self.incoming.get, self.send))
+            await asyncio.wait_for(ready.wait(), timeout=2)
+            self.disconnect()
+            await asyncio.wait_for(pending, timeout=2)
 
 
 @pytest.mark.parametrize("finish", [None, "false", "true"])
@@ -159,6 +208,35 @@ async def test_cancelled_combined_request_keeps_audio_and_allows_retry(
     assert retried.status_code == HTTP_200_OK
     assert retried.json()[STATE_KEY] == "completed"
     assert engine.calls == 2
+
+
+async def test_http_disconnect_after_upload_eof_keeps_audio_retryable(
+    settings: Settings, authorization: dict[str, str], audio_bytes: bytes
+) -> None:
+    engine = FakeEngine()
+    normalizer = PausedNormalizer()
+    app = create_app(settings, engine=engine, normalizer=normalizer)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        session_id = str(uuid4())
+        await client.post(
+            SESSION_PATH, headers=authorization, json={"client_session_id": session_id}
+        )
+        upload = DisconnectingUpload(
+            f"{SESSION_PATH}/{session_id}/audio", authorization | WAV_HEADERS, audio_bytes
+        )
+        await upload.disconnect_when(app, normalizer.started)
+        stored = await client.get(f"{SESSION_PATH}/{session_id}", headers=authorization)
+        assert stored.json()[STATE_KEY] == "uploaded"
+        assert engine.calls == 0
+        assert next((settings.data_dir / "audio").iterdir()).read_bytes() == audio_bytes
+        assert not list((settings.data_dir / "normalized").iterdir())
+        normalizer.release.set()
+        retried = await client.post(f"{SESSION_PATH}/{session_id}/finish", headers=authorization)
+    assert retried.status_code == HTTP_200_OK
+    assert retried.json()[STATE_KEY] == "completed"
+    assert engine.calls == 1
 
 
 @pytest.mark.parametrize(
