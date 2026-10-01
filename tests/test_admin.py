@@ -536,10 +536,12 @@ def test_language_filter_answers_which_mode_f8f45() -> None:
     assert not any(entry.engine == "moonshine" and entry.id != "moonshine:hi" for entry in hindi)
     assert any(entry.engine == "moonshine" for entry in english)
 
-    # Odia is real but Whisper-less: only Dolphin covers it, which
-    # is exactly why the phone clients do not offer it as a choice.
+    # Odia is real but Whisper-less. Dolphin covers it only by guessing the
+    # language; the one model that can be held to Odia is its IndicConformer.
     odia = [entry for entry in entries if _model_covers(entry, "or")]
-    assert odia and all(entry.detects_language_automatically for entry in odia)
+    pinnable = [entry.id for entry in odia if not entry.detects_language_automatically]
+    assert any("dolphin" in entry.id for entry in odia)
+    assert pinnable == ["sherpa-onnx:indicconformer-or-ctc-int8"]
 
 
 def test_language_filter_offers_only_langua_b4011() -> None:

@@ -2,7 +2,7 @@
 
 # Models and languages
 
-Every model in the catalog (57 of them), what it speaks, and which models cover a given language. Generated from `app/catalog.py`, so it always matches the catalog the gateway actually ships.
+Every model in the catalog (79 of them), what it speaks, and which models cover a given language. Generated from `app/catalog.py`, so it always matches the catalog the gateway actually ships.
 
 The WebUI Models tab shows the same information per card, with a language filter. Use this page to pick a model before installing anything.
 
@@ -39,6 +39,28 @@ Portable INT8 CPU models. Run everywhere, including containers.
 | Qwen3-ASR 0.6B INT8 | 987 MB | [30 languages](#language-set-30-b59576aa) | auto language | Apache 2.0 |
 | Nemotron 3.5 ASR Streaming 0.6B INT8 | 682 MB | [28 languages](#language-set-28-2630314c) | streaming, auto language | OpenMDW 1.1 |
 | Bengali Streaming Zipformer | 94 MB | Bengali | streaming | Apache 2.0 |
+| IndicConformer Assamese INT8 | 198 MB | Assamese | — | MIT |
+| IndicConformer Bengali INT8 | 198 MB | Bengali | — | MIT |
+| IndicConformer Bodo INT8 | 198 MB | Bodo | — | MIT |
+| IndicConformer Dogri INT8 | 198 MB | Dogri | — | MIT |
+| IndicConformer Gujarati INT8 | 198 MB | Gujarati | — | MIT |
+| IndicConformer Hindi INT8 | 198 MB | Hindi | — | MIT |
+| IndicConformer Kannada INT8 | 198 MB | Kannada | — | MIT |
+| IndicConformer Konkani INT8 | 198 MB | Konkani | — | MIT |
+| IndicConformer Kashmiri INT8 | 198 MB | Kashmiri | — | MIT |
+| IndicConformer Maithili INT8 | 198 MB | Maithili | — | MIT |
+| IndicConformer Malayalam INT8 | 198 MB | Malayalam | — | MIT |
+| IndicConformer Manipuri INT8 | 198 MB | Manipuri | — | MIT |
+| IndicConformer Marathi INT8 | 198 MB | Marathi | — | MIT |
+| IndicConformer Nepali INT8 | 198 MB | Nepali | — | MIT |
+| IndicConformer Odia INT8 | 198 MB | Odia | — | MIT |
+| IndicConformer Punjabi INT8 | 198 MB | Punjabi | — | MIT |
+| IndicConformer Sanskrit INT8 | 198 MB | Sanskrit | — | MIT |
+| IndicConformer Santali INT8 | 198 MB | Santali | — | MIT |
+| IndicConformer Sindhi INT8 | 198 MB | Sindhi | — | MIT |
+| IndicConformer Tamil INT8 | 198 MB | Tamil | — | MIT |
+| IndicConformer Telugu INT8 | 198 MB | Telugu | — | MIT |
+| IndicConformer Urdu INT8 | 198 MB | Urdu | — | MIT |
 | Parakeet Unified English INT8 | 663 MB | English | — | NVIDIA Open Model License |
 | Parakeet Unified English INT8 Streaming 560 ms | 663 MB | English | streaming | NVIDIA Open Model License |
 | Cohere Transcribe INT8 | 2.89 GB | [14 languages](#language-set-14-81e8fb31) | — | Apache 2.0 |
@@ -174,7 +196,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 
 ## Language index
 
-109 languages, alphabetically. Expand one to see every model that covers it. A model marked `auto language` will not let you pin this language explicitly — it decides for itself.
+115 languages, alphabetically. Expand one to see every model that covers it. A model marked `auto language` will not let you pin this language explicitly — it decides for itself.
 
 <details>
 <summary><strong>Afrikaans</strong> (<code>af</code>) — 11 models</summary>
@@ -280,7 +302,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Assamese</strong> (<code>as</code>) — 11 models</summary>
+<summary><strong>Assamese</strong> (<code>as</code>) — 12 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -289,6 +311,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Large v3 Turbo | faster-whisper | 1.62 GB | — |
 | faster-whisper Large v3 | faster-whisper | 3.09 GB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| IndicConformer Assamese INT8 | sherpa-onnx | 198 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
 | Whisper Medium Q4 | whisper.cpp | 492 MB | — |
 | Whisper Large v3 Q5 | whisper.cpp | 1.08 GB | — |
@@ -379,7 +402,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Bengali</strong> (<code>bn</code>) — 14 models</summary>
+<summary><strong>Bengali</strong> (<code>bn</code>) — 15 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -390,6 +413,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | Bengali Streaming Zipformer | sherpa-onnx | 94 MB | streaming |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
+| IndicConformer Bengali INT8 | sherpa-onnx | 198 MB | — |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
 | Whisper Medium Q4 | whisper.cpp | 492 MB | — |
@@ -397,6 +421,15 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | whisper.cpp Large v3 Turbo | whisper.cpp | 1.62 GB | — |
 | WhisperKit Small (compressed) | whisperkit | 216 MB | — |
 | WhisperKit Large v3 Turbo (compressed) | whisperkit | 626 MB | — |
+
+</details>
+
+<details>
+<summary><strong>Bodo</strong> (<code>brx</code>) — 1 models</summary>
+
+| Model | Engine | Download | Flags |
+| --- | --- | ---: | --- |
+| IndicConformer Bodo INT8 | sherpa-onnx | 198 MB | — |
 
 </details>
 
@@ -592,6 +625,15 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | whisper.cpp Large v3 Turbo | whisper.cpp | 1.62 GB | — |
 | WhisperKit Small (compressed) | whisperkit | 216 MB | — |
 | WhisperKit Large v3 Turbo (compressed) | whisperkit | 626 MB | — |
+
+</details>
+
+<details>
+<summary><strong>Dogri</strong> (<code>doi</code>) — 1 models</summary>
+
+| Model | Engine | Download | Flags |
+| --- | --- | ---: | --- |
+| IndicConformer Dogri INT8 | sherpa-onnx | 198 MB | — |
 
 </details>
 
@@ -867,7 +909,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Gujarati</strong> (<code>gu</code>) — 13 models</summary>
+<summary><strong>Gujarati</strong> (<code>gu</code>) — 14 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -877,6 +919,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Large v3 | faster-whisper | 3.09 GB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
+| IndicConformer Gujarati INT8 | sherpa-onnx | 198 MB | — |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
 | Whisper Medium Q4 | whisper.cpp | 492 MB | — |
@@ -964,7 +1007,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Hindi</strong> (<code>hi</code>) — 17 models</summary>
+<summary><strong>Hindi</strong> (<code>hi</code>) — 18 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -976,6 +1019,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | MLX Qwen3-ASR 0.6B 4-bit | mlx-audio | 713 MB | Apple silicon |
 | MLX Qwen3-ASR 1.7B 4-bit | mlx-audio | 1.61 GB | Apple silicon |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
+| IndicConformer Hindi INT8 | sherpa-onnx | 198 MB | — |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
 | Nemotron 3.5 ASR Streaming 0.6B INT8 | sherpa-onnx | 682 MB | streaming, auto language |
 | Qwen3-ASR 0.6B INT8 | sherpa-onnx | 987 MB | auto language |
@@ -1161,7 +1205,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Kannada</strong> (<code>kn</code>) — 11 models</summary>
+<summary><strong>Kannada</strong> (<code>kn</code>) — 12 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1170,6 +1214,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Large v3 Turbo | faster-whisper | 1.62 GB | — |
 | faster-whisper Large v3 | faster-whisper | 3.09 GB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| IndicConformer Kannada INT8 | sherpa-onnx | 198 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
 | Whisper Medium Q4 | whisper.cpp | 492 MB | — |
 | Whisper Large v3 Q5 | whisper.cpp | 1.08 GB | — |
@@ -1180,11 +1225,12 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Kashmiri</strong> (<code>ks</code>) — 2 models</summary>
+<summary><strong>Kashmiri</strong> (<code>ks</code>) — 3 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
+| IndicConformer Kashmiri INT8 | sherpa-onnx | 198 MB | — |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
 
 </details>
@@ -1228,6 +1274,15 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | whisper.cpp Large v3 Turbo | whisper.cpp | 1.62 GB | — |
 | WhisperKit Small (compressed) | whisperkit | 216 MB | — |
 | WhisperKit Large v3 Turbo (compressed) | whisperkit | 626 MB | — |
+
+</details>
+
+<details>
+<summary><strong>Konkani</strong> (<code>kok</code>) — 1 models</summary>
+
+| Model | Engine | Download | Flags |
+| --- | --- | ---: | --- |
+| IndicConformer Konkani INT8 | sherpa-onnx | 198 MB | — |
 
 </details>
 
@@ -1412,6 +1467,15 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
+<summary><strong>Maithili</strong> (<code>mai</code>) — 1 models</summary>
+
+| Model | Engine | Download | Flags |
+| --- | --- | ---: | --- |
+| IndicConformer Maithili INT8 | sherpa-onnx | 198 MB | — |
+
+</details>
+
+<details>
 <summary><strong>Malagasy</strong> (<code>mg</code>) — 11 models</summary>
 
 | Model | Engine | Download | Flags |
@@ -1455,7 +1519,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Malayalam</strong> (<code>ml</code>) — 11 models</summary>
+<summary><strong>Malayalam</strong> (<code>ml</code>) — 12 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1464,6 +1528,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Large v3 Turbo | faster-whisper | 1.62 GB | — |
 | faster-whisper Large v3 | faster-whisper | 3.09 GB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| IndicConformer Malayalam INT8 | sherpa-onnx | 198 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
 | Whisper Medium Q4 | whisper.cpp | 492 MB | — |
 | Whisper Large v3 Q5 | whisper.cpp | 1.08 GB | — |
@@ -1524,6 +1589,15 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
+<summary><strong>Manipuri</strong> (<code>mni</code>) — 1 models</summary>
+
+| Model | Engine | Download | Flags |
+| --- | --- | ---: | --- |
+| IndicConformer Manipuri INT8 | sherpa-onnx | 198 MB | — |
+
+</details>
+
+<details>
 <summary><strong>Maori</strong> (<code>mi</code>) — 11 models</summary>
 
 | Model | Engine | Download | Flags |
@@ -1543,7 +1617,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Marathi</strong> (<code>mr</code>) — 13 models</summary>
+<summary><strong>Marathi</strong> (<code>mr</code>) — 14 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1553,6 +1627,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Large v3 | faster-whisper | 3.09 GB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
+| IndicConformer Marathi INT8 | sherpa-onnx | 198 MB | — |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
 | Whisper Medium Q4 | whisper.cpp | 492 MB | — |
@@ -1585,7 +1660,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Nepali</strong> (<code>ne</code>) — 13 models</summary>
+<summary><strong>Nepali</strong> (<code>ne</code>) — 14 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1595,6 +1670,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Large v3 | faster-whisper | 3.09 GB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
+| IndicConformer Nepali INT8 | sherpa-onnx | 198 MB | — |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
 | Whisper Medium Q4 | whisper.cpp | 492 MB | — |
@@ -1664,11 +1740,12 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Odia</strong> (<code>or</code>) — 2 models</summary>
+<summary><strong>Odia</strong> (<code>or</code>) — 3 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
+| IndicConformer Odia INT8 | sherpa-onnx | 198 MB | — |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
 
 </details>
@@ -1772,7 +1849,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Punjabi</strong> (<code>pa</code>) — 13 models</summary>
+<summary><strong>Punjabi</strong> (<code>pa</code>) — 14 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1782,6 +1859,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Large v3 | faster-whisper | 3.09 GB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
+| IndicConformer Punjabi INT8 | sherpa-onnx | 198 MB | — |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
 | Whisper Medium Q4 | whisper.cpp | 492 MB | — |
@@ -1847,7 +1925,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Sanskrit</strong> (<code>sa</code>) — 11 models</summary>
+<summary><strong>Sanskrit</strong> (<code>sa</code>) — 12 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1856,12 +1934,22 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Large v3 Turbo | faster-whisper | 1.62 GB | — |
 | faster-whisper Large v3 | faster-whisper | 3.09 GB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| IndicConformer Sanskrit INT8 | sherpa-onnx | 198 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
 | Whisper Medium Q4 | whisper.cpp | 492 MB | — |
 | Whisper Large v3 Q5 | whisper.cpp | 1.08 GB | — |
 | whisper.cpp Large v3 Turbo | whisper.cpp | 1.62 GB | — |
 | WhisperKit Small (compressed) | whisperkit | 216 MB | — |
 | WhisperKit Large v3 Turbo (compressed) | whisperkit | 626 MB | — |
+
+</details>
+
+<details>
+<summary><strong>Santali</strong> (<code>sat</code>) — 1 models</summary>
+
+| Model | Engine | Download | Flags |
+| --- | --- | ---: | --- |
+| IndicConformer Santali INT8 | sherpa-onnx | 198 MB | — |
 
 </details>
 
@@ -1904,7 +1992,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Sindhi</strong> (<code>sd</code>) — 11 models</summary>
+<summary><strong>Sindhi</strong> (<code>sd</code>) — 12 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -1913,6 +2001,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Large v3 Turbo | faster-whisper | 1.62 GB | — |
 | faster-whisper Large v3 | faster-whisper | 3.09 GB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
+| IndicConformer Sindhi INT8 | sherpa-onnx | 198 MB | — |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
 | Whisper Medium Q4 | whisper.cpp | 492 MB | — |
 | Whisper Large v3 Q5 | whisper.cpp | 1.08 GB | — |
@@ -2143,7 +2232,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Tamil</strong> (<code>ta</code>) — 13 models</summary>
+<summary><strong>Tamil</strong> (<code>ta</code>) — 14 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -2153,6 +2242,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Large v3 | faster-whisper | 3.09 GB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
+| IndicConformer Tamil INT8 | sherpa-onnx | 198 MB | — |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
 | Whisper Medium Q4 | whisper.cpp | 492 MB | — |
@@ -2183,7 +2273,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Telugu</strong> (<code>te</code>) — 13 models</summary>
+<summary><strong>Telugu</strong> (<code>te</code>) — 14 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -2193,6 +2283,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Large v3 | faster-whisper | 3.09 GB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
+| IndicConformer Telugu INT8 | sherpa-onnx | 198 MB | — |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
 | Whisper Medium Q4 | whisper.cpp | 492 MB | — |
@@ -2312,7 +2403,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 </details>
 
 <details>
-<summary><strong>Urdu</strong> (<code>ur</code>) — 13 models</summary>
+<summary><strong>Urdu</strong> (<code>ur</code>) — 14 models</summary>
 
 | Model | Engine | Download | Flags |
 | --- | --- | ---: | --- |
@@ -2322,6 +2413,7 @@ Afrikaans, Amharic, Arabic, Assamese, Azerbaijani, Bashkir, Belarusian, Bulgaria
 | faster-whisper Large v3 | faster-whisper | 3.09 GB | — |
 | MLX Whisper Large v3 Turbo 4-bit | mlx-audio | 469 MB | Apple silicon |
 | Dolphin Base CTC INT8 | sherpa-onnx | 104 MB | auto language |
+| IndicConformer Urdu INT8 | sherpa-onnx | 198 MB | — |
 | Dolphin Small CTC INT8 | sherpa-onnx | 250 MB | auto language |
 | whisper.cpp Small | whisper.cpp | 466 MB | — |
 | Whisper Medium Q4 | whisper.cpp | 492 MB | — |

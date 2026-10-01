@@ -193,8 +193,10 @@ class _SherpaRecognizerBuilder:
                 provider=CPU_DEVICE,
             )
         if mtype == "nemo_ctc":
+            # Named by the catalog, not assumed: IndicConformer keeps one graph
+            # per language in its own folder beside a shared `tokens.txt`.
             return sherpa.OfflineRecognizer.from_nemo_ctc(
-                model=str(self.root / "model.int8.onnx"),
+                model=str(self.root / self.model.required_files[0]),
                 tokens=self.tokens,
                 num_threads=self.threads,
                 provider=CPU_DEVICE,

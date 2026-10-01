@@ -24,6 +24,31 @@ Sources: [Cohere](https://huggingface.co/CohereLabs/cohere-transcribe-03-2026),
 [Parakeet Unified](https://huggingface.co/nvidia/parakeet-unified-en-0.6b),
 [Granite](https://huggingface.co/ibm-granite/granite-speech-4.1-2b).
 
+## Indian languages
+
+- **IndicConformer INT8** is AI4Bharat's Conformer for the 22 scheduled
+  languages of India: Assamese, Bengali, Bodo, Dogri, Gujarati, Hindi, Kannada,
+  Kashmiri, Konkani, Maithili, Malayalam, Manipuri, Marathi, Nepali, Odia,
+  Punjabi, Sanskrit, Santali, Sindhi, Tamil, Telugu and Urdu. Each language is
+  a separate download of about 198 MB that runs on CPU through sherpa-onnx.
+  Install the one you speak and select it; it transcribes only that language,
+  whatever the client asks for, and English words come out transliterated.
+- The output has no punctuation or capitalization. Four languages come back in
+  a script you might not expect: Kashmiri in Perso-Arabic, Sindhi in
+  Devanagari, Manipuri in Meetei Mayek and Santali in Ol Chiki. The last two
+  need fonts that not every device ships.
+- These are the 120M-parameter per-language checkpoints, decoded through their
+  CTC head. AI4Bharat's own repositories, including the larger 600M
+  multilingual model, are gated behind a Hugging Face login, which the
+  gateway's anonymous downloader cannot pass. The catalog therefore pins a
+  community INT8 export of the same MIT-licensed weights by commit and SHA-256.
+- Dolphin still covers many of these languages in one download and adds
+  punctuation, but it guesses the language and is markedly less accurate on
+  each of them.
+
+Sources: [AI4Bharat IndicConformer](https://huggingface.co/ai4bharat/indicconformer_stt_hi_hybrid_ctc_rnnt_large),
+[sherpa-onnx export](https://huggingface.co/parismitaglobalsolutions/indicconformer-sherpa-onnx).
+
 ## Evaluation and availability
 
 Published WER is specific to a dataset, normalization, decoder, and weight
