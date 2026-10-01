@@ -344,6 +344,138 @@
         "joiner.onnx": "fd1d02f45c2ad3d6b67cc149811ad794ab4b020ed49a0a9e2790a8619d1cddd8"
       }
     },
+    "sherpa-onnx:indicconformer-as-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "as/model.int8.onnx": "b8c027e8ab6c9f64417a879b85c61254aefc3557b1875bf793fb5a33abb20426"
+      }
+    },
+    "sherpa-onnx:indicconformer-bn-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "bn/model.int8.onnx": "e9120a534f69df065314be468bf15579f1b92a4cd8c07ad119b80b69244718a8"
+      }
+    },
+    "sherpa-onnx:indicconformer-brx-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "brx/model.int8.onnx": "05e4681819eccb06a39d0481828d52b90619171313ef6d7677db6842d205b177"
+      }
+    },
+    "sherpa-onnx:indicconformer-doi-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "doi/model.int8.onnx": "cf2031118dcdd3eacb0738e7dd45a749770d276a6217f4e6f56e7175a44f2bbd"
+      }
+    },
+    "sherpa-onnx:indicconformer-gu-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "gu/model.int8.onnx": "822ed7f0b809bbd479275bf91c913d05564b88c0d082bbcba2f37999b88cb598"
+      }
+    },
+    "sherpa-onnx:indicconformer-hi-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "hi/model.int8.onnx": "915c71e04dd7e5378a4057fdebb252b3a587188e4e99db6d7ce0909ad5ad05fa"
+      }
+    },
+    "sherpa-onnx:indicconformer-kn-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "kn/model.int8.onnx": "b226ce7e4ea35b0dd66991964bd00e011b6b14b0fcdf4f7d1cccd777781c94dc"
+      }
+    },
+    "sherpa-onnx:indicconformer-kok-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "kok/model.int8.onnx": "34c952a5817bef09bc118999598fa035b96c5c1900881a2bc438026bf480db07"
+      }
+    },
+    "sherpa-onnx:indicconformer-ks-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "ks/model.int8.onnx": "d800d7bc4fd4adda9e1ec5ba3fcceb0539347cbe1b6fdf91deda90cc0bae2a6b"
+      }
+    },
+    "sherpa-onnx:indicconformer-mai-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "mai/model.int8.onnx": "27a6cee11bf20679821aa079e49694c5989ae16c9b7a58ea6f2052f80acff2bd"
+      }
+    },
+    "sherpa-onnx:indicconformer-ml-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "ml/model.int8.onnx": "dcbdfa9f773db910508b40b703cb76c5974e8d4c6f123ea81265b40853c3f0c2"
+      }
+    },
+    "sherpa-onnx:indicconformer-mni-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "mni/model.int8.onnx": "885adb2d6d48ce413e54e37fa88b41bd5eb86c78020f898fd55a554fc04df7ec"
+      }
+    },
+    "sherpa-onnx:indicconformer-mr-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "mr/model.int8.onnx": "1ea81e55c4b9b12624c9d02a5b9c1b6f7c871c78a55ff52d333f81cb5136eaf2"
+      }
+    },
+    "sherpa-onnx:indicconformer-ne-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "ne/model.int8.onnx": "fbbc564e369046fd788d4150192a7e47c4e675346ec3f1b78002937fb3ccfb56"
+      }
+    },
+    "sherpa-onnx:indicconformer-or-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "or/model.int8.onnx": "31730e06bd186bca5c3214003c2a0b5eeb3234d079b5b81aa72547adbe1c9be7"
+      }
+    },
+    "sherpa-onnx:indicconformer-pa-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "pa/model.int8.onnx": "ccd02e5ae7e71b6719de517c2819ce570247c1d9e79b3348e76cfd5eb3e5dbbc"
+      }
+    },
+    "sherpa-onnx:indicconformer-sa-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "sa/model.int8.onnx": "08a878cdc31ef93c2a05545dbd0c44c5a95b3884d0754104beed984262a5b981"
+      }
+    },
+    "sherpa-onnx:indicconformer-sat-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "sat/model.int8.onnx": "fc22b03c18bf911ce18ca1f7dafe8e5ccf2521f1a8c72596da22117cb8acf147"
+      }
+    },
+    "sherpa-onnx:indicconformer-sd-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "sd/model.int8.onnx": "6529b3ffac5a159696b3fd34dddb6e3bda4f3cb7521307f817e201cdc37d20b3"
+      }
+    },
+    "sherpa-onnx:indicconformer-ta-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "ta/model.int8.onnx": "abb7b59d706b8d27ba3fb5e5e3db7671c9e1a09bf7bc6122de507c60030e65fb"
+      }
+    },
+    "sherpa-onnx:indicconformer-te-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "te/model.int8.onnx": "710f176e33080f1be84b4f38bb5f33be3f522dcf4f191bf4d5cc89f7a85924f3"
+      }
+    },
+    "sherpa-onnx:indicconformer-ur-ctc-int8": {
+      "revision": "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+      "file_digests": {
+        "ur/model.int8.onnx": "0239f1c371a38f7623f29a8d7bae79f91f16f58aba45ea67103630dbb425cb07"
+      }
+    },
     "sherpa-onnx:nemotron-3.5-asr-streaming-0.6b-320ms-int8": {
       "revision": "424ce58898995b713f84341f2e1492f9207a26aa",
       "file_digests": {

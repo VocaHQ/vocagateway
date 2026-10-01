@@ -32,6 +32,7 @@ SHA256_TOO_LONG_LENGTH = 65
 TAMPERED_WEIGHTS_SIZE_BYTES = 14
 PINNED_CONFIG_SIZE_BYTES = 16
 MINIMUM_PIN_COVERAGE = 35
+INDIC_LANGUAGE_COUNT = 22
 WHISPER_CPP_TINY_ID = "whisper.cpp:ggml-tiny.bin"
 WHISPER_CPP_ENGINE = "whisper.cpp"
 WHISPERKIT_TINY_ID = "whisperkit:openai_whisper-tiny"
@@ -342,7 +343,7 @@ def test_catalog_includes_the_newer_sherpa_cff8b() -> None:
     dolphin = entries["sherpa-onnx:dolphin-small-ctc-int8"]
     assert dolphin.model_type == "dolphin_ctc"
     assert dolphin.required_files == (SHERPA_MODEL_NAME, TOKENS_FILE_NAME)
-    # The only South Asian coverage in the catalog.
+    # One download for every South Asian language; IndicConformer is one each.
     assert {"hi", "bn", "ta", "ur"} <= set(dolphin.language_codes)
     assert entries["sherpa-onnx:dolphin-base-ctc-int8"].language_codes == dolphin.language_codes
 
@@ -354,6 +355,32 @@ def test_catalog_includes_the_newer_sherpa_cff8b() -> None:
     parakeet_v2 = entries["sherpa-onnx:parakeet-tdt-0.6b-v2-int8"]
     assert parakeet_v2.model_type == "nemo_transducer"
     assert parakeet_v2.language_codes == (ENGLISH_LANGUAGE_CODE,)
+
+
+def test_catalog_includes_an_indicconformer_per_indian_language() -> None:
+    models = [model for model in DEFAULT_CATALOG if model.family == "IndicConformer"]
+    by_language = {model.language_codes: model for model in models}
+
+    # All 22 scheduled languages of India, one model each.
+    assert len(models) == len(by_language) == INDIC_LANGUAGE_COUNT
+    assert {("hi",), ("ta",), ("bn",), ("ur",), ("mni",), ("sat",)} <= set(by_language)
+
+    hindi = by_language[("hi",)]
+    assert hindi.id == "sherpa-onnx:indicconformer-hi-ctc-int8"
+    assert hindi.model_type == "nemo_ctc"
+    assert hindi.license_name == "MIT"
+    # It decodes one language, so there is nothing for it to detect or be told.
+    assert hindi.detects_language_automatically is False
+    assert hindi.requires_explicit_language is False
+    for model in models:
+        code = model.language_codes[0]
+        weights = f"{code}/{SHERPA_MODEL_NAME}"
+        # Per-language weights in a folder, one shared vocabulary at the root.
+        assert model.required_files == (weights, TOKENS_FILE_NAME)
+        # Every language's weights are a different file in the same repository,
+        # so an unpinned one would be a download nothing checks.
+        assert [name for name, _ in model.file_digests] == [weights]
+        assert model.revision
 
 
 def test_catalog_includes_the_newer_apple_s_ed423() -> None:
@@ -727,6 +754,53 @@ async def test_sherpa_huggingface_download_fetche_e896d(
         encoding="utf-8"
     )
     assert not (manager.models_dir / SHERPA_ONNX_ENGINE / "gigaam-test.partial").exists()
+
+
+async def test_sherpa_huggingface_download_keeps_a_nested_weights_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """IndicConformer keeps each language's weights in a folder of one shared repo."""
+    nested = f"hi/{SHERPA_MODEL_NAME}"
+    catalog_model = dataclasses.replace(
+        SHERPA_TEST,
+        id="sherpa-onnx:indic-test",
+        key="indic-test",
+        archive_url=None,
+        archive_root=None,
+        huggingface_repo="example/indic-repo",
+        required_files=(nested, TOKENS_FILE_NAME),
+        model_type="nemo_ctc",
+    )
+    manager = model_manager.ModelManager(tmp_path / MODELS_DIRECTORY_NAME, catalog=(catalog_model,))
+
+    mirror = tmp_path / MIRROR_DIRECTORY_NAME
+    _write_huggingface_fixture(mirror, "example/indic-repo")
+    folder = mirror / "example/indic-repo/resolve/main"
+    for language in ("hi", "ta"):
+        (folder / language).mkdir()
+        (folder / language / SHERPA_MODEL_NAME).write_bytes(f"{language}-weights".encode())
+    monkeypatch.setattr(model_manager, HUGGINGFACE_BASE_URL_NAME, mirror.as_uri())
+    monkeypatch.setattr(
+        model_manager,
+        LIST_REPO_FOLDER_NAME,
+        lambda repo, name, revision=MAIN_REVISION: [
+            model_manager.RepoFile(nested, 10),
+            model_manager.RepoFile(f"ta/{SHERPA_MODEL_NAME}", 10),
+            model_manager.RepoFile(TOKENS_FILE_NAME, 5),
+        ],
+    )
+
+    manager.start_download(catalog_model.id)
+    await asyncio.wait_for(_wait_finished(manager, catalog_model.id), timeout=5)
+
+    _assert_download_completed(manager, catalog_model.id)
+    installed = manager.installed_path(catalog_model.id)
+    assert installed is not None
+    assert (installed / nested).read_bytes() == b"hi-weights"
+    assert (installed / TOKENS_FILE_NAME).is_file()
+    # The other languages in the repository are not this model's to fetch.
+    assert not (installed / "ta").exists()
+    assert not (installed / SHERPA_MODEL_NAME).exists()
 
 
 def test_archive_extractor_rejects_parent_paths(tmp_path: Path) -> None:

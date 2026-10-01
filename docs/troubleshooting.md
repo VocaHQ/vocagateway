@@ -309,7 +309,8 @@ screenshot. See [configuration.md](configuration.md).
   lists each model's languages, and [models.md](models.md#language-index) maps
   every language to the models covering it. This failure is deliberately not retryable,
   because retrying sends the same language to the same model. For Hindi and other
-  South Asian languages, pin the language and use a multilingual Whisper model.
+  Indian languages, download that language's IndicConformer model, or pin the
+  language and use a multilingual Whisper model.
 
 ## 503 engine_overloaded
 
@@ -348,7 +349,9 @@ closely related languages, most often Hindi with Urdu, Marathi, or Nepali.
 
 If you need a guaranteed language, use a Whisper model. `whisper.cpp`,
 faster-whisper, WhisperKit, and MLX Whisper are all passed the language
-explicitly, so selecting Hindi transcribes Hindi.
+explicitly, so selecting Hindi transcribes Hindi. For an Indian language the
+IndicConformer models go further: each one knows a single language, so there is
+nothing to detect and nothing to get wrong.
 
 Speaking for longer also helps the auto-detecting models: a two-second clip
 carries much less evidence of which language it is than a full sentence.

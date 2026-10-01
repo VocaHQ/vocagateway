@@ -196,6 +196,26 @@ def test_sherpa_nemo_ctc_loads_with_its_own_files(
     assert constructions[0][TOKENS_COMPONENT] == str(root / TOKENS_FILE)
 
 
+def test_sherpa_nemo_ctc_loads_weights_from_a_language_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """IndicConformer ships `hi/model.int8.onnx` beside a root `tokens.txt`."""
+    nested = f"hi/{SHERPA_MODEL_FILE}"
+    catalog_model = _catalog("nemo_ctc", required_files=(nested, TOKENS_FILE))
+    root = _model_root(tmp_path, catalog_model)
+    constructions: list[dict[str, object]] = []
+    _fake_recognizer_module("from_nemo_ctc", constructions, monkeypatch)
+    monkeypatch.setattr(
+        IMPORTLIB_FIND_SPEC_PATH,
+        lambda _: machinery.ModuleSpec(SHERPA_ONNX_MODULE, loader=None),
+    )
+
+    SherpaOnnxEngine(root, catalog_model)._selected.builder.build()
+
+    assert constructions[0]["model"] == str(root / nested)
+    assert constructions[0][TOKENS_COMPONENT] == str(root / TOKENS_FILE)
+
+
 def test_sherpa_nemo_canary_loads_english_o_aa(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

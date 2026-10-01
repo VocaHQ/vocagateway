@@ -1576,6 +1576,7 @@ button.family-summary:focus-visible {
 .vendor-dataocean { --vendor-mark: #0891b2; }
 .vendor-salute { --vendor-mark: #21a038; }
 .vendor-k2fsa { --vendor-mark: #7c3aed; }
+.vendor-ai4bharat { --vendor-mark: #e8590c; }
 html[data-theme="dark"] .vendor-nvidia { --vendor-mark: #a3e635; }
 html[data-theme="dark"] .vendor-openai { --vendor-mark: #34d399; }
 html[data-theme="dark"] .vendor-alibaba { --vendor-mark: #fb923c; }
@@ -1587,6 +1588,7 @@ html[data-theme="dark"] .vendor-useful-sensors { --vendor-mark: #94a3b8; }
 html[data-theme="dark"] .vendor-dataocean { --vendor-mark: #38bdf8; }
 html[data-theme="dark"] .vendor-salute { --vendor-mark: #4ade80; }
 html[data-theme="dark"] .vendor-k2fsa { --vendor-mark: #a78bfa; }
+html[data-theme="dark"] .vendor-ai4bharat { --vendor-mark: #ff9f5a; }
 .family-vendor {
   color: var(--muted);
 }
