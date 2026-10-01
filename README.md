@@ -91,7 +91,7 @@ Longer form ([docs index](docs/)): [deployment.md](docs/deployment.md)
 (operations, backup, Compose profiles) · [configuration.md](docs/configuration.md) (paths, environment
 variables, pairing payload) · [tailscale.md](docs/tailscale.md) (private HTTPS)
 · [troubleshooting.md](docs/troubleshooting.md) (what to check when it breaks)
-· [models.md](docs/models.md) (all 58 models and 108 languages)
+· [models.md](docs/models.md) (all 79 models and 115 languages)
 
 ## Deployment summary
 
@@ -429,7 +429,7 @@ Chinese, Ukrainian, and Vietnamese, and portable `whisper.cpp` models. It also
 includes compact Whisper Medium, Whisper Large v3, and Breeze ASR builds from
 [Handy's documented model family](https://handy.computer/docs/models) that run
 directly through `whisper.cpp`. Handy does not need to be installed.
-SenseVoice, Parakeet, GigaAM, Canary, Dolphin, and Qwen3-ASR all run through
+SenseVoice, Parakeet, GigaAM, Canary, Dolphin, IndicConformer, and Qwen3-ASR all run through
 sherpa-onnx without Handy. Parakeet, Qwen3-ASR, and Granite Speech also have
 Apple-native MLX options.
 GigaAM (Russian, CTC or RNNT) and Canary (English only in this build; the
@@ -442,13 +442,21 @@ Qwen3-ASR reads a Hugging Face tokenizer
 directory instead of a `tokens.txt`, so the gateway fetches `tokenizer/` and
 passes the folder to the recognizer.
 
+IndicConformer is AI4Bharat's model for the 22 scheduled languages of India,
+and it ships as one download per language — Hindi, Bengali, Tamil, Telugu,
+Marathi, Urdu and the rest each get their own entry. That makes it the opposite
+of Dolphin: nothing is detected, so a short phrase cannot come back in another
+language. It writes no punctuation. AI4Bharat's own repositories require a
+Hugging Face login, so the gateway downloads a community INT8 export of the
+same MIT-licensed weights, pinned by SHA-256.
+
 Parakeet ships in two generations, and newer is not automatically better. v3
 covers 25 European languages. The English-only v2 spends all of its capacity on
 English and transcribes it more accurately. Pick v2 if you dictate only in
 English.
 
-Full per-model language coverage (all 58 models, and a reverse index from each
-of the 108 languages to the models that cover it) is in
+Full per-model language coverage (all 79 models, and a reverse index from each
+of the 115 languages to the models that cover it) is in
 [models.md](docs/models.md). The WebUI Models tab shows the same per card, with
 a language filter.
 
@@ -459,7 +467,8 @@ a language filter.
 | SenseVoice Small INT8 | Linux or macOS CPU | ~240 MB | Mandarin, Cantonese, English, Japanese, Korean | Lowest portable latency and small-server memory use matter most |
 | Parakeet TDT 0.6B v3 INT8 | Linux or macOS CPU | ~672 MB | 25 European languages | You want stronger multilingual accuracy, punctuation, and capitalization |
 | Parakeet TDT 0.6B v2 INT8 | Linux or macOS CPU | ~661 MB | English only | You dictate only in English and want the best accuracy at that speed |
-| Dolphin Small CTC INT8 | Linux or macOS CPU | ~250 MB | 40 Eastern languages | You need Hindi, Bengali, Tamil, Urdu, Thai, or another South or Southeast Asian language |
+| IndicConformer (one per language) | Linux or macOS CPU | ~198 MB each | One of 22 Indian languages | You dictate in Hindi, Bengali, Tamil, Telugu, Marathi, Urdu, or another Indian language and want it accurate |
+| Dolphin Small CTC INT8 | Linux or macOS CPU | ~250 MB | 40 Eastern languages | You switch between several South, East, or Southeast Asian languages and want one download |
 | MLX Whisper Large v3 Turbo 4-bit | Apple silicon | ~469 MB | Multilingual | You want compact high accuracy through the M-series GPU |
 | MLX Parakeet TDT 0.6B v3 | Apple silicon with at least 8 GB RAM | ~2.51 GB | 25 European languages | You want the full MLX Parakeet path and have enough unified memory |
 | MLX Qwen3-ASR 0.6B 4-bit | Apple silicon with at least 8 GB RAM | ~713 MB | 11 languages | You want strong punctuation from an LLM decoder and can accept slower decoding |
@@ -469,7 +478,8 @@ Every adapter keeps its loaded model in the gateway process. Benchmark three
 runs in the Pair & test tab: the first includes model load, while runs two and
 three show steady-state dictation speed. SenseVoice uses the FunASR Model License;
 both Parakeet variants use CC BY 4.0; the quantized MLX Whisper model inherits
-Whisper's MIT license; Dolphin, Qwen3-ASR, and Granite Speech are Apache 2.0.
+Whisper's MIT license; IndicConformer is MIT; Dolphin, Qwen3-ASR, and Granite
+Speech are Apache 2.0.
 Review the license shown on each model card before
 redistributing weights.
 

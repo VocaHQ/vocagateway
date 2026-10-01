@@ -37,6 +37,7 @@ USEFUL_SENSORS = "useful-sensors"
 DATAOCEAN = "dataocean"
 SALUTE = "salute"
 K2FSA = "k2fsa"
+AI4BHARAT = "ai4bharat"
 
 # Vendors whose mark is drawn from the CC0 icon set vendored in
 # app/templates/macros/vendor_marks.html. Every other vendor renders its
@@ -75,6 +76,7 @@ _VENDORS: tuple[Vendor, ...] = (
     Vendor(DATAOCEAN, "DataoceanAI", "DO"),
     Vendor(SALUTE, "SaluteDevices", "SD"),
     Vendor(K2FSA, "k2-fsa", "K2"),
+    Vendor(AI4BHARAT, "AI4Bharat", "A4B"),
 )
 VENDORS: MappingProxyType[str, Vendor] = MappingProxyType(
     {vendor.slug: vendor for vendor in _VENDORS}
@@ -92,6 +94,7 @@ _FAMILY_VENDORS: MappingProxyType[str, str] = MappingProxyType(
         "Dolphin": DATAOCEAN,
         "GigaAM": SALUTE,
         "Granite Speech / MLX": IBM,
+        "IndicConformer": AI4BHARAT,
         "Moonshine": USEFUL_SENSORS,
         "Nemotron 3.5 ASR": NVIDIA,
         "Parakeet TDT": NVIDIA,

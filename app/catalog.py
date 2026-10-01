@@ -60,6 +60,7 @@ UKRAINIAN_LANGUAGE_CODE = "uk"
 VIETNAMESE_LANGUAGE_CODE = "vi"
 CHINESE_LANGUAGE_CODE = "zh"
 HINDI_LANGUAGE_CODE = "hi"
+BENGALI_LANGUAGE_CODE = "bn"
 HINGLISH_ROMAN_LANGUAGE_CODE = "hinglish_roman"
 TAGALOG_LANGUAGE_CODE = "tl"
 MIT_LICENSE = "MIT"
@@ -601,9 +602,10 @@ LANGUAGE_NAMES: MappingProxyType[str, str] = MappingProxyType(
         "ba": "Bashkir",
         "be": "Belarusian",
         BULGARIAN_LANGUAGE_CODE: "Bulgarian",
-        "bn": "Bengali",
+        BENGALI_LANGUAGE_CODE: "Bengali",
         "bo": "Tibetan",
         "br": "Breton",
+        "brx": "Bodo",
         "bs": "Bosnian",
         "ca": "Catalan",
         CZECH_LANGUAGE_CODE: "Czech",
@@ -611,6 +613,7 @@ LANGUAGE_NAMES: MappingProxyType[str, str] = MappingProxyType(
         "cy": "Welsh",
         DANISH_LANGUAGE_CODE: "Danish",
         GERMAN_LANGUAGE_CODE: "German",
+        "doi": "Dogri",
         GREEK_LANGUAGE_CODE: "Greek",
         ENGLISH_LANGUAGE_CODE: "English",
         SPANISH_LANGUAGE_CODE: "Spanish",
@@ -644,6 +647,7 @@ LANGUAGE_NAMES: MappingProxyType[str, str] = MappingProxyType(
         "km": "Khmer",
         "kn": "Kannada",
         KOREAN_LANGUAGE_CODE: "Korean",
+        "kok": "Konkani",
         "ks": "Kashmiri",
         "ky": "Kyrgyz",
         "la": "Latin",
@@ -652,11 +656,13 @@ LANGUAGE_NAMES: MappingProxyType[str, str] = MappingProxyType(
         "lo": "Lao",
         LITHUANIAN_LANGUAGE_CODE: "Lithuanian",
         LATVIAN_LANGUAGE_CODE: "Latvian",
+        "mai": "Maithili",
         "mg": "Malagasy",
         "mi": "Maori",
         "mk": "Macedonian",
         "ml": "Malayalam",
         "mn": "Mongolian",
+        "mni": "Manipuri",
         "mr": "Marathi",
         "ms": "Malay",
         MALTESE_LANGUAGE_CODE: "Maltese",
@@ -674,6 +680,7 @@ LANGUAGE_NAMES: MappingProxyType[str, str] = MappingProxyType(
         ROMANIAN_LANGUAGE_CODE: "Romanian",
         RUSSIAN_LANGUAGE_CODE: "Russian",
         "sa": "Sanskrit",
+        "sat": "Santali",
         "sd": "Sindhi",
         "si": "Sinhala",
         SLOVAK_LANGUAGE_CODE: "Slovak",
@@ -792,7 +799,7 @@ _DOLPHIN_LANGUAGE_CODES: tuple[str, ...] = (
     "uz",
     ARABIC_LANGUAGE_CODE,
     "fa",
-    "bn",
+    BENGALI_LANGUAGE_CODE,
     "ta",
     "te",
     "ug",
@@ -852,6 +859,71 @@ _MOONSHINE_BATCH_FILES: tuple[str, ...] = (
     "encoder_model.ort",
     "tokenizer.bin",
 )
+
+
+# AI4Bharat gates its own repositories behind a Hugging Face login, and this
+# gateway downloads anonymously, so these come from a community export of the
+# same MIT-licensed checkpoints: one INT8 CTC graph per language, with that
+# language's slice of the shared 22-language vocabulary masked in. All of them
+# read the one `tokens.txt` at the repository root.
+INDICCONFORMER_REPO = "parismitaglobalsolutions/indicconformer-sherpa-onnx"
+INDICCONFORMER_FAMILY = "IndicConformer"
+INDICCONFORMER_SIZE_BYTES = 197_660_000
+DEVANAGARI_SCRIPT = "Devanagari"
+# Language code and the script the export writes. The script is spelled out
+# because four of them are not what the language name suggests: Kashmiri comes
+# back in Perso-Arabic, Sindhi in Devanagari, Manipuri in Meetei Mayek and
+# Santali in Ol Chiki.
+_INDICCONFORMER_LANGUAGES: tuple[tuple[str, str], ...] = (
+    ("as", "Bengali-Assamese"),
+    (BENGALI_LANGUAGE_CODE, "Bengali"),
+    ("brx", DEVANAGARI_SCRIPT),
+    ("doi", DEVANAGARI_SCRIPT),
+    ("gu", "Gujarati"),
+    (HINDI_LANGUAGE_CODE, DEVANAGARI_SCRIPT),
+    ("kn", "Kannada"),
+    ("kok", DEVANAGARI_SCRIPT),
+    ("ks", "Perso-Arabic"),
+    ("mai", DEVANAGARI_SCRIPT),
+    ("ml", "Malayalam"),
+    ("mni", "Meetei Mayek"),
+    ("mr", DEVANAGARI_SCRIPT),
+    ("ne", DEVANAGARI_SCRIPT),
+    ("or", "Odia"),
+    ("pa", "Gurmukhi"),
+    ("sa", DEVANAGARI_SCRIPT),
+    ("sat", "Ol Chiki"),
+    ("sd", DEVANAGARI_SCRIPT),
+    ("ta", "Tamil"),
+    ("te", "Telugu"),
+    ("ur", "Perso-Arabic"),
+)
+
+
+def _indicconformer(code: str, script: str) -> CatalogModel:
+    language = LANGUAGE_NAMES[code]
+    return _sherpa_onnx(
+        f"indicconformer-{code}-ctc-int8",
+        f"IndicConformer {language} INT8",
+        INDICCONFORMER_SIZE_BYTES,
+        f"{language} only",
+        f"Accurate {language} · no punctuation",
+        2,
+        huggingface_repo=INDICCONFORMER_REPO,
+        # The weights sit in a per-language folder; the vocabulary does not.
+        required_files=(f"{code}/{SHERPA_MODEL_FILE}", TOKENS_FILE),
+        model_type="nemo_ctc",
+        language_codes=(code,),
+        family=INDICCONFORMER_FAMILY,
+        description=(
+            f"AI4Bharat's IndicConformer for {language}: a 120M-parameter Conformer trained on "
+            "Indian speech, exported as its CTC head in INT8 ONNX. It knows one language, so "
+            "unlike Dolphin it cannot mistake a short phrase for another one, and it always "
+            f"writes {script} script. Plain words only — no punctuation or capitalization. "
+            "A community export, because AI4Bharat's own repositories need a Hugging Face login."
+        ),
+        license_name=MIT_LICENSE,
+    )
 
 
 _BASE_CATALOG: tuple[CatalogModel, ...] = (
@@ -1053,12 +1125,12 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         language_codes=_DOLPHIN_LANGUAGE_CODES,
         family="Dolphin",
         description=(
-            "DataoceanAI and Tsinghua's model for Eastern languages, converted to INT8 ONNX. The "
-            "only entry in this catalog that covers Hindi, Bengali, Tamil, Urdu and the other "
-            "South Asian languages, and the most accurate of them on a full sentence. It "
-            "detects the language itself and cannot be pinned, and on a short phrase that "
-            "detection fails outright — a two-word Hindi clip can come back in Cyrillic. "
-            "Dictate whole sentences, or choose a Whisper model for a guaranteed language."
+            "DataoceanAI and Tsinghua's model for Eastern languages, converted to INT8 ONNX. One "
+            "download covers Hindi, Bengali, Tamil, Urdu and the other South Asian languages "
+            "alongside Thai, Vietnamese, Japanese and more. It detects the language itself and "
+            "cannot be pinned, and on a short phrase that detection fails outright — a two-word "
+            "Hindi clip can come back in Cyrillic. Dictate whole sentences, or for one Indian "
+            "language choose its IndicConformer model, which is more accurate and cannot drift."
         ),
         license_name=APACHE_LICENSE,
         detects_language_automatically=True,
@@ -1183,7 +1255,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         huggingface_repo="csukuangfj2/sherpa-onnx-streaming-zipformer-bn-vosk-2026-02-09",
         required_files=("encoder.onnx", "decoder.onnx", "joiner.onnx", TOKENS_FILE),
         model_type=STREAMING_TRANSDUCER_TYPE,
-        language_codes=("bn",),
+        language_codes=(BENGALI_LANGUAGE_CODE,),
         family="Zipformer",
         description=(
             "Alpha Cephei's Bengali streaming Zipformer converted to sherpa-onnx. A small CPU "
@@ -1193,6 +1265,7 @@ _BASE_CATALOG: tuple[CatalogModel, ...] = (
         license_name=APACHE_LICENSE,
         supports_streaming=True,
     ),
+    *(_indicconformer(code, script) for code, script in _INDICCONFORMER_LANGUAGES),
     _mlx_audio(
         "whisper-large-v3-turbo-4bit",
         "MLX Whisper Large v3 Turbo 4-bit",
