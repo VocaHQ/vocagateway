@@ -11,6 +11,7 @@ Environment variables and on-disk paths use the `vocagateway` prefix.
 - [Default port](#default-port)
 - [On-disk paths (native)](#on-disk-paths-native)
 - [QR pairing payload](#qr-pairing-payload)
+- [Session upload and finalization](#session-upload-and-finalization)
 - [Environment variables](#environment-variables) — [gateway process](#gateway-process) · [Compose-only](#compose-only-not-read-by-a-native-process)
 - [Transcript cleanup](#transcript-cleanup)
 - [Stale names (not read)](#stale-names-not-read)
@@ -60,6 +61,31 @@ Show the bootstrap token (and an ASCII QR on a TTY) with `just token` or
 wrong. The WebUI **Custom address** field appends the listen port unless
 **Include port in the link** is cleared (`include_port=false` on
 `/v1/admin/pairing`).
+
+## Session upload and finalization
+
+After creating a session, a client can send its recording to
+`PUT /v1/sessions/{session_id}/audio?finish=true`. The body may arrive while
+recording; only EOF starts normal audio validation and transcription. The
+response contains the completed session and transcript, removing the separate
+`POST /v1/sessions/{session_id}/finish` round trip. It is still batch decoding,
+not incremental Whisper recognition.
+
+Without `finish=true` the upload only returns `uploaded`, as before. Clients
+can also request the option against older gateways: if the response is still
+`uploaded`, call `/finish` once using the same session ID. Do not re-upload
+audio merely because an older gateway ignored the query parameter.
+
+The combined request must allow time for both recording/upload and the normal
+transcription response. Streaming clients keep bounded write deadlines and
+cancel the HTTP request when dictation is canceled. Behind Nginx, use
+`proxy_request_buffering off` and `proxy_http_version 1.1` so chunks are forwarded
+while recording; allow the existing transcription response timeout too.
+
+Bearer authentication, byte/duration limits, idempotent completed results,
+queue admission, disconnect handling, writing styles, optional cleanup, and
+successful-audio deletion all use the existing paths. No server setting or
+default limit changes.
 
 ## Environment variables
 

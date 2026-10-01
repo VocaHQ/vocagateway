@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from starlette.status import HTTP_409_CONFLICT
 
 from app.audio import save_streamed_upload, validate_audio_upload_headers
@@ -18,6 +18,7 @@ router = APIRouter(dependencies=[Depends(require_token)])
 
 ContentTypeHeader = Annotated[str | None, Header()]
 ContentLengthHeader = Annotated[int | None, Header()]
+FinishOnUpload = Annotated[bool, Query(alias="finish")]
 
 
 @router.get("/v1/models", response_model=list[ModelResponse])
@@ -73,7 +74,13 @@ async def upload_audio(
     ctx: GatewayContextDependency,
     content_type: ContentTypeHeader = None,
     content_length: ContentLengthHeader = None,
+    finish_on_upload: FinishOnUpload = False,
 ) -> SessionResponse:
+    """Optionally return the finished transcript when the upload reaches EOF.
+
+    The default still acknowledges only the upload. Opting in uses the same
+    idempotent finalization, admission, disconnect, and cleanup path as /finish.
+    """
     stored = ctx.service.require(session_id)
     if stored.state == "completed":
         return session_response(stored)
@@ -93,6 +100,8 @@ async def upload_audio(
         transcript=None,
         error_code=None,
     )
+    if finish_on_upload:
+        updated = await ctx.service.finish(session_id, disconnected=request.is_disconnected)
     return session_response(updated)
 
 
