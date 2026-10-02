@@ -1,0 +1,148 @@
+name: Windows package
+
+# Builds the native Windows package: a PyInstaller one-directory app plus an
+# Inno Setup installer (VocaGatewaySetup-<version>.exe). PRs touching the app
+# or the packaging scripts get a build-only check. Publishing a GitHub release
+# attaches the signed-shape (unsigned until a certificate is wired in)
+# installer to that release, which yields the versioned HTTPS URL a Microsoft
+# Store MSI/EXE submission needs.
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "packaging/windows/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/windows-package.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing git tag to package (e.g. v0.1.0)"
+        required: true
+        type: string
+      attach:
+        description: "Attach the installer to the tag's release"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.tag || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # The tag to package. Releases and dispatch inputs name it directly; PRs
+  # package HEAD and use a dev version since there is no tag to check out.
+  VOCAGATEWAY_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+  ATTACH: ${{ github.event_name == 'release' || inputs.attach }}
+
+jobs:
+  build:
+    name: Build exe and installer
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ env.VOCAGATEWAY_TAG || github.sha }}
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+
+      # Engine wheels (sherpa-onnx, faster-whisper, moonshine-voice) ship
+      # win_amd64 binaries; bundling them is what makes the exe actually useful
+      # rather than a launcher that still needs Docker.
+      - name: Sync dependencies with engine extras
+        run: uv sync --locked --no-dev --extra engines
+
+      - name: Build PyInstaller app
+        run: uv run --with pyinstaller pyinstaller packaging/windows/vocagateway.spec --noconfirm --clean
+
+      # The gateway shells out to an FFmpeg binary for audio normalization.
+      # Bundling the essentials build next to the exe keeps the install
+      # self-contained; app.audio finds it beside sys.executable when frozen.
+      - name: Bundle ffmpeg.exe
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'ffmpeg.zip'
+          Invoke-WebRequest -Uri 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip' -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath (Join-Path $env:RUNNER_TEMP 'ffmpeg') -Force
+          $ffmpeg = Get-ChildItem -Path (Join-Path $env:RUNNER_TEMP 'ffmpeg') -Recurse -Filter 'ffmpeg.exe' | Select-Object -First 1
+          if (-not $ffmpeg) { throw 'ffmpeg.exe not found in downloaded archive' }
+          Copy-Item $ffmpeg.FullName 'dist\vocagateway\ffmpeg.exe'
+
+      # The frozen app should come up and answer its liveness endpoint without
+      # waiting for a model download. Killing it afterwards is fine — the
+      # check is that it bound a port and served HTTP at all.
+      - name: Smoke-test the frozen exe
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath 'dist\vocagateway\vocagateway.exe' -ArgumentList '' -PassThru
+          try {
+            $ready = $false
+            foreach ($attempt in 1..30) {
+              Start-Sleep -Seconds 2
+              try {
+                $response = Invoke-WebRequest -Uri 'http://127.0.0.1:8765/health/live' -UseBasicParsing -TimeoutSec 2
+                if ($response.StatusCode -eq 200) { $ready = $true; break }
+              } catch {}
+            }
+            if (-not $ready) { throw 'frozen exe did not answer /health/live within 60s' }
+          } finally {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Resolve installer version
+        id: version
+        shell: pwsh
+        run: |
+          if ($env:VOCAGATEWAY_TAG) {
+            $version = $env:VOCAGATEWAY_TAG.TrimStart('v')
+          } else {
+            $version = "0.0.0-dev.$env:GITHUB_RUN_NUMBER"
+          }
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build installer
+        run: & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\windows\setup.iss /DAppVersion=${{ steps.version.outputs.version }}
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vocagateway-windows-installer
+          path: Output\*.exe
+          if-no-files-found: error
+
+      - name: Smoke-test the installer silently
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem Output\VocaGatewaySetup-*.exe | Select-Object -First 1
+          Start-Process -FilePath $installer.FullName -ArgumentList '/VERYSILENT','/NORESTART','/SP-','/SUPPRESSMSGBOXES' -Wait
+          $installed = "$env:LOCALAPPDATA\Programs\VocaGateway\vocagateway.exe"
+          if (-not (Test-Path $installed)) { throw "installer did not produce $installed" }
+
+  publish:
+    name: Attach installer to release
+    if: env.ATTACH == 'true'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: vocagateway-windows-installer
+      - name: Upload installer to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$VOCAGATEWAY_TAG" VocaGatewaySetup-*.exe --clobber

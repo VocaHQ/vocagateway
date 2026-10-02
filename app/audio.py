@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import math
 import os
+import shutil
 import signal
+import sys
 import wave
 from array import array
 from contextlib import suppress
@@ -59,13 +61,25 @@ async def _reap(process: asyncio.subprocess.Process) -> None:
     await asyncio.shield(_wait_reaped(process))
 
 
+def _process_group_kwargs() -> dict[str, Any]:
+    # start_new_session puts FFmpeg in its own process group so
+    # _kill_process_group can reap a wrapper script's grandchildren. Windows
+    # has no process groups; the kill falls back to the direct child there.
+    return {"start_new_session": True} if os.name == "posix" else {}
+
+
 def _kill_process_group(process: asyncio.subprocess.Process) -> None:
     pid = process.pid
     if pid is None:
         return
-    with suppress(ProcessLookupError, PermissionError, OSError):
-        os.killpg(pid, signal.SIGKILL)
-        return
+    # Windows has neither killpg nor SIGKILL; there process.kill() is all there
+    # is, and grandchildren of a wrapper ffmpeg binary are not reaped.
+    killpg = getattr(os, "killpg", None)
+    sigkill = getattr(signal, "SIGKILL", None)
+    if killpg is not None and sigkill is not None:
+        with suppress(ProcessLookupError, PermissionError, OSError):
+            killpg(pid, sigkill)
+            return
     with suppress(ProcessLookupError):
         process.kill()
 
@@ -90,9 +104,21 @@ async def _wait_reaped(process: asyncio.subprocess.Process) -> None:
             await process.wait()
 
 
+def _default_ffmpeg_binary() -> str:
+    override = os.environ.get("VOCAGATEWAY_FFMPEG_BINARY", "").strip()
+    if override:
+        return override
+    # Frozen Windows builds ship ffmpeg.exe beside the gateway executable.
+    if getattr(sys, "frozen", False):
+        bundled = Path(sys.executable).resolve().parent / "ffmpeg.exe"
+        if bundled.exists():
+            return str(bundled)
+    return shutil.which("ffmpeg") or "ffmpeg"
+
+
 class FFmpegNormalizer:
-    def __init__(self, ffmpeg_binary: str = "ffmpeg") -> None:
-        self.ffmpeg_binary = ffmpeg_binary
+    def __init__(self, ffmpeg_binary: str | None = None) -> None:
+        self.ffmpeg_binary = ffmpeg_binary or _default_ffmpeg_binary()
 
     async def normalize(self, source: Path, destination: Path, maximum_seconds: int) -> Path:
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -116,7 +142,7 @@ class FFmpegNormalizer:
             str(destination),
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,
+            **_process_group_kwargs(),
         )
         try:
             _, stderr = await process.communicate()

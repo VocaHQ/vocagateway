@@ -31,6 +31,8 @@ MANIFEST
 #   before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+# The Windows PyInstaller spec is source, not generated output.
+!packaging/windows/vocagateway.spec
 
 # Installer logs
 pip-log.txt
