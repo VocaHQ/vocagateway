@@ -9,6 +9,7 @@ full `VOCAGATEWAY_*` table. These pages go deeper on one topic each.
 | [configuration.md](configuration.md) | You need the exact value of a path, an environment variable, or the pairing QR payload |
 | [tailscale.md](tailscale.md) | You want private HTTPS to the gateway without opening a port |
 | [cleanup.md](cleanup.md) | Compact vs full cleanup launch flags; CPU vs GPU; the command line if you run `llama-server` yourself |
+| [windows-packaging.md](windows-packaging.md) | How the native Windows build and installer are produced, EXE vs MSI, Store code-signing and submission requirements |
 | [troubleshooting.md](troubleshooting.md) | Something is failing and you want the symptom, not the theory |
 | [models.md](models.md) | Picking a model: all 79 in the catalog, what each speaks, and a reverse index from 115 languages back to the models that cover them |
 | [additional-models.md](additional-models.md) | Judging the newer multilingual, English and Indian-language additions — Cohere Transcribe, Parakeet Unified, Granite Speech, IndicConformer |

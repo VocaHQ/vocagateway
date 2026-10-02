@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import platform
-import resource
 import time
 import wave
 from abc import ABC, abstractmethod
@@ -12,6 +11,11 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID, uuid4
+
+try:
+    import resource
+except ImportError:  # POSIX-only module; Windows has no rusage metrics
+    resource = None  # type: ignore[assignment]
 
 from starlette import status
 
@@ -557,6 +561,8 @@ class _Pipeline:
 
     @classmethod
     def peak_memory_mb(cls) -> float | None:
+        if resource is None:
+            return None
         try:
             usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         except (OSError, ValueError):
