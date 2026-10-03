@@ -55,6 +55,12 @@ test("product truth stays scoped to Beta self-hosted infrastructure", () => {
   assert.match(html, /Ready for dictation/);
   assert.match(html, /https:\/\/github\.com\/VocaHQ\/vocagateway\/releases\/tag\/v0\.2\.0/);
   assert.match(html, /class="button button-primary" href="https:\/\/github\.com\/VocaHQ\/vocagateway\/releases\/tag\/v0\.2\.0"/);
+  const gatewayReleaseTags = [
+    ...html.matchAll(/https:\/\/github\.com\/VocaHQ\/vocagateway\/releases\/tag\/([^"\s]+)/g),
+  ].map((match) => match[1]);
+  assert.equal(gatewayReleaseTags.length, 4);
+  assert.deepEqual(new Set(gatewayReleaseTags), new Set(["v0.2.0"]));
+  assert.doesNotMatch(html, /\bv0\.1\.0\b/);
   assert.match(html, /no packaged installer/i);
   assert.doesNotMatch(html, /download the beta \.exe/i);
   assert.doesNotMatch(html, /https?:\/\/vocagateway\.com\b/i);
