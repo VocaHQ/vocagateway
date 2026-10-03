@@ -53,8 +53,8 @@ test("product truth stays scoped to Beta self-hosted infrastructure", () => {
   assert.match(html, /no Voca account/i);
   assert.match(html, /AGPL-3\.0/);
   assert.match(html, /Ready for dictation/);
-  assert.match(html, /https:\/\/github\.com\/VocaHQ\/vocagateway\/releases\/tag\/v0\.1\.0/);
-  assert.match(html, /class="button button-primary" href="https:\/\/github\.com\/VocaHQ\/vocagateway\/releases\/tag\/v0\.1\.0"/);
+  assert.match(html, /https:\/\/github\.com\/VocaHQ\/vocagateway\/releases\/tag\/v0\.2\.0/);
+  assert.match(html, /class="button button-primary" href="https:\/\/github\.com\/VocaHQ\/vocagateway\/releases\/tag\/v0\.2\.0"/);
   assert.match(html, /no packaged installer/i);
   assert.doesNotMatch(html, /download the beta \.exe/i);
   assert.doesNotMatch(html, /https?:\/\/vocagateway\.com\b/i);
