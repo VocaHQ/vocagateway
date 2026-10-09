@@ -1,0 +1,6 @@
+# BuildKit reads this instead of the root .dockerignore when building
+# .oss-scanner/Dockerfile. The root one is an allowlist for the production image
+# and hides tests/; the scanner needs the whole tree. Only local state stays out.
+.env
+.venv
+**/__pycache__
