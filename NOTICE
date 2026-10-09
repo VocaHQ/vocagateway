@@ -1,0 +1,17 @@
+VocaGateway
+Copyright 2026 VocaHQ and the VocaGateway contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE),
+with the exception of the contents of the ee/ directory, which are licensed
+under the Elastic License 2.0 (see ee/LICENSE).
+
+Relicensing history
+-------------------
+Releases up to and including v0.1.0 were published under the GNU Affero
+General Public License v3.0. The project was relicensed to the terms above
+with the written consent of every contributor to this repository at the time
+of the change. That consent is recorded in the pull request that introduced
+this file.
+
+Anyone who prefers the earlier terms may continue to use the AGPL-3.0
+releases; this change is not retroactive.
