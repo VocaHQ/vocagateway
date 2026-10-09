@@ -71,7 +71,7 @@ The image has the dev dependencies, whisper.cpp built with debug info at `/usr/l
 the `tiny.en` model at `/opt/models/ggml-tiny.en.bin`, and a sample clip at `/opt/samples/jfk.wav`.
 Everything works offline.
 
-- Tests: `cd /src && python -m pytest -n auto -q` (about 700 tests; they use fake engines. Two pairing tests in `tests/test_pairing_api.py` expect a reachable LAN address and fail with networking off).
+- Tests: `cd /src && python -m pytest -n auto -q` (about 1,000 tests; they use fake engines. Two pairing tests in `tests/test_pairing_api.py` expect a reachable LAN address and fail with networking off).
 - Start the server (the env is preset; the bootstrap token is `$VOCAGATEWAY_TOKEN`, a fixed test value):
   `vocagateway &` then `curl -s localhost:8765/health/ready`.
 - Transcribe:
