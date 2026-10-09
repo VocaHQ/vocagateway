@@ -41,12 +41,15 @@ RUN mkdir -p /opt/models /opt/samples \
 # scanner contract: the checkout lives inside the image, at /src
 COPY . /src
 WORKDIR /src
+# Installed into the system interpreter rather than a venv, so `python`,
+# `pytest` and `vocagateway` resolve in any shell, login shells included.
+# .oss-scanner/Dockerfile.dockerignore keeps tests/ in the build context.
 ENV UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never \
-    UV_NO_SYNC=1 \
-    UV_OFFLINE=1
-RUN UV_OFFLINE=0 uv sync --frozen --all-groups --extra engines
-ENV PATH="/src/.venv/bin:${PATH}" \
+    UV_PROJECT_ENVIRONMENT=/usr/local
+RUN uv sync --frozen --inexact --all-groups --extra engines
+ENV UV_NO_SYNC=1 \
+    UV_OFFLINE=1 \
     PYTHONUNBUFFERED=1 \
     VOCAGATEWAY_BIND_HOST=127.0.0.1 \
     VOCAGATEWAY_PORT=8765 \
