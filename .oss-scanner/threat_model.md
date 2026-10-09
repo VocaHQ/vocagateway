@@ -71,11 +71,11 @@ The image has the dev dependencies, whisper.cpp built with debug info at `/usr/l
 the `tiny.en` model at `/opt/models/ggml-tiny.en.bin`, and a sample clip at `/opt/samples/jfk.wav`.
 Everything works offline.
 
-- Tests: `cd /src && python -m pytest -n auto -q` (about 700 tests; they use fake engines and need no network).
+- Tests: `cd /src && python -m pytest -n auto -q` (about 700 tests; they use fake engines. Two pairing tests in `tests/test_pairing_api.py` expect a reachable LAN address and fail with networking off).
 - Start the server (the env is preset; the bootstrap token is `$VOCAGATEWAY_TOKEN`, a fixed test value):
   `vocagateway &` then `curl -s localhost:8765/health/ready`.
 - Transcribe:
-  `curl -s -H "Authorization: Bearer $VOCAGATEWAY_TOKEN" -F file=@/opt/samples/jfk.wav localhost:8765/v1/audio/transcriptions`
+  `curl -s -H "Authorization: Bearer $VOCAGATEWAY_TOKEN" -F "file=@/opt/samples/jfk.wav;type=audio/wav" localhost:8765/v1/audio/transcriptions`
   (the session flow is in `app/routes/sessions.py`).
 - API schema: start with `VOCAGATEWAY_DEBUG=1` and open `/docs`, or read `app/schemas.py`.
 - Model downloads and the cleanup LLM need the network or a `llama-server` binary, and neither is in the
