@@ -13,6 +13,18 @@ WILDCARD_BIND_HOST = "0.0.0.0"
 WILDCARD_BIND_HOSTS = frozenset((WILDCARD_BIND_HOST, "::"))
 APP_DIR_NAME = "vocagateway"
 DEFAULT_MAXIMUM_UPLOAD_BYTES = 26_214_400
+# How long one recording may be. Five minutes matches the longest recording the
+# phone apps offer. An operator can move it with VOCAGATEWAY_MAX_DURATION_SECONDS
+# within the bounds below, and `GET /health` reports the value in force.
+DEFAULT_MAXIMUM_DURATION_SECONDS = 300
+MINIMUM_DURATION_LIMIT_SECONDS = 10
+# The duration limit must never promise more than the upload limit can carry.
+# The apps upload 16 kHz mono 16-bit WAV, 32 kB per second, so ten minutes is
+# 19.2 MB and fits the 25 MiB ceiling with room for the header and multipart
+# wrapping. Compressed uploads (M4A, WebM, Ogg) are far smaller. Uncompressed
+# WAV at a higher rate or in stereo reaches the byte ceiling first; that is the
+# upload limit doing its job, not a reason to raise it.
+MAXIMUM_DURATION_LIMIT_SECONDS = 600
 MINIMUM_TOKEN_LENGTH = 32
 CONFIGURATION_DIRECTORY_MODE = 0o700
 TOKEN_FILE_MODE = 0o600
@@ -223,7 +235,7 @@ class Settings:
     bind_host: str = "0.0.0.0"
     port: int = 8765
     maximum_upload_bytes: int = DEFAULT_MAXIMUM_UPLOAD_BYTES
-    maximum_duration_seconds: int = 120
+    maximum_duration_seconds: int = DEFAULT_MAXIMUM_DURATION_SECONDS
     retention_hours: int = 24
     delete_successful_audio: bool = True
     maximum_concurrent_transcriptions: int = _concurrent_default
@@ -337,6 +349,12 @@ class Settings:
     @classmethod
     def _admission_env(cls) -> dict[str, Any]:
         return {
+            "maximum_duration_seconds": cls._bounded_int(
+                "VOCAGATEWAY_MAX_DURATION_SECONDS",
+                DEFAULT_MAXIMUM_DURATION_SECONDS,
+                MINIMUM_DURATION_LIMIT_SECONDS,
+                MAXIMUM_DURATION_LIMIT_SECONDS,
+            ),
             "maximum_concurrent_transcriptions": cls._bounded_int(
                 "VOCAGATEWAY_MAX_CONCURRENT_TRANSCRIPTIONS",
                 cls._concurrent_default,

@@ -1047,7 +1047,7 @@ async def test_recorder_ui_shows_limit_and_copy_action(
 ) -> None:
     response = await admin_client.get("/ui/partials/test", headers=auth)
     assert response.status_code == HTTP_200_OK
-    assert 'data-maximum-seconds="120"' in response.text
+    assert 'data-maximum-seconds="300"' in response.text
     assert 'id="record-timer"' in response.text
     assert 'id="copy-transcript"' in response.text
 

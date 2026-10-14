@@ -149,7 +149,8 @@ CPU service and the `cuda` / `vulkan` profile services share the same port and
 Unauthenticated health: `GET /health/live`, `GET /health/ready` (`503` until a
 model can transcribe), `GET /health`. Everything under `/v1/` needs
 `Authorization: Bearer`. `/docs` and `/openapi.json` only when
-`VOCAGATEWAY_DEBUG=true`. Upload ceiling is 25 MiB; max duration 120 s. Serve
+`VOCAGATEWAY_DEBUG=true`. Upload ceiling is 25 MiB; max duration 300 s
+(`VOCAGATEWAY_MAX_DURATION_SECONDS`, 10–600, reported in `GET /health`). Serve
 behind a reverse proxy at a **domain root**, not a subpath.
 
 ## Code conventions

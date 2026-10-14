@@ -12,6 +12,7 @@ Environment variables and on-disk paths use the `vocagateway` prefix.
 - [On-disk paths (native)](#on-disk-paths-native)
 - [QR pairing payload](#qr-pairing-payload)
 - [Session upload and finalization](#session-upload-and-finalization)
+- [Recording length](#recording-length)
 - [Environment variables](#environment-variables) — [gateway process](#gateway-process) · [Compose-only](#compose-only-not-read-by-a-native-process)
 - [Transcript cleanup](#transcript-cleanup)
 - [Stale names (not read)](#stale-names-not-read)
@@ -87,6 +88,36 @@ queue admission, disconnect handling, writing styles, optional cleanup, and
 successful-audio deletion all use the existing paths. No server setting or
 default limit changes.
 
+## Recording length
+
+Two limits bound a recording, and both apply to every upload path:
+
+- **Duration**: 300 seconds by default, set with
+  `VOCAGATEWAY_MAX_DURATION_SECONDS` (10–600). Measured after FFmpeg
+  normalization, so it means the same thing for every audio format. The
+  `/v1/stream` WebSocket counts samples against the same limit. A longer
+  recording fails with `422 invalid_audio` ("Recording exceeds the duration
+  limit").
+- **Size**: 25 MiB per upload (`413 audio_too_large`). Fixed, not an
+  environment variable.
+
+The duration range stops at 600 seconds so the two cannot contradict each
+other for the phone apps. They upload 16 kHz mono 16-bit WAV, 32 kB per second:
+five minutes is 9.6 MB and ten minutes is 19.2 MB, both inside 25 MiB.
+Compressed uploads (M4A, WebM, Ogg) are far smaller. A client that
+uploads uncompressed WAV at 44.1 or 48 kHz, or in stereo, reaches 25 MiB before
+ten minutes (about 4.5 minutes at 48 kHz mono) and gets `413` instead.
+
+`GET /health` reports the limit in force as `maximum_duration_seconds`. The
+apps stop a gateway recording at the shorter of the user's chosen length and
+this value. A gateway that predates the field does not send it, and clients
+then assume 120 seconds, the old fixed limit. The value is read at startup;
+restart the gateway after changing it.
+
+A longer recording also takes longer to transcribe. On a slow CPU-only host
+with a large model, check that a full-length clip finishes in the WebUI
+**Pair & test** recorder before raising the limit.
+
 ## Environment variables
 
 Prefix: `VOCAGATEWAY_*`. Values below match `Settings.from_env()` and
@@ -118,6 +149,7 @@ variable. `compose.yaml` forwards only the keys it names, so a variable marked
 | `VOCAGATEWAY_MAX_CONCURRENT_TRANSCRIPTIONS` | `2` | forwarded | Decode cap. Tightened to 1 for in-process models (Whisper, MLX, sherpa, Moonshine). Process-per-call engines (Handy, headless VocaMac, whisper.cpp CLI) can run two |
 | `VOCAGATEWAY_MAX_QUEUED_TRANSCRIPTIONS` | `16` | forwarded | How many requests may wait for a decode slot. `0` rejects immediately when busy |
 | `VOCAGATEWAY_TRANSCRIPTION_QUEUE_TIMEOUT_SECONDS` | `300` | forwarded | How long a request may wait before its decode starts, counted from arrival and including FFmpeg, before `503 engine_overloaded`. Range 0.05–600 |
+| `VOCAGATEWAY_MAX_DURATION_SECONDS` | `300` | forwarded | Longest recording accepted, uploaded or streamed. Range 10–600. Reported as `maximum_duration_seconds` in `GET /health`, and the apps stop a gateway recording there. See [Recording length](#recording-length) |
 | `VOCAGATEWAY_WHISPER_BINARY` | `/opt/homebrew/bin/whisper-cli` | ignored — image pins `/usr/local/bin/whisper-cli` | `whisper.cpp` CLI |
 | `VOCAGATEWAY_WHISPER_MODEL` | `~/.local/share/whisper.cpp/models/ggml-base.en.bin` | ignored | Fallback `whisper.cpp` model, used only when no model is selected in the WebUI |
 | `VOCAGATEWAY_WHISPER_SERVER_BINARY` | the `whisper-server` beside `whisper-cli`, else `PATH` | ignored — image ships `/usr/local/bin/whisper-server` | Resident `whisper.cpp` worker; a missing binary falls back to one `whisper-cli` run per request |

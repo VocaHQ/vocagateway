@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from app.audio import FFmpegNormalizer, _root_mean_square
+from app.config import DEFAULT_MAXIMUM_DURATION_SECONDS
 from app.errors import InvalidAudioError, SilentAudioError
 
 MAXIMUM_RECORDING_DURATION_SECONDS = 120
@@ -24,6 +25,8 @@ ABANDON_AFTER_SECONDS = 0.05
 REAP_BOUND_SECONDS = 0.2
 ABANDON_BOUND_SECONDS = 3
 PID_POLL_ATTEMPTS = 100
+TONE_AMPLITUDE = 3_000
+TONE_FREQUENCY_HZ = 440
 
 
 async def test_ffmpeg_normalizes_real_audio(
@@ -128,6 +131,50 @@ async def test_silence_is_rejected(tmp_path: Path) -> None:
         await FFmpegNormalizer().normalize(
             source, tmp_path / "output.wav", MAXIMUM_RECORDING_DURATION_SECONDS
         )
+
+
+def _write_tone(path: Path, seconds: int) -> None:
+    """A 16 kHz mono tone, what the phone apps upload, of an exact length."""
+    one_second = array(
+        "h",
+        (
+            round(
+                TONE_AMPLITUDE
+                * math.sin(2 * math.pi * TONE_FREQUENCY_HZ * index / NORMALIZED_SAMPLE_RATE_HZ)
+            )
+            for index in range(NORMALIZED_SAMPLE_RATE_HZ)
+        ),
+    ).tobytes()
+    with wave.open(str(path), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(NORMALIZED_SAMPLE_RATE_HZ)
+        output.writeframes(one_second * seconds)
+
+
+@pytest.mark.parametrize(
+    ("seconds", "accepted"),
+    [
+        (DEFAULT_MAXIMUM_DURATION_SECONDS - 1, True),
+        (DEFAULT_MAXIMUM_DURATION_SECONDS, True),
+        (DEFAULT_MAXIMUM_DURATION_SECONDS + 1, False),
+    ],
+)
+async def test_the_default_duration_limit_is_five_minutes(
+    seconds: int, accepted: bool, tmp_path: Path
+) -> None:
+    source = tmp_path / "source.wav"
+    destination = tmp_path / "normalized.wav"
+    _write_tone(source, seconds)
+
+    if accepted:
+        await FFmpegNormalizer().normalize(source, destination, DEFAULT_MAXIMUM_DURATION_SECONDS)
+        with wave.open(str(destination), "rb") as normalized:
+            assert normalized.getnframes() == seconds * NORMALIZED_SAMPLE_RATE_HZ
+        return
+    with pytest.raises(InvalidAudioError, match="duration limit"):
+        await FFmpegNormalizer().normalize(source, destination, DEFAULT_MAXIMUM_DURATION_SECONDS)
+    assert not destination.exists()
 
 
 def _pure_python_rms(samples: array[int]) -> float:

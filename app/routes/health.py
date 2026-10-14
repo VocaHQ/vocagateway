@@ -35,6 +35,7 @@ async def health(ctx: GatewayContextDependency) -> HealthResponse:
         requires_explicit_language=(
             active_model is not None and active_model.requires_explicit_language
         ),
+        maximum_duration_seconds=ctx.settings.maximum_duration_seconds,
     )
 
 

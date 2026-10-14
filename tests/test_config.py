@@ -5,7 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from app.config import Settings, format_host_port, local_webui_url
+from app.config import (
+    DEFAULT_MAXIMUM_DURATION_SECONDS,
+    DEFAULT_MAXIMUM_UPLOAD_BYTES,
+    MAXIMUM_DURATION_LIMIT_SECONDS,
+    Settings,
+    format_host_port,
+    local_webui_url,
+)
 
 TEST_TOKEN_PADDING_LENGTH = 48
 DEFAULT_GATEWAY_PORT = 8765
@@ -18,6 +25,11 @@ TOKEN_FILE_NAME = "token"
 UTF8_ENCODING = "utf-8"
 _TOKEN_PADDING = "x" * TEST_TOKEN_PADDING_LENGTH
 PADDED_TEST_TOKEN = f"test-{_TOKEN_PADDING}"
+DURATION_ENVIRONMENT_VARIABLE = "VOCAGATEWAY_MAX_DURATION_SECONDS"
+# What the phone apps upload: 16 kHz mono 16-bit PCM WAV.
+APP_WAV_BYTES_PER_SECOND = 16_000 * 2
+# A WAV header plus generous room for multipart form wrapping.
+UPLOAD_ENVELOPE_BYTES = 64 * 1024
 
 
 def _isolate_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
@@ -342,6 +354,41 @@ def test_admission_env_rejects_out_of_range(
 
     with pytest.raises(RuntimeError, match="between"):
         Settings.from_env()
+
+
+def test_duration_limit_defaults_to_five_minutes_and_reads_the_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _isolate_home(monkeypatch, tmp_path)
+    monkeypatch.setenv(TOKEN_ENVIRONMENT_VARIABLE, PADDED_TEST_TOKEN)
+
+    assert Settings.from_env().maximum_duration_seconds == 300
+    assert DEFAULT_MAXIMUM_DURATION_SECONDS == 300
+
+    monkeypatch.setenv(DURATION_ENVIRONMENT_VARIABLE, "120")
+    assert Settings.from_env().maximum_duration_seconds == 120
+
+
+@pytest.mark.parametrize("raw", ["5", "601", "five minutes"])
+def test_duration_limit_env_rejects_values_outside_the_range(
+    raw: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _isolate_home(monkeypatch, tmp_path)
+    monkeypatch.setenv(TOKEN_ENVIRONMENT_VARIABLE, PADDED_TEST_TOKEN)
+    monkeypatch.setenv(DURATION_ENVIRONMENT_VARIABLE, raw)
+
+    with pytest.raises(RuntimeError, match=DURATION_ENVIRONMENT_VARIABLE):
+        Settings.from_env()
+
+
+def test_the_longest_allowed_duration_fits_the_upload_limit() -> None:
+    """An operator cannot set a duration the byte ceiling would refuse first.
+
+    Raising the duration is allowed only up to what the apps' WAV uploads can
+    carry, so the two limits never contradict each other for those clients.
+    """
+    longest_upload = MAXIMUM_DURATION_LIMIT_SECONDS * APP_WAV_BYTES_PER_SECOND
+    assert longest_upload + UPLOAD_ENVELOPE_BYTES <= DEFAULT_MAXIMUM_UPLOAD_BYTES
 
 
 def test_short_token_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

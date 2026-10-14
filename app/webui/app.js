@@ -1168,7 +1168,7 @@
     const errorBox = document.getElementById("test-error");
     const timer = document.getElementById("record-timer");
     const controls = document.getElementById("recorder-controls");
-    const maximumSeconds = Number(controls.dataset.maximumSeconds) || 120;
+    const maximumSeconds = Number(controls.dataset.maximumSeconds) || 300;
 
     if (recorder && recorder.state === "recording") {
       recorder.stop();
