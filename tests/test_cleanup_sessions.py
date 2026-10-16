@@ -95,6 +95,22 @@ async def test_a_corrected_session_reports_both_texts(cleaned: CleanupApp) -> No
     assert payload["cleanup"]["reason"] is None
 
 
+async def test_an_unfinished_session_does_not_report_cleanup_as_disabled(
+    cleaned: CleanupApp,
+) -> None:
+    """Create/get/upload of inherit-conservative must not look like cleanup is off."""
+    created = (await cleaned.create()).json()
+    assert created["cleanup"] is None
+    await cleaned.upload(created["session_id"])
+    uploaded = (
+        await cleaned.client.get(f"{SESSIONS}/{created['session_id']}", headers=cleaned.auth)
+    ).json()
+    assert uploaded["cleanup"] is None
+    finished = (await cleaned.finish(created["session_id"])).json()
+    assert finished["cleanup"]["status"] == "applied"
+    assert finished["cleanup"]["requested"] == "conservative"
+
+
 async def test_an_opted_out_session_is_untouched(cleaned: CleanupApp) -> None:
     payload = await cleaned.run(cleanup="off")
     assert payload["transcript"] == "We was going to leave early but the train was late"
