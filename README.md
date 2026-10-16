@@ -829,13 +829,14 @@ uv run vocagateway
 | `VOCAGATEWAY_MAX_CONCURRENT_TRANSCRIPTIONS` | `2` | `2` | Decode cap. The loaded engine may be tighter (1 for Whisper/MLX/sherpa/Moonshine) |
 | `VOCAGATEWAY_MAX_QUEUED_TRANSCRIPTIONS` | `16` | `16` | How many requests may wait for a decode slot. `0` rejects immediately when busy |
 | `VOCAGATEWAY_TRANSCRIPTION_QUEUE_TIMEOUT_SECONDS` | `300` | `300` | How long a request may wait before its decode starts, counted from arrival and including FFmpeg, before `503 engine_overloaded` |
+| `VOCAGATEWAY_MAX_DURATION_SECONDS` | `300` | `300` | Longest recording accepted, uploaded or streamed. Range 10–600, so it always fits the 25 MiB upload ceiling for the apps' 16 kHz WAV. Reported to clients in `GET /health` |
 | `VOCAGATEWAY_PUBLIC_URL` | unset | unset | Address the pairing QR encodes, overriding auto-discovery |
 | `VOCAGATEWAY_PAIRING_URL` | unset | unset | Alias for `VOCAGATEWAY_PUBLIC_URL`, checked second |
 | `VOCAGATEWAY_DEBUG` | `false` | `false` | Serve the Swagger UI at `/docs` and the schema at `/openapi.json`, and report the build commit in `/v1/admin/status` |
 
 Under Compose, `VOCAGATEWAY_BIND_HOST`, `PORT`, `ENGINE`, `RETENTION_HOURS`,
 `DELETE_SUCCESSFUL_AUDIO`, `MAX_CONCURRENT_TRANSCRIPTIONS`, `MAX_QUEUED_TRANSCRIPTIONS`,
-`TRANSCRIPTION_QUEUE_TIMEOUT_SECONDS`, `PUBLIC_URL`, `PAIRING_URL`, and `DEBUG`
+`TRANSCRIPTION_QUEUE_TIMEOUT_SECONDS`, `MAX_DURATION_SECONDS`, `PUBLIC_URL`, `PAIRING_URL`, and `DEBUG`
 are read from `.env` and passed into the container. `VOCAGATEWAY_TOKEN` becomes a
 Compose secret at `/run/secrets/vocagateway_token` rather than an environment
 variable. Every other variable in the table above is fixed by the image or
@@ -997,6 +998,9 @@ old URL.
 - `GET /health` is the backward-compatible iPhone health response and includes
   `streaming_supported` for status display and capability discovery. The iOS
   recording path negotiates on the socket itself to avoid a separate preflight.
+  It also reports `maximum_duration_seconds`, the longest recording this gateway
+  accepts. The apps cap a gateway recording at the shorter of the user's chosen
+  length and this value; a gateway too old to send it is treated as 120 seconds.
 - Authenticated `/v1/admin/status` exposes setup, metrics, and readiness details
   used by the WebUI.
 - `/v1/admin/status` and the diagnostics bundle carry a `commit` object (`sha`,

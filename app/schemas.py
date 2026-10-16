@@ -130,6 +130,11 @@ class HealthResponse(BaseModel):
     # opposite of the flag above: a client must drop "detect language" from its
     # picker, because sending it fails the request rather than guessing.
     requires_explicit_language: bool = False
+    # The longest recording this gateway accepts, in seconds, on uploads and on
+    # the stream alike. Clients cap a gateway recording at the shorter of the
+    # user's chosen length and this value. A gateway that predates the field
+    # does not send it, and clients must then assume 120, the old fixed limit.
+    maximum_duration_seconds: int
 
 
 class LivenessResponse(BaseModel):

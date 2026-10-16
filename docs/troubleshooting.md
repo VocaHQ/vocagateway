@@ -299,10 +299,14 @@ screenshot. See [configuration.md](configuration.md).
 
 ## 413, 415, or 422
 
-- `413 audio_too_large`: keep recording below two minutes / 25 MB.
+- `413 audio_too_large`: the upload is over 25 MiB. Five minutes of the apps'
+  16 kHz WAV is about 10 MB, so this usually means a different client sending
+  high-rate or stereo WAV.
 - `415 unsupported_audio_type`: use M4A, CAF, or WAV.
 - `422 audio_empty`, `invalid_audio`, or `silent_audio`: record again and inspect
-  the phone's input route.
+  the phone's input route. An `invalid_audio` message saying the recording
+  exceeds the duration limit means it ran past `maximum_duration_seconds`
+  (300 by default, `VOCAGATEWAY_MAX_DURATION_SECONDS`).
 - `422 language_unsupported`: the model loaded on your gateway cannot transcribe
   the language selected in the app. Either set the language to Automatic, pick a
   language the model covers, or download a model that covers it — the Models tab

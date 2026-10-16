@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
 
@@ -17,7 +18,7 @@ from starlette.status import (
     HTTP_503_SERVICE_UNAVAILABLE,
 )
 
-from app.config import Settings
+from app.config import DEFAULT_MAXIMUM_DURATION_SECONDS, Settings
 from app.errors import LanguageUnsupportedError
 from app.main import create_app
 from app.models.base import EngineHealth, TranscriptionOptions
@@ -36,6 +37,8 @@ STATUS_KEY = "status"
 LANGUAGES_KEY = "languages"
 JOB_ID_KEY = "job_id"
 TRANSCRIPT_KEY = "transcript"
+MAXIMUM_DURATION_KEY = "maximum_duration_seconds"
+OPERATOR_DURATION_LIMIT_SECONDS = 90
 
 
 class UnreadyEngine:
@@ -115,6 +118,8 @@ async def test_health_is_public_and_separates_eng_aa(
         LANGUAGES_KEY: [],
         "detects_language_automatically": False,
         "requires_explicit_language": False,
+        # The default limit, matching the longest recording the phone apps offer.
+        MAXIMUM_DURATION_KEY: DEFAULT_MAXIMUM_DURATION_SECONDS,
     }
 
     liveness = await client.get("/health/live")
@@ -129,6 +134,20 @@ async def test_health_is_public_and_separates_eng_aa(
     assert readiness.json()["engine"] == "fake-local-model"
     assert repeated.status_code == HTTP_200_OK
     assert fake_engine.health_calls == 1
+
+
+async def test_health_reports_the_duration_limit_in_force(
+    settings: Settings, fake_engine: FakeEngine
+) -> None:
+    """Clients cap gateway recordings at this value, so it must be the live setting."""
+    limited = replace(settings, maximum_duration_seconds=OPERATOR_DURATION_LIMIT_SECONDS)
+    app = create_app(limited, engine=fake_engine, normalizer=FakeNormalizer())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as test_client:
+        payload = (await test_client.get("/health")).json()
+
+    assert payload[MAXIMUM_DURATION_KEY] == OPERATOR_DURATION_LIMIT_SECONDS
 
 
 async def test_private_endpoints_require_bearer_token(client: httpx.AsyncClient) -> None:

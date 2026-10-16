@@ -69,6 +69,8 @@ services:
       VOCAGATEWAY_MAX_CONCURRENT_TRANSCRIPTIONS: ${VOCAGATEWAY_MAX_CONCURRENT_TRANSCRIPTIONS:-2}
       VOCAGATEWAY_MAX_QUEUED_TRANSCRIPTIONS: ${VOCAGATEWAY_MAX_QUEUED_TRANSCRIPTIONS:-16}
       VOCAGATEWAY_TRANSCRIPTION_QUEUE_TIMEOUT_SECONDS: ${VOCAGATEWAY_TRANSCRIPTION_QUEUE_TIMEOUT_SECONDS:-300}
+      # Longest recording accepted, in seconds (10-600). Reported in GET /health.
+      VOCAGATEWAY_MAX_DURATION_SECONDS: ${VOCAGATEWAY_MAX_DURATION_SECONDS:-300}
       # Transcript cleanup. The runtime is in the image and the gateway
       # launches it itself, so this container is the whole feature. It stays
       # inert until a cleanup model is downloaded in the WebUI, which is the
