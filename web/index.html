@@ -323,8 +323,10 @@
             <h3>get text back</h3>
             <p>
               The client records. Audio travels to this host. The selected
-              model runs here and the transcript goes back to the app. Desktop
-              clients are planned; VocaPhone is the current consumer.
+              model runs here and the transcript goes back to the app.
+              VocaPhone is the primary phone client. Desktop apps may use
+              this gateway as a remote client where supported.
+              Desktop gateway hosting is not available yet.
             </p>
           </article>
         </div>
@@ -472,12 +474,12 @@ docker compose up --detach --build</code></pre>
             <div class="eco-head">
               <img src="assets/icons/android.svg" alt="" width="20" height="20" />
               <span>iPhone + Android</span>
-              <small>beta / testflight</small>
+              <small>android beta / ios testflight</small>
             </div>
             <h3>VocaPhone</h3>
             <p>
-              The current gateway client. Android has a public beta. iPhone
-              is a public TestFlight beta capped at 1,000 seats, or an
+              The primary phone client for this gateway. Android has a public beta.
+              iPhone is a public TestFlight beta capped at 1,000 seats, or an
               iOS 17+ source build. On-device is the default path; this
               gateway is optional.
             </p>
@@ -499,8 +501,7 @@ docker compose up --detach --build</code></pre>
             <h3>VocaLinux</h3>
             <p>
               System-wide voice typing for real Linux desktops. On-device
-              speech-to-text on X11 and Wayland. Gateway shipping from the
-              desktop app is planned.
+              speech-to-text on X11 and Wayland.
             </p>
             <div class="eco-links">
               <a href="https://vocalinux.com/">vocalinux.com <span aria-hidden="true">↗</span></a>
@@ -537,7 +538,7 @@ docker compose up --detach --build</code></pre>
               Unsigned
               <a href="https://github.com/VocaHQ/vocawin/releases/tag/v0.1.1-beta">v0.1.1-beta</a>,
               not a store listing. Windows SmartScreen will warn. It does
-              not expose a gateway mode today; desktop embed is planned.
+              not expose a gateway mode today.
             </p>
             <div class="eco-links">
               <a href="https://vocawin.com/">vocawin.com <span aria-hidden="true">↗</span></a>
@@ -573,9 +574,9 @@ docker compose up --detach --build</code></pre>
           <details>
             <summary>What can pair with it today?<span aria-hidden="true">＋</span></summary>
             <p>
-              VocaPhone on iOS and Android. Linux, macOS, and Windows desktop
-              apps are planned to start this same headless server later. There
-              is no Voca account.
+              VocaPhone on iOS and Android pairs over the QR path.
+              Desktop apps may use the gateway as a remote client where supported.
+              Desktop gateway hosting is not available yet. There is no Voca account.
             </p>
           </details>
           <details>
