@@ -193,6 +193,19 @@ async def test_an_unsafe_edit_falls_back_rather_than_being_inserted() -> None:
     assert final.cleanup.reason is CleanupReason.UNSAFE_EDIT
 
 
+async def test_a_broken_lease_still_returns_the_legacy_result() -> None:
+    """A recognition that succeeded stays a success, even if admission explodes."""
+
+    class BrokenManager(StubManager):
+        def lease(self) -> object:
+            raise RuntimeError("lease exploded")
+
+    final = await finalize(CleanupService(BrokenManager(FakeCleanupRuntime("nope"))))
+    assert final.transcript == legacy()
+    assert final.cleanup.status is CleanupStatus.FALLBACK
+    assert final.cleanup.reason is CleanupReason.RUNTIME_ERROR
+
+
 async def test_a_full_runtime_reports_busy_not_a_missing_model() -> None:
     service = CleanupService(StubManager(None, admit=False))  # type: ignore[arg-type]
     final = await finalize(service)
